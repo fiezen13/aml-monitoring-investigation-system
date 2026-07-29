@@ -13,8 +13,8 @@ echo "Python version OK"
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (bao gồm cả công cụ kiểm thử và lint)
+pip install -r requirements-dev.txt
 
 # Create .env if not exists
 if [ ! -f .env ]; then
