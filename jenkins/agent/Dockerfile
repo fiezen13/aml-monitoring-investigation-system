@@ -4,7 +4,16 @@
 # Jenkinsfile. Hai chỗ lệch nhau thì pipeline sẽ đỏ ở dòng đầu tiên kèm
 # thông báo rõ ràng, chứ không đỏ giữa chừng vì một lệnh không tồn tại.
 
-FROM jenkins/inbound-agent:3384.v60d89463d9e0-1-jdk17
+# Bản JDK phải KHỚP với controller (jenkins/Dockerfile dùng ...-lts-jdk21).
+#
+# Agent chạy JDK cũ hơn thì nó tải class từ controller về và không nạp được:
+#   UnsupportedClassVersionError: ... class file version 65.0,
+#   this version of the Java Runtime only recognizes ... up to 61.0
+#
+# Triệu chứng nhìn từ Jenkins là node "offline: Connection was broken", lặp
+# vô hạn — không có chữ nào nhắc tới Java. Nâng controller lên JDK mới thì
+# phải nâng cả dòng này.
+FROM jenkins/inbound-agent:3384.v60d89463d9e0-1-jdk21
 
 USER root
 
