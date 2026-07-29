@@ -43,6 +43,12 @@ services:
 
   api:
     restart: always
+    # Cổng khác staging vì hai môi trường chạy song song trên cùng một máy.
+    # Trùng cổng thì môi trường lên sau không bind được, và thông báo lỗi
+    # ("port is already allocated") không hề gợi ý rằng nguyên nhân là môi
+    # trường kia đang chạy.
+    ports: !override
+      - "${API_PORT:-8001}:8000"
     environment:
       APP_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -69,6 +75,8 @@ services:
 
   web:
     restart: always
+    ports: !override
+      - "${WEB_PORT:-5174}:8080"
     deploy:
       resources:
         limits:

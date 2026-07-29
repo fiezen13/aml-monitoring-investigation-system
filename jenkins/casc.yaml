@@ -16,6 +16,16 @@ jenkins:
   mode: EXCLUSIVE
   labelString: 'controller'
 
+  # Jenkinsfile đọc hai biến này, có giá trị mặc định nếu không đặt. Nhờ vậy
+  # đổi registry là đổi cấu hình controller, không phải sửa Jenkinsfile.
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "FIN07_REGISTRY"
+            value: "${FIN07_REGISTRY:-ghcr.io}"
+          - key: "FIN07_IMAGE_REPO"
+            value: "${FIN07_IMAGE_REPO:-ai20k-build-phase-cohort-3/p-022}"
+
   securityRealm:
     local:
       allowsSignup: false

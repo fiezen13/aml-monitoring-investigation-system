@@ -39,11 +39,32 @@ pipeline {
     }
 
     environment {
-        REGISTRY   = 'ghcr.io'
-        IMAGE_REPO = 'ai20k-build-phase-cohort-3/p-022'
+        // Đổi được từ cấu hình controller (jenkins/casc.yaml → globalNodeProperties)
+        // thay vì phải sửa file này. Cần thiết khi chạy pipeline với registry
+        // nội bộ, và khi tổ chức khác nhận bàn giao rồi đẩy image vào registry
+        // của họ — lúc đó Jenkinsfile không phải là thứ họ phải sửa.
+        REGISTRY   = "${env.FIN07_REGISTRY ?: 'ghcr.io'}"
+        IMAGE_REPO = "${env.FIN07_IMAGE_REPO ?: 'ai20k-build-phase-cohort-3/p-022'}"
         PYTHON     = 'python3'
-        // Tag di động: tên nhánh, đã bỏ dấu gạch chéo.
-        MOVING_TAG = "${env.BRANCH_NAME?.replaceAll('/', '-') ?: 'manual'}"
+
+        // Tag di động (tên nhánh, bỏ dấu gạch chéo) KHÔNG tính ở đây.
+        //
+        // Bản trước viết:
+        //     MOVING_TAG = "${env.BRANCH_NAME?.replaceAll('/', '-') ?: 'manual'}"
+        //
+        // BRANCH_NAME chỉ tồn tại ở job multibranch. Với job Pipeline thường
+        // nó là null, biểu thức trả về null, và Jenkins từ chối NGUYÊN khối
+        // environment với thông báo:
+        //
+        //     One or more variables have some issues with their values: MOVING_TAG
+        //
+        // Hậu quả không hề tương xứng với nguyên nhân: toàn bộ stages bị bỏ
+        // qua, post chạy ngoài ngữ cảnh node rồi hỏng tiếp, và ở đầu log
+        // không có dòng lỗi nào — build chỉ đơn giản là checkout xong rồi kết
+        // thúc. Phải đọc tới giữa stack trace mới thấy tên biến.
+        //
+        // Nay tính bằng shell ở đúng chỗ cần dùng: không có biểu thức Groovy
+        // nào chạy trước stages, nên không có gì hỏng trước stages được.
     }
 
     parameters {
@@ -148,6 +169,11 @@ pipeline {
                     sh '''
                         set -eu
                         echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
+                        # BRANCH_NAME rỗng ở job Pipeline thường (chỉ multibranch
+                        # mới đặt biến này), nên có giá trị thay thế.
+                        MOVING_TAG="$(echo "${BRANCH_NAME:-manual}" | tr '/' '-')"
+                        export MOVING_TAG
+                        echo "Tag di động: ${MOVING_TAG}"
                         PUSH=true ./ci/build-images.sh
                         docker logout "$REGISTRY"
                     '''
@@ -186,7 +212,12 @@ pipeline {
                     sh '''
                         set -eu
                         echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
-                        export STAGING_DOCKER_CONTEXT="${STAGING_DOCKER_CONTEXT:-fin07-staging}"
+                        # Không đặt giá trị mặc định: một docker context phải được
+                        # tạo bằng tay trên agent, và mặc định trỏ vào cái chưa tồn
+                        # tại thì mọi lệnh docker hỏng với 'context not found' —
+                        # thông báo không hề gợi ý rằng chỉ cần bỏ trống biến này.
+                        # Bỏ trống nghĩa là triển khai lên chính máy đang chạy agent,
+                        # đúng cho trường hợp Jenkins và môi trường ở chung một máy.
                         export API_URL="${STAGING_API_URL:-http://localhost:8000}"
                         export WEB_URL="${STAGING_WEB_URL:-http://localhost:5173}"
                         ./ci/deploy.sh staging
@@ -207,7 +238,12 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    export DOCKER_CONTEXT="${STAGING_DOCKER_CONTEXT:-fin07-staging}"
+                    # Viết bằng if chứ không phải `[ ... ] && export ...`:
+                    # dưới `set -e`, dạng && trả về mã khác 0 khi điều kiện sai
+                    # và giết luôn cả script.
+                    if [ -n "${STAGING_DOCKER_CONTEXT:-}" ]; then
+                        export DOCKER_CONTEXT="$STAGING_DOCKER_CONTEXT"
+                    fi
                     docker compose -p fin07-staging \
                         -f docker-compose.yml -f deploy/docker-compose.staging.yml \
                         run --rm seed python scripts/seed_data.py --force
@@ -280,7 +316,7 @@ pipeline {
                     sh '''
                         set -eu
                         echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
-                        export PRODLIKE_DOCKER_CONTEXT="${PRODLIKE_DOCKER_CONTEXT:-fin07-prodlike}"
+                        # Xem ghi chú ở stage triển khai staging.
                         export API_URL="${PRODLIKE_API_URL:-http://localhost:8000}"
                         export WEB_URL="${PRODLIKE_WEB_URL:-http://localhost:5173}"
                         ./ci/deploy.sh prodlike

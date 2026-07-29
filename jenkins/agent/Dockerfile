@@ -4,7 +4,16 @@
 # Jenkinsfile. Hai chỗ lệch nhau thì pipeline sẽ đỏ ở dòng đầu tiên kèm
 # thông báo rõ ràng, chứ không đỏ giữa chừng vì một lệnh không tồn tại.
 
-FROM jenkins/inbound-agent:3384.v60d89463d9e0-1-jdk17
+# Bản JDK phải KHỚP với controller (jenkins/Dockerfile dùng ...-lts-jdk21).
+#
+# Agent chạy JDK cũ hơn thì nó tải class từ controller về và không nạp được:
+#   UnsupportedClassVersionError: ... class file version 65.0,
+#   this version of the Java Runtime only recognizes ... up to 61.0
+#
+# Triệu chứng nhìn từ Jenkins là node "offline: Connection was broken", lặp
+# vô hạn — không có chữ nào nhắc tới Java. Nâng controller lên JDK mới thì
+# phải nâng cả dòng này.
+FROM jenkins/inbound-agent:3384.v60d89463d9e0-1-jdk21
 
 USER root
 
@@ -33,8 +42,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         docker-ce-cli docker-compose-plugin nodejs shellcheck \
     && rm -rf /var/lib/apt/lists/*
 
-# Cho user jenkins dùng được socket Docker của máy chủ. GID 999 là mặc định
-# của nhóm docker trên Debian và Ubuntu; máy chủ dùng GID khác thì sửa ở đây.
+# Cho user jenkins dùng được socket Docker của máy chủ.
+#
+# GID phải KHỚP với nhóm sở hữu /var/run/docker.sock trên máy chủ. Không có
+# con số nào đúng cho mọi bản Linux: Debian hay dùng 999, Ubuntu 24.04 dùng
+# 988, và máy nào cài Docker sau vài gói khác lại ra số khác nữa. Vì vậy nó
+# là build arg, và jenkins/docker-compose.yml truyền vào từ biến DOCKER_GID.
+#
+# Lấy đúng số trên máy chủ:
+#     stat -c '%g' /var/run/docker.sock
+#
+# Sai số này thì mọi lệnh docker trong pipeline báo:
+#     permission denied while trying to connect to the docker API
 ARG DOCKER_GID=999
 RUN groupadd -g "${DOCKER_GID}" docker-host 2>/dev/null || true \
     && usermod -aG "${DOCKER_GID}" jenkins
