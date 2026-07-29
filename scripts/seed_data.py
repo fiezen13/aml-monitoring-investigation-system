@@ -33,13 +33,20 @@ import random
 import sys
 import unicodedata
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+# Chạy `python scripts/seed_data.py` thì sys.path[0] là thư mục scripts/, chứ
+# không phải gốc repo, nên `import src...` hỏng. Image Docker đặt PYTHONPATH
+# nên không gặp; người chạy tay ngoài Docker thì gặp ngay. Tự thêm gốc repo
+# vào đây để script chạy được từ mọi chỗ.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.config import get_settings
-from src.db.session import get_session
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
+
+from src.config import get_settings  # noqa: E402
+from src.db.session import get_session  # noqa: E402
 
 logger = logging.getLogger("fin07.seed")
 

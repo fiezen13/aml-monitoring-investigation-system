@@ -42,3 +42,9 @@ Dockerfile
 .dockerignore
 requirements-dev.txt
 pytest.ini
+
+# Hạ tầng CI/CD — không thuộc image ứng dụng
+ci/
+deploy/
+jenkins/
+Jenkinsfile
