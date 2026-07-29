@@ -22,6 +22,11 @@ services:
       JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
       JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?bắt buộc — xem jenkins/.env.example}
       JENKINS_URL: ${JENKINS_URL:-http://localhost:8080/}
+      # Hai biến này phải có mặt ở đây, không chỉ trong .env: JCasC đọc biến
+      # môi trường CỦA CONTAINER controller. Thiếu chúng thì casc.yaml lặng lẽ
+      # dùng giá trị mặc định ghcr.io, và pipeline đăng nhập nhầm registry.
+      FIN07_REGISTRY: ${FIN07_REGISTRY:-ghcr.io}
+      FIN07_IMAGE_REPO: ${FIN07_IMAGE_REPO:-ai20k-build-phase-cohort-3/p-022}
       REGISTRY_USER: ${REGISTRY_USER:-}
       REGISTRY_TOKEN: ${REGISTRY_TOKEN:-}
       GITHUB_USER: ${GITHUB_USER:-}
