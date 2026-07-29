@@ -78,7 +78,22 @@ services:
       JENKINS_WEB_SOCKET: "true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - agent_work:/home/jenkins/agent
+      # Workspace phải nằm ở CÙNG MỘT ĐƯỜNG DẪN trên máy chủ và trong agent.
+      #
+      # Agent dùng Docker daemon của máy chủ, nên mọi bind mount tương đối
+      # trong docker-compose.yml của dự án (ví dụ ./db/init) được DAEMON giải,
+      # tức là giải theo hệ tệp của máy chủ — không phải của agent. Dùng
+      # volume có tên cho workspace thì đường dẫn hai bên khác nhau, daemon
+      # mount phải một thư mục không tồn tại, và nó lặng lẽ tạo thư mục rỗng.
+      #
+      # Hậu quả cụ thể đã gặp: PostgreSQL khởi động với
+      # /docker-entrypoint-initdb.d rỗng, không có bảng nào được tạo, container
+      # vẫn báo healthy. Chỉ vì scripts/seed_data.py có bước kiểm tra lược đồ
+      # nên lỗi mới lộ ra thay vì thành một cơ sở dữ liệu rỗng chạy tiếp.
+      #
+      # Thư mục này phải tồn tại trên máy chủ và thuộc uid 1000:
+      #     sudo mkdir -p /home/jenkins/agent && sudo chown -R 1000:1000 /home/jenkins
+      - ${AGENT_WORKDIR:-/home/jenkins/agent}:/home/jenkins/agent
     depends_on:
       controller:
         condition: service_healthy
@@ -86,4 +101,3 @@ services:
 
 volumes:
   jenkins_home:
-  agent_work:
