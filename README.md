@@ -1,5 +1,28 @@
 # 🤖 AI20K Agent Template
 
+> ## 🚀 FIN-07 — chạy toàn bộ hệ thống bằng một lệnh
+>
+> ```bash
+> docker compose up
+> ```
+>
+> Dựng PostgreSQL, Redis, API FastAPI, worker, console React, và nạp sẵn dữ
+> liệu mẫu. Không cần tạo `.env` trước — mọi biến đều có mặc định cho môi
+> trường phát triển.
+>
+> - Console — <http://localhost:5173>
+> - API docs — <http://localhost:8000/docs>
+>
+> | Tài liệu | Nội dung |
+> |---|---|
+> | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
+> | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | Toàn bộ biến môi trường |
+> | [docs/CI.md](docs/CI.md) | Pipeline chạy gì trên mỗi pull request |
+>
+> Phần còn lại của file này là README gốc của template AI20K.
+
+---
+
 Template chính thức cho học viên **VinUni AI20K Build Phase** — cung cấp sẵn cấu trúc dự án, code mẫu, và hướng dẫn kỹ thuật chi tiết để xây dựng AI Agent đạt điểm cao (35+/50).
 
 > 📖 **Technical Guidebook:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)

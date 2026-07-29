@@ -1,0 +1,80 @@
+# Jenkins controller và một agent, dựng bằng một lệnh.
+#
+#   cd jenkins
+#   cp .env.example .env      # điền bí mật
+#   docker compose up -d controller
+#   # http://localhost:8080 → lấy secret của node fin07-agent-1
+#   # điền vào JENKINS_AGENT_SECRET trong .env
+#   docker compose up -d agent
+#
+# Controller không chạy job (numExecutors: 0 trong casc.yaml). Việc build đi
+# xuống agent: build cần Docker, và tiến trình đang giữ toàn bộ credentials
+# của mọi môi trường không nên là tiến trình chạy mã từ pull request.
+
+name: fin07-jenkins
+
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?bắt buộc — xem jenkins/.env.example}
+      JENKINS_URL: ${JENKINS_URL:-http://localhost:8080/}
+      REGISTRY_USER: ${REGISTRY_USER:-}
+      REGISTRY_TOKEN: ${REGISTRY_TOKEN:-}
+      GITHUB_USER: ${GITHUB_USER:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      STAGING_POSTGRES_PASSWORD: ${STAGING_POSTGRES_PASSWORD:-}
+      STAGING_AGENT_DB_PASSWORD: ${STAGING_AGENT_DB_PASSWORD:-}
+      STAGING_GOOGLE_API_KEY: ${STAGING_GOOGLE_API_KEY:-}
+      PRODLIKE_POSTGRES_PASSWORD: ${PRODLIKE_POSTGRES_PASSWORD:-}
+      PRODLIKE_AGENT_DB_PASSWORD: ${PRODLIKE_AGENT_DB_PASSWORD:-}
+      PRODLIKE_GOOGLE_API_KEY: ${PRODLIKE_GOOGLE_API_KEY:-}
+    ports:
+      - "${JENKINS_PORT:-8080}:8080"
+      - "${JENKINS_AGENT_PORT:-50000}:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+
+  agent:
+    # Profile riêng vì bootstrap có hai bước: chỉ sau khi controller lên mới
+    # lấy được secret của node. Không tách profile thì `docker compose up`
+    # đòi secret ngay từ đầu — mà secret chỉ tồn tại sau khi lệnh đó chạy
+    # xong. Chạy agent bằng: docker compose --profile agent up -d
+    profiles: ["agent"]
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    # network_mode: host là bắt buộc, và chỉ chạy trên Linux.
+    #
+    # Agent dùng Docker daemon của máy chủ, nên container mà pipeline dựng lên
+    # publish cổng ra máy chủ chứ không ra mạng của agent. Không dùng mạng máy
+    # chủ thì bước kiểm tra khói gọi localhost:8000 sẽ gọi vào chính agent và
+    # luôn thất bại. Đây là cái bẫy tốn thời gian nhất khi chạy Docker qua
+    # socket, nên nói thẳng ra đây.
+    network_mode: host
+    environment:
+      JENKINS_URL: ${JENKINS_URL:-http://localhost:8080/}
+      JENKINS_AGENT_NAME: fin07-agent-1
+      JENKINS_SECRET: ${JENKINS_AGENT_SECRET:-}
+      JENKINS_WEB_SOCKET: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agent_work:/home/jenkins/agent
+    depends_on:
+      controller:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:
+  agent_work:

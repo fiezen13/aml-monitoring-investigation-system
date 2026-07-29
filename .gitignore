@@ -58,3 +58,10 @@ out/
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
+
+# Jenkins — bí mật của controller
+jenkins/.env
+
+# CI — sản phẩm trung gian
+.image-tags
+pytest-report.xml

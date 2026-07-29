@@ -1,19 +1,178 @@
-version: "3.8"
+# FIN-07 — toàn bộ hệ thống trong một lệnh.
+#
+#   docker compose up
+#
+# Chạy được ngay trên máy vừa clone repo: mọi biến đều có giá trị mặc định
+# cho môi trường phát triển, không cần tạo .env trước. Khi có .env thì file
+# đó ghi đè (xem `env_file` bên dưới). Danh sách biến: docs/ENVIRONMENT.md.
+#
+# Thứ tự khởi động do healthcheck quyết định, không do sleep:
+#   postgres, redis  →  seed (chạy một lần rồi thoát)  →  api, worker  →  web
+
+name: fin07
+
+# --- Cấu hình dùng chung cho ba dịch vụ chạy cùng một image -------------
+x-app-image: &app-image ${APP_IMAGE:-fin07/app:local}
+
+x-app-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+
+x-app-env: &app-env
+  APP_ENV: ${APP_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fin07}:${POSTGRES_PASSWORD:-fin07_dev_password}@postgres:5432/${POSTGRES_DB:-fin07}
+  REDIS_URL: redis://redis:6379/0
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+  GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  MODEL_NAME: ${MODEL_NAME:-gemini-1.5-flash}
+  SEED_VALUE: ${SEED_VALUE:-20260728}
+  SEED_CUSTOMERS: ${SEED_CUSTOMERS:-48}
+  SEED_DAYS: ${SEED_DAYS:-90}
+
+# .env là tuỳ chọn: thiếu file thì dùng mặc định ở trên, có thì ghi đè.
+x-env-file: &env-file
+  - path: .env
+    required: false
 
 services:
-  backend:
+  # -------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fin07}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fin07_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-fin07}
+      # Mật khẩu vai trò chỉ đọc của agent, dùng trong db/init/003.
+      FIN07_AGENT_DB_PASSWORD: ${FIN07_AGENT_DB_PASSWORD:-fin07_agent_dev_password}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Các file .sql chạy theo thứ tự tên khi volume còn rỗng.
+      # Muốn áp dụng lại sau khi sửa lược đồ: `make db-reset`.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      # -h 127.0.0.1 là bắt buộc, không phải trang trí: trong lúc chạy các
+      # script khởi tạo, entrypoint dựng một server tạm chỉ nghe unix socket.
+      # pg_isready qua socket sẽ báo xanh ngay lúc đó, và dịch vụ seed lao vào
+      # một cơ sở dữ liệu chưa có bảng nào. Hỏi qua TCP thì chỉ xanh khi server
+      # thật đã lên.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-fin07} -d ${POSTGRES_DB:-fin07}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    # appendonly để hàng đợi sống sót qua một lần restart container.
+    command: ["redis-server", "--appendonly", "yes", "--save", ""]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Tác vụ một lần: nạp dữ liệu mẫu rồi thoát. api và worker chờ nó thoát
+  # với mã 0 mới khởi động, nên không có cửa sổ nào mà giao diện mở ra và
+  # rỗng không. Chạy lần hai không nạp trùng — script tự bỏ qua khi đã có
+  # dữ liệu.
+  seed:
+    image: *app-image
+    build: *app-build
+    command: ["python", "scripts/seed_data.py"]
+    environment: *app-env
+    env_file: *env-file
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # -------------------------------------------------------------------
+  api:
+    image: *app-image
+    build: *app-build
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *app-env
+    env_file: *env-file
+    volumes:
+      - app_data:/app/data
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Worker không mở cổng nào nên healthcheck không dùng HTTP: nó ghi nhịp
+  # tim vào Redis kèm TTL, script kiểm tra khoá đó còn sống không.
+  worker:
+    image: *app-image
+    build: *app-build
+    command: ["python", "-m", "src.worker.main"]
+    environment: *app-env
+    env_file: *env-file
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.worker.healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  web:
+    image: ${WEB_IMAGE:-fin07/web:local}
     build:
-      context: .
+      context: ./web
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
+      - "${WEB_PORT:-5173}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
       retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  app_data:

@@ -1,6 +1,16 @@
 target-version = "py311"
 line-length = 120
 
+# Bốn script nhật ký AI hook do giảng viên cung cấp nguyên trạng và có thể
+# được phát lại bản mới. Định dạng lại chúng theo chuẩn của repo sẽ tạo xung
+# đột ở mỗi lần đồng bộ, đổi lại chẳng được gì — chúng không phải mã sản phẩm.
+exclude = [
+    "scripts/log_hook.py",
+    "scripts/log_manual.py",
+    "scripts/log_antigravity.py",
+    "scripts/submit_log.py",
+]
+
 [lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]

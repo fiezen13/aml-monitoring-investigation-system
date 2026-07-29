@@ -1,32 +1,324 @@
 name: CI
 
+# Vai trò của workflow này: CỔNG CHẶN MERGE. Nhanh, chạy trên mọi pull
+# request, và là status check mà branch protection kiểm.
+#
+# Phần giao hàng — triển khai staging, phê duyệt, triển khai production-like,
+# quay lui — nằm ở Jenkinsfile. Xem docs/CICD.md để hiểu vì sao tách làm hai.
+#
+# Mọi bước ở đây đều gọi script trong ci/. Cùng bộ script mà Jenkins gọi, và
+# cũng là bộ script chạy được trên máy cá nhân. Không có logic CI nào viết
+# hai lần, nên hai hệ thống không lệch nhau được.
+
 on:
+  pull_request:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "22"
+  REGISTRY: ghcr.io
 
 jobs:
-  lint-and-test:
+  # ===================================================================
+  lint:
+    name: Kiểm tra định dạng và lint
     runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Cài ruff
+        run: pip install "$(grep '^ruff' requirements-dev.txt)"
+
+      - run: ./ci/lint.sh
+
+  # ===================================================================
+  test:
+    name: Kiểm thử đơn vị và tích hợp
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    # Kiểm thử tích hợp cần cơ sở dữ liệu thật: các ràng buộc quan trọng nhất
+    # của FIN-07 (nhật ký bất biến, cách ly vai trò agent) nằm ở tầng
+    # PostgreSQL, mock không kiểm chứng được cái gì cả.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fin07
+          POSTGRES_PASSWORD: fin07_ci_password
+          POSTGRES_DB: fin07
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fin07 -d fin07"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://fin07:fin07_ci_password@localhost:5432/fin07
+      REDIS_URL: redis://localhost:6379/0
+      POSTGRES_USER: fin07
+      POSTGRES_DB: fin07
+      FIN07_AGENT_DB_PASSWORD: fin07_agent_ci_password
+      PGHOST: localhost
+      PGPASSWORD: fin07_ci_password
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: requirements-dev.txt
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Cài phụ thuộc
+        run: pip install -r requirements-dev.txt
 
-      - name: Lint with ruff
-        run: ruff check src/ tests/
+      # Service container không mount được docker-entrypoint-initdb.d, nên
+      # lược đồ áp bằng chính các file trong db/init/ — cùng nguồn với
+      # docker compose, không có bản sao thứ hai để lệch nhau.
+      - run: ./ci/apply-schema.sh
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+      # DATABASE_URL và REDIS_URL đã có sẵn nên script dùng luôn, không tự
+      # dựng hạ tầng. Nạp dữ liệu, kiểm chứng tính tái lập, rồi chạy pytest.
+      - run: ./ci/test.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: |
+            coverage.xml
+            pytest-report.xml
+          retention-days: 7
+
+  # ===================================================================
+  web:
+    name: Kiểm tra kiểu và build giao diện
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  # ===================================================================
+  images:
+    name: Build và đẩy image
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      app_image: ${{ steps.names.outputs.app }}
+      web_image: ${{ steps.names.outputs.web }}
+      pushed: ${{ steps.names.outputs.pushed }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Tên image tính bằng chính hàm mà ci/lib.sh dùng, nên tag mà job này
+      # đẩy lên và tag mà Jenkins đẩy lên tuân đúng một quy ước.
+      - name: Xác định tên image
+        id: names
         env:
-          APP_ENV: test
-          OPENAI_API_KEY: test-key
+          IMAGE_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          # shellcheck source=ci/lib.sh
+          . ./ci/lib.sh
+          tag="$(image_tag)"
+          app="$(image_name app):${tag}"
+          web="$(image_name web):${tag}"
+
+          if [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+            pushed=false
+          else
+            pushed=true
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            moving="pr-${{ github.event.pull_request.number }}"
+          else
+            moving="$(echo "${{ github.ref_name }}" | tr '/' '-')"
+          fi
+
+          {
+            echo "app=${app}"
+            echo "web=${web}"
+            echo "moving=${moving}"
+            echo "pushed=${pushed}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Đăng nhập GHCR
+        if: steps.names.outputs.pushed == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Dùng build-push-action thay vì ci/build-images.sh ở riêng chỗ này, vì
+      # nó là đường duy nhất tới cache lớp build trên GitHub Actions — cái
+      # quyết định pipeline chạy 4 phút hay 12 phút. Tên và tag vẫn lấy từ
+      # ci/lib.sh nên quy ước không tách đôi.
+      - name: Build image api/worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ steps.names.outputs.pushed == 'true' }}
+          tags: |
+            ${{ steps.names.outputs.app }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/app:${{ steps.names.outputs.moving }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=FIN-07 API và worker
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+
+      - name: Build image web
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          push: ${{ steps.names.outputs.pushed == 'true' }}
+          tags: |
+            ${{ steps.names.outputs.web }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/web:${{ steps.names.outputs.moving }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=FIN-07 AML Console
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  # ===================================================================
+  # Tiêu chí nghiệm thu của hạng mục hạ tầng là "`docker compose up` chạy
+  # sạch trên máy mới, healthcheck của mọi service đều xanh". Job này chính
+  # là câu đó, chạy lại trên một máy sạch ở mỗi pull request.
+  compose-smoke:
+    name: docker compose up trên máy sạch
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: images
+    if: needs.images.outputs.pushed == 'true'
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      APP_IMAGE: ${{ needs.images.outputs.app_image }}
+      WEB_IMAGE: ${{ needs.images.outputs.web_image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Cố ý KHÔNG tạo .env: đây là mô phỏng máy vừa clone repo.
+      - name: Kéo image vừa build
+        run: docker compose pull --quiet
+
+      - name: docker compose up
+        # --wait dừng lại và trả mã lỗi nếu có dịch vụ nào không đạt healthy.
+        run: docker compose up -d --wait --no-build
+
+      - name: Mọi dịch vụ phải xanh
+        run: |
+          docker compose ps
+          failed=""
+          for service in postgres redis api worker web; do
+            cid=$(docker compose ps -q "$service")
+            if [ -z "$cid" ]; then
+              failed="${failed} ${service}(không có container)"
+              continue
+            fi
+            health=$(docker inspect -f '{{.State.Health.Status}}' "$cid")
+            echo "${service}: ${health}"
+            [ "$health" = "healthy" ] || failed="${failed} ${service}(${health})"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Dịch vụ chưa xanh:${failed}"
+            exit 1
+          fi
+
+      # Cùng bộ kiểm tra khói mà Jenkins chạy sau mỗi lần triển khai.
+      - run: ./ci/smoke.sh http://localhost:8000 http://localhost:5173
+
+      - name: Log khi thất bại
+        if: failure()
+        run: docker compose logs --tail=120
+
+      - name: Dọn dẹp
+        if: always()
+        run: docker compose down -v
+
+  # ===================================================================
+  # Một cổng duy nhất để cài vào branch protection. Thêm job mới ở trên thì
+  # chỉ cần thêm vào `needs` — không phải sửa cấu hình của repo trên GitHub.
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    if: always()
+    needs: [lint, test, web, images, compose-smoke]
+    steps:
+      - name: Tổng hợp kết quả
+        run: |
+          results='${{ toJSON(needs) }}'
+          echo "$results" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          failed=$(echo "$results" | jq -r 'to_entries[]
+            | select(.value.result != "success" and .value.result != "skipped")
+            | .key')
+          if [ -n "$failed" ]; then
+            echo "::error::Các job không đạt: $(echo "$failed" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "Tất cả các job đều đạt."
