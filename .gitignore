@@ -65,3 +65,14 @@ jenkins/.env
 # CI — sản phẩm trung gian
 .image-tags
 pytest-report.xml
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+terraform.tfvars
+
+# .terraform.lock.hcl KHÔNG bỏ qua — nó ghim phiên bản provider và là
+# thứ đảm bảo hai người chạy terraform ra cùng kết quả.

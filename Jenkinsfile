@@ -39,8 +39,12 @@ pipeline {
     }
 
     environment {
-        REGISTRY   = 'ghcr.io'
-        IMAGE_REPO = 'ai20k-build-phase-cohort-3/p-022'
+        // Đổi được từ cấu hình controller (jenkins/casc.yaml → globalNodeProperties)
+        // thay vì phải sửa file này. Cần thiết khi chạy pipeline với registry
+        // nội bộ, và khi tổ chức khác nhận bàn giao rồi đẩy image vào registry
+        // của họ — lúc đó Jenkinsfile không phải là thứ họ phải sửa.
+        REGISTRY   = "${env.FIN07_REGISTRY ?: 'ghcr.io'}"
+        IMAGE_REPO = "${env.FIN07_IMAGE_REPO ?: 'ai20k-build-phase-cohort-3/p-022'}"
         PYTHON     = 'python3'
         // Tag di động: tên nhánh, đã bỏ dấu gạch chéo.
         MOVING_TAG = "${env.BRANCH_NAME?.replaceAll('/', '-') ?: 'manual'}"
