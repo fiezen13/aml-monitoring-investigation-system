@@ -54,6 +54,10 @@ services:
     build:
       context: ./agent
       dockerfile: Dockerfile
+      args:
+        # Phải khớp nhóm sở hữu /var/run/docker.sock trên máy chủ.
+        # Lấy bằng: stat -c '%g' /var/run/docker.sock
+        DOCKER_GID: ${DOCKER_GID:-999}
     # network_mode: host là bắt buộc, và chỉ chạy trên Linux.
     #
     # Agent dùng Docker daemon của máy chủ, nên container mà pipeline dựng lên
