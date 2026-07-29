@@ -184,10 +184,16 @@ jobs:
             moving="$(echo "${{ github.ref_name }}" | tr '/' '-')"
           fi
 
+          # Xuất luôn tag di động ĐẦY ĐỦ, không chỉ phần hậu tố. Bản trước
+          # chỉ xuất hậu tố rồi ghép với ${{ github.repository }} thô ở dưới —
+          # mà tên repo có chữ hoa, và registry từ chối:
+          #     invalid tag "...": repository name must be lowercase
+          # Ghép tên ở hai nơi thì kiểu gì cũng có một nơi quên viết thường.
           {
             echo "app=${app}"
             echo "web=${web}"
-            echo "moving=${moving}"
+            echo "app_moving=$(image_name app):${moving}"
+            echo "web_moving=$(image_name web):${moving}"
             echo "pushed=${pushed}"
           } >> "$GITHUB_OUTPUT"
 
@@ -211,7 +217,7 @@ jobs:
           push: ${{ steps.names.outputs.pushed == 'true' }}
           tags: |
             ${{ steps.names.outputs.app }}
-            ${{ env.REGISTRY }}/${{ github.repository }}/app:${{ steps.names.outputs.moving }}
+            ${{ steps.names.outputs.app_moving }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -227,7 +233,7 @@ jobs:
           push: ${{ steps.names.outputs.pushed == 'true' }}
           tags: |
             ${{ steps.names.outputs.web }}
-            ${{ env.REGISTRY }}/${{ github.repository }}/web:${{ steps.names.outputs.moving }}
+            ${{ steps.names.outputs.web_moving }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
