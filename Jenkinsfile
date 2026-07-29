@@ -212,7 +212,12 @@ pipeline {
                     sh '''
                         set -eu
                         echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
-                        export STAGING_DOCKER_CONTEXT="${STAGING_DOCKER_CONTEXT:-fin07-staging}"
+                        # Không đặt giá trị mặc định: một docker context phải được
+                        # tạo bằng tay trên agent, và mặc định trỏ vào cái chưa tồn
+                        # tại thì mọi lệnh docker hỏng với 'context not found' —
+                        # thông báo không hề gợi ý rằng chỉ cần bỏ trống biến này.
+                        # Bỏ trống nghĩa là triển khai lên chính máy đang chạy agent,
+                        # đúng cho trường hợp Jenkins và môi trường ở chung một máy.
                         export API_URL="${STAGING_API_URL:-http://localhost:8000}"
                         export WEB_URL="${STAGING_WEB_URL:-http://localhost:5173}"
                         ./ci/deploy.sh staging
@@ -233,7 +238,12 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    export DOCKER_CONTEXT="${STAGING_DOCKER_CONTEXT:-fin07-staging}"
+                    # Viết bằng if chứ không phải `[ ... ] && export ...`:
+                    # dưới `set -e`, dạng && trả về mã khác 0 khi điều kiện sai
+                    # và giết luôn cả script.
+                    if [ -n "${STAGING_DOCKER_CONTEXT:-}" ]; then
+                        export DOCKER_CONTEXT="$STAGING_DOCKER_CONTEXT"
+                    fi
                     docker compose -p fin07-staging \
                         -f docker-compose.yml -f deploy/docker-compose.staging.yml \
                         run --rm seed python scripts/seed_data.py --force
@@ -306,7 +316,7 @@ pipeline {
                     sh '''
                         set -eu
                         echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
-                        export PRODLIKE_DOCKER_CONTEXT="${PRODLIKE_DOCKER_CONTEXT:-fin07-prodlike}"
+                        # Xem ghi chú ở stage triển khai staging.
                         export API_URL="${PRODLIKE_API_URL:-http://localhost:8000}"
                         export WEB_URL="${PRODLIKE_WEB_URL:-http://localhost:5173}"
                         ./ci/deploy.sh prodlike
