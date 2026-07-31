@@ -8,6 +8,17 @@
 #
 # Thứ tự khởi động do healthcheck quyết định, không do sleep:
 #   postgres, redis  →  seed (chạy một lần rồi thoát)  →  api, worker  →  web
+#
+# Luồng nạp dữ liệu AML (Kafka → Flink → HDFS) nằm trong profile `aml` và
+# **không** khởi động cùng lệnh trên. Nó nặng khoảng 4 GB RAM và chỉ cần khi
+# làm việc với bộ dữ liệu IBM, nên bắt mọi người trả giá đó ở mỗi lần
+# `docker compose up` là sai. Bật riêng khi cần:
+#
+#   docker compose --profile aml up -d --wait
+#
+# Cùng file, cùng project, cùng mạng — nên producer, Flink và các dịch vụ
+# sẵn có nói chuyện được với nhau mà không cần cấu hình mạng thêm.
+# Chi tiết: docs/AML_INGESTION.md
 
 name: fin07
 
@@ -172,7 +183,260 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # ===================================================================
+  # Luồng nạp dữ liệu AML — profile `aml`, không chạy mặc định.
+  #
+  #   CSV IBM AML → producer → Kafka → Flink → HDFS
+  #
+  # Ở giai đoạn này đây thuần tuý là đường ống dữ liệu: không có mô hình,
+  # không chấm điểm rủi ro, không sinh cảnh báo.
+  # ===================================================================
+
+  # -------------------------------------------------------------------
+  # Kafka một node ở chế độ KRaft: vừa là broker vừa là controller, không
+  # cần ZooKeeper. Đủ cho máy cá nhân; cụm thật thì tách vai trò ra.
+  kafka:
+    image: apache/kafka:3.9.1
+    profiles: ["aml"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Ba listener cho ba đường vào khác nhau: nội bộ giữa các container,
+      # bầu cử controller, và từ máy chủ vào. Hai đường đầu quảng bá tên
+      # `kafka` — tên đó chỉ phân giải được bên trong mạng compose; đường
+      # thứ ba quảng bá `localhost` để client trên máy chủ nối được.
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:${AML_KAFKA_PORT:-29092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # Một broker thì không thể có ba bản sao. Để mặc định 3 thì mọi topic
+      # nội bộ của Kafka đều không tạo được và broker không bao giờ xanh.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_RETENTION_HOURS: ${AML_KAFKA_RETENTION_HOURS:-168}
+      CLUSTER_ID: ${AML_KAFKA_CLUSTER_ID:-fin07-aml-local-cluster}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "${AML_KAFKA_PORT:-29092}:29092"
+    healthcheck:
+      # Hỏi đúng thứ client sẽ hỏi. Broker mở cổng từ trước khi nhận được
+      # metadata request, nên kiểm tra cổng không nói lên điều gì.
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 20s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Tạo topic, chạy một lần rồi thoát. Chạy lại an toàn: `--if-not-exists`.
+  kafka-init:
+    image: apache/kafka:3.9.1
+    profiles: ["aml"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AML_RAW_TOPIC: ${AML_RAW_TOPIC:-aml.transactions.raw.v1}
+      AML_DLQ_TOPIC: ${AML_DLQ_TOPIC:-aml.transactions.dlq.v1}
+      AML_TOPIC_PARTITIONS: ${AML_TOPIC_PARTITIONS:-3}
+      AML_TOPIC_REPLICATION_FACTOR: ${AML_TOPIC_REPLICATION_FACTOR:-1}
+      AML_TOPIC_RETENTION_MS: ${AML_TOPIC_RETENTION_MS:-604800000}
+    volumes:
+      - ./scripts/aml/create_topics.sh:/opt/create_topics.sh:ro
+    command: ["bash", "/opt/create_topics.sh"]
+    restart: "no"
+
+  # -------------------------------------------------------------------
+  # HDFS: một NameNode, một DataNode. Cấu hình đi qua biến môi trường theo
+  # quy ước của image chính thức — `CORE-SITE.XML_khoá=giá trị` được dịch
+  # thành phần tử tương ứng trong core-site.xml lúc container khởi động.
+  namenode:
+    image: apache/hadoop:3.3.6
+    profiles: ["aml"]
+    # Image chính thức của Hadoop chỉ có bản amd64. Trên máy Apple Silicon
+    # nó chạy qua lớp giả lập của Docker Desktop — chậm hơn, nhưng đúng.
+    # Khai báo tường minh để không phải đoán khi thấy cảnh báo platform.
+    platform: linux/amd64
+    hostname: namenode
+    user: root
+    command: ["hdfs", "namenode"]
+    environment: &hdfs-env
+      CORE-SITE.XML_fs.defaultFS: hdfs://namenode:8020
+      HDFS-SITE.XML_dfs.namenode.rpc-address: namenode:8020
+      HDFS-SITE.XML_dfs.namenode.rpc-bind-host: 0.0.0.0
+      HDFS-SITE.XML_dfs.namenode.http-bind-host: 0.0.0.0
+      HDFS-SITE.XML_dfs.datanode.hostname: datanode
+      HDFS-SITE.XML_dfs.replication: "1"
+      # Stack phát triển chạy Flink dưới user `flink` và HDFS dưới `root`.
+      # Bật kiểm tra quyền ở đây chỉ đẻ ra lỗi permission denied không dạy
+      # được điều gì. Cụm thật thì bật, kèm Kerberos.
+      HDFS-SITE.XML_dfs.permissions.enabled: "false"
+      # Định dạng NameNode ở lần khởi động đầu, và chỉ lần đầu: image bỏ qua
+      # nếu thư mục đã có dữ liệu.
+      ENSURE_NAMENODE_DIR: /tmp/hadoop-root/dfs/name
+    volumes:
+      - namenode_data:/tmp/hadoop-root/dfs
+    ports:
+      - "${AML_HDFS_UI_PORT:-9870}:9870"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9870/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  datanode:
+    image: apache/hadoop:3.3.6
+    profiles: ["aml"]
+    platform: linux/amd64
+    hostname: datanode
+    user: root
+    command: ["hdfs", "datanode"]
+    environment: *hdfs-env
+    volumes:
+      - datanode_data:/tmp/hadoop-root/dfs
+    depends_on:
+      namenode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9864/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Tạo sẵn cây thư mục trên HDFS rồi thoát. Flink tự tạo được thư mục con,
+  # nhưng thư mục gốc có sẵn thì `hdfs dfs -ls` ngay sau khi dựng hệ thống
+  # cho ra thứ dễ hiểu thay vì lỗi "không tồn tại".
+  hdfs-init:
+    image: apache/hadoop:3.3.6
+    profiles: ["aml"]
+    platform: linux/amd64
+    user: root
+    environment: *hdfs-env
+    depends_on:
+      datanode:
+        condition: service_healthy
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        hdfs dfs -mkdir -p /data/aml/bronze/transactions /data/aml/rejected/transactions /data/aml/reference
+        hdfs dfs -chmod -R 777 /data/aml
+        hdfs dfs -ls -R /data/aml
+    restart: "no"
+
+  # -------------------------------------------------------------------
+  # Flink. Image tự build: Flink gốc không có client Hadoop nên không ghi
+  # được `hdfs://`, và jar của job cũng phải nằm sẵn trong đó.
+  flink-jobmanager:
+    image: ${AML_FLINK_IMAGE:-fin07/flink-aml:local}
+    profiles: ["aml"]
+    build: &flink-build
+      context: .
+      dockerfile: docker/flink/Dockerfile
+    command: ["jobmanager"]
+    environment: &flink-env
+      # Địa chỉ JobManager phải giống nhau ở cả hai phía, nếu không
+      # TaskManager đăng ký vào hư không và job đứng mãi ở trạng thái
+      # SCHEDULED mà không báo lỗi gì.
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: ${AML_FLINK_TASK_SLOTS:-4}
+        parallelism.default: ${AML_FLINK_PARALLELISM:-2}
+        state.backend.type: hashmap
+        execution.checkpointing.storage: filesystem
+        execution.checkpointing.dir: hdfs://namenode:8020/data/aml/_checkpoints
+        rest.flamegraph.enabled: true
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AML_RAW_TOPIC: ${AML_RAW_TOPIC:-aml.transactions.raw.v1}
+      AML_FLINK_GROUP_ID: ${AML_FLINK_GROUP_ID:-aml-hdfs-ingestion-v1}
+      AML_KAFKA_OFFSET_RESET: ${AML_KAFKA_OFFSET_RESET:-earliest}
+      AML_HDFS_BASE_PATH: ${AML_HDFS_BASE_PATH:-hdfs://namenode:8020/data/aml}
+      AML_HDFS_FORMAT: ${AML_HDFS_FORMAT:-parquet}
+      AML_CHECKPOINT_INTERVAL_MS: ${AML_CHECKPOINT_INTERVAL_MS:-30000}
+      AML_WATERMARK_OUT_OF_ORDER_SECONDS: ${AML_WATERMARK_OUT_OF_ORDER_SECONDS:-120}
+      AML_FLINK_PARALLELISM: ${AML_FLINK_PARALLELISM:-2}
+      HADOOP_USER_NAME: root
+    ports:
+      - "${AML_FLINK_UI_PORT:-8081}:8081"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/overview >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  flink-taskmanager:
+    image: ${AML_FLINK_IMAGE:-fin07/flink-aml:local}
+    profiles: ["aml"]
+    build: *flink-build
+    command: ["taskmanager"]
+    environment: *flink-env
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Producer phát lại CSV. Dùng chung image với api và worker — cùng mã
+  # nguồn, khác lệnh khởi động, đúng nguyên tắc đã áp dụng cho seed.
+  #
+  # Không chạy tự động cùng `up`: nạp dữ liệu là một hành động có chủ đích,
+  # không phải hệ quả phụ của việc dựng hạ tầng. Chạy bằng:
+  #
+  #   docker compose run --rm aml-producer --max-records 1000
+  aml-producer:
+    image: *app-image
+    build: *app-build
+    profiles: ["aml"]
+    entrypoint: ["python", "-m", "src.aml"]
+    command: ["--max-records", "1000"]
+    environment:
+      <<: *app-env
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AML_CSV_PATH: /data/raw/ibm-aml/${AML_DATASET_FILE:-HI-Small_Trans.csv}
+      AML_SOURCE_DATASET: ${AML_SOURCE_DATASET:-}
+      AML_RAW_TOPIC: ${AML_RAW_TOPIC:-aml.transactions.raw.v1}
+      AML_DLQ_TOPIC: ${AML_DLQ_TOPIC:-aml.transactions.dlq.v1}
+      DATASET_TIMEZONE: ${DATASET_TIMEZONE:-UTC}
+      REPLAY_MODE: ${REPLAY_MODE:-max-throughput}
+      REPLAY_SPEED_MULTIPLIER: ${REPLAY_SPEED_MULTIPLIER:-1.0}
+      AML_CHECKPOINT_PATH: /app/data/aml/checkpoints/producer.json
+      AML_ERROR_LOG_PATH: /app/data/aml/rejected/producer-errors.jsonl
+      AML_LOG_LEVEL: ${AML_LOG_LEVEL:-INFO}
+    volumes:
+      # Bộ dữ liệu gắn chỉ đọc: một tiến trình phát lại không có việc gì
+      # phải ghi vào file nguồn. Và không copy vào image — file thật nặng
+      # hàng gigabyte.
+      - ${AML_DATASET_DIR:-./data/raw/ibm-aml}:/data/raw/ibm-aml:ro
+      - app_data:/app/data
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   postgres_data:
   redis_data:
   app_data:
+  kafka_data:
+  namenode_data:
+  datanode_data:

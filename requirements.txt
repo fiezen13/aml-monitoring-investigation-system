@@ -21,5 +21,12 @@ psycopg[binary]>=3.2.0
 # Hàng đợi tác vụ
 redis>=5.2.0
 
+# Kafka — producer phát lại dữ liệu AML (`python -m src.aml`).
+# Nằm ở đây chứ không ở requirements-dev vì producer chạy trong cùng image
+# với api và worker, đúng nguyên tắc "một image, nhiều lệnh khởi động" đã
+# áp dụng cho seed. Chọn confluent-kafka vì nó là client duy nhất hỗ trợ
+# idempotent producer — thứ quyết định việc thử lại không đẻ ra bản trùng.
+confluent-kafka>=2.6.0
+
 # Vector Store (mở khi cần)
 # chromadb>=0.5.0

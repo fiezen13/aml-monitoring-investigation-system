@@ -82,4 +82,16 @@ group_start "pytest"
 $PY -m pytest --cov=src --cov-report=term-missing --cov-report=xml --junitxml=pytest-report.xml
 group_end
 
+# Job Flink là mã Java, cần JDK và Maven. Không phải agent nào cũng có, và
+# bắt mọi agent phải có chỉ vì một module là quá tay — nên bước này tự bỏ
+# qua khi thiếu công cụ, và nói ra rằng nó đã bỏ qua chứ không im lặng.
+group_start "Kiểm thử job Flink"
+if command -v mvn >/dev/null 2>&1; then
+    (cd flink/aml-ingestion && mvn -B test)
+    ok "Kiểm thử job Flink đạt"
+else
+    warn "Bỏ qua kiểm thử job Flink: máy này không có Maven"
+fi
+group_end
+
 ok "Toàn bộ kiểm thử đều đạt"
