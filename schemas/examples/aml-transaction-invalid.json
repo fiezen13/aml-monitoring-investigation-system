@@ -1,0 +1,21 @@
+{
+  "_comment": "Sự kiện KHÔNG hợp lệ, dùng để kiểm chứng rằng hợp đồng dữ liệu thật sự bắt lỗi. Bốn vi phạm cùng lúc: from_bank mất số 0 đầu và bị ép thành số, amount_paid âm, is_laundering không thuộc {0,1}, schema_version sai phiên bản.",
+  "transaction_id": "9d3f1c0a8b6e4f27a51d0c93e7b4a812",
+  "event_time": "2022-09-01T00:03:00",
+  "event_time_epoch_ms": 1661990580000,
+  "from_bank": 15768,
+  "from_account": "8149656B0",
+  "to_bank": "015768",
+  "to_account": "",
+  "amount_received": 10.91,
+  "receiving_currency": "US Dollar",
+  "amount_paid": -10.91,
+  "payment_currency": "US Dollar",
+  "payment_format": "Reinvestment",
+  "is_laundering": 2,
+  "source_dataset": "HI-Small",
+  "source_file": "HI-Small_Trans.csv",
+  "source_line_number": 2,
+  "ingested_at": "2026-07-31T08:12:44.512Z",
+  "schema_version": "0.9"
+}

@@ -17,7 +17,58 @@
 > |---|---|
 > | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
 > | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | Toàn bộ biến môi trường |
+> | [docs/AML_INGESTION.md](docs/AML_INGESTION.md) | Luồng nạp dữ liệu IBM AML |
 > | [docs/CI.md](docs/CI.md) | Pipeline chạy gì trên mỗi pull request |
+>
+> ---
+>
+> ## 📥 Luồng nạp dữ liệu AML — CSV IBM → Kafka → Flink → HDFS
+>
+> ```mermaid
+> flowchart LR
+>     A[IBM AML CSV] --> B[CSV Replay Producer]
+>     B --> C[Kafka aml.transactions.raw.v1]
+>     C --> D[Flink Ingestion Job]
+>     D --> E[HDFS Bronze Parquet]
+>     B --> F[Kafka DLQ]
+>     D --> F
+> ```
+>
+> Nạp bộ dữ liệu [IBM Transactions for Anti-Money
+> Laundering](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml)
+> vào tầng bronze trên HDFS. **Chỉ là đường ống dữ liệu**: không mô hình,
+> không chấm điểm rủi ro, không sinh cảnh báo — cột `is_laundering` được
+> mang theo nguyên trạng như một cột dữ liệu bình thường.
+>
+> Nằm trong profile `aml` nên **không** chạy cùng `docker compose up`.
+>
+> ```bash
+> # 1. Đặt file CSV vào data/raw/ibm-aml/ (xem thư mục đó để biết cách lấy)
+> # 2. Dựng Kafka + HDFS + Flink, tạo topic
+> make aml-up
+>
+> # 3. Nộp job Flink
+> make aml-submit
+>
+> # 4. Phát 1.000 giao dịch đầu tiên
+> make aml-producer-sample
+>
+> # 5. Xem kết quả
+> make aml-inspect-kafka
+> make aml-inspect-hdfs
+> ```
+>
+> Kiểm chứng toàn bộ chuỗi bằng file mẫu có sẵn, không cần tải gì từ Kaggle:
+>
+> ```bash
+> make aml-smoke
+> ```
+>
+> Chi tiết — lược đồ dữ liệu, chế độ phát lại, điểm dừng, xử lý lỗi, giới
+> hạn hiện tại: **[docs/AML_INGESTION.md](docs/AML_INGESTION.md)**.
+>
+> - Flink UI — <http://localhost:8081>
+> - HDFS UI — <http://localhost:9870>
 >
 > Phần còn lại của file này là README gốc của template AI20K.
 

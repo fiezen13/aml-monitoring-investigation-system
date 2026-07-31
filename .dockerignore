@@ -48,3 +48,10 @@ ci/
 deploy/
 jenkins/
 Jenkinsfile
+
+# Sản phẩm build của job Flink. Thư mục `flink/` KHÔNG được loại bỏ: image
+# Flink (docker/flink/Dockerfile) dùng chung context này và cần mã nguồn ở
+# đó để biên dịch. Chỉ loại thứ đã build ra — 30 MB jar gửi sang daemon ở
+# mỗi lần build là 30 MB không ai dùng tới.
+flink/**/target/
+infra/
