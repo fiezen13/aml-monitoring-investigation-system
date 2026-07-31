@@ -18,8 +18,8 @@
 
 **Tổng kết ngày:** Hạ tầng đã sẵn sàng để Hưng và Tin Tin bắt đầu viết mã mà
 không phải dựng gì thêm. Máy mới chỉ cần Docker; clone repo, chạy một lệnh, có
-ngay database có dữ liệu, API chạy được, giao diện mở được. Chưa có Terraform
-và chưa có máy chủ staging thật — xem mục "Việc còn tồn".
+ngay database có dữ liệu, API chạy được, giao diện mở được. Chưa có máy chủ
+staging thật — xem mục "Việc còn tồn".
 
 ---
 
@@ -150,8 +150,7 @@ chúng thì **hỏi trước**, đừng gỡ ràng buộc:
 | Việc | Ai | Ghi chú |
 |---|---|---|
 | Bật branch protection cho `main` và `develop` | Bảo | **Chưa làm.** CI đỏ vẫn merge được cho tới khi bật. [docs/CI.md](docs/CI.md) mục 5 |
-| Dựng máy chủ staging và production-like | Bảo | Pipeline triển khai đã có, máy chủ thì chưa |
-| Module Terraform | Bảo | ARC-001 mục 6 có nhắc, hiện chưa viết |
+| Thuê VPS và mua tên miền cho staging / production-like | Bảo | Pipeline triển khai đã có, máy chủ thì chưa. Dựng bằng tay, không dùng Terraform |
 | Cắm kênh thông báo khi build hỏng | Bảo | Khối `post { failure }` trong `Jenkinsfile` đang để trống |
 | Quét bảo mật image (Trivy/Grype) | Bảo | Nên có trước khi bàn giao |
 | Kiểm tra tải theo mục tiêu ARC-001 mục 5.3 | Bảo | Sprint 5 |
