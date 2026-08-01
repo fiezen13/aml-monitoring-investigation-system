@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatRequest(BaseModel):
@@ -171,3 +171,44 @@ class ReadyOut(BaseModel):
     status: str
     database: bool
     redis: bool
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=254)
+    password: str = Field(..., min_length=1, max_length=256)
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    name: str
+    email: str
+    role: str
+    role_label: str = Field(alias="roleLabel")
+    active: bool
+    last_login: datetime | None = Field(default=None, alias="lastLogin")
+
+
+class LoginOut(BaseModel):
+    token: str
+    user: UserOut
+
+
+class SarActionRequest(BaseModel):
+    reason: str = Field(default="", max_length=2000)
+
+
+class ApprovalDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected|more_info)$")
+    reason: str = Field(..., min_length=10, max_length=2000)
+
+
+class SettingUpdateRequest(BaseModel):
+    value: str = Field(..., min_length=1, max_length=500)
+    reason: str = Field(..., min_length=10, max_length=2000)
+
+
+class UserUpdateRequest(BaseModel):
+    active: bool
+    reason: str = Field(..., min_length=10, max_length=2000)

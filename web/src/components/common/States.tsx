@@ -1,6 +1,6 @@
 import { FileSearch, RefreshCw, ServerCrash } from "lucide-react";
 
-/** Skeleton loading — dùng cho bảng và panel khi mô phỏng tải dữ liệu. */
+/** Skeleton loading — dùng cho bảng và panel trong lúc chờ API. */
 export function LoadingSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <div className="space-y-2 p-4" aria-busy="true" aria-label="Đang tải dữ liệu">

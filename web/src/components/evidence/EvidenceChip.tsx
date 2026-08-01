@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { getEvidence } from "../../data/mockEvidence";
 import type { EvidenceKind } from "../../types";
 
 const KIND_ICON: Record<EvidenceKind, ReactNode> = {
@@ -36,16 +35,15 @@ interface EvidenceChipProps {
  * Click mở Evidence Drawer.
  */
 export function EvidenceChip({ evidenceId, onOpen }: EvidenceChipProps) {
-  const evidence = getEvidence(evidenceId);
-  const label = evidence ? `${evidenceId} - ${evidence.title.split(" ").slice(0, 3).join(" ")}` : evidenceId;
+  const label = evidenceId;
   return (
     <button
       type="button"
       onClick={() => onOpen(evidenceId)}
-      title={evidence ? `${evidence.title} · ${evidence.source}` : evidenceId}
+      title={`Mở bằng chứng ${evidenceId} từ API`}
       className="inline-flex items-center gap-1 rounded-control border border-primary/30 bg-primary-soft px-1.5 py-0.5 text-2xs font-medium text-primary transition-colors hover:border-primary/60"
     >
-      {evidence ? KIND_ICON[evidence.kind] : <FileText size={11} aria-hidden />}
+      {KIND_ICON.statement}
       {label}
     </button>
   );

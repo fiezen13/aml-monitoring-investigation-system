@@ -2,8 +2,9 @@ import { BarChart3, CheckCircle2, Eye, EyeOff, Lock, Mail, ShieldCheck } from "l
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { api } from "../api/client";
+import { useApi } from "../api/useApi";
 import { useApp } from "../context/AppContext";
-import { USERS } from "../data/mockUsers";
 
 /** Màn hình đăng nhập — bám bố cục screenshot "Đăng nhập - FIN-07". */
 export function LoginPage() {
@@ -13,21 +14,21 @@ export function LoginPage() {
   const [password, setPassword] = useState("demo-password");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const users = useApi(() => api.loginUsers(), []);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const user = USERS.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-    if (!user || password.length === 0) {
-      setError("Email hoặc mật khẩu không đúng. Dùng một tài khoản demo bên dưới.");
-      return;
+    try {
+      const user = await login(email.trim(), password);
+      pushToast({
+        tone: "success",
+        title: "Đăng nhập thành công",
+        detail: `${user.name} · ${user.roleLabel}`,
+      });
+      navigate("/dashboard");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Đăng nhập thất bại");
     }
-    login(user.id);
-    pushToast({
-      tone: "success",
-      title: "Đăng nhập thành công",
-      detail: `${user.name} · ${user.roleLabel}`,
-    });
-    navigate("/dashboard");
   };
 
   return (
@@ -158,7 +159,7 @@ export function LoginPage() {
               Tài khoản demo
             </div>
             <div className="grid grid-cols-1 gap-1">
-              {USERS.map((user) => (
+              {(users.data ?? []).map((user) => (
                 <button
                   key={user.id}
                   type="button"

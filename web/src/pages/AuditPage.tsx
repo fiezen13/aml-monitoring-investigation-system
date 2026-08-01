@@ -21,6 +21,11 @@ const EVENT_TYPES = [
   "more_info_requested",
   "file_exported",
   "case_viewed",
+  "user_login",
+  "setting_changed",
+  "user_changed",
+  "sar_updated",
+  "validation_run",
 ];
 
 /** Audit trail — chỉ đọc (NT4). Bảng chặn UPDATE/DELETE bằng trigger ở tầng

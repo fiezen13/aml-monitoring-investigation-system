@@ -2,8 +2,9 @@ import { Bell, MessageSquare, Moon } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { api } from "../../api/client";
+import { useApi } from "../../api/useApi";
 import { useApp } from "../../context/AppContext";
-import { USERS } from "../../data/mockUsers";
 import { SearchInput } from "../common/SearchInput";
 
 interface HeaderProps {
@@ -11,11 +12,12 @@ interface HeaderProps {
 }
 
 export function Header({ title }: HeaderProps) {
-  const { currentUser, login, pushToast } = useApp();
+  const { currentUser, logout, pushToast } = useApp();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const dashboard = useApi(() => api.dashboard(), []);
 
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b border-line bg-app/95 px-4 backdrop-blur">
@@ -47,7 +49,7 @@ export function Header({ title }: HeaderProps) {
                 Thông báo nội bộ
               </div>
               <p className="text-2xs leading-relaxed text-ink-mid">
-                3 cảnh báo mới vượt ngưỡng rủi ro cao. Thông báo chỉ gửi nội bộ —
+                {dashboard.data?.high_risk_alerts ?? 0} cảnh báo đang vượt ngưỡng rủi ro cao. Thông báo chỉ gửi nội bộ —
                 không có kênh nào tới khách hàng đang bị điều tra (NT6).
               </p>
             </div>
@@ -56,7 +58,7 @@ export function Header({ title }: HeaderProps) {
         <button
           type="button"
           aria-label="Tin nhắn"
-          onClick={() => pushToast({ tone: "info", title: "Hộp thư nội bộ (mô phỏng)" })}
+          onClick={() => pushToast({ tone: "info", title: "Hộp thư nội bộ chưa được cấu hình" })}
           className="rounded p-2 text-ink-mid hover:bg-panel hover:text-ink-hi"
         >
           <MessageSquare size={16} />
@@ -97,34 +99,16 @@ export function Header({ title }: HeaderProps) {
             </button>
             {accountOpen && (
               <div className="absolute right-0 top-full z-40 mt-1 w-60 rounded-panel border border-line bg-elev py-1 shadow-xl">
-                <div className="border-b border-line px-3 py-2 text-2xs uppercase tracking-wide text-ink-low">
-                  Chuyển vai trò demo
+                <div className="border-b border-line px-3 py-2 text-2xs text-ink-mid">
+                  Phiên DB · {currentUser.email}
                 </div>
-                {USERS.map((user) => (
-                  <button
-                    key={user.id}
-                    type="button"
-                    onClick={() => {
-                      login(user.id);
-                      setAccountOpen(false);
-                      pushToast({
-                        tone: "info",
-                        title: `Đang làm việc với vai trò ${user.roleLabel}`,
-                        detail: user.name,
-                      });
-                    }}
-                    className={`block w-full px-3 py-1.5 text-left text-[13px] hover:bg-panel ${
-                      user.id === currentUser.id ? "text-primary" : "text-ink-mid"
-                    }`}
-                  >
-                    {user.name}
-                    <span className="block text-2xs text-ink-low">{user.roleLabel}</span>
-                  </button>
-                ))}
                 <div className="border-t border-line">
                   <button
                     type="button"
-                    onClick={() => navigate("/login")}
+                    onClick={async () => {
+                      await logout();
+                      navigate("/login");
+                    }}
                     className="block w-full px-3 py-2 text-left text-[13px] text-risk hover:bg-panel"
                   >
                     Đăng xuất

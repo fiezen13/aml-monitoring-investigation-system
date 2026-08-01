@@ -1,4 +1,4 @@
-import { AUDIT_ACTION_LABEL } from "../../data/mockAudit";
+import { auditEventLabel } from "../../api/format";
 import type { AuditEvent } from "../../types";
 import { StatusBadge } from "./Badges";
 
@@ -23,7 +23,7 @@ export function AuditTimeline({ events }: { events: AuditEvent[] }) {
           />
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[13px] font-semibold text-ink-hi">
-              {AUDIT_ACTION_LABEL[event.action] ?? event.action}
+              {auditEventLabel(event.action)}
             </span>
             <span className="tabular text-2xs text-ink-low">{event.time}</span>
             <span className="tabular text-2xs text-ink-low">IP {event.ip}</span>

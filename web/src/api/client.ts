@@ -11,7 +11,10 @@
  * tương ứng ở CORS_ORIGINS phía backend.
  */
 
+import type { Evidence, NetworkEdge, NetworkNode, SarDraft, User } from "../types";
+
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "") + "/api/v1";
+export const SESSION_TOKEN_KEY = "fin07.session.token";
 
 export class ApiError extends Error {
   constructor(
@@ -25,10 +28,15 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
+  const token = window.sessionStorage.getItem(SESSION_TOKEN_KEY);
   try {
     response = await fetch(`${BASE}${path}`, {
-      headers: { "Content-Type": "application/json" },
       ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init?.headers,
+      },
     });
   } catch (cause) {
     // fetch chỉ ném khi không nối được tới máy chủ. Phân biệt với lỗi HTTP
@@ -186,6 +194,49 @@ export interface ApiReady {
   redis: boolean;
 }
 
+export interface ApiLogin {
+  token: string;
+  user: User;
+}
+
+export interface ApiSar extends SarDraft {
+  subject: {
+    customerId: string;
+    accountKey: string;
+    customerType: string;
+    occupation: string;
+    riskRating: string;
+    onboardingDate: string;
+  };
+  evidence: Evidence[];
+  approval: null | {
+    approval_id: string;
+    decision: "pending" | "approved" | "rejected" | "more_info";
+    decided_by: string | null;
+    reason: string | null;
+    requested_at: string;
+    decided_at: string | null;
+  };
+}
+
+export interface ApiNetwork {
+  case_id: string;
+  risk_score: string;
+  subject_account_key: string;
+  nodes: NetworkNode[];
+  edges: NetworkEdge[];
+  transactions: Array<Record<string, string | number>>;
+}
+
+export interface ApiSetting {
+  code: string;
+  label: string;
+  value: string;
+  unit: string;
+  source: string;
+  updated_at: string;
+}
+
 // ---------------------------------------------------------------------
 // Điểm gọi
 // ---------------------------------------------------------------------
@@ -200,6 +251,15 @@ function query(params: Record<string, string | number | undefined>): string {
 }
 
 export const api = {
+  loginUsers: () => request<User[]>("/auth/users"),
+
+  login: (email: string, password: string) =>
+    request<ApiLogin>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+
+  me: () => request<User>("/auth/me"),
+
+  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+
   dashboard: () => request<ApiDashboard>("/dashboard"),
 
   alerts: (params: { status?: string; typology_code?: string; min_risk?: number; limit?: number } = {}) =>
@@ -213,6 +273,49 @@ export const api = {
 
   investigate: (caseId: string) =>
     request<ApiInvestigate>(`/cases/${encodeURIComponent(caseId)}/investigate`, { method: "POST" }),
+
+  network: (caseId: string) => request<ApiNetwork>(`/cases/${encodeURIComponent(caseId)}/network`),
+
+  createSar: (caseId: string) =>
+    request<ApiSar>(`/cases/${encodeURIComponent(caseId)}/sar`, { method: "POST" }),
+
+  sars: () => request<ApiSar[]>("/sars"),
+
+  sar: (sarId: string) => request<ApiSar>(`/sars/${encodeURIComponent(sarId)}`),
+
+  validateSar: (sarId: string) =>
+    request<ApiSar>(`/sars/${encodeURIComponent(sarId)}/validate`, { method: "POST" }),
+
+  submitSar: (sarId: string, reason: string) =>
+    request<ApiSar>(`/sars/${encodeURIComponent(sarId)}/submit`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  decideApproval: (approvalId: string, decision: "approved" | "rejected" | "more_info", reason: string) =>
+    request<ApiSar>(`/approvals/${encodeURIComponent(approvalId)}/decision`, {
+      method: "POST",
+      body: JSON.stringify({ decision, reason }),
+    }),
+
+  exportSar: (sarId: string) =>
+    request<{ filename: string; status: string }>(`/sars/${encodeURIComponent(sarId)}/export`, { method: "POST" }),
+
+  users: () => request<User[]>("/users"),
+
+  updateUser: (userId: string, active: boolean, reason: string) =>
+    request<User>(`/users/${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ active, reason }),
+    }),
+
+  settings: () => request<{ settings: ApiSetting[]; watchlistVersions: Array<Record<string, string>> }>("/settings"),
+
+  updateSetting: (code: string, value: string, reason: string) =>
+    request<ApiSetting>(`/settings/${encodeURIComponent(code)}`, {
+      method: "PUT",
+      body: JSON.stringify({ value, reason }),
+    }),
 
   audit: (params: { case_id?: string; event_type?: string; limit?: number } = {}) =>
     request<ApiAuditEvent[]>(`/audit${query(params)}`),

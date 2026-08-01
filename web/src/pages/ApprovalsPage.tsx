@@ -22,19 +22,10 @@ import { Pagination } from "../components/common/Pagination";
 import { Panel } from "../components/common/Panel";
 import { Tabs } from "../components/common/Tabs";
 import { DataTable, type Column } from "../components/tables/DataTable";
+import { api } from "../api/client";
+import { useApi } from "../api/useApi";
 import { useApp } from "../context/AppContext";
-import { APPROVALS } from "../data/mockSar";
 import type { Approval } from "../types";
-
-const WEEK_DATA = [
-  { day: "Mon", approved: 8, feedback: 3 },
-  { day: "Tue", approved: 12, feedback: 4 },
-  { day: "Wed", approved: 10, feedback: 3 },
-  { day: "Thu", approved: 14, feedback: 5 },
-  { day: "Fri", approved: 11, feedback: 4 },
-  { day: "Sat", approved: 4, feedback: 2 },
-  { day: "Sun", approved: 3, feedback: 1 },
-];
 
 const SLA_BAR: Record<Approval["slaTone"], string> = {
   risk: "bg-risk",
@@ -46,42 +37,37 @@ const SLA_BAR: Record<Approval["slaTone"], string> = {
 /** Hàng đợi phê duyệt SAR — góc nhìn MLRO, khớp screenshot cùng tên. */
 export function ApprovalsPage() {
   const navigate = useNavigate();
-  const { sarStatus, sarSubmittedBy, pushToast } = useApp();
+  const { pushToast } = useApp();
   const [listTab, setListTab] = useState("all");
   const [page, setPage] = useState(1);
+  const sars = useApi(() => api.sars(), []);
 
-  /** SAR-2026-007 xuất hiện trong hàng đợi sau khi được gửi từ màn hình soạn thảo. */
   const rows = useMemo(() => {
-    const base = [...APPROVALS];
-    if (sarStatus === "PENDING_REVIEW" || sarStatus === "APPROVED" || sarStatus === "REJECTED") {
-      base.unshift({
-        sar_id: "SAR-2026-007",
-        sender: sarSubmittedBy,
-        senderRole: "Compliance Officer",
-        status:
-          sarStatus === "PENDING_REVIEW"
-            ? "pending"
-            : sarStatus === "APPROVED"
-              ? "approved"
-              : "rejected",
-        statusLabel:
-          sarStatus === "PENDING_REVIEW"
-            ? "Chờ phê duyệt"
-            : sarStatus === "APPROVED"
-              ? "Đã phê duyệt"
-              : "Bị từ chối",
-        sla: "Còn 7h 40m",
-        slaPct: 68,
-        slaTone: "info",
-        validation: "100% Passed",
-        validationTone: "ok",
-        flagged: true,
-      });
-    }
+    const base: Approval[] = (sars.data ?? []).map((sar) => {
+      const status = sar.status === "PENDING_REVIEW" ? "pending" : sar.status === "NEEDS_INFO" ? "needs_info" : sar.status === "APPROVED" ? "approved" : sar.status === "REJECTED" ? "rejected" : "needs_info";
+      return {
+        sar_id: sar.sar_id,
+        sender: sar.submittedBy,
+        senderRole: sar.submittedByRole,
+        status,
+        statusLabel: status === "pending" ? "Chờ phê duyệt" : status === "needs_info" ? "Đang soạn/Cần bổ sung" : status === "approved" ? "Đã phê duyệt" : "Bị từ chối",
+        sla: sar.approval?.requested_at ? new Date(sar.approval.requested_at).toLocaleString("vi-VN") : "Chưa gửi",
+        slaPct: status === "pending" ? 70 : 100,
+        slaTone: status === "pending" ? "warn" : status === "approved" ? "ok" : "info",
+        validation: sar.validationIssues.length === 0 ? "Evidence hợp lệ" : `${sar.validationIssues.length} lỗi`,
+        validationTone: sar.validationIssues.length === 0 ? "ok" : "risk",
+        flagged: sar.riskLevel === "CAO",
+      };
+    });
     if (listTab === "pending") return base.filter((a) => a.status === "pending" || a.status === "needs_info");
     if (listTab === "done") return base.filter((a) => a.status === "approved" || a.status === "rejected");
     return base;
-  }, [sarStatus, sarSubmittedBy, listTab]);
+  }, [sars.data, listTab]);
+
+  const pendingCount = rows.filter((row) => row.status === "pending").length;
+  const approvedCount = rows.filter((row) => row.status === "approved").length;
+  const feedbackCount = rows.filter((row) => row.status === "needs_info" || row.status === "rejected").length;
+  const weekData = [{ day: "Hiện tại", approved: approvedCount, feedback: feedbackCount }];
 
   const columns: Column<Approval>[] = [
     {
@@ -190,7 +176,16 @@ export function ApprovalsPage() {
           </button>
           <button
             type="button"
-            onClick={() => pushToast({ tone: "success", title: "Đã xuất báo cáo hàng đợi (mô phỏng)" })}
+            onClick={() => {
+              const content = ["sar_id,status,submitted_by", ...rows.map((item) => `${item.sar_id},${item.status},${item.sender}`)].join("\n");
+              const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = "sar-approval-queue.csv";
+              link.click();
+              URL.revokeObjectURL(url);
+              pushToast({ tone: "success", title: "Đã xuất hàng đợi hiện tại" });
+            }}
             className="inline-flex items-center gap-1.5 rounded-control bg-primary px-2.5 py-1.5 text-2xs font-semibold text-app hover:bg-primary-hover"
           >
             <Download size={12} aria-hidden />
@@ -204,29 +199,29 @@ export function ApprovalsPage() {
         {[
           {
             label: "Tổng SAR chờ duyệt",
-            value: "42",
-            note: "+12% vs tuần trước",
+            value: String(pendingCount),
+            note: "Từ PostgreSQL",
             noteTone: "text-ok",
             icon: ClipboardList,
           },
           {
             label: "Ưu tiên cao",
-            value: "15",
-            note: "8 quá hạn SLA",
+            value: String(rows.filter((row) => row.flagged).length),
+            note: "Theo risk score",
             noteTone: "text-risk",
             icon: OctagonAlert,
           },
           {
             label: "Cần bổ sung",
-            value: "09",
-            note: "4 đã phản hồi",
+            value: String(feedbackCount),
+            note: "Cần xử lý",
             noteTone: "text-warn",
             icon: MessageSquareWarning,
           },
           {
             label: "Đã duyệt hôm nay",
-            value: "18",
-            note: "3.2m avg. time",
+            value: String(approvedCount),
+            note: "Trong dữ liệu hiện tại",
             noteTone: "text-ink-mid",
             icon: CheckCheck,
           },
@@ -266,7 +261,7 @@ export function ApprovalsPage() {
         }
         action={
           <span className="tabular text-2xs text-ink-low">
-            Hiển thị {rows.length} trong số 42 bản ghi
+            Hiển thị {rows.length} bản ghi từ DB
           </span>
         }
       >
@@ -277,7 +272,7 @@ export function ApprovalsPage() {
           onRowClick={(a) => navigate(`/approvals/${a.sar_id}`)}
         />
         <div className="border-t border-line px-2">
-          <Pagination page={page} pageCount={5} onChange={setPage} summary="" />
+          <Pagination page={page} pageCount={1} onChange={setPage} summary="" />
         </div>
       </Panel>
 
@@ -296,7 +291,7 @@ export function ApprovalsPage() {
           </div>
           <div className="h-44">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={WEEK_DATA} barSize={14}>
+              <BarChart data={weekData} barSize={14}>
                 <XAxis
                   dataKey="day"
                   axisLine={false}
@@ -330,8 +325,7 @@ export function ApprovalsPage() {
                 Cảnh báo SLA
               </div>
               <p className="mt-1 text-2xs leading-relaxed text-ink-mid">
-                Có 3 báo cáo SAR đang tiếp cận ngưỡng trễ hạn SLA (&lt; 1h). Ưu tiên phê
-                duyệt mã SAR-2026-008 ngay lập tức.
+                Có {pendingCount} báo cáo đang chờ quyết định và {rows.filter((row) => row.flagged).length} hồ sơ rủi ro cao.
               </p>
             </div>
             <div className="rounded-control border border-line bg-elev p-3">
@@ -339,14 +333,13 @@ export function ApprovalsPage() {
                 Gợi ý thẩm định
               </div>
               <p className="mt-1 text-2xs leading-relaxed text-ink-mid">
-                Hệ thống phát hiện sự trùng lặp trong lý do trì hoãn của SAR-2026-009 và
-                SAR-2026-011. Khuyến nghị kiểm tra chéo người gửi.
+                Số liệu tổng hợp trực tiếp từ bảng sar_draft và approval; không dùng dữ liệu mẫu trong trình duyệt.
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => pushToast({ tone: "info", title: "AI Chat chi tiết (mô phỏng)" })}
+            onClick={() => pushToast({ tone: "info", title: "AI Chat chưa bật vì môi trường chưa cấu hình model" })}
             className="mt-3 w-full rounded-control border border-line py-2 text-[13px] font-medium text-ink-hi hover:border-primary/50"
           >
             Mở AI Chat chi tiết

@@ -27,9 +27,11 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { ReasonModal } from "../components/common/ReasonModal";
+import { api } from "../api/client";
+import { formatDateTime } from "../api/format";
+import { useApi } from "../api/useApi";
 import { useApp } from "../context/AppContext";
-import { NETWORK_EDGES, NETWORK_NODES, getCase } from "../data/mockCases";
-import type { NetworkNode } from "../types";
+import type { NetworkEdge, NetworkNode } from "../types";
 
 type FlowNodeData = { entity: NetworkNode };
 type FlowNode = Node<FlowNodeData, "entity">;
@@ -81,23 +83,23 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   "n-wallet": { x: 320, y: 360 },
 };
 
-function NetworkCanvas({ onSelect }: { onSelect: (id: string) => void }) {
+function NetworkCanvas({ entities, relationships, onSelect }: { entities: NetworkNode[]; relationships: NetworkEdge[]; onSelect: (id: string) => void }) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   const nodes: FlowNode[] = useMemo(
     () =>
-      NETWORK_NODES.map((entity) => ({
+      entities.map((entity, index) => ({
         id: entity.id,
         type: "entity" as const,
-        position: POSITIONS[entity.id] ?? { x: 0, y: 0 },
+        position: POSITIONS[entity.id] ?? { x: 100 + (index % 3) * 240, y: 40 + Math.floor(index / 3) * 180 },
         data: { entity },
       })),
-    [],
+    [entities],
   );
 
   const edges: Edge[] = useMemo(
     () =>
-      NETWORK_EDGES.map((e) => ({
+      relationships.map((e) => ({
         id: e.id,
         source: e.source,
         target: e.target,
@@ -116,7 +118,7 @@ function NetworkCanvas({ onSelect }: { onSelect: (id: string) => void }) {
         labelBgPadding: [6, 3] as [number, number],
         labelBgBorderRadius: 3,
       })),
-    [],
+    [relationships],
   );
 
   return (
@@ -198,19 +200,26 @@ export function NetworkPage() {
   const { caseId } = useParams();
   const navigate = useNavigate();
   const { pushToast } = useApp();
-  const amlCase = getCase(caseId ?? "") ?? getCase("CASE-2026-014");
-  const [selectedId, setSelectedId] = useState<string>("n-subject");
+  const networkQuery = useApi(() => api.network(caseId ?? ""), [caseId]);
+  const [selectedId, setSelectedId] = useState<string>("");
   const [panelOpen, setPanelOpen] = useState(true);
   const [sarModal, setSarModal] = useState(false);
 
-  const selected = NETWORK_NODES.find((n) => n.id === selectedId) ?? NETWORK_NODES[0];
-  const related = NETWORK_NODES.filter((n) => n.id !== selected.id).slice(0, 2);
+  if (!networkQuery.data) {
+    return <div className="p-6 text-[13px] text-ink-mid">{networkQuery.error ?? "Đang dựng mạng lưới từ giao dịch..."}</div>;
+  }
+  const network = networkQuery.data;
+  const selected = network.nodes.find((n) => n.id === selectedId) ?? network.nodes[0];
+  const related = network.nodes.filter((n) => n.id !== selected.id).slice(0, 2);
+  const totalAmount = network.transactions.reduce((sum, tx) => sum + Number(tx.amount ?? 0), 0);
 
   return (
     <div className="relative -m-4 flex h-[calc(100vh-56px)]">
       <div className="min-w-0 flex-1">
         <ReactFlowProvider>
           <NetworkCanvas
+            entities={network.nodes}
+            relationships={network.edges}
             onSelect={(id) => {
               setSelectedId(id);
               setPanelOpen(true);
@@ -242,12 +251,12 @@ export function NetworkPage() {
               <div className="rounded-control border border-line bg-elev p-2.5">
                 <div className="text-2xs uppercase tracking-wide text-ink-low">Điểm rủi ro</div>
                 <div className="tabular mt-0.5 text-[18px] font-bold text-risk">
-                  {amlCase?.risk_score ?? 92}/100
+                  {network.risk_score}/100
                 </div>
               </div>
               <div className="rounded-control border border-line bg-elev p-2.5">
                 <div className="text-2xs uppercase tracking-wide text-ink-low">Tổng GD (30D)</div>
-                <div className="tabular mt-0.5 text-[18px] font-bold text-ink-hi">1.85B</div>
+                <div className="tabular mt-0.5 text-[18px] font-bold text-ink-hi">{totalAmount.toLocaleString("vi-VN")}</div>
               </div>
             </div>
 
@@ -256,20 +265,18 @@ export function NetworkPage() {
                 ✦ Phân tích AI Copilot
               </div>
               <p className="mt-1.5 text-2xs leading-relaxed text-ink-mid">
-                Phát hiện chu trình quay vòng vốn (Circular flow) giữa 4 thực thể. Các khoản
-                tiền được chia nhỏ dưới ngưỡng 500 triệu VND (ngưỡng báo cáo) và luân chuyển
-                nhanh chóng trong vòng 24 giờ.
+                Đồ thị được dựng từ {network.transactions.length} giao dịch thật giữa {network.nodes.length} tài khoản. Chưa gọi mô hình huấn luyện; các cạnh chỉ phản ánh luồng tiền trong PostgreSQL.
               </p>
               <ul className="mt-2 space-y-1 text-2xs text-ink-mid">
                 <li className="flex items-center gap-1.5">
-                  <span className="text-ok">✓</span> Trùng khớp hành vi Structuring loại A
+                  <span className="text-ok">✓</span> {network.edges.filter((edge) => edge.suspicious).length} cạnh vượt ngưỡng heuristic
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <span className="text-ok">✓</span> Tài khoản Mule được tạo mới &lt; 30 ngày
+                  <span className="text-ok">✓</span> Chủ thể {network.subject_account_key}
                 </li>
               </ul>
               <p className="mt-2 text-2xs text-ink-low">
-                Nguồn: Network Analysis Tool · GRAPH-008
+                Nguồn: transaction + account + customer
               </p>
             </div>
 
@@ -308,11 +315,11 @@ export function NetworkPage() {
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-2xs text-ink-mid">
                     <span className="h-1.5 w-1.5 rounded-full bg-risk" aria-hidden />
-                    Hôm nay, 14:20
+                    {formatDateTime(String(network.transactions[0]?.occurred_at ?? ""))}
                   </span>
-                  <span className="tabular text-2xs font-bold text-risk">+ 450,000,000 VND</span>
+                  <span className="tabular text-2xs font-bold text-risk">{String(network.transactions[0]?.amount ?? 0)} {String(network.transactions[0]?.currency ?? "")}</span>
                 </div>
-                <div className="mt-0.5 text-2xs text-ink-low">Chuyển từ Blue Ocean Co.</div>
+                <div className="mt-0.5 text-2xs text-ink-low">{String(network.transactions[0]?.from_account_key ?? "Không có giao dịch")}</div>
               </div>
             </div>
           </div>
@@ -328,7 +335,7 @@ export function NetworkPage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate(`/cases/${amlCase?.case_id ?? "CASE-2026-014"}`)}
+              onClick={() => navigate(`/cases/${network.case_id}`)}
               className="w-full py-1.5 text-[13px] font-medium text-ink-mid hover:text-ink-hi"
             >
               Mở rộng điều tra vụ việc
@@ -341,16 +348,17 @@ export function NetworkPage() {
         open={sarModal}
         title="Chuyển sang soạn bản nháp SAR"
         description="Không có đường tắt từ mạng lưới tới xuất hồ sơ — bản nháp SAR phải qua kiểm chứng và người phê duyệt (Hình 4). Nhập lý do để tiếp tục."
-        confirmLabel="Mở bản nháp SAR-2026-007"
+        confirmLabel="Tạo/mở bản nháp SAR"
         onClose={() => setSarModal(false)}
-        onConfirm={() => {
-          setSarModal(false);
-          pushToast({
-            tone: "success",
-            title: "Đã mở bản nháp SAR-2026-007",
-            detail: "Hành động được ghi vào audit trail.",
-          });
-          navigate("/sar/SAR-2026-007/edit");
+        onConfirm={async () => {
+          try {
+            const sar = await api.createSar(network.case_id);
+            setSarModal(false);
+            pushToast({ tone: "success", title: `Đã mở ${sar.sar_id}`, detail: "Bản nháp, evidence và audit đều được ghi trong DB." });
+            navigate(`/sar/${sar.sar_id}/edit`);
+          } catch (cause) {
+            pushToast({ tone: "error", title: "Không tạo được SAR", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
+          }
         }}
       />
     </div>

@@ -11,8 +11,9 @@ import { Breadcrumb } from "../components/layout/Breadcrumb";
 import { EvidenceDrawer } from "../components/evidence/EvidenceDrawer";
 import { SARStatement } from "../components/sar/SARStatement";
 import { ValidationPanel } from "../components/sar/ValidationPanel";
+import { api } from "../api/client";
+import { useApi } from "../api/useApi";
 import { useApp } from "../context/AppContext";
-import { SAR_DRAFT } from "../data/mockSar";
 import { formatCompactVnd } from "../utils/format";
 
 const TABS = [
@@ -21,55 +22,34 @@ const TABS = [
   { id: "customer", label: "Thông tin khách hàng" },
 ];
 
-const INSPECTOR_ITEMS = [
-  {
-    id: "TRX-892731-EXT",
-    title: "Giao dịch nộp tiền tại quầy",
-    tags: ["Cash Deposit", "Branch #042"],
-    tone: "muted" as const,
-    evidence: "EV-00031",
-  },
-  {
-    id: "KYC-DOC-001",
-    title: "Căn cước công dân (Scan)",
-    tags: ["EXPIRED", "ID Card"],
-    tone: "risk" as const,
-    evidence: "EV-00029",
-  },
-  {
-    id: "NET-LOG-992",
-    title: "Lịch sử địa chỉ IP",
-    tags: ["IP CLASH", "Network"],
-    tone: "warn" as const,
-    evidence: "EV-00033",
-  },
-];
-
 /** Rà soát bản nháp SAR — SAR-2026-007, khớp screenshot cùng tên. */
 export function SarEditPage() {
   const { sarId } = useParams();
   const navigate = useNavigate();
-  const {
-    sarStatus,
-    sarIssues,
-    runValidation,
-    fixIssues,
-    submitForApproval,
-    currentUser,
-    pushToast,
-  } = useApp();
+  const { currentUser, pushToast } = useApp();
+  const sarQuery = useApi(() => api.sar(sarId ?? ""), [sarId]);
   const [tab, setTab] = useState("summary");
   const [drawerEvidence, setDrawerEvidence] = useState<string | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
 
-  if (sarId !== SAR_DRAFT.sar_id) {
+  if (!sarQuery.data) {
     return (
       <EmptyState
-        title="Không tìm thấy bản nháp SAR"
-        detail={`Bản nháp "${sarId}" không tồn tại. Bản demo dùng SAR-2026-007.`}
+        title={sarQuery.error ? "Không tìm thấy bản nháp SAR" : "Đang tải SAR"}
+        detail={sarQuery.error ?? "Đang truy vấn PostgreSQL..."}
       />
     );
   }
+
+  const SAR_DRAFT = sarQuery.data;
+  const sarStatus = SAR_DRAFT.status;
+  const sarIssues = SAR_DRAFT.validationIssues;
+  const inspectorItems = SAR_DRAFT.evidence.slice(0, 6).map((item) => ({
+    id: item.id,
+    title: item.title,
+    tags: item.tags,
+    evidence: item.id,
+  }));
 
   const canSubmit = sarStatus === "VALIDATION_PASSED";
   const submitted =
@@ -100,15 +80,14 @@ export function SarEditPage() {
           <button
             type="button"
             disabled={submitted}
-            onClick={() => {
-              runValidation();
-              pushToast({
-                tone: sarIssues.some((i) => i.severity === "error") ? "error" : "success",
-                title: sarIssues.some((i) => i.severity === "error")
-                  ? `Kiểm chứng phát hiện ${sarIssues.length} vấn đề`
-                  : "Kiểm chứng đạt",
-                detail: "Bộ kiểm chứng đối chiếu từng nhận định với bằng chứng (NT1).",
-              });
+            onClick={async () => {
+              try {
+                await api.validateSar(SAR_DRAFT.sar_id);
+                await sarQuery.reload();
+                pushToast({ tone: "success", title: "Kiểm chứng đạt", detail: "View uncited_statement rỗng; audit_log đã ghi kết quả." });
+              } catch (cause) {
+                pushToast({ tone: "error", title: "Kiểm chứng thất bại", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
+              }
             }}
             className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-[13px] font-medium text-ink-hi hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -237,11 +216,11 @@ export function SarEditPage() {
                   </div>
                   <div>
                     <dt className="text-2xs uppercase tracking-wide text-ink-low">Customer ID</dt>
-                    <dd className="tabular mt-0.5 font-medium text-ink-hi">CUS-001</dd>
+                    <dd className="tabular mt-0.5 font-medium text-ink-hi">{SAR_DRAFT.subject.customerId}</dd>
                   </div>
                   <div>
                     <dt className="text-2xs uppercase tracking-wide text-ink-low">Tài khoản</dt>
-                    <dd className="tabular mt-0.5 font-medium text-ink-hi">ACC-884201</dd>
+                    <dd className="tabular mt-0.5 font-medium text-ink-hi">{SAR_DRAFT.subject.accountKey}</dd>
                   </div>
                   <div>
                     <dt className="text-2xs uppercase tracking-wide text-ink-low">Vụ việc nguồn</dt>
@@ -258,13 +237,14 @@ export function SarEditPage() {
           <ValidationPanel
             status={sarStatus}
             issues={sarStatus === "DRAFT" ? [] : sarIssues}
-            onFix={() => {
-              fixIssues();
-              pushToast({
-                tone: "success",
-                title: "Đã đồng bộ số liệu và bổ sung chứng từ",
-                detail: "Kiểm chứng đạt — nút Gửi phê duyệt đã mở khóa.",
-              });
+            onFix={async () => {
+              try {
+                await api.validateSar(SAR_DRAFT.sar_id);
+                await sarQuery.reload();
+                pushToast({ tone: "success", title: "Kiểm chứng lại thành công" });
+              } catch (cause) {
+                pushToast({ tone: "error", title: "Vẫn còn lỗi bằng chứng", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
+              }
             }}
           />
 
@@ -274,7 +254,7 @@ export function SarEditPage() {
             padded={false}
           >
             <div className="space-y-2 p-3">
-              {INSPECTOR_ITEMS.map((item) => (
+              {inspectorItems.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -312,25 +292,27 @@ export function SarEditPage() {
 
       <EvidenceDrawer
         evidenceId={drawerEvidence}
+        evidence={SAR_DRAFT.evidence}
         onClose={() => setDrawerEvidence(null)}
         onSelect={setDrawerEvidence}
       />
 
       <ReasonModal
         open={submitOpen}
-        title="Gửi SAR-2026-007 phê duyệt"
+        title={`Gửi ${SAR_DRAFT.sar_id} phê duyệt`}
         description={`Báo cáo sẽ chuyển sang trạng thái ChoNguoiPheDuyet và gửi tới MLRO. Người gửi (${currentUser?.name ?? ""}) sẽ không thể tự phê duyệt báo cáo này.`}
         confirmLabel="Gửi phê duyệt"
         onClose={() => setSubmitOpen(false)}
-        onConfirm={(reason) => {
-          submitForApproval(reason);
-          setSubmitOpen(false);
-          pushToast({
-            tone: "success",
-            title: "Đã gửi SAR-2026-007 tới hàng đợi phê duyệt",
-            detail: "MLRO Đàm Minh Tuấn sẽ nhận được yêu cầu.",
-          });
-          navigate("/approvals");
+        onConfirm={async (reason) => {
+          try {
+            await api.submitSar(SAR_DRAFT.sar_id, reason);
+            await sarQuery.reload();
+            setSubmitOpen(false);
+            pushToast({ tone: "success", title: `Đã gửi ${SAR_DRAFT.sar_id} tới hàng đợi phê duyệt`, detail: "approval và audit_log đã được ghi trong DB." });
+            navigate("/approvals");
+          } catch (cause) {
+            pushToast({ tone: "error", title: "Không gửi được SAR", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
+          }
         }}
       />
     </div>

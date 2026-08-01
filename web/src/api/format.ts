@@ -111,6 +111,11 @@ const AUDIT_EVENT_LABELS: Record<string, string> = {
   more_info_requested: "Yêu cầu bổ sung",
   file_exported: "Xuất hồ sơ",
   case_viewed: "Xem hồ sơ",
+  user_login: "Đăng nhập",
+  setting_changed: "Thay đổi cấu hình",
+  user_changed: "Thay đổi người dùng",
+  sar_updated: "Cập nhật SAR",
+  validation_run: "Kiểm chứng SAR",
 };
 
 export function auditEventLabel(eventType: string): string {

@@ -1,4 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query
+import hashlib
+import json
+import secrets
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from fastapi import APIRouter, Header, HTTPException, Query
 from sqlalchemy import text
 
 from src.agents.graph import agent
@@ -13,6 +19,7 @@ from src.models.schemas import (
     AlertDetailOut,
     AlertOut,
     AlertReasonOut,
+    ApprovalDecisionRequest,
     AuditEventOut,
     CaseDetailOut,
     CaseOut,
@@ -22,13 +29,142 @@ from src.models.schemas import (
     CustomerOut,
     DashboardOut,
     InvestigateOut,
+    LoginOut,
+    LoginRequest,
     QueueStatsOut,
+    SarActionRequest,
+    SettingUpdateRequest,
     TransactionOut,
     TypologyShareOut,
+    UserOut,
+    UserUpdateRequest,
 )
 from src.services import queue
 
 router = APIRouter()
+
+
+def _user_out(row: dict[str, Any]) -> UserOut:
+    return UserOut(
+        id=row["user_id"],
+        name=row["name"],
+        email=row["email"],
+        role=row["role"],
+        role_label=row["role_label"],
+        active=row["active"],
+        last_login=row.get("last_login"),
+    )
+
+
+def _audit_role(role: str) -> str:
+    return {
+        "mlro": "mlro",
+        "auditor": "auditor",
+        "analyst": "analyst",
+        "compliance_officer": "investigator",
+        "admin": "system",
+    }.get(role, "system")
+
+
+def _require_user(authorization: str | None) -> dict[str, Any]:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Phiên đăng nhập không tồn tại")
+    token_hash = hashlib.sha256(authorization[7:].encode()).hexdigest()
+    with get_session() as session:
+        row = (
+            session.execute(
+                text(
+                    """SELECT u.user_id, u.name, u.email, u.role, u.role_label, u.active, u.last_login
+                         FROM app_session s JOIN app_user u ON u.user_id = s.user_id
+                        WHERE s.token_hash = :token_hash AND s.expires_at > now() AND u.active"""
+                ),
+                {"token_hash": token_hash},
+            )
+            .mappings()
+            .first()
+        )
+    if row is None:
+        raise HTTPException(status_code=401, detail="Phiên đăng nhập đã hết hạn")
+    return dict(row)
+
+
+@router.get("/auth/users", response_model=list[UserOut])
+async def login_users() -> list[UserOut]:
+    """Danh sách tài khoản demo lấy từ DB; không trả bất kỳ dữ liệu mật khẩu nào."""
+    with get_session() as session:
+        rows = (
+            session.execute(
+                text(
+                    "SELECT user_id, name, email, role, role_label, active, last_login FROM app_user WHERE active ORDER BY user_id"
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return [_user_out(dict(row)) for row in rows]
+
+
+@router.post("/auth/login", response_model=LoginOut)
+async def login(request: LoginRequest) -> LoginOut:
+    with get_session() as session:
+        row = (
+            session.execute(text("SELECT * FROM app_user WHERE lower(email) = lower(:email)"), {"email": request.email})
+            .mappings()
+            .first()
+        )
+        if row is None or not row["active"]:
+            raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
+        actual = hashlib.pbkdf2_hmac(
+            "sha256", request.password.encode(), bytes.fromhex(row["password_salt"]), 200_000
+        ).hex()
+        if not secrets.compare_digest(actual, row["password_hash"]):
+            raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
+
+        raw_token = secrets.token_urlsafe(32)
+        session.execute(text("DELETE FROM app_session WHERE expires_at <= now()"))
+        session.execute(
+            text(
+                """INSERT INTO app_session(token_hash, user_id, expires_at)
+                   VALUES (:token_hash, :user_id, :expires_at)"""
+            ),
+            {
+                "token_hash": hashlib.sha256(raw_token.encode()).hexdigest(),
+                "user_id": row["user_id"],
+                "expires_at": datetime.now(UTC) + timedelta(hours=8),
+            },
+        )
+        session.execute(text("UPDATE app_user SET last_login = now() WHERE user_id = :id"), {"id": row["user_id"]})
+        session.execute(
+            text(
+                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                   VALUES (NULL, 'user_login', :actor, :role, CAST(:payload AS jsonb))"""
+            ),
+            {
+                "actor": row["user_id"],
+                "role": _audit_role(row["role"]),
+                "payload": json.dumps({"email": row["email"]}),
+            },
+        )
+        user = dict(row)
+        user["last_login"] = datetime.now(UTC)
+    return LoginOut(token=raw_token, user=_user_out(user))
+
+
+@router.get("/auth/me", response_model=UserOut)
+async def me(authorization: str | None = Header(default=None)) -> UserOut:
+    return _user_out(_require_user(authorization))
+
+
+@router.post("/auth/logout")
+async def logout(authorization: str | None = Header(default=None)) -> dict[str, bool]:
+    if authorization and authorization.startswith("Bearer "):
+        with get_session() as session:
+            session.execute(
+                text("DELETE FROM app_session WHERE token_hash = :token_hash"),
+                {"token_hash": hashlib.sha256(authorization[7:].encode()).hexdigest()},
+            )
+    return {"ok": True}
+
 
 # Hồ sơ chủ thể luôn lấy kèm tài khoản: giao diện cần cả hai và tách ra thành
 # hai truy vấn chỉ đẻ thêm một vòng đi–về mà không đổi kết quả.
@@ -444,3 +580,697 @@ async def chat(request: ChatRequest) -> ChatResponse:
 async def agent_status():
     """Kiểm tra trạng thái agent."""
     return {"status": "ready", "agent": "LangGraph Agent v1.0"}
+
+
+# ---------------------------------------------------------------------
+# SAR, phê duyệt, bằng chứng và mạng lưới — toàn bộ lấy từ PostgreSQL.
+# ---------------------------------------------------------------------
+
+_SAR_STATUS = {
+    "drafting": "DRAFT",
+    "verified": "VALIDATION_PASSED",
+    "submitted_for_approval": "PENDING_REVIEW",
+    "approved": "APPROVED",
+    "rejected": "REJECTED",
+}
+
+
+def _sar_payload(sar_id: str) -> dict[str, Any]:
+    with get_session() as session:
+        draft = (
+            session.execute(
+                text(
+                    """SELECT d.sar_draft_id, d.case_id, d.version, d.status, d.created_at,
+                          c.subject_account_key, c.risk_score, c.priority, c.assigned_to,
+                          cu.customer_id, cu.customer_type, cu.occupation, cu.risk_rating,
+                          cu.onboarding_date, a.alert_id, a.typology_code,
+                          ap.approval_id, ap.decision, ap.decided_by, ap.reason,
+                          ap.requested_at, ap.decided_at
+                     FROM sar_draft d
+                     JOIN aml_case c ON c.case_id = d.case_id
+                     JOIN account ac ON ac.account_key = c.subject_account_key
+                     JOIN customer cu ON cu.customer_id = ac.customer_id
+                     LEFT JOIN LATERAL (
+                         SELECT alert_id, typology_code FROM alert
+                          WHERE case_id = c.case_id ORDER BY risk_score DESC LIMIT 1
+                     ) a ON true
+                     LEFT JOIN LATERAL (
+                         SELECT * FROM approval WHERE sar_draft_id = d.sar_draft_id
+                          ORDER BY requested_at DESC LIMIT 1
+                     ) ap ON true
+                    WHERE d.sar_draft_id = :sar_id"""
+                ),
+                {"sar_id": sar_id},
+            )
+            .mappings()
+            .first()
+        )
+        if draft is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy SAR {sar_id}")
+
+        statements = (
+            session.execute(
+                text(
+                    """SELECT s.statement_id, s.ordinal, s.body,
+                          coalesce(array_agg(se.evidence_id ORDER BY se.evidence_id)
+                                   FILTER (WHERE se.evidence_id IS NOT NULL), '{}') AS evidence_ids
+                     FROM sar_statement s
+                     LEFT JOIN sar_statement_evidence se ON se.statement_id = s.statement_id
+                    WHERE s.sar_draft_id = :sar_id
+                    GROUP BY s.statement_id, s.ordinal, s.body ORDER BY s.ordinal"""
+                ),
+                {"sar_id": sar_id},
+            )
+            .mappings()
+            .all()
+        )
+        evidence = (
+            session.execute(
+                text("SELECT * FROM evidence WHERE case_id = :case_id ORDER BY retrieved_at, evidence_id"),
+                {"case_id": draft["case_id"]},
+            )
+            .mappings()
+            .all()
+        )
+        transactions = (
+            session.execute(
+                text(
+                    """SELECT transaction_id, occurred_at, from_account_key, to_account_key,
+                          amount, currency, channel,
+                          CASE WHEN to_account_key = :account THEN 'in' ELSE 'out' END AS direction
+                     FROM transaction
+                    WHERE from_account_key = :account OR to_account_key = :account
+                    ORDER BY occurred_at DESC LIMIT 20"""
+                ),
+                {"account": draft["subject_account_key"]},
+            )
+            .mappings()
+            .all()
+        )
+        history = (
+            session.execute(
+                text(
+                    """SELECT event_type, actor, actor_role, payload, occurred_at
+                     FROM audit_log WHERE case_id = :case_id
+                    ORDER BY occurred_at DESC, audit_id DESC LIMIT 30"""
+                ),
+                {"case_id": draft["case_id"]},
+            )
+            .mappings()
+            .all()
+        )
+        uncited = (
+            session.execute(
+                text("SELECT statement_id FROM uncited_statement WHERE sar_draft_id = :sar_id"), {"sar_id": sar_id}
+            )
+            .scalars()
+            .all()
+        )
+        submitter = session.execute(
+            text(
+                """SELECT coalesce(u.name, l.actor)
+                     FROM audit_log l LEFT JOIN app_user u ON u.user_id = l.actor
+                    WHERE l.case_id = :case_id AND l.event_type = 'submitted_for_approval'
+                    ORDER BY l.occurred_at DESC LIMIT 1"""
+            ),
+            {"case_id": draft["case_id"]},
+        ).scalar_one_or_none()
+
+    evidence_out = []
+    for item in evidence:
+        payload = item["payload"] if isinstance(item["payload"], dict) else {}
+        evidence_out.append(
+            {
+                "id": item["evidence_id"],
+                "kind": "statement" if item["source_table"] == "transaction" else "calculation",
+                "title": f"{item['source_table']} · {item['source_ref']}",
+                "description": json.dumps(payload, ensure_ascii=False, default=str),
+                "source": item["source_table"],
+                "fileType": "JSON RECORD",
+                "fileSize": f"{len(json.dumps(payload, default=str))} B",
+                "createdAt": item["retrieved_at"],
+                "tags": [item["source_table"], item["source_ref"]],
+                "hash": item["evidence_hash"],
+            }
+        )
+    inflow = sum(float(t["amount"]) for t in transactions if t["direction"] == "in")
+    outflow = sum(float(t["amount"]) for t in transactions if t["direction"] == "out")
+    issues = [{"id": sid, "severity": "error", "title": "Nhận định thiếu bằng chứng", "detail": sid} for sid in uncited]
+    status = _SAR_STATUS[draft["status"]]
+    if draft["decision"] == "more_info":
+        status = "NEEDS_INFO"
+    return {
+        "sar_id": draft["sar_draft_id"],
+        "case_id": draft["case_id"],
+        "alert_id": draft["alert_id"] or "",
+        "status": status,
+        "suspicionType": typology_label(draft["typology_code"])
+        if draft["typology_code"]
+        else "Rà soát giao dịch đáng ngờ",
+        "riskLevel": "CAO" if float(draft["risk_score"]) >= 80 else "TRUNG BÌNH",
+        "subjectName": draft["customer_id"],
+        "subject": {
+            "customerId": draft["customer_id"],
+            "accountKey": draft["subject_account_key"],
+            "customerType": draft["customer_type"],
+            "occupation": draft["occupation"],
+            "riskRating": draft["risk_rating"],
+            "onboardingDate": draft["onboarding_date"],
+        },
+        "submittedBy": submitter or draft["assigned_to"] or "Chưa gửi",
+        "submittedByRole": "Analyst",
+        "statements": [
+            {"id": s["statement_id"], "text": s["body"], "evidenceIds": list(s["evidence_ids"])} for s in statements
+        ],
+        "behaviourSummary": " ".join(s["body"] for s in statements),
+        "inflow": inflow,
+        "outflow": outflow,
+        "inflowNote": "Tiền vào tài khoản",
+        "outflowNote": "Tiền ra khỏi tài khoản",
+        "validationIssues": issues,
+        "relatedTransactions": [
+            {
+                "transaction_id": str(t["transaction_id"]),
+                "time": t["occurred_at"],
+                "amount": f"{t['amount']} {t['currency']}",
+                "location": t["channel"],
+                "direction": t["direction"],
+                "from_account_key": t["from_account_key"],
+                "to_account_key": t["to_account_key"],
+            }
+            for t in transactions
+        ],
+        "evidence": evidence_out,
+        "networkConfidence": round(min(99, 50 + len(transactions) * 2.5), 1),
+        "history": [
+            {"time": h["occurred_at"], "text": h["event_type"], "actor": h["actor"], "payload": h["payload"]}
+            for h in history
+        ],
+        "approval": {
+            "approval_id": draft["approval_id"],
+            "decision": draft["decision"],
+            "decided_by": draft["decided_by"],
+            "reason": draft["reason"],
+            "requested_at": draft["requested_at"],
+            "decided_at": draft["decided_at"],
+        }
+        if draft["approval_id"]
+        else None,
+    }
+
+
+@router.get("/sars")
+async def list_sars() -> list[dict[str, Any]]:
+    with get_session() as session:
+        ids = session.execute(text("SELECT sar_draft_id FROM sar_draft ORDER BY created_at DESC")).scalars().all()
+    return [_sar_payload(sar_id) for sar_id in ids]
+
+
+@router.get("/sars/{sar_id}")
+async def get_sar(sar_id: str) -> dict[str, Any]:
+    return _sar_payload(sar_id)
+
+
+@router.post("/cases/{case_id}/sar")
+async def create_sar(case_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    user = _require_user(authorization)
+    if user["role"] not in {"analyst", "compliance_officer", "admin"}:
+        raise HTTPException(status_code=403, detail="Vai trò hiện tại không được tạo SAR")
+    sar_id = f"SAR-{case_id}"
+    with get_session() as session:
+        existing = session.execute(
+            text("SELECT sar_draft_id FROM sar_draft WHERE case_id = :case_id ORDER BY version DESC LIMIT 1"),
+            {"case_id": case_id},
+        ).scalar_one_or_none()
+        if existing:
+            return _sar_payload(existing)
+        case = (
+            session.execute(
+                text("SELECT subject_account_key, state FROM aml_case WHERE case_id = :case_id FOR UPDATE"),
+                {"case_id": case_id},
+            )
+            .mappings()
+            .first()
+        )
+        if case is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy vụ việc {case_id}")
+        if case["state"] in {"XuatHoSo", "DongKhongBaoCao"}:
+            raise HTTPException(status_code=409, detail="Vụ việc đã kết thúc")
+        txs = (
+            session.execute(
+                text(
+                    """SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount, currency, channel
+                     FROM transaction WHERE from_account_key = :a OR to_account_key = :a
+                     ORDER BY occurred_at DESC LIMIT 3"""
+                ),
+                {"a": case["subject_account_key"]},
+            )
+            .mappings()
+            .all()
+        )
+        if not txs:
+            raise HTTPException(status_code=409, detail="Vụ việc chưa có giao dịch để làm bằng chứng")
+        session.execute(
+            text("INSERT INTO sar_draft(sar_draft_id, case_id, version, status) VALUES (:id, :case_id, 1, 'drafting')"),
+            {"id": sar_id, "case_id": case_id},
+        )
+        evidence_ids = []
+        for index, tx in enumerate(txs, start=1):
+            evidence_id = f"EV-{case_id}-LIVE-{index:03d}"
+            payload = json.dumps(dict(tx), ensure_ascii=False, default=str, sort_keys=True)
+            evidence_ids.append(evidence_id)
+            session.execute(
+                text(
+                    """INSERT INTO evidence(evidence_id, case_id, source_table, source_ref, payload, evidence_hash)
+                       VALUES (:id, :case_id, 'transaction', :ref, CAST(:payload AS jsonb), :hash)"""
+                ),
+                {
+                    "id": evidence_id,
+                    "case_id": case_id,
+                    "ref": str(tx["transaction_id"]),
+                    "payload": payload,
+                    "hash": hashlib.sha256(payload.encode()).hexdigest(),
+                },
+            )
+        bodies = [
+            f"Tài khoản {case['subject_account_key']} có giao dịch {tx['transaction_id']} trị giá {tx['amount']} {tx['currency']}."
+            for tx in txs
+        ]
+        for index, body in enumerate(bodies, start=1):
+            statement_id = f"ST-{case_id}-LIVE-{index:03d}"
+            session.execute(
+                text(
+                    "INSERT INTO sar_statement(statement_id, sar_draft_id, ordinal, body) VALUES (:id, :sar, :n, :body)"
+                ),
+                {"id": statement_id, "sar": sar_id, "n": index, "body": body},
+            )
+            session.execute(
+                text("INSERT INTO sar_statement_evidence(statement_id, evidence_id) VALUES (:statement, :evidence)"),
+                {"statement": statement_id, "evidence": evidence_ids[index - 1]},
+            )
+        session.execute(
+            text("UPDATE aml_case SET state = 'SoanHoSoNghiVan', updated_at = now() WHERE case_id = :case_id"),
+            {"case_id": case_id},
+        )
+        session.execute(
+            text(
+                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                   VALUES (:case_id, 'sar_updated', :actor, :role,
+                           CAST(:payload AS jsonb))"""
+            ),
+            {
+                "case_id": case_id,
+                "actor": user["user_id"],
+                "role": _audit_role(user["role"]),
+                "payload": json.dumps({"sar_draft_id": sar_id, "action": "created"}),
+            },
+        )
+    return _sar_payload(sar_id)
+
+
+@router.post("/sars/{sar_id}/validate")
+async def validate_sar(sar_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    user = _require_user(authorization)
+    with get_session() as session:
+        draft = (
+            session.execute(
+                text("SELECT case_id, status FROM sar_draft WHERE sar_draft_id = :id FOR UPDATE"), {"id": sar_id}
+            )
+            .mappings()
+            .first()
+        )
+        if draft is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy SAR {sar_id}")
+        if draft["status"] not in {"drafting", "verified"}:
+            raise HTTPException(status_code=409, detail="SAR đã được gửi nên không thể kiểm chứng lại")
+        uncited = session.execute(
+            text("SELECT count(*) FROM uncited_statement WHERE sar_draft_id = :id"), {"id": sar_id}
+        ).scalar_one()
+        if uncited:
+            raise HTTPException(status_code=409, detail=f"Có {uncited} nhận định chưa gắn bằng chứng")
+        session.execute(text("UPDATE sar_draft SET status = 'verified' WHERE sar_draft_id = :id"), {"id": sar_id})
+        session.execute(
+            text(
+                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                   VALUES (:case_id, 'validation_run', :actor, :role,
+                           CAST(:payload AS jsonb))"""
+            ),
+            {
+                "case_id": draft["case_id"],
+                "actor": user["user_id"],
+                "role": _audit_role(user["role"]),
+                "payload": json.dumps({"sar_draft_id": sar_id, "uncited": uncited}),
+            },
+        )
+    return _sar_payload(sar_id)
+
+
+@router.post("/sars/{sar_id}/submit")
+async def submit_sar(
+    sar_id: str, request: SarActionRequest, authorization: str | None = Header(default=None)
+) -> dict[str, Any]:
+    user = _require_user(authorization)
+    with get_session() as session:
+        draft = (
+            session.execute(
+                text("SELECT case_id, status FROM sar_draft WHERE sar_draft_id = :id FOR UPDATE"), {"id": sar_id}
+            )
+            .mappings()
+            .first()
+        )
+        if draft is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy SAR {sar_id}")
+        if draft["status"] != "verified":
+            raise HTTPException(status_code=409, detail="SAR phải kiểm chứng đạt trước khi gửi")
+        approval_id = f"APR-{sar_id}-{secrets.token_hex(3)}"
+        session.execute(
+            text("INSERT INTO approval(approval_id, case_id, sar_draft_id, decision) VALUES (:a, :c, :s, 'pending')"),
+            {"a": approval_id, "c": draft["case_id"], "s": sar_id},
+        )
+        session.execute(
+            text("UPDATE sar_draft SET status = 'submitted_for_approval' WHERE sar_draft_id = :id"), {"id": sar_id}
+        )
+        session.execute(
+            text("UPDATE aml_case SET state = 'ChoNguoiPheDuyet', updated_at = now() WHERE case_id = :id"),
+            {"id": draft["case_id"]},
+        )
+        session.execute(
+            text(
+                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                   VALUES (:case_id, 'submitted_for_approval', :actor, :role,
+                           CAST(:payload AS jsonb))"""
+            ),
+            {
+                "case_id": draft["case_id"],
+                "actor": user["user_id"],
+                "role": _audit_role(user["role"]),
+                "payload": json.dumps({"sar_draft_id": sar_id, "reason": request.reason}),
+            },
+        )
+    return _sar_payload(sar_id)
+
+
+@router.post("/approvals/{approval_id}/decision")
+async def decide_approval(
+    approval_id: str, request: ApprovalDecisionRequest, authorization: str | None = Header(default=None)
+) -> dict[str, Any]:
+    user = _require_user(authorization)
+    if user["role"] not in {"mlro", "admin"}:
+        raise HTTPException(status_code=403, detail="Chỉ MLRO hoặc Admin được ra quyết định")
+    with get_session() as session:
+        approval = (
+            session.execute(text("SELECT * FROM approval WHERE approval_id = :id FOR UPDATE"), {"id": approval_id})
+            .mappings()
+            .first()
+        )
+        if approval is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy phê duyệt {approval_id}")
+        if approval["decision"] != "pending":
+            raise HTTPException(status_code=409, detail="Quyết định đã được ghi và không thể sửa")
+        submitter = session.execute(
+            text(
+                """SELECT actor FROM audit_log WHERE case_id = :case_id AND event_type = 'submitted_for_approval'
+                   ORDER BY occurred_at DESC LIMIT 1"""
+            ),
+            {"case_id": approval["case_id"]},
+        ).scalar_one_or_none()
+        if submitter == user["user_id"]:
+            raise HTTPException(status_code=403, detail="Người gửi không được tự phê duyệt hồ sơ")
+        event = {"approved": "approved", "rejected": "rejected", "more_info": "more_info_requested"}[request.decision]
+        session.execute(
+            text(
+                """UPDATE approval SET decision = :decision, decided_by = :user_id,
+                       reason = :reason, decided_at = now() WHERE approval_id = :id"""
+            ),
+            {"decision": request.decision, "user_id": user["user_id"], "reason": request.reason, "id": approval_id},
+        )
+        draft_status = "approved" if request.decision == "approved" else "rejected"
+        session.execute(
+            text("UPDATE sar_draft SET status = :status WHERE sar_draft_id = :id"),
+            {"status": draft_status, "id": approval["sar_draft_id"]},
+        )
+        if request.decision != "approved":
+            session.execute(
+                text("UPDATE aml_case SET state = 'DieuTraBoSung', updated_at = now() WHERE case_id = :id"),
+                {"id": approval["case_id"]},
+            )
+        session.execute(
+            text(
+                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                   VALUES (:case_id, :event, :actor, :role,
+                           CAST(:payload AS jsonb))"""
+            ),
+            {
+                "case_id": approval["case_id"],
+                "event": event,
+                "actor": user["user_id"],
+                "role": _audit_role(user["role"]),
+                "payload": json.dumps(
+                    {
+                        "sar_draft_id": approval["sar_draft_id"],
+                        "approval_id": approval_id,
+                        "reason": request.reason,
+                    }
+                ),
+            },
+        )
+        sar_id = approval["sar_draft_id"]
+    return _sar_payload(sar_id)
+
+
+@router.post("/sars/{sar_id}/export")
+async def export_sar(sar_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    user = _require_user(authorization)
+    with get_session() as session:
+        draft = (
+            session.execute(text("SELECT case_id, status FROM sar_draft WHERE sar_draft_id = :id"), {"id": sar_id})
+            .mappings()
+            .first()
+        )
+        if draft is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy SAR {sar_id}")
+        if draft["status"] != "approved":
+            raise HTTPException(status_code=409, detail="Chỉ hồ sơ đã phê duyệt mới được xuất")
+        session.execute(
+            text("UPDATE aml_case SET state = 'XuatHoSo', updated_at = now() WHERE case_id = :id"),
+            {"id": draft["case_id"]},
+        )
+        session.execute(
+            text(
+                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                   VALUES (:case_id, 'file_exported', :actor, :role, CAST(:payload AS jsonb))"""
+            ),
+            {
+                "case_id": draft["case_id"],
+                "actor": user["user_id"],
+                "role": _audit_role(user["role"]),
+                "payload": json.dumps({"sar_draft_id": sar_id}),
+            },
+        )
+    return {"sar_id": sar_id, "case_id": draft["case_id"], "status": "exported", "filename": f"{sar_id}.json"}
+
+
+@router.get("/cases/{case_id}/network")
+async def case_network(case_id: str) -> dict[str, Any]:
+    with get_session() as session:
+        case = (
+            session.execute(
+                text(
+                    """SELECT c.case_id, c.subject_account_key, c.risk_score, cu.customer_id
+                     FROM aml_case c JOIN account a ON a.account_key = c.subject_account_key
+                     JOIN customer cu ON cu.customer_id = a.customer_id WHERE c.case_id = :id"""
+                ),
+                {"id": case_id},
+            )
+            .mappings()
+            .first()
+        )
+        if case is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy vụ việc {case_id}")
+        txs = (
+            session.execute(
+                text(
+                    """SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount, currency, channel
+                     FROM transaction WHERE from_account_key = :a OR to_account_key = :a
+                     ORDER BY occurred_at DESC LIMIT 30"""
+                ),
+                {"a": case["subject_account_key"]},
+            )
+            .mappings()
+            .all()
+        )
+        accounts = {case["subject_account_key"]}
+        for tx in txs:
+            accounts.update((tx["from_account_key"], tx["to_account_key"]))
+        profiles = (
+            session.execute(
+                text(
+                    """SELECT a.account_key, c.customer_id, c.customer_type, c.risk_rating
+                     FROM account a JOIN customer c ON c.customer_id = a.customer_id
+                    WHERE a.account_key = ANY(:accounts)"""
+                ),
+                {"accounts": list(accounts)},
+            )
+            .mappings()
+            .all()
+        )
+    profile_by_account = {p["account_key"]: p for p in profiles}
+    nodes = []
+    for account in accounts:
+        p = profile_by_account.get(account)
+        nodes.append(
+            {
+                "id": account,
+                "label": p["customer_id"] if p else account,
+                "sublabel": account,
+                "kind": "subject" if account == case["subject_account_key"] else "company",
+                "risk": "primary" if account == case["subject_account_key"] else (p["risk_rating"] if p else "medium"),
+            }
+        )
+    edges = [
+        {
+            "id": f"tx-{t['transaction_id']}",
+            "source": t["from_account_key"],
+            "target": t["to_account_key"],
+            "label": f"{t['amount']} {t['currency']}",
+            "suspicious": float(t["amount"]) >= 100_000,
+        }
+        for t in txs
+    ]
+    return {
+        "case_id": case_id,
+        "risk_score": case["risk_score"],
+        "subject_account_key": case["subject_account_key"],
+        "nodes": nodes,
+        "edges": edges,
+        "transactions": [dict(t) for t in txs],
+    }
+
+
+# ---------------------------------------------------------------------
+# Người dùng và cấu hình hệ thống.
+# ---------------------------------------------------------------------
+
+
+@router.get("/users", response_model=list[UserOut])
+async def list_users(authorization: str | None = Header(default=None)) -> list[UserOut]:
+    _require_user(authorization)
+    with get_session() as session:
+        rows = (
+            session.execute(
+                text("SELECT user_id, name, email, role, role_label, active, last_login FROM app_user ORDER BY user_id")
+            )
+            .mappings()
+            .all()
+        )
+    return [_user_out(dict(row)) for row in rows]
+
+
+@router.get("/settings")
+async def list_settings(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    _require_user(authorization)
+    with get_session() as session:
+        settings = (
+            session.execute(
+                text("SELECT code, label, value, unit, source, updated_at FROM system_setting ORDER BY code")
+            )
+            .mappings()
+            .all()
+        )
+        versions = (
+            session.execute(
+                text(
+                    """SELECT watchlist_version_id, source AS provider,
+                              loaded_at AS published_at, checksum AS content_hash
+                         FROM watchlist_version ORDER BY loaded_at DESC"""
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return {"settings": [dict(row) for row in settings], "watchlistVersions": [dict(row) for row in versions]}
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: str, request: UserUpdateRequest, authorization: str | None = Header(default=None)
+) -> UserOut:
+    user = _require_user(authorization)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Chỉ Admin được thay đổi trạng thái tài khoản")
+    if user_id == user["user_id"] and not request.active:
+        raise HTTPException(status_code=409, detail="Không thể tự khóa tài khoản đang đăng nhập")
+    with get_session() as session:
+        before = session.execute(
+            text("SELECT active FROM app_user WHERE user_id = :id FOR UPDATE"), {"id": user_id}
+        ).scalar_one_or_none()
+        if before is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy người dùng {user_id}")
+        row = (
+            session.execute(
+                text(
+                    """UPDATE app_user SET active = :active WHERE user_id = :id
+                   RETURNING user_id, name, email, role, role_label, active, last_login"""
+                ),
+                {"active": request.active, "id": user_id},
+            )
+            .mappings()
+            .one()
+        )
+        if before != request.active:
+            session.execute(
+                text(
+                    """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                       VALUES (NULL, 'user_changed', :actor, :role,
+                               CAST(:payload AS jsonb))"""
+                ),
+                {
+                    "actor": user["user_id"],
+                    "role": _audit_role(user["role"]),
+                    "payload": json.dumps(
+                        {"user_id": user_id, "before": before, "after": request.active, "reason": request.reason}
+                    ),
+                },
+            )
+    return _user_out(dict(row))
+
+
+@router.put("/settings/{code}")
+async def update_setting(
+    code: str, request: SettingUpdateRequest, authorization: str | None = Header(default=None)
+) -> dict[str, Any]:
+    user = _require_user(authorization)
+    if user["role"] not in {"admin", "mlro"}:
+        raise HTTPException(status_code=403, detail="Chỉ Admin hoặc MLRO được sửa cấu hình")
+    with get_session() as session:
+        before = session.execute(
+            text("SELECT value FROM system_setting WHERE code = :code"), {"code": code}
+        ).scalar_one_or_none()
+        if before is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy cấu hình {code}")
+        row = (
+            session.execute(
+                text(
+                    """UPDATE system_setting SET value = :value, updated_by = :user, updated_at = now()
+                    WHERE code = :code RETURNING code, label, value, unit, source, updated_at"""
+                ),
+                {"value": request.value, "user": user["user_id"], "code": code},
+            )
+            .mappings()
+            .one()
+        )
+        session.execute(
+            text(
+                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                   VALUES (NULL, 'setting_changed', :actor, :role,
+                           CAST(:payload AS jsonb))"""
+            ),
+            {
+                "actor": user["user_id"],
+                "role": _audit_role(user["role"]),
+                "payload": json.dumps(
+                    {"code": code, "before": before, "after": request.value, "reason": request.reason}
+                ),
+            },
+        )
+    return dict(row)

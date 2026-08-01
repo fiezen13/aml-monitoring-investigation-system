@@ -7,8 +7,9 @@ import { Panel } from "../components/common/Panel";
 import { ReasonModal } from "../components/common/ReasonModal";
 import { Tooltip } from "../components/common/Tooltip";
 import { Breadcrumb } from "../components/layout/Breadcrumb";
+import { api } from "../api/client";
+import { useApi } from "../api/useApi";
 import { useApp } from "../context/AppContext";
-import { APPROVAL_DETAIL, SAR_DRAFT } from "../data/mockSar";
 
 /**
  * Chi tiết phê duyệt SAR — khớp screenshot "Chi tiết Phê duyệt SAR".
@@ -16,37 +17,38 @@ import { APPROVAL_DETAIL, SAR_DRAFT } from "../data/mockSar";
  */
 export function ApprovalDetailPage() {
   const { sarId } = useParams();
-  const { currentUser, sarStatus, sarSubmittedBy, approveSar, rejectSar, pushToast } =
-    useApp();
+  const { currentUser, pushToast } = useApp();
+  const sarQuery = useApi(() => api.sar(sarId ?? ""), [sarId]);
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
 
-  const isLiveSar = sarId === SAR_DRAFT.sar_id;
-  const detail = isLiveSar
-    ? {
-        ...APPROVAL_DETAIL,
-        sar_id: SAR_DRAFT.sar_id,
-        suspicionType: SAR_DRAFT.suspicionType,
-        subject: {
-          name: SAR_DRAFT.subjectName,
-          taxCode: "CID: CUS-001 · ACC-884201",
-          internalRating: "HR - HIGH RISK",
-          establishedFor: "5 năm 2 tháng",
-          previousSars: "02 lượt",
-        },
-        behaviourSummary: SAR_DRAFT.behaviourSummary,
-        transactions: SAR_DRAFT.relatedTransactions,
-      }
-    : APPROVAL_DETAIL;
+  if (!sarQuery.data) {
+    return <div className="p-6 text-[13px] text-ink-mid">{sarQuery.error ?? "Đang tải hồ sơ SAR từ PostgreSQL..."}</div>;
+  }
+  const sar = sarQuery.data;
+  const detail = {
+    sar_id: sar.sar_id,
+    suspicionType: sar.suspicionType,
+    subject: {
+      name: sar.subjectName,
+      taxCode: `CID: ${sar.subject.customerId} · ${sar.subject.accountKey}`,
+      internalRating: sar.subject.riskRating.toUpperCase(),
+      establishedFor: new Date(sar.subject.onboardingDate).toLocaleDateString("vi-VN"),
+      previousSars: sar.case_id,
+    },
+    behaviourSummary: sar.behaviourSummary,
+    transactions: sar.relatedTransactions,
+    networkConfidence: sar.networkConfidence,
+    networkNote: `${sar.evidence.length} bằng chứng và ${sar.relatedTransactions.length} giao dịch liên quan được truy vấn từ DB.`,
+    history: sar.history,
+  };
 
-  const status = isLiveSar
-    ? sarStatus
-    : ("PENDING_REVIEW" as const);
+  const status = sar.status;
 
   const isApproved = status === "APPROVED";
   const isPending = status === "PENDING_REVIEW";
   const isSelfApproval =
-    isLiveSar && currentUser != null && currentUser.name === sarSubmittedBy;
+    currentUser != null && currentUser.name === sar.submittedBy;
   const isMlro = currentUser?.role === "mlro";
   const canApprove = isPending && !isSelfApproval && isMlro;
 
@@ -101,20 +103,22 @@ export function ApprovalDetailPage() {
           <Tooltip
             content={
               isApproved
-                ? "Tải hồ sơ SAR đã phê duyệt (mô phỏng)"
+                ? "Xuất hồ sơ SAR đã phê duyệt và ghi audit"
                 : "Chỉ xuất được hồ sơ khi SAR ở trạng thái APPROVED — không có đường tắt nào bỏ qua người phê duyệt"
             }
           >
             <button
               type="button"
               disabled={!isApproved}
-              onClick={() =>
-                pushToast({
-                  tone: "success",
-                  title: "Đã xuất hồ sơ SAR (mô phỏng)",
-                  detail: "Sự kiện XuatHoSo được ghi vào audit trail.",
-                })
-              }
+              onClick={async () => {
+                try {
+                  const result = await api.exportSar(sar.sar_id);
+                  await sarQuery.reload();
+                  pushToast({ tone: "success", title: `Đã xuất ${result.filename}`, detail: "State XuatHoSo và audit đã được ghi vào PostgreSQL." });
+                } catch (cause) {
+                  pushToast({ tone: "error", title: "Không xuất được hồ sơ", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
+                }
+              }}
               className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-[13px] font-medium text-ink-hi disabled:cursor-not-allowed disabled:opacity-40"
             >
               <FileDown size={14} aria-hidden />
@@ -277,14 +281,16 @@ export function ApprovalDetailPage() {
         confirmLabel="Xác nhận phê duyệt"
         minLength={30}
         onClose={() => setApproveOpen(false)}
-        onConfirm={(reason) => {
-          approveSar(reason);
-          setApproveOpen(false);
-          pushToast({
-            tone: "success",
-            title: `Đã phê duyệt ${detail.sar_id}`,
-            detail: "Nút Xuất hồ sơ đã mở khóa.",
-          });
+        onConfirm={async (reason) => {
+          try {
+            if (!sar.approval) throw new Error("Hồ sơ chưa có yêu cầu phê duyệt");
+            await api.decideApproval(sar.approval.approval_id, "approved", reason);
+            await sarQuery.reload();
+            setApproveOpen(false);
+            pushToast({ tone: "success", title: `Đã phê duyệt ${detail.sar_id}`, detail: "Quyết định đã ghi bất biến vào approval và audit_log." });
+          } catch (cause) {
+            pushToast({ tone: "error", title: "Phê duyệt thất bại", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
+          }
         }}
       />
       <ReasonModal
@@ -294,14 +300,16 @@ export function ApprovalDetailPage() {
         confirmLabel="Từ chối báo cáo"
         minLength={30}
         onClose={() => setRejectOpen(false)}
-        onConfirm={(reason) => {
-          rejectSar(reason);
-          setRejectOpen(false);
-          pushToast({
-            tone: "info",
-            title: `Đã từ chối ${detail.sar_id}`,
-            detail: "Người gửi sẽ nhận được yêu cầu điều tra bổ sung.",
-          });
+        onConfirm={async (reason) => {
+          try {
+            if (!sar.approval) throw new Error("Hồ sơ chưa có yêu cầu phê duyệt");
+            await api.decideApproval(sar.approval.approval_id, "rejected", reason);
+            await sarQuery.reload();
+            setRejectOpen(false);
+            pushToast({ tone: "info", title: `Đã từ chối ${detail.sar_id}`, detail: "Case đã chuyển ĐiềuTraBoSung trong PostgreSQL." });
+          } catch (cause) {
+            pushToast({ tone: "error", title: "Từ chối thất bại", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
+          }
         }}
       />
     </div>

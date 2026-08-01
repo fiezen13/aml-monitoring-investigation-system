@@ -21,7 +21,7 @@ export interface User {
   role: Role;
   roleLabel: string;
   active: boolean;
-  lastLogin: string;
+  lastLogin: string | null;
 }
 
 /** Trạng thái vụ việc — đúng danh sách CHECK trong db/init/001_schema.sql. */
@@ -253,7 +253,7 @@ export interface NetworkNode {
   label: string;
   sublabel: string;
   kind: "subject" | "mule" | "company" | "wallet" | "bank";
-  risk: "high" | "primary" | "neutral";
+  risk: "low" | "medium" | "high" | "primary" | "neutral";
 }
 
 export interface NetworkEdge {

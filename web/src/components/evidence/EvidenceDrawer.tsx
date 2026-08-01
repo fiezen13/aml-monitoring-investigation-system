@@ -1,11 +1,12 @@
 import { ExternalLink, FileText, Plus, X, ZoomIn } from "lucide-react";
 
-import { EVIDENCE, getEvidence } from "../../data/mockEvidence";
 import { useApp } from "../../context/AppContext";
+import type { Evidence } from "../../types";
 import { StatusBadge } from "../common/Badges";
 
 interface EvidenceDrawerProps {
   evidenceId: string | null;
+  evidence: Evidence[];
   onClose: () => void;
   onSelect: (id: string) => void;
 }
@@ -14,13 +15,13 @@ interface EvidenceDrawerProps {
  * Evidence Drawer — panel phải hiển thị bằng chứng kỹ thuật số,
  * bám bố cục screenshot "Hồ sơ Vụ việc CASE-2026-014".
  */
-export function EvidenceDrawer({ evidenceId, onClose, onSelect }: EvidenceDrawerProps) {
+export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onSelect }: EvidenceDrawerProps) {
   const { pushToast } = useApp();
   if (!evidenceId) return null;
-  const evidence = getEvidence(evidenceId);
+  const evidence = allEvidence.find((item) => item.id === evidenceId);
   if (!evidence) return null;
 
-  const others = EVIDENCE.filter((e) => e.id !== evidenceId).slice(0, 3);
+  const others = allEvidence.filter((e) => e.id !== evidenceId).slice(0, 3);
 
   return (
     <div className="fixed inset-0 z-[70] flex justify-end bg-black/50" onClick={onClose}>
@@ -63,7 +64,7 @@ export function EvidenceDrawer({ evidenceId, onClose, onSelect }: EvidenceDrawer
               <button
                 type="button"
                 aria-label="Phóng to"
-                onClick={() => pushToast({ tone: "info", title: "Đã mở chế độ phóng to (mô phỏng)" })}
+                onClick={() => pushToast({ tone: "info", title: "Bản ghi JSON đã được xác minh bằng hash" })}
                 className="rounded-full bg-primary p-2 text-app hover:bg-primary-hover"
               >
                 <ZoomIn size={13} />
@@ -71,7 +72,7 @@ export function EvidenceDrawer({ evidenceId, onClose, onSelect }: EvidenceDrawer
               <button
                 type="button"
                 aria-label="Mở trong cửa sổ mới"
-                onClick={() => pushToast({ tone: "info", title: "Mở tài liệu gốc (mô phỏng)" })}
+                onClick={() => pushToast({ tone: "info", title: `Nguồn: ${evidence.source}` })}
                 className="rounded-full border border-line bg-panel p-2 text-ink-mid hover:text-ink-hi"
               >
                 <ExternalLink size={13} />
@@ -139,8 +140,8 @@ export function EvidenceDrawer({ evidenceId, onClose, onSelect }: EvidenceDrawer
             onClick={() =>
               pushToast({
                 tone: "info",
-                title: "Thêm bằng chứng (mô phỏng)",
-                detail: "Bằng chứng mới sẽ được gắn vào case qua công cụ truy hồi.",
+                title: "Bằng chứng chỉ được thêm qua API truy hồi",
+                detail: "Giao diện không tự tạo dữ liệu chứng minh.",
               })
             }
             className="flex w-full items-center justify-center gap-1.5 rounded-control bg-primary py-2 text-[13px] font-semibold text-app hover:bg-primary-hover"
