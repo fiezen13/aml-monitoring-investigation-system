@@ -1,6 +1,3 @@
-# Phụ thuộc lúc chạy. Image Docker chỉ cài file này.
-# Công cụ phát triển và kiểm thử nằm ở requirements-dev.txt.
-
 # Core
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
@@ -11,22 +8,18 @@ python-dotenv>=1.0.0
 # AI / LangChain
 langchain>=0.3.0
 langchain-openai>=0.3.0
-langchain-google-genai>=0.3.0
 langgraph>=0.2.0
 
-# Database
-sqlalchemy>=2.0.0
-psycopg[binary]>=3.2.0
+# Database (uncomment as needed)
+# sqlalchemy>=2.0.0
+# alembic>=1.14.0
+# psycopg2-binary>=2.9.0
 
-# Hàng đợi tác vụ
-redis>=5.2.0
-
-# Kafka — producer phát lại dữ liệu AML (`python -m src.aml`).
-# Nằm ở đây chứ không ở requirements-dev vì producer chạy trong cùng image
-# với api và worker, đúng nguyên tắc "một image, nhiều lệnh khởi động" đã
-# áp dụng cho seed. Chọn confluent-kafka vì nó là client duy nhất hỗ trợ
-# idempotent producer — thứ quyết định việc thử lại không đẻ ra bản trùng.
-confluent-kafka>=2.6.0
-
-# Vector Store (mở khi cần)
+# Vector Store (uncomment as needed)
 # chromadb>=0.5.0
+
+# Dev tools
+ruff>=0.8.0
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+httpx>=0.28.0

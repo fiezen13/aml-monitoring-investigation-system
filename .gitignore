@@ -33,25 +33,6 @@ data/
 *.db
 *.sqlite3
 
-# Bộ dữ liệu IBM AML nặng từ hàng trăm megabyte tới hàng chục gigabyte và
-# tải về từ Kaggle, không commit. Nhưng thư mục và hướng dẫn đặt file thì
-# phải có sẵn, nếu không người mới sẽ không biết đặt file vào đâu.
-!data/
-data/*
-!data/raw/
-data/raw/*
-!data/raw/ibm-aml/
-data/raw/ibm-aml/*
-!data/raw/ibm-aml/.gitkeep
-!data/raw/ibm-aml/README.md
-
-# Khoá API Kaggle — không bao giờ nằm trong repo.
-kaggle.json
-.kaggle/
-
-# Sản phẩm build của job Flink
-flink/**/target/
-
 # Logs
 logs/
 *.log
@@ -77,10 +58,3 @@ out/
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
-
-# Jenkins — bí mật của controller
-jenkins/.env
-
-# CI — sản phẩm trung gian
-.image-tags
-pytest-report.xml
