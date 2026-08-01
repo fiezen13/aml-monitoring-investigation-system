@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy import text
 
 from src.agents.graph import agent
@@ -13,8 +13,77 @@ from src.models.schemas import (
 )
 from src.services import queue
 
+from typing import List, Optional
+from sqlalchemy.orm import Session
+# from src.db.session import get_db
+
 router = APIRouter()
 
+@router.get("/alerts")
+def list_alerts(
+    status: Optional[str] = Query(
+        default="open", 
+        description="Lọc theo trạng thái: open, grouped, closed"
+    ),
+    limit: int = Query(
+        default=50, 
+        ge=1, 
+        le=100, 
+        description="Số lượng bản ghi tối đa"
+    ),
+) -> dict:
+    """Hàng đợi cảnh báo (Alert Queue) xếp theo điểm rủi ro giảm dần.
+    
+    LƯU Ý KỸ THUẬT: 
+    Bắt buộc dùng 'def' (đồng bộ) thay vì 'async def' vì get_session() trong src/db/session.py
+    sử dụng SQLAlchemy Session đồng bộ. Khi dùng 'def', FastAPI sẽ tự động đưa truy vấn vào
+    ThreadPool riêng, tránh làm nghẽn Event Loop chính gây treo ứng dụng.
+    """
+    sql = """
+        SELECT 
+            a.alert_id,
+            a.account_key,
+            a.typology_code,
+            a.detector,
+            a.risk_score,
+            a.status,
+            a.created_at,
+            ar.factor_code,
+            ar.factor_label
+        FROM alert a
+        LEFT JOIN alert_reason ar ON a.alert_id = ar.alert_id
+        WHERE (CAST(:status AS text) IS NULL OR a.status = CAST(:status AS text))
+        ORDER BY a.risk_score DESC, a.created_at DESC
+        LIMIT :limit
+    """
+    
+    with get_session() as session:
+        rows = session.execute(
+            text(sql), 
+            {"status": status, "limit": limit}
+        ).mappings().all()
+
+    alerts = []
+    for row in rows:
+        alerts.append({
+            "alert_id": row["alert_id"],
+            "account_key": row["account_key"],
+            "typology_code": row["typology_code"],
+            "detector": row["detector"],
+            "risk_score": float(row["risk_score"]),
+            "status": row["status"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "reason": {
+                "factor_code": row["factor_code"],
+                "factor_label": row["factor_label"]
+            }
+        })
+
+    return {
+        "success": True,
+        "total": len(alerts),
+        "data": alerts
+    }
 
 @router.get("/cases", response_model=list[CaseOut])
 async def list_cases(
