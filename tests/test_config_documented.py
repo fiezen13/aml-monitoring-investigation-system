@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from src.aml.config import AmlSettings
 from src.config import Settings
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +25,10 @@ ENV_EXAMPLE = (ROOT / ".env.example").read_text(encoding="utf-8")
 ENV_DOC = (ROOT / "docs" / "ENVIRONMENT.md").read_text(encoding="utf-8")
 COMPOSE = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
-SETTINGS_FIELDS = sorted(Settings.model_fields)
+# Hai lớp cấu hình, cùng một ràng buộc tài liệu: Settings là của API và
+# worker, AmlSettings là của producer phát lại dữ liệu AML. Gộp lại ở đây để
+# thêm một biến ở bất kỳ lớp nào cũng phải kèm tài liệu.
+SETTINGS_FIELDS = sorted(set(Settings.model_fields) | set(AmlSettings.model_fields))
 
 # Biến chỉ dùng ở tầng compose (không phải trường của Settings): tên image,
 # cổng phát ra máy chủ, thông tin khởi tạo container postgres.

@@ -6,3 +6,7 @@ pytest>=8.0.0
 pytest-asyncio>=0.24.0
 pytest-cov>=6.0.0
 httpx>=0.28.0
+
+# Kiểm chứng sự kiện AML đúng với hợp đồng dữ liệu ở
+# schemas/aml-transaction-v1.schema.json.
+jsonschema>=4.23.0

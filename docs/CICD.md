@@ -197,18 +197,23 @@ Ba việc, không nằm trong repo được:
 1. **Bật branch protection** cho `main` và `develop`, chọn status check `CI`.
    Xem [CI.md](CI.md) mục 5. Chưa bật thì CI đỏ vẫn merge được như thường.
 2. **Dựng máy chủ staging và production-like**, tạo `docker context` trỏ tới
-   chúng, đặt tên `fin07-staging` và `fin07-prodlike`. Kiến trúc dự kiến dùng
-   Terraform cho việc này (ARC-001 mục 6) — chưa làm, xem mục 8.
+   chúng, đặt tên `fin07-staging` và `fin07-prodlike`. Máy chủ là VPS thuê
+   ngoài, dựng bằng tay — xem mục 8.
 3. **Cắm kênh thông báo** khi build hỏng. Khối `post { failure { } }` trong
    `Jenkinsfile` đang để trống có chủ ý: một webhook giả cắm sẵn mà không tới
    nơi còn tệ hơn không có thông báo, vì người ta tưởng là có.
 
 ## 8. Những chỗ chưa làm, nói rõ ra
 
-- **Terraform.** ARC-001 mục 6 liệt kê Terraform trong ngăn xếp, và mục 7 nói
-  staging "dựng bằng Terraform". Hiện chưa có module nào. Pipeline triển khai
-  lên máy chủ đã tồn tại, chứ không tự tạo ra máy chủ. Đây là khoảng trống đã
-  biết, không phải chỗ bị bỏ sót.
+- **Không có hạ tầng dưới dạng mã.** ARC-001 mục 6 liệt kê Terraform trong
+  ngăn xếp và mục 7 nói staging "dựng bằng Terraform". Dự án đã chọn hướng
+  khác: **VPS thuê ngoài kèm tên miền riêng**, dựng bằng tay. Pipeline triển
+  khai lên máy chủ *đã tồn tại* qua `docker context`, chứ không tự tạo ra máy
+  chủ. Đây là quyết định, không phải chỗ bị bỏ sót.
+
+  Hệ quả cần biết: dựng lại máy chủ từ đầu là việc làm tay và không tái lập
+  được từ repo. Ai dựng máy phải ghi lại các bước ở đâu đó — nếu không, kiến
+  thức đó chỉ nằm trong đầu một người.
 - **Kiểm tra tải.** Mục tiêu hiệu năng ở ARC-001 mục 5.3 (agent ≤ 3 phút, đồ
   thị 5.000 nút ≤ 5 giây, 50 cảnh báo ≤ 500 ms) chưa có bài kiểm tra tự động
   nào. Thuộc Sprint 5.
