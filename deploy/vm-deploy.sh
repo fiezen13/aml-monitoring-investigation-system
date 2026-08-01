@@ -14,7 +14,6 @@ cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 
 COMPOSE_FILES=(-f docker-compose.yml -f deploy/docker-compose.vm.yml)
-SITE_DOMAIN=${SITE_DOMAIN:-amlmonitoring.site}
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31mLỗi: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -27,15 +26,36 @@ docker compose version >/dev/null 2>&1 || die "chưa có docker compose v2"
 
 [[ -f .env ]] || die ".env chưa tồn tại. Tạo từ .env.example và đặt POSTGRES_PASSWORD, FIN07_AGENT_DB_PASSWORD, ACME_EMAIL"
 
-# Đọc .env để kiểm tra trước, thay vì để compose chết giữa chừng với một
-# thông báo khó lần ra.
-set -a; source .env; set +a
-for var in POSTGRES_PASSWORD FIN07_AGENT_DB_PASSWORD ACME_EMAIL; do
-    [[ -n "${!var:-}" ]] || die "$var chưa đặt trong .env"
-done
+# Không `source .env`: dotenv không phải shell script. Ví dụ APP_NAME trong
+# file mẫu chứa khoảng trắng và sẽ bị shell hiểu thành một lệnh; tệ hơn, một
+# giá trị có ký tự shell có thể bị thực thi ngay trên máy production.
+dotenv_value() {
+    local key=$1 line value
+    line=$(grep -E "^[[:space:]]*${key}=" .env | tail -n 1 || true)
+    value=${line#*=}
+    # Docker Compose chấp nhận giá trị được bao bằng nháy đơn hoặc nháy kép.
+    # Bỏ đúng một cặp nháy ngoài để phần kiểm tra bên dưới thấy giá trị thật.
+    if [[ ${#value} -ge 2 ]]; then
+        if [[ ${value:0:1} == '"' && ${value: -1} == '"' ]] || \
+           [[ ${value:0:1} == "'" && ${value: -1} == "'" ]]; then
+            value=${value:1:${#value}-2}
+        fi
+    fi
+    printf '%s' "$value"
+}
+
+POSTGRES_PASSWORD_VALUE=${POSTGRES_PASSWORD:-$(dotenv_value POSTGRES_PASSWORD)}
+FIN07_AGENT_DB_PASSWORD_VALUE=${FIN07_AGENT_DB_PASSWORD:-$(dotenv_value FIN07_AGENT_DB_PASSWORD)}
+ACME_EMAIL_VALUE=${ACME_EMAIL:-$(dotenv_value ACME_EMAIL)}
+SITE_DOMAIN=${SITE_DOMAIN:-$(dotenv_value SITE_DOMAIN)}
+SITE_DOMAIN=${SITE_DOMAIN:-amlmonitoring.site}
+
+[[ -n "$POSTGRES_PASSWORD_VALUE" ]] || die "POSTGRES_PASSWORD chưa đặt trong .env"
+[[ -n "$FIN07_AGENT_DB_PASSWORD_VALUE" ]] || die "FIN07_AGENT_DB_PASSWORD chưa đặt trong .env"
+[[ -n "$ACME_EMAIL_VALUE" ]] || die "ACME_EMAIL chưa đặt trong .env"
 
 # Mật khẩu mặc định của môi trường dev không được mang lên máy có IP công cộng.
-if [[ "$POSTGRES_PASSWORD" == "fin07_dev_password" ]]; then
+if [[ "$POSTGRES_PASSWORD_VALUE" == "fin07_dev_password" ]]; then
     die "POSTGRES_PASSWORD vẫn là mật khẩu mặc định của môi trường dev — đổi trước khi deploy"
 fi
 
