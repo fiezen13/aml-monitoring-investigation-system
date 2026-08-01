@@ -8,6 +8,8 @@
 # Exits 0 silently if no Python is found — hooks must never block the AI tool.
 set -u
 
+# Prefer the project's own virtualenv (has python-dotenv + deps installed)
+# over whatever Python happens to be on PATH.
 # A name being on PATH does not mean it runs. Windows Store installs an
 # execution alias at WindowsApps/python3 that `command -v` finds but that
 # prints "Python was not found" and never executes. Selecting it makes AI log
