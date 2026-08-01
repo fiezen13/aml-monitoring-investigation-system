@@ -46,8 +46,33 @@ const AppContext = createContext<AppState | null>(null);
 
 let toastSeq = 0;
 
+/**
+ * Khoá lưu phiên đăng nhập trong sessionStorage.
+ *
+ * Giữ phiên qua một lần tải lại trang là điều kiện để đường dẫn sâu dùng
+ * được: không có nó, mở thẳng /alerts/ALT-004-rule hay bấm F5 giữa buổi
+ * demo đều rơi về màn hình đăng nhập.
+ *
+ * Đây là phiên mô phỏng, không phải xác thực thật: không có mật khẩu nào
+ * được kiểm tra và không có token nào được cấp. sessionStorage (hết khi
+ * đóng tab) thay vì localStorage là chủ ý — một danh tính giả không nên
+ * sống lâu hơn cái tab tạo ra nó.
+ */
+const SESSION_KEY = "fin07.session.userId";
+
+function readStoredUser(): User | null {
+  try {
+    const userId = window.sessionStorage.getItem(SESSION_KEY);
+    return userId ? (USERS.find((u) => u.id === userId) ?? null) : null;
+  } catch {
+    // Trình duyệt chặn storage (chế độ riêng tư, cookie bị khoá) — chạy tiếp
+    // không có phiên lưu sẵn thay vì làm hỏng cả ứng dụng.
+    return null;
+  }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(readStoredUser);
   const [sarStatus, setSarStatus] = useState<SarStatus>(SAR_DRAFT.status);
   const [sarIssues, setSarIssues] = useState<SarValidationIssue[]>(
     SAR_DRAFT.validationIssues,
@@ -73,10 +98,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const login = useCallback((userId: string) => {
     const user = USERS.find((u) => u.id === userId) ?? null;
     setCurrentUser(user);
+    try {
+      if (user) window.sessionStorage.setItem(SESSION_KEY, user.id);
+    } catch {
+      /* không lưu được thì phiên chỉ sống trong bộ nhớ — vẫn dùng được */
+    }
     return user;
   }, []);
 
-  const logout = useCallback(() => setCurrentUser(null), []);
+  const logout = useCallback(() => {
+    setCurrentUser(null);
+    try {
+      window.sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* xoá thất bại không ngăn được việc đăng xuất khỏi bộ nhớ */
+    }
+  }, []);
 
   const runValidation = useCallback(() => {
     setSarStatus((prev) => {

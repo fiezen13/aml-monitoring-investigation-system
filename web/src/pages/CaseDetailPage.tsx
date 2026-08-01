@@ -1,235 +1,350 @@
-import { FileEdit, Network, UserRound } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, CheckCircle2, Circle, Loader2, PlayCircle, RefreshCw, ShieldAlert } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { AgentTimeline } from "../components/common/AgentTimeline";
-import { StatusBadge } from "../components/common/Badges";
+import { ApiError, api, num } from "../api/client";
+import {
+  caseStateLabel,
+  formatAmount,
+  formatDate,
+  formatDateTime,
+  initials,
+  priorityLabel,
+  prototypeLabel,
+  riskRatingLabel,
+} from "../api/format";
+import { useApi } from "../api/useApi";
+import { RiskBadge, StatusBadge } from "../components/common/Badges";
+import { AuditFeed } from "../components/common/AuditFeed";
 import { Panel } from "../components/common/Panel";
-import { EmptyState } from "../components/common/States";
-import { Tabs } from "../components/common/Tabs";
-import { Breadcrumb } from "../components/layout/Breadcrumb";
-import { EvidenceChip } from "../components/evidence/EvidenceChip";
-import { EvidenceDrawer } from "../components/evidence/EvidenceDrawer";
-import { DataTable, type Column } from "../components/tables/DataTable";
-import { getCase } from "../data/mockCases";
-import type { FlowAnalysisRow } from "../types";
+import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
+import { useApp } from "../context/AppContext";
 
-const TABS = [
-  { id: "flow", label: "Transaction Analysis" },
-  { id: "link", label: "Link Analysis" },
-  { id: "history", label: "Risk Score History" },
-];
+const PRIORITY_TONE: Record<string, "risk" | "warn" | "ok" | "muted"> = {
+  critical: "risk",
+  high: "risk",
+  medium: "warn",
+  low: "muted",
+};
 
-/** Hồ sơ vụ việc — bám screenshot CASE-2026-014 với Evidence Drawer bên phải. */
+const RISK_RATING_TONE: Record<string, "risk" | "warn" | "ok"> = {
+  high: "risk",
+  medium: "warn",
+  low: "ok",
+};
+
+/** Sau khi giao tác vụ, hỏi lại máy chủ tới khi trạng thái đổi. Worker chạy
+ *  nền nên thời điểm xong không đoán trước được từ phía trình duyệt. */
+const POLL_INTERVAL_MS = 1200;
+const POLL_ATTEMPTS = 15;
+
 export function CaseDetailPage() {
   const { caseId } = useParams();
   const navigate = useNavigate();
-  const amlCase = getCase(caseId ?? "");
-  const [tab, setTab] = useState("flow");
-  const [drawerEvidence, setDrawerEvidence] = useState<string | null>(
-    amlCase?.case_id === "CASE-2026-014" ? "EV-00031" : null,
-  );
+  const { pushToast } = useApp();
 
-  if (!amlCase) {
+  const detail = useApi(() => api.case(caseId ?? ""), [caseId]);
+  const audit = useApi(() => api.audit({ case_id: caseId, limit: 50 }), [caseId]);
+  const [running, setRunning] = useState(false);
+
+  // Dọn timer khi rời trang giữa lúc còn đang hỏi vòng.
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
+
+  const reloadAll = useCallback(() => {
+    detail.reload();
+    audit.reload();
+  }, [detail, audit]);
+
+  const runInvestigation = useCallback(async () => {
+    if (!caseId || running) return;
+    const before = detail.data?.state;
+    setRunning(true);
+
+    try {
+      await api.investigate(caseId);
+      pushToast({
+        tone: "info",
+        title: "Đã giao tác vụ cho worker",
+        detail: "Tác vụ vào hàng đợi Redis, worker nền đang xử lý.",
+      });
+    } catch (cause) {
+      setRunning(false);
+      pushToast({
+        tone: "error",
+        title: "Không giao được tác vụ",
+        detail: cause instanceof ApiError ? cause.message : "Lỗi không xác định",
+      });
+      return;
+    }
+
+    // Hỏi lại tới khi trạng thái khác lúc bấm, hoặc hết lượt.
+    for (let attempt = 1; attempt <= POLL_ATTEMPTS; attempt++) {
+      const settled = await new Promise<boolean>((resolve) => {
+        const timer = window.setTimeout(async () => {
+          try {
+            const fresh = await api.case(caseId);
+            if (fresh.state !== before) {
+              pushToast({
+                tone: "success",
+                title: "Worker đã chạy xong một bước",
+                detail: `${caseStateLabel(before ?? "")} → ${caseStateLabel(fresh.state)}`,
+              });
+              resolve(true);
+              return;
+            }
+          } catch {
+            /* thử lại ở lượt sau */
+          }
+          resolve(false);
+        }, POLL_INTERVAL_MS);
+        timers.current.push(timer);
+      });
+      if (settled) break;
+    }
+
+    setRunning(false);
+    reloadAll();
+  }, [caseId, running, detail.data?.state, pushToast, reloadAll]);
+
+  if (detail.loading) {
     return (
-      <EmptyState
-        title="Không tìm thấy vụ việc"
-        detail={`Vụ việc "${caseId}" không tồn tại.`}
-      />
+      <div className="mx-auto max-w-[1280px]">
+        <LoadingSkeleton rows={8} />
+      </div>
     );
   }
 
-  const flowColumns: Column<FlowAnalysisRow>[] = [
-    {
-      key: "date",
-      header: "Ngày giao dịch",
-      render: (r) => <span className="tabular text-ink-mid">{r.date}</span>,
-    },
-    {
-      key: "tx",
-      header: "Mã giao dịch",
-      render: (r) => <span className="tabular font-medium text-info">{r.transaction_id}</span>,
-    },
-    {
-      key: "behaviour",
-      header: "Hành vi",
-      render: (r) => (
-        <StatusBadge
-          tone={r.behaviourTone}
-          label={r.behaviour}
-        />
-      ),
-    },
-  ];
+  if (detail.error || !detail.data) {
+    return (
+      <div className="mx-auto max-w-[1280px]">
+        {detail.error?.includes("Không tìm thấy") ? (
+          <EmptyState title="Không tìm thấy vụ việc" detail={`Vụ việc "${caseId}" không tồn tại.`} />
+        ) : (
+          <ErrorState detail={detail.error ?? "Không tải được vụ việc"} onRetry={detail.reload} />
+        )}
+      </div>
+    );
+  }
+
+  const k = detail.data;
+  const c = k.customer;
+  const awaitingApproval = k.timeline.every((s) => s.status !== "pending");
 
   return (
-    <div className="mx-auto max-w-[1280px]">
-      <Breadcrumb
-        items={[
-          { label: "Hồ sơ vụ việc", to: "/cases" },
-          { label: amlCase.case_id },
-        ]}
-      />
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-[18px] font-bold text-ink-hi">
-          {amlCase.case_id}: {amlCase.title}
-        </h1>
-        <StatusBadge tone="warn" label="ĐANG ĐIỀU TRA" />
+    <div className="mx-auto max-w-[1280px] space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <button
+            type="button"
+            onClick={() => navigate("/alerts")}
+            className="mb-1.5 inline-flex items-center gap-1 text-2xs text-ink-mid hover:text-ink-hi"
+          >
+            <ArrowLeft size={12} aria-hidden />
+            Hàng đợi cảnh báo
+          </button>
+          <h1 className="tabular text-[20px] font-bold text-ink-hi">{k.case_id}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-mid">{k.title}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone="primary" label={caseStateLabel(k.state)} />
+          <StatusBadge tone={PRIORITY_TONE[k.priority] ?? "muted"} label={`Ưu tiên: ${priorityLabel(k.priority)}`} />
+          <RiskBadge score={Math.round(num(k.risk_score))} />
+          <button
+            type="button"
+            onClick={reloadAll}
+            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-primary/50"
+          >
+            <RefreshCw size={12} aria-hidden />
+            Làm mới
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[260px_1fr]">
-        {/* Cột trái: luồng xử lý + khách hàng liên quan */}
+      <div className="grid gap-3 lg:grid-cols-[1fr_320px]">
         <div className="space-y-3">
-          <Panel title="Luồng xử lý hồ sơ">
-            <AgentTimeline steps={amlCase.timeline} />
-          </Panel>
-
+          {/* Máy trạng thái + nút chạy một bước điều tra */}
           <Panel
-            title={
-              <span className="inline-flex items-center gap-1.5">
-                <UserRound size={13} aria-hidden />
-                Khách hàng liên quan
-              </span>
+            title="Tiến trình điều tra"
+            action={
+              awaitingApproval ? (
+                <StatusBadge tone="warn" label="Chờ người phê duyệt" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={runInvestigation}
+                  disabled={running}
+                  className="inline-flex items-center gap-1.5 rounded-control bg-primary px-3 py-1.5 text-2xs font-semibold text-app hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {running ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" aria-hidden />
+                      Worker đang chạy…
+                    </>
+                  ) : (
+                    <>
+                      <PlayCircle size={12} aria-hidden />
+                      Chạy bước điều tra
+                    </>
+                  )}
+                </button>
+              )
             }
           >
-            <div className="rounded-control border border-line bg-elev p-3">
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-panel text-2xs font-bold text-primary">
-                  {amlCase.customer.initials}
+            <ol className="relative ml-2 space-y-3 border-l border-line pl-5">
+              {k.timeline.map((step) => (
+                <li key={step.state} className="relative">
+                  <span
+                    aria-hidden
+                    className={`absolute -left-[27px] top-0.5 ${
+                      step.status === "done"
+                        ? "text-ok"
+                        : step.status === "active"
+                          ? "text-primary"
+                          : "text-ink-low"
+                    }`}
+                  >
+                    {step.status === "done" ? (
+                      <CheckCircle2 size={14} />
+                    ) : step.status === "active" ? (
+                      <Loader2 size={14} className={running ? "animate-spin" : ""} />
+                    ) : (
+                      <Circle size={14} />
+                    )}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`text-[13px] ${
+                        step.status === "pending" ? "text-ink-low" : "font-semibold text-ink-hi"
+                      }`}
+                    >
+                      {step.label}
+                    </span>
+                    {step.status === "active" && <StatusBadge tone="primary" label="Hiện tại" />}
+                  </div>
+                  {step.occurred_at && (
+                    <div className="tabular mt-0.5 text-2xs text-ink-low">
+                      {formatDateTime(step.occurred_at)}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+
+            {/* Icon và đoạn văn là hai flex item; phần chữ phải nằm trong một
+                thẻ bọc, nếu không mỗi <em> bên trong lại thành một flex item
+                riêng và câu vỡ thành từng cột. */}
+            <div className="mt-4 flex items-start gap-1.5 border-t border-line pt-3 text-2xs text-ink-low">
+              <ShieldAlert size={12} className="mt-0.5 shrink-0" aria-hidden />
+              <p>
+                Mỗi lần bấm đẩy một tác vụ vào Redis; worker nền chuyển vụ việc sang trạng thái kế tiếp và ghi
+                một dòng vào nhật ký kiểm toán. Chuỗi dừng ở <em>Chờ người phê duyệt</em> — lối vào{" "}
+                <em>Xuất hồ sơ</em> phải là quyết định có người ký tên (NT3), không phải một lượt chạy tự động.
+              </p>
+            </div>
+          </Panel>
+
+          <Panel title="Yếu tố đóng góp vào điểm rủi ro">
+            {k.reasons.length === 0 ? (
+              <EmptyState title="Không có yếu tố" detail="Vụ việc chưa có cảnh báo kèm yếu tố đóng góp." />
+            ) : (
+              <div className="space-y-2">
+                {k.reasons.map((r, i) => (
+                  <div
+                    key={`${r.factor_code}-${i}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-line bg-elev px-3 py-2 text-2xs"
+                  >
+                    <span className="text-ink-hi">{r.factor_label}</span>
+                    <span className="tabular text-ink-mid">
+                      <span className="font-semibold text-ink-hi">{num(r.contribution).toFixed(2)}</span> · trọng
+                      số {num(r.weight).toFixed(2)} · {r.typology_code}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title="Nhật ký kiểm toán">
+            {audit.loading ? (
+              <LoadingSkeleton rows={4} />
+            ) : audit.error ? (
+              <ErrorState detail={audit.error} onRetry={audit.reload} />
+            ) : (
+              <AuditFeed events={audit.data ?? []} />
+            )}
+          </Panel>
+        </div>
+
+        <div className="space-y-3">
+          <Panel title="Tóm tắt hồ sơ">
+            <dl className="space-y-2 text-2xs">
+              <Field label="Tài khoản chủ thể" value={k.subject_account_key} mono />
+              <Field label="Số cảnh báo" value={String(k.alert_count)} mono />
+              <Field label="Số bằng chứng" value={String(k.evidence_count)} mono />
+              <Field label="Phụ trách" value={k.assigned_to ?? "Chưa giao"} />
+              <Field label="Mở lúc" value={formatDateTime(k.created_at)} />
+            </dl>
+          </Panel>
+
+          {k.alert_ids.length > 0 && (
+            <Panel title="Cảnh báo trong vụ việc">
+              <ul className="space-y-1.5">
+                {k.alert_ids.map((id) => (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/alerts/${id}`)}
+                      className="tabular w-full rounded-control border border-line bg-elev px-2.5 py-1.5 text-left text-2xs text-info hover:border-primary/50"
+                    >
+                      {id}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          )}
+
+          {c && (
+            <Panel title="Hồ sơ chủ thể">
+              <div className="mb-3 flex items-center gap-2.5">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-elev text-[13px] font-bold text-primary">
+                  {initials(c.customer_id)}
                 </span>
                 <div>
-                  <div className="text-[13px] font-bold uppercase text-ink-hi">
-                    {amlCase.customer.name}
-                  </div>
-                  <div className="tabular text-2xs text-ink-low">
-                    CID: {amlCase.customer.customerId}
-                  </div>
-                  <div className="mt-0.5">
-                    <StatusBadge tone="risk" label={`RỦI RO CAO (${amlCase.risk_score})`} />
-                  </div>
+                  <div className="tabular text-[14px] font-semibold text-ink-hi">{c.customer_id}</div>
+                  <div className="text-2xs text-ink-mid">{c.occupation}</div>
                 </div>
               </div>
-              <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-2.5 text-2xs">
-                <div>
-                  <dt className="uppercase text-ink-low">Loại KH</dt>
-                  <dd className="mt-0.5 font-medium text-ink-hi">{amlCase.customer.segment}</dd>
-                </div>
-                <div>
-                  <dt className="uppercase text-ink-low">Quốc tịch</dt>
-                  <dd className="mt-0.5 font-medium text-ink-hi">
-                    {amlCase.customer.nationality}
+              <dl className="space-y-2 text-2xs">
+                <Field label="Nguyên mẫu" value={prototypeLabel(c.prototype)} />
+                <Field label="Thu nhập khai báo" value={c.declared_income_band} />
+                <Field label="Doanh số kỳ vọng/tháng" value={formatAmount(c.expected_monthly_volume)} mono />
+                <Field label="Quốc gia đăng ký" value={c.registered_country} />
+                <Field label="Ngày mở hồ sơ" value={formatDate(c.onboarding_date)} />
+                <div className="flex items-center justify-between pt-1">
+                  <dt className="text-ink-mid">Mức rủi ro hồ sơ</dt>
+                  <dd>
+                    <StatusBadge
+                      tone={RISK_RATING_TONE[c.risk_rating] ?? "muted"}
+                      label={riskRatingLabel(c.risk_rating)}
+                    />
                   </dd>
                 </div>
               </dl>
-            </div>
-          </Panel>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => navigate(`/network/${amlCase.case_id}`)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-control border border-line bg-panel py-2 text-2xs font-semibold text-ink-hi hover:border-primary/50"
-            >
-              <Network size={12} aria-hidden />
-              Xem mạng lưới
-            </button>
-            <button
-              type="button"
-              disabled={!amlCase.sarId}
-              title={amlCase.sarId ? undefined : "Vụ việc chưa có bản nháp SAR"}
-              onClick={() => amlCase.sarId && navigate(`/sar/${amlCase.sarId}/edit`)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-control bg-primary py-2 text-2xs font-semibold text-app hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <FileEdit size={12} aria-hidden />
-              Mở bản nháp SAR
-            </button>
-          </div>
-        </div>
-
-        {/* Cột giữa: phân tích dòng tiền */}
-        <div className="space-y-3">
-          <Panel padded={false}>
-            <div className="px-4 pt-3">
-              <Tabs tabs={TABS} active={tab} onChange={setTab} />
-            </div>
-            {tab === "flow" && (
-              <div>
-                <div className="px-4 py-3">
-                  <div className="text-[14px] font-semibold text-ink-hi">
-                    Biểu đồ dòng tiền (Flow Analysis)
-                  </div>
-                  <p className="mt-0.5 text-2xs text-ink-mid">
-                    Phân tích các giao dịch dưới ngưỡng báo cáo trong vòng 30 ngày.
-                  </p>
-                </div>
-                {amlCase.flowRows.length === 0 ? (
-                  <EmptyState detail="Vụ việc này chưa có dữ liệu phân tích dòng tiền." />
-                ) : (
-                  <DataTable
-                    columns={flowColumns}
-                    rows={amlCase.flowRows}
-                    rowKey={(r) => r.transaction_id}
-                    dense
-                  />
-                )}
-              </div>
-            )}
-            {tab === "link" && (
-              <div className="p-4">
-                <p className="mb-3 text-[13px] text-ink-mid">
-                  Phân tích liên kết được thực hiện bởi Network Analysis Tool (GRAPH-008).
-                </p>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/network/${amlCase.case_id}`)}
-                  className="rounded-control bg-primary px-3 py-2 text-[13px] font-semibold text-app hover:bg-primary-hover"
-                >
-                  Mở sơ đồ mạng lưới đầy đủ
-                </button>
-              </div>
-            )}
-            {tab === "history" && (
-              <div className="p-4">
-                <div className="space-y-2">
-                  {[
-                    { date: "12/05/2026", score: 89, note: "Sau khi gắn EV-00052 (CALC-014)" },
-                    { date: "11/05/2026", score: 74, note: "Phát hiện chuỗi giao dịch dưới ngưỡng" },
-                    { date: "10/05/2026", score: 41, note: "Điểm khởi tạo từ cảnh báo" },
-                  ].map((h) => (
-                    <div
-                      key={h.date}
-                      className="flex items-center gap-3 rounded-control border border-line bg-elev px-3 py-2"
-                    >
-                      <span className="tabular w-20 text-2xs text-ink-low">{h.date}</span>
-                      <span className="tabular w-10 text-[14px] font-bold text-ink-hi">
-                        {h.score}
-                      </span>
-                      <span className="flex-1 text-2xs text-ink-mid">{h.note}</span>
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-2 text-2xs text-ink-low">
-                  Nguồn điểm: Công cụ tính toán CALC-014 — không phải số do mô hình tự sinh (NT2).
-                </p>
-              </div>
-            )}
-          </Panel>
-
-          <Panel title="Bằng chứng trong case" >
-            <div className="flex flex-wrap gap-1.5">
-              {["EV-00031", "EV-00045", "EV-00052", "EV-00029", "EV-00030"].map((id) => (
-                <EvidenceChip key={id} evidenceId={id} onOpen={setDrawerEvidence} />
-              ))}
-            </div>
-          </Panel>
+            </Panel>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
 
-      <EvidenceDrawer
-        evidenceId={drawerEvidence}
-        onClose={() => setDrawerEvidence(null)}
-        onSelect={setDrawerEvidence}
-      />
+function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <dt className="text-ink-mid">{label}</dt>
+      <dd className={`text-right text-ink-hi ${mono ? "tabular" : ""}`}>{value}</dd>
     </div>
   );
 }

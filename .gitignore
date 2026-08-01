@@ -84,3 +84,4 @@ jenkins/.env
 # CI — sản phẩm trung gian
 .image-tags
 pytest-report.xml
+.gstack/

@@ -1,151 +1,136 @@
-import {
-  AlertTriangle,
-  BellPlus,
-  BrainCircuit,
-  Plus,
-  Timer,
-} from "lucide-react";
+import { AlertTriangle, BellPlus, BrainCircuit, Gauge } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Cell,
-  Pie,
-  PieChart,
-  PolarAngleAxis,
-  PolarGrid,
-  Radar,
-  RadarChart,
-  ResponsiveContainer,
-} from "recharts";
+import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 
-import { ConfidenceBadge, RiskBadge, StatusBadge } from "../components/common/Badges";
-import { FilterBar } from "../components/common/FilterBar";
+import { api, num } from "../api/client";
+import { alertStatusLabel, detectorLabel, formatRelative, initials } from "../api/format";
+import { useApi } from "../api/useApi";
+import { RiskBadge, StatusBadge } from "../components/common/Badges";
 import { KPIStatCard } from "../components/common/KPIStatCard";
-import { Pagination } from "../components/common/Pagination";
 import { Panel } from "../components/common/Panel";
-import { ReasonModal } from "../components/common/ReasonModal";
 import { SearchInput } from "../components/common/SearchInput";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
 import { DataTable, type Column } from "../components/tables/DataTable";
-import { useApp } from "../context/AppContext";
-import { ALERTS } from "../data/mockAlerts";
-import type { Alert } from "../types";
+import type { ApiAlert } from "../api/client";
 
-const RISK_DIST = [
-  { name: "Cao", value: 126, color: "#EF4444" },
-  { name: "Trung bình", value: 398, color: "#F59E0B" },
-  { name: "Thấp", value: 724, color: "#22C55E" },
-];
-
-const RADAR_DATA = [
-  { axis: "Structuring", value: 82 },
-  { axis: "Velocity", value: 56 },
-  { axis: "Sanctions", value: 44 },
-  { axis: "Geographic", value: 30 },
-  { axis: "PEP Match", value: 61 },
-];
-
-type DemoState = "normal" | "loading" | "empty" | "error";
-
-const STATUS_TONE: Record<Alert["status"], "warn" | "muted" | "risk" | "ok"> = {
-  in_progress: "warn",
-  open: "muted",
-  urgent: "risk",
-  resolved: "ok",
+const ALERT_STATUS_TONE: Record<string, "warn" | "muted" | "risk" | "ok"> = {
+  open: "risk",
+  grouped: "warn",
+  closed: "ok",
 };
+
+const DETECTOR_TONE: Record<string, "info" | "primary" | "muted"> = {
+  rule: "muted",
+  ml: "primary",
+  graph: "info",
+};
+
+const RISK_BANDS = [
+  { name: "Cao (≥75)", color: "#EF4444", test: (s: number) => s >= 75 },
+  { name: "Trung bình (50–74)", color: "#F59E0B", test: (s: number) => s >= 50 && s < 75 },
+  { name: "Thấp (<50)", color: "#22C55E", test: (s: number) => s < 50 },
+];
 
 export function AlertsPage() {
   const navigate = useNavigate();
-  const { pushToast } = useApp();
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [demoState, setDemoState] = useState<DemoState>("normal");
-  const [chipFilters, setChipFilters] = useState<Record<string, boolean>>({
-    critical: true,
-    structuring: true,
-  });
-  const [createOpen, setCreateOpen] = useState(false);
+  const [typology, setTypology] = useState("");
 
+  const alerts = useApi(() => api.alerts({ typology_code: typology || undefined, limit: 200 }), [typology]);
+  const dashboard = useApi(() => api.dashboard(), []);
+
+  const rows = alerts.data ?? [];
+
+  // Lọc theo từ khoá ở phía trình duyệt: tập cảnh báo trong một phiên điều
+  // tra nhỏ, một vòng gọi lại máy chủ cho mỗi ký tự gõ vào không đáng.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return ALERTS.filter(
+    if (!q) return rows;
+    return rows.filter(
       (a) =>
-        !q ||
         a.alert_id.toLowerCase().includes(q) ||
-        a.customer.name.toLowerCase().includes(q) ||
+        a.customer_id.toLowerCase().includes(q) ||
+        a.account_key.toLowerCase().includes(q) ||
+        a.occupation.toLowerCase().includes(q) ||
         a.typology_label.toLowerCase().includes(q),
     );
-  }, [search]);
+  }, [rows, search]);
 
-  const columns: Column<Alert>[] = [
+  const riskDistribution = useMemo(
+    () =>
+      RISK_BANDS.map((band) => ({
+        ...band,
+        value: rows.filter((a) => band.test(num(a.risk_score))).length,
+      })).filter((band) => band.value > 0),
+    [rows],
+  );
+
+  const columns: Column<ApiAlert>[] = [
     {
-      key: "id",
-      header: (
-        <span className="inline-flex items-center gap-2">
-          <input type="checkbox" aria-label="Chọn tất cả" className="accent-[#00B2A9]" onClick={(e) => e.stopPropagation()} />
-          Mã cảnh báo
-        </span>
-      ),
-      render: (a) => (
-        <span className="inline-flex items-center gap-2">
-          <input
-            type="checkbox"
-            aria-label={`Chọn ${a.alert_id}`}
-            className="accent-[#00B2A9]"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <span className="tabular font-medium text-info">{a.alert_id}</span>
-        </span>
-      ),
+      key: "alert_id",
+      header: "Mã cảnh báo",
+      render: (a) => <span className="tabular font-medium text-info">{a.alert_id}</span>,
     },
     {
-      key: "customer",
-      header: "Khách hàng",
+      key: "subject",
+      header: "Chủ thể",
       render: (a) => (
         <span className="inline-flex items-center gap-2">
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-elev text-2xs font-bold text-primary">
-            {a.customer.initials}
+            {initials(a.customer_id)}
           </span>
-          {a.customer.name}
+          <span>
+            <span className="tabular block text-[13px] text-ink-hi">{a.customer_id}</span>
+            <span className="block text-2xs text-ink-mid">{a.occupation}</span>
+          </span>
         </span>
       ),
     },
-    { key: "risk", header: "Điểm rủi ro", render: (a) => <RiskBadge score={a.risk_score} /> },
     {
-      key: "confidence",
-      header: "Độ tin cậy AI",
-      render: (a) => <ConfidenceBadge value={a.ai_confidence} />,
+      key: "account",
+      header: "Tài khoản",
+      render: (a) => <span className="tabular text-ink-mid">{a.account_key}</span>,
+    },
+    {
+      key: "risk",
+      header: "Điểm rủi ro",
+      render: (a) => <RiskBadge score={Math.round(num(a.risk_score))} />,
+    },
+    {
+      key: "detector",
+      header: "Bộ phát hiện",
+      render: (a) => <StatusBadge tone={DETECTOR_TONE[a.detector] ?? "muted"} label={detectorLabel(a.detector)} />,
     },
     {
       key: "typology",
       header: "Typology",
       render: (a) => (
-        <span
-          className="text-ink-mid"
-          title={`Typology được gợi ý: ${a.typology_code} — cần con người rà soát`}
-        >
+        <span className="text-ink-mid" title={`${a.typology_code} — gợi ý của hệ thống, cần con người rà soát`}>
           {a.typology_label}
+        </span>
+      ),
+    },
+    {
+      key: "factors",
+      header: "Yếu tố",
+      render: (a) => (
+        <span className="tabular text-ink-mid" title="NT7 — mỗi điểm rủi ro kèm tối thiểu ba yếu tố đóng góp">
+          {a.factor_count}
         </span>
       ),
     },
     {
       key: "status",
       header: "Trạng thái",
-      render: (a) => <StatusBadge tone={STATUS_TONE[a.status]} label={a.statusLabel} />,
+      render: (a) => (
+        <StatusBadge tone={ALERT_STATUS_TONE[a.status] ?? "muted"} label={alertStatusLabel(a.status)} />
+      ),
     },
     {
-      key: "sla",
-      header: "SLA",
-      render: (a) =>
-        a.slaOverdue ? (
-          <span className="tabular font-semibold text-risk underline decoration-risk/60">
-            QUÁ HẠN
-          </span>
-        ) : (
-          <span className={`tabular ${a.sla.includes("còn lại") ? "text-warn" : "text-ink-mid"}`}>
-            {a.sla}
-          </span>
-        ),
+      key: "created",
+      header: "Phát sinh",
+      render: (a) => <span className="text-ink-mid">{formatRelative(a.created_at)}</span>,
     },
     {
       key: "action",
@@ -154,116 +139,76 @@ export function AlertsPage() {
     },
   ];
 
+  const d = dashboard.data;
+
   return (
     <div className="mx-auto max-w-[1280px] space-y-3">
-      {/* Hàng KPI */}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <KPIStatCard
-          label="Tổng cảnh báo mới"
-          value="1,248"
+          label="Cảnh báo chưa đóng"
+          value={d ? String(d.open_alerts) : "—"}
           icon={<BellPlus size={14} aria-hidden />}
-          trend={{ value: "+18.6% so với 7 ngày qua", direction: "up", tone: "good" }}
-          spark={[3, 4, 3, 5, 6, 5, 8]}
+          note="Đếm trực tiếp từ bảng alert"
         />
         <KPIStatCard
-          label="Rủi ro cao (Critical)"
-          value="126"
+          label="Rủi ro cao (≥80)"
+          value={d ? String(d.high_risk_alerts) : "—"}
           icon={<AlertTriangle size={14} aria-hidden />}
-          trend={{ value: "+22.4% so với 7 ngày qua", direction: "up", tone: "bad" }}
-          spark={[2, 3, 2, 4, 3, 5, 6]}
-          sparkColor="#EF4444"
+          note="Ngưỡng điểm 80/100"
         />
         <KPIStatCard
-          label="Độ tin cậy AI trung bình"
-          value="92.4%"
+          label="Điểm rủi ro trung bình"
+          value={d ? d.avg_risk_score.toFixed(1) : "—"}
+          icon={<Gauge size={14} aria-hidden />}
+          note="Trung bình toàn bộ cảnh báo"
+        />
+        <KPIStatCard
+          label="Vụ việc đang điều tra"
+          value={d ? String(d.cases_investigating) : "—"}
           icon={<BrainCircuit size={14} aria-hidden />}
-          trend={{ value: "Ổn định (±0.2%)", direction: "up", tone: "good" }}
-          spark={[5, 5, 6, 5, 6, 6, 6]}
-        />
-        <KPIStatCard
-          label="SLA trung bình"
-          value="1.4h"
-          icon={<Timer size={14} aria-hidden />}
-          trend={{ value: "-12% thời gian xử lý", direction: "down", tone: "good" }}
-          spark={[8, 7, 6, 6, 5, 4, 4]}
-          sparkColor="#F59E0B"
+          note="Chưa xuất hồ sơ, chưa đóng"
         />
       </div>
 
-      <FilterBar
-        dateLabel="12 May - 19 May, 2026"
-        onAdvanced={() => pushToast({ tone: "info", title: "Bộ lọc nâng cao (mô phỏng)" })}
-        onExport={() => pushToast({ tone: "success", title: "Đã xuất báo cáo hàng đợi (mô phỏng)" })}
-        chips={[
-          {
-            id: "critical",
-            label: "Critical",
-            active: chipFilters.critical,
-            tone: "risk",
-            onToggle: (id) => setChipFilters((f) => ({ ...f, [id]: !f[id] })),
-          },
-          {
-            id: "structuring",
-            label: "Structuring",
-            active: chipFilters.structuring,
-            onToggle: (id) => setChipFilters((f) => ({ ...f, [id]: !f[id] })),
-          },
-          { id: "more", label: "+3 more", active: false, onToggle: () => undefined },
-        ]}
-        trailing={
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-control bg-primary px-3 py-1.5 text-2xs font-semibold text-app hover:bg-primary-hover"
-          >
-            <Plus size={12} aria-hidden />
-            Tạo vụ việc mới
-          </button>
-        }
-      />
-
-      {/* Bảng cảnh báo */}
       <Panel
         padded={false}
         title={
-          <div className="flex items-center gap-3">
-            <span>Danh sách cảnh báo</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span>Hàng đợi cảnh báo</span>
             <SearchInput
               value={search}
-              onChange={(v) => {
-                setSearch(v);
-                setPage(1);
-              }}
-              placeholder="Tìm kiếm mã, khách hàng, typology..."
+              onChange={setSearch}
+              placeholder="Tìm mã cảnh báo, chủ thể, tài khoản, typology..."
               className="w-72 font-normal"
-              shortcutHint="⌘K"
             />
           </div>
         }
         action={
           <label className="flex items-center gap-1.5 text-2xs text-ink-low">
-            Trạng thái demo
+            Typology
             <select
-              value={demoState}
-              onChange={(e) => setDemoState(e.target.value as DemoState)}
+              value={typology}
+              onChange={(e) => setTypology(e.target.value)}
               className="rounded-control border border-line bg-elev px-1.5 py-1 text-2xs text-ink-hi focus:outline-none"
             >
-              <option value="normal">Bình thường</option>
-              <option value="loading">Đang tải</option>
-              <option value="empty">Không có dữ liệu</option>
-              <option value="error">Lỗi tải dữ liệu</option>
+              <option value="">Tất cả</option>
+              {(d?.typology_distribution ?? []).map((t) => (
+                <option key={t.typology_code} value={t.typology_code}>
+                  {t.typology_code} — {t.typology_label}
+                </option>
+              ))}
             </select>
           </label>
         }
       >
-        {demoState === "loading" && <LoadingSkeleton rows={5} />}
-        {demoState === "empty" && <EmptyState />}
-        {demoState === "error" && (
-          <ErrorState onRetry={() => setDemoState("normal")} />
-        )}
-        {demoState === "normal" &&
+        {alerts.loading && <LoadingSkeleton rows={6} />}
+        {alerts.error && <ErrorState detail={alerts.error} onRetry={alerts.reload} />}
+        {!alerts.loading &&
+          !alerts.error &&
           (filtered.length === 0 ? (
-            <EmptyState detail={`Không có cảnh báo nào khớp "${search}".`} />
+            <EmptyState
+              detail={search ? `Không có cảnh báo nào khớp "${search}".` : "Chưa có cảnh báo nào trong hệ thống."}
+            />
           ) : (
             <>
               <DataTable
@@ -272,119 +217,85 @@ export function AlertsPage() {
                 rowKey={(a) => a.alert_id}
                 onRowClick={(a) => navigate(`/alerts/${a.alert_id}`)}
               />
-              <div className="border-t border-line px-2">
-                <Pagination
-                  page={page}
-                  pageCount={250}
-                  onChange={setPage}
-                  summary={`Hiển thị 1-${filtered.length} trong số 1,248 cảnh báo`}
-                />
+              <div className="border-t border-line px-3 py-2 text-2xs text-ink-low">
+                Hiển thị {filtered.length} trong số {rows.length} cảnh báo
               </div>
             </>
           ))}
       </Panel>
 
-      {/* Hàng dưới: donut + radar + AI insight */}
-      <div className="grid gap-3 lg:grid-cols-3">
-        <Panel title="Phân bổ rủi ro">
-          <div className="flex items-center gap-4">
-            <div className="relative h-32 w-32 shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={RISK_DIST}
-                    dataKey="value"
-                    innerRadius={42}
-                    outerRadius={58}
-                    strokeWidth={0}
-                    isAnimationActive={false}
-                  >
-                    {RISK_DIST.map((d) => (
-                      <Cell key={d.name} fill={d.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="tabular text-[18px] font-bold text-ink-hi">1.2k</span>
-                <span className="text-2xs uppercase text-ink-low">Tổng</span>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Panel title="Phân bổ theo dải rủi ro">
+          {riskDistribution.length === 0 ? (
+            <EmptyState title="Chưa có dữ liệu" detail="Không có cảnh báo nào để phân bổ." />
+          ) : (
+            <div className="flex items-center gap-4">
+              <div className="relative h-32 w-32 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={riskDistribution}
+                      dataKey="value"
+                      innerRadius={42}
+                      outerRadius={58}
+                      strokeWidth={0}
+                      isAnimationActive={false}
+                    >
+                      {riskDistribution.map((band) => (
+                        <Cell key={band.name} fill={band.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="tabular text-[18px] font-bold text-ink-hi">{rows.length}</span>
+                  <span className="text-2xs uppercase text-ink-low">Tổng</span>
+                </div>
               </div>
+              <ul className="space-y-2 text-2xs">
+                {riskDistribution.map((band) => (
+                  <li key={band.name} className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full" style={{ background: band.color }} aria-hidden />
+                    <span className="text-ink-mid">{band.name}</span>
+                    <span className="tabular font-semibold text-ink-hi">
+                      {band.value} ({Math.round((band.value / (rows.length || 1)) * 100)}%)
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="space-y-2 text-2xs">
-              {RISK_DIST.map((d) => (
-                <li key={d.name} className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full" style={{ background: d.color }} aria-hidden />
-                  <span className="text-ink-mid">{d.name}</span>
-                  <span className="tabular font-semibold text-ink-hi">
-                    {d.value} ({Math.round((d.value / 1248) * 100)}%)
-                  </span>
-                </li>
+          )}
+        </Panel>
+
+        <Panel title="Phân bổ theo typology">
+          {!d ? (
+            <LoadingSkeleton rows={4} />
+          ) : (
+            <div className="space-y-3">
+              {d.typology_distribution.map((t) => (
+                <div key={t.typology_code}>
+                  <div className="mb-1 flex items-center justify-between text-2xs">
+                    <span className="text-ink-mid">
+                      <span className="tabular font-semibold text-ink-hi">{t.typology_code}</span> {t.typology_label}
+                    </span>
+                    <span className="tabular font-semibold text-ink-hi">
+                      {t.alert_count} ({t.share_pct}%)
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded bg-elev">
+                    <div className="h-full rounded bg-primary" style={{ width: `${t.share_pct}%` }} />
+                  </div>
+                </div>
               ))}
-            </ul>
-          </div>
-        </Panel>
-
-        <Panel title="Alert Typology Radar">
-          <div className="h-40">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={RADAR_DATA} outerRadius="75%">
-                <PolarGrid stroke="rgba(148,163,184,0.18)" />
-                <PolarAngleAxis
-                  dataKey="axis"
-                  tick={{ fill: "#64748B", fontSize: 9 }}
-                />
-                <Radar
-                  dataKey="value"
-                  stroke="#00B2A9"
-                  fill="#00B2A9"
-                  fillOpacity={0.25}
-                  isAnimationActive={false}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
-        </Panel>
-
-        <Panel
-          title={
-            <span className="inline-flex items-center gap-1.5">
-              <BrainCircuit size={13} className="text-primary" aria-hidden />
-              AI Insight Tức thì
-            </span>
-          }
-          elevated
-        >
-          <div className="rounded-control border border-line bg-panel p-3 text-2xs leading-relaxed text-ink-mid">
-            <span className="font-semibold text-primary">Phát hiện Structuring:</span>{" "}
-            Cảnh báo ALT-2026-001 có độ tương đồng 94% với các mẫu rửa tiền đã xác nhận
-            trước đây tại chi nhánh TP.HCM.
-          </div>
-          <button
-            type="button"
-            onClick={() => navigate("/alerts/ALT-2026-001")}
-            className="mt-3 w-full rounded-control bg-primary py-2 text-2xs font-bold uppercase tracking-wider text-app hover:bg-primary-hover"
-          >
-            Phân tích sâu bằng AI
-          </button>
+            </div>
+          )}
         </Panel>
       </div>
 
-      <ReasonModal
-        open={createOpen}
-        title="Tạo vụ việc mới"
-        description="Vụ việc mới sẽ gom các cảnh báo được chọn theo chủ thể. Hành động này ghi vào audit trail."
-        confirmLabel="Tạo vụ việc"
-        onClose={() => setCreateOpen(false)}
-        onConfirm={() => {
-          setCreateOpen(false);
-          pushToast({
-            tone: "success",
-            title: "Đã tạo vụ việc CASE-2026-014",
-            detail: "Gom từ cảnh báo ALT-2026-001 · ghi nhật ký NT4.",
-          });
-          navigate("/cases/CASE-2026-014");
-        }}
-      />
+      <p className="px-1 text-2xs text-ink-low">
+        Chủ thể được định danh bằng mã khách hàng và mô tả nghề nghiệp — lược đồ cố ý không lưu họ tên vì đây
+        là dữ liệu tổng hợp, không phải khách hàng thật.
+      </p>
     </div>
   );
 }

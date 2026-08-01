@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Dựng hoặc cập nhật FIN-07 trên VM GCP phục vụ https://amlmonitoring.site/
+#
+# Chạy trên chính VM, từ thư mục gốc của repo:
+#
+#   bash deploy/vm-deploy.sh
+#
+# Chạy lại được nhiều lần: kéo code mới, dựng lại image, khởi động lại các
+# dịch vụ đã đổi, rồi kiểm tra sức khoẻ. Dữ liệu trong volume giữ nguyên.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+ROOT=$(pwd)
+
+COMPOSE_FILES=(-f docker-compose.yml -f deploy/docker-compose.vm.yml)
+SITE_DOMAIN=${SITE_DOMAIN:-amlmonitoring.site}
+
+log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+die() { printf '\n\033[1;31mLỗi: %s\033[0m\n' "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------
+log "Kiểm tra điều kiện"
+
+command -v docker >/dev/null || die "chưa cài docker"
+docker compose version >/dev/null 2>&1 || die "chưa có docker compose v2"
+
+[[ -f .env ]] || die ".env chưa tồn tại. Tạo từ .env.example và đặt POSTGRES_PASSWORD, FIN07_AGENT_DB_PASSWORD, ACME_EMAIL"
+
+# Đọc .env để kiểm tra trước, thay vì để compose chết giữa chừng với một
+# thông báo khó lần ra.
+set -a; source .env; set +a
+for var in POSTGRES_PASSWORD FIN07_AGENT_DB_PASSWORD ACME_EMAIL; do
+    [[ -n "${!var:-}" ]] || die "$var chưa đặt trong .env"
+done
+
+# Mật khẩu mặc định của môi trường dev không được mang lên máy có IP công cộng.
+if [[ "$POSTGRES_PASSWORD" == "fin07_dev_password" ]]; then
+    die "POSTGRES_PASSWORD vẫn là mật khẩu mặc định của môi trường dev — đổi trước khi deploy"
+fi
+
+# ---------------------------------------------------------------------
+log "Kiểm tra DNS của $SITE_DOMAIN"
+
+PUBLIC_IP=$(curl -fsS --max-time 10 -H 'Metadata-Flavor: Google' \
+    http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip \
+    2>/dev/null || curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || echo "")
+DNS_IP=$(getent hosts "$SITE_DOMAIN" 2>/dev/null | awk '{print $1}' | head -1 || echo "")
+
+if [[ -n "$PUBLIC_IP" && -n "$DNS_IP" && "$PUBLIC_IP" != "$DNS_IP" ]]; then
+    # Cảnh báo chứ không dừng: dựng stack vẫn có ích, chỉ là Caddy sẽ xin
+    # chứng chỉ thất bại tới khi DNS trỏ đúng.
+    printf '\033[1;33mCảnh báo: %s trỏ về %s, còn máy này là %s.\n' "$SITE_DOMAIN" "$DNS_IP" "$PUBLIC_IP"
+    printf 'Let'"'"'s Encrypt sẽ không cấp được chứng chỉ tới khi DNS trỏ đúng.\033[0m\n'
+else
+    echo "DNS: $SITE_DOMAIN → ${DNS_IP:-chưa phân giải được} (máy này: ${PUBLIC_IP:-không xác định})"
+fi
+
+# ---------------------------------------------------------------------
+log "Kéo code mới nhất"
+if [[ -d .git ]]; then
+    git fetch --all --prune
+    git checkout develop
+    git pull --ff-only
+    echo "HEAD: $(git log --oneline -1)"
+fi
+
+# ---------------------------------------------------------------------
+log "Dựng image"
+docker compose "${COMPOSE_FILES[@]}" build
+
+log "Khởi động stack"
+# --wait chờ tới khi healthcheck xanh; không có nó thì script kết thúc trước
+# khi hệ thống thực sự phục vụ được và bước kiểm tra bên dưới báo lỗi giả.
+docker compose "${COMPOSE_FILES[@]}" up -d --wait --remove-orphans
+
+# ---------------------------------------------------------------------
+log "Kiểm tra sức khoẻ"
+
+docker compose "${COMPOSE_FILES[@]}" ps
+
+echo
+echo "-- API (từ trong mạng compose) --"
+docker compose "${COMPOSE_FILES[@]}" exec -T api \
+    python -c "import urllib.request,sys; print(urllib.request.urlopen('http://127.0.0.1:8000/health/ready').read().decode())"
+
+echo "-- Giao diện qua Caddy (HTTPS) --"
+if curl -fsS --max-time 20 "https://$SITE_DOMAIN/healthz" >/dev/null 2>&1; then
+    echo "https://$SITE_DOMAIN/healthz → ok"
+else
+    printf '\033[1;33mChưa gọi được qua HTTPS. Xem log Caddy:\n'
+    printf '  docker compose %s logs caddy --tail 50\033[0m\n' "${COMPOSE_FILES[*]}"
+fi
+
+echo "-- API qua Caddy --"
+curl -fsS --max-time 20 "https://$SITE_DOMAIN/api/v1/dashboard" 2>/dev/null \
+    | head -c 200 || echo "(chưa gọi được — bình thường nếu chứng chỉ đang được cấp)"
+
+log "Xong. Giao diện: https://$SITE_DOMAIN/"
+echo "Thư mục triển khai: $ROOT"

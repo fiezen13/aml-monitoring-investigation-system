@@ -12,13 +12,43 @@
 >
 > - Console — <http://localhost:5173>
 > - API docs — <http://localhost:8000/docs>
+> - Bản chạy thật — <https://amlmonitoring.site/>
 >
 > | Tài liệu | Nội dung |
 > |---|---|
 > | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
+> | [docs/DEPLOY_VM.md](docs/DEPLOY_VM.md) | Triển khai lên VM GCP sau Caddy + TLS |
 > | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | Toàn bộ biến môi trường |
 > | [docs/AML_INGESTION.md](docs/AML_INGESTION.md) | Luồng nạp dữ liệu IBM AML |
 > | [docs/CI.md](docs/CI.md) | Pipeline chạy gì trên mỗi pull request |
+>
+> ---
+>
+> ## 🔗 Luồng demo — giao diện nối vào dữ liệu thật
+>
+> ```mermaid
+> flowchart LR
+>     A[Đăng nhập] --> B[Tổng quan]
+>     B --> C[Hàng đợi cảnh báo]
+>     C --> D[Chi tiết cảnh báo]
+>     D --> E[Hồ sơ vụ việc]
+>     E -->|Chạy bước điều tra| F[(Redis)]
+>     F --> G[Worker nền]
+>     G -->|đổi trạng thái| H[(PostgreSQL)]
+>     G -->|ghi nhật ký| I[Audit trail]
+> ```
+>
+> Sáu trang trên đọc thẳng từ PostgreSQL qua `/api/v1`: không còn con số nào
+> cứng hoá trong mã nguồn giao diện. Bấm **Chạy bước điều tra** đẩy một tác
+> vụ vào Redis, worker nền nhận và đưa vụ việc sang trạng thái kế tiếp trên
+> máy trạng thái 12 bước, rồi ghi một dòng vào nhật ký kiểm toán.
+>
+> Chuỗi tự động dừng ở **Chờ người phê duyệt**: lối vào *Xuất hồ sơ* phải là
+> quyết định có người ký tên (NT3). Bấm tiếp thì API trả 409 kèm lý do.
+>
+> Các trang **Phê duyệt SAR**, **Người dùng**, **Cấu hình** và đồ thị mạng
+> lưới vẫn dùng dữ liệu mô phỏng. Điểm rủi ro đến từ bộ luật và heuristic
+> trong `scripts/seed_data.py`, **chưa phải mô hình đã huấn luyện**.
 >
 > ---
 >
