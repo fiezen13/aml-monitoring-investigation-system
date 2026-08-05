@@ -9,6 +9,22 @@ name: CI
 # Mọi bước ở đây đều gọi script trong ci/. Cùng bộ script mà Jenkins gọi, và
 # cũng là bộ script chạy được trên máy cá nhân. Không có logic CI nào viết
 # hai lần, nên hai hệ thống không lệch nhau được.
+#
+# ---------------------------------------------------------------------
+# `runs-on: self-hosted` — đừng đổi lại thành ubuntu-latest.
+#
+# Repo này là private và thuộc tổ chức, nên runner của GitHub tính theo hạn
+# mức phút. Hạn mức của tổ chức đã hết, và job bị từ chối cấp máy ngay trước
+# khi chạy bước nào, kèm thông báo nghe như lỗi thanh toán:
+#
+#     The job was not started because recent account payments have failed
+#     or your spending limit needs to be increased.
+#
+# Ban tổ chức cung cấp runner tự vận hành, dùng chung cho mọi team. Vì dùng
+# chung nên runner KHÔNG sạch giữa các lần chạy: cổng, thư mục làm việc và
+# daemon Docker đều chia sẻ với job của team khác. Xem ghi chú ở job `test`
+# và `compose-smoke` về chỗ có thể đụng nhau.
+# ---------------------------------------------------------------------
 
 on:
   pull_request:
@@ -32,7 +48,7 @@ jobs:
   # ===================================================================
   lint:
     name: Kiểm tra định dạng và lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
@@ -51,12 +67,19 @@ jobs:
   # ===================================================================
   test:
     name: Kiểm thử đơn vị và tích hợp
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
 
     # Kiểm thử tích hợp cần cơ sở dữ liệu thật: các ràng buộc quan trọng nhất
     # của FIN-07 (nhật ký bất biến, cách ly vai trò agent) nằm ở tầng
     # PostgreSQL, mock không kiểm chứng được cái gì cả.
+    #
+    # LƯU Ý trên runner dùng chung: hai cổng dưới đây bind cố định vào máy chủ
+    # runner. Nếu một team khác đang chạy job có PostgreSQL hoặc Redis trên
+    # cùng runner, lần bind thứ hai sẽ hỏng với thông báo dạng
+    # "port is already allocated" và job này đỏ dù mã nguồn không sai.
+    # Gặp đúng triệu chứng đó thì đổi sang cổng động — `ports: ["5432/tcp"]`
+    # rồi đọc cổng thật từ `job.services.postgres.ports['5432']`.
     services:
       postgres:
         image: postgres:16-alpine
@@ -122,7 +145,7 @@ jobs:
   # ===================================================================
   web:
     name: Kiểm tra kiểu và build giao diện
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
     defaults:
       run:
@@ -143,7 +166,7 @@ jobs:
   # ===================================================================
   images:
     name: Build và đẩy image
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
     permissions:
       contents: read
@@ -247,7 +270,7 @@ jobs:
   # là câu đó, chạy lại trên một máy sạch ở mỗi pull request.
   compose-smoke:
     name: docker compose up trên máy sạch
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
     needs: images
     if: needs.images.outputs.pushed == 'true'
@@ -267,6 +290,12 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # LƯU Ý trên runner dùng chung: job này dựng nguyên stack bằng
+      # docker-compose.yml, vốn bind 5432, 6379, 8000 và 5173 ra máy chủ. Đây
+      # là chỗ dễ đụng cổng nhất với job của team khác. Nếu xảy ra, đặt biến
+      # WEB_PORT/API_PORT khác đi, hoặc bỏ job này khỏi `needs` của job `ci`
+      # để nó không chặn merge.
 
       # Cố ý KHÔNG tạo .env: đây là mô phỏng máy vừa clone repo.
       - name: Kéo image vừa build
@@ -311,7 +340,7 @@ jobs:
   # chỉ cần thêm vào `needs` — không phải sửa cấu hình của repo trên GitHub.
   ci:
     name: CI
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 2
     if: always()
     needs: [lint, test, web, images, compose-smoke]
