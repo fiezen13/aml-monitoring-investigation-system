@@ -24,31 +24,110 @@ Hệ thống có ba phần tách bạch:
 3. **Console 16 màn hình** — giám sát, điều tra, truy vết tài sản mã hoá, và
    kiểm định chất lượng mô hình.
 
+### Luồng đầy đủ, từ lúc sinh dữ liệu tới lúc con người ra quyết định
+
 ```mermaid
-graph TB
-    User(["Analyst · MLRO · Auditor"])
-
-    subgraph Browser["Trình duyệt"]
-        UI["Console React 18 + Vite<br/>16 màn hình"]
+flowchart TB
+    subgraph GEN["① SINH DỮ LIỆU — mô phỏng tác tử"]
+        direction LR
+        SIM["scripts/abm_generate.py<br/><i>kịch bản VN-CA-03</i>"] --> CHK{"6 kiểm tra<br/>chống rò rỉ"}
     end
 
-    subgraph Container["Docker Compose"]
-        WEB["web · nginx<br/>phục vụ tệp tĩnh + proxy /api"]
-        API["api · FastAPI<br/>40 endpoint"]
-        WORKER["worker<br/>máy trạng thái vụ việc"]
-        REDIS[("redis<br/>hàng đợi công việc")]
-        PG[("postgres<br/>42 bảng / 4 schema")]
+    subgraph DATA["② CƠ SỞ DỮ LIỆU — 42 bảng / 4 schema"]
+        direction LR
+        GT[("fc_gt · thế giới ẩn")]
+        FC[("fc · bằng chứng quan sát được")]
+        PUB[("public · quy trình AML")]
+        FC -->|"chiếu phần quan sát được"| PUB
     end
 
-    User --> UI
-    UI -->|HTTPS| WEB
-    WEB -->|/api/v1| API
-    API --> PG
-    API -->|đẩy việc| REDIS
-    WORKER -->|lấy việc| REDIS
-    WORKER --> PG
+    subgraph PROC["③ PHÁT HIỆN VÀ ĐIỀU TRA"]
+        direction LR
+        ALERT["Cảnh báo"] --> CASE["Vụ việc"]
+        CASE --> QUEUE[["Redis · hàng đợi"]]
+        QUEUE --> WORKER["worker<br/><i>máy trạng thái 9 bước</i>"]
+    end
 
-    GEN["scripts/abm_generate.py<br/>sinh dữ liệu ABM"] -.->|nạp một lần| PG
+    subgraph HUMAN["④ NGƯỜI CÓ THẨM QUYỀN QUYẾT ĐỊNH — mọi bước vào audit_log"]
+        direction LR
+        O2["Điều tra bổ sung<br/><i>quay lại ③</i>"]
+        DEC{"MLRO<br/>rà soát"}
+        O1["Xuất hồ sơ"]
+        O3["Đóng, không báo cáo"]
+        DEC --> O1
+        DEC --> O2
+        DEC --> O3
+    end
+
+    API["FastAPI · 40 endpoint"] --> UI["Console React · 16 màn hình"]
+
+    CHK -->|"đạt"| GT
+    CHK -->|"đạt"| FC
+    PUB --> ALERT
+    WORKER -->|"dừng ở ChoNguoiPheDuyet"| DEC
+    FC --> API
+    PUB --> API
+    UI --> DEC
+    GT -. "⛔ không có đường nào tới API" .-> API
+
+    classDef gen fill:#EDE9FE,stroke:#7C3AED,stroke-width:2px,color:#4C1D95
+    classDef hidden fill:#FEE2E2,stroke:#DC2626,stroke-width:2px,color:#7F1D1D
+    classDef obs fill:#CCFBF1,stroke:#0D9488,stroke-width:2px,color:#134E4A
+    classDef ops fill:#DBEAFE,stroke:#2563EB,stroke-width:2px,color:#1E3A8A
+    classDef human fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#78350F
+    classDef svc fill:#E2E8F0,stroke:#475569,stroke-width:2px,color:#0F172A
+
+    class SIM,CHK gen
+    class GT hidden
+    class FC obs
+    class PUB,ALERT,CASE ops
+    class QUEUE,WORKER,API,UI svc
+    class DEC,O1,O2,O3 human
+
+    style GEN fill:#FAFAF9,stroke:#D6D3D1,color:#57534E
+    style DATA fill:#FAFAF9,stroke:#D6D3D1,color:#57534E
+    style PROC fill:#FAFAF9,stroke:#D6D3D1,color:#57534E
+    style HUMAN fill:#FAFAF9,stroke:#D6D3D1,color:#57534E
+
+    linkStyle 16 stroke:#DC2626,stroke-width:2.5px,color:#B91C1C
+```
+
+**Quy ước màu dùng thống nhất trong cả tài liệu:**
+
+| | Ý nghĩa |
+| --- | --- |
+| 🟪 Tím | Sinh dữ liệu mô phỏng |
+| 🟥 Đỏ | Dữ liệu ẩn — cấm dùng khi suy luận |
+| 🟩 Xanh lá | Bằng chứng quan sát được |
+| 🟦 Xanh dương | Quy trình AML đang vận hành |
+| 🟧 Cam | Điểm con người quyết định |
+| ⬜ Xám | Dịch vụ hạ tầng |
+
+Đường **đỏ đứt nét** ở sơ đồ trên là ranh giới quan trọng nhất của thiết kế:
+`fc_gt` chứa đáp án của mô phỏng, và không endpoint nào có đường đọc tới nó.
+
+### Hạ tầng chạy
+
+```mermaid
+flowchart LR
+    User(["Analyst · MLRO · Auditor"]) --> UIB["Trình duyệt<br/><i>React 18 + Vite</i>"]
+    UIB -->|"HTTPS"| WEB["web · nginx<br/><i>tệp tĩnh + proxy /api</i>"]
+    WEB -->|"/api/v1"| APIC["api · FastAPI"]
+    APIC --> PG[("postgres<br/><i>42 bảng</i>")]
+    APIC -->|"đẩy việc"| RD[("redis")]
+    WK["worker"] -->|"lấy việc"| RD
+    WK --> PG
+    GENS["scripts/abm_generate.py"] -.->|"nạp một lần"| PG
+
+    classDef svc fill:#E2E8F0,stroke:#475569,stroke-width:2px,color:#0F172A
+    classDef store fill:#DBEAFE,stroke:#2563EB,stroke-width:2px,color:#1E3A8A
+    classDef gen fill:#EDE9FE,stroke:#7C3AED,stroke-width:2px,color:#4C1D95
+    classDef actor fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#78350F
+
+    class UIB,WEB,APIC,WK svc
+    class PG,RD store
+    class GENS gen
+    class User actor
 ```
 
 Giao diện và API **cùng một gốc** — nginx trong container `web` proxy `/api/`
@@ -70,21 +149,41 @@ nhìn thấy**, không chỉ là cách sắp xếp cho gọn.
 | `fc_gt` | 4 | Ground truth ẩn: vai trò thật, ledger cược, mốc tín hiệu sớm nhất | **Chỉ khi chấm điểm** |
 
 ```mermaid
-graph LR
-    subgraph Observable["Quan sát được — model học từ đây"]
-        FC["fc<br/>bằng chứng ABM"]
-        PUB["public<br/>quy trình AML"]
+flowchart LR
+    ABM["Mô phỏng ABM<br/><i>biết mọi thứ</i>"]
+
+    subgraph Observable["✅ QUAN SÁT ĐƯỢC — model học từ đây"]
+        direction TB
+        FC["fc<br/><i>bằng chứng ABM</i>"]
+        PUB["public<br/><i>quy trình AML</i>"]
+        FC -->|"chiếu phần quan sát được"| PUB
     end
 
-    subgraph Hidden["Ẩn — chỉ để chấm điểm"]
-        GT["fc_gt<br/>ground truth"]
-        LBL["label<br/>nhãn"]
+    subgraph Hidden["⛔ ẨN — chỉ dùng khi chấm điểm"]
+        direction TB
+        GT["fc_gt<br/><i>vai trò thật, ledger cược</i>"]
+        LBL["label<br/><i>nhãn rửa tiền, typology</i>"]
     end
 
-    ABM["Mô phỏng ABM"] --> FC
+    ABM --> FC
     ABM --> GT
-    FC -->|"chiếu phần<br/>quan sát được"| PUB
-    GT -.->|"CẤM dùng<br/>khi suy luận"| FC
+    ABM --> LBL
+    Hidden -. "cấm dùng khi suy luận" .-> Observable
+
+    classDef gen fill:#EDE9FE,stroke:#7C3AED,stroke-width:2px,color:#4C1D95
+    classDef hidden fill:#FEE2E2,stroke:#DC2626,stroke-width:2px,color:#7F1D1D
+    classDef obs fill:#CCFBF1,stroke:#0D9488,stroke-width:2px,color:#134E4A
+    classDef ops fill:#DBEAFE,stroke:#2563EB,stroke-width:2px,color:#1E3A8A
+
+    class ABM gen
+    class GT,LBL hidden
+    class FC obs
+    class PUB ops
+
+    style Observable fill:#F0FDFA,stroke:#0D9488,color:#134E4A
+    style Hidden fill:#FEF2F2,stroke:#DC2626,color:#7F1D1D
+
+    linkStyle 3 stroke:#DC2626,stroke-width:2.5px,color:#B91C1C
 ```
 
 ### Vì sao tách bằng schema
@@ -132,28 +231,45 @@ liệu. Worker chỉ tự động đi hết **9 bước đầu** rồi dừng l�
 ba trạng thái cuối chỉ đến được bằng quyết định của người có thẩm quyền.
 
 ```mermaid
-graph LR
-    subgraph Auto["Worker tự động — 9 bước"]
-        A[TiepNhanCanhBao] --> B[TruyHoiBangChung]
-        B --> C[PhanTichDoThi]
-        C --> D[DoiChieuTrungPhatPEP]
-        D --> E[TinhToanBangCongCu]
-        E --> F[LapLuanGanTypology]
-        F --> G[SoanHoSoNghiVan]
-        G --> H[KiemChungBangChung]
-        H --> I[ChoNguoiPheDuyet]
+flowchart TB
+    subgraph Auto["⚙️ WORKER TỰ ĐỘNG — 9 bước"]
+        direction TB
+        subgraph Row1[" "]
+            direction LR
+            A["1 · TiepNhanCanhBao"] --> B["2 · TruyHoiBangChung"] --> C["3 · PhanTichDoThi"]
+            C --> D["4 · DoiChieuTrungPhatPEP"] --> E["5 · TinhToanBangCongCu"]
+        end
+        subgraph Row2[" "]
+            direction LR
+            F["6 · LapLuanGanTypology"] --> G["7 · SoanHoSoNghiVan"]
+            G --> H["8 · KiemChungBangChung"] --> I["9 · ChoNguoiPheDuyet"]
+        end
+        E --> F
     end
 
-    subgraph Human["Người có thẩm quyền quyết định"]
-        J[XuatHoSo]
-        K[DieuTraBoSung]
-        L[DongKhongBaoCao]
+    subgraph Human["🧑‍⚖️ NGƯỜI CÓ THẨM QUYỀN QUYẾT ĐỊNH"]
+        direction LR
+        J["XuatHoSo"]
+        K["DieuTraBoSung<br/><i>↩ quay lại bước 2</i>"]
+        L["DongKhongBaoCao"]
     end
 
-    I -->|duyệt| J
-    I -->|yêu cầu bổ sung| K
-    I -->|đóng, không báo cáo| L
-    K -.->|quay lại điều tra| B
+    I -->|"duyệt"| J
+    I -->|"yêu cầu bổ sung"| K
+    I -->|"đóng, không báo cáo"| L
+
+    classDef auto fill:#DBEAFE,stroke:#2563EB,stroke-width:2px,color:#1E3A8A
+    classDef gate fill:#FED7AA,stroke:#EA580C,stroke-width:3px,color:#7C2D12
+    classDef human fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#78350F
+
+    class A,B,C,D,E,F,G,H auto
+    class I gate
+    class J,K,L human
+
+    style Auto fill:#F8FAFC,stroke:#CBD5E1,color:#475569
+    style Human fill:#FFFBEB,stroke:#D97706,color:#78350F
+    style Row1 fill:none,stroke:none
+    style Row2 fill:none,stroke:none
 ```
 
 `src.domain.next_state` trả về `None` khi vụ việc đã tới `ChoNguoiPheDuyet`, nên
@@ -180,13 +296,21 @@ Hệ thống có hai thứ khác nhau, đừng nhầm lẫn:
 `src/agents/graph.py` hiện là graph hai node của bộ khởi tạo dự án:
 
 ```mermaid
-graph LR
-    START((Bắt đầu)) --> A[analyze]
+flowchart LR
+    START(["Bắt đầu"]) --> A["analyze<br/><i>example_node.py</i>"]
     A --> D{"có lỗi?"}
-    D -->|có| END((Kết thúc))
-    D -->|không| R[respond]
-    R --> END
+    D -->|"có"| FIN(["Kết thúc"])
+    D -->|"không"| R["respond<br/><i>example_node.py</i>"]
+    R --> FIN
+
+    classDef stub fill:#F1F5F9,stroke:#94A3B8,stroke-width:2px,stroke-dasharray:4 3,color:#475569
+    classDef edge fill:#E2E8F0,stroke:#475569,stroke-width:2px,color:#0F172A
+
+    class A,R,D stub
+    class START,FIN edge
 ```
+
+> Nét đứt là có chủ ý: cả ba node đều là khung mẫu chưa hiện thực.
 
 - Node nằm ở `src/agents/nodes/example_node.py` — **tên file nói đúng bản chất**
 - Tool nằm ở `src/agents/tools/example_tool.py` — chưa có tool AML nào
@@ -250,13 +374,25 @@ Ngoài mô phỏng ABM, repo còn có đường ống streaming để nạp bộ
 Nó nằm sau profile `aml` của Docker Compose nên **không chạy mặc định**:
 
 ```mermaid
-graph LR
-    CSV["IBM AML CSV"] --> P["producer<br/>python -m src.aml"]
-    P -->|"dòng hợp lệ"| K["Kafka<br/>aml.transactions.raw.v1"]
-    P -->|"dòng hỏng"| DLQ["Kafka DLQ"]
-    K --> F["Flink<br/>giải mã + kiểm tra"]
-    F -->|"hợp lệ"| H["HDFS Bronze<br/>Parquet"]
-    F -->|"không hợp lệ"| R["HDFS rejected"]
+flowchart LR
+    CSV[/"IBM AML CSV"/] --> P["producer<br/><i>python -m src.aml</i>"]
+    P -->|"dòng hợp lệ"| K[["Kafka<br/><i>aml.transactions.raw.v1</i>"]]
+    P -->|"dòng hỏng"| DLQ[["Kafka DLQ"]]
+    K --> F["Flink<br/><i>giải mã + kiểm tra</i>"]
+    F -->|"hợp lệ"| H[("HDFS Bronze<br/><i>Parquet</i>")]
+    F -->|"không hợp lệ"| R[("HDFS rejected")]
+
+    classDef src fill:#EDE9FE,stroke:#7C3AED,stroke-width:2px,color:#4C1D95
+    classDef svc fill:#E2E8F0,stroke:#475569,stroke-width:2px,color:#0F172A
+    classDef bus fill:#DBEAFE,stroke:#2563EB,stroke-width:2px,color:#1E3A8A
+    classDef ok fill:#CCFBF1,stroke:#0D9488,stroke-width:2px,color:#134E4A
+    classDef bad fill:#FEE2E2,stroke:#DC2626,stroke-width:2px,color:#7F1D1D
+
+    class CSV src
+    class P,F svc
+    class K bus
+    class DLQ,R bad
+    class H ok
 ```
 
 Đây thuần tuý là đường ống dữ liệu: không có mô hình học máy, không chấm điểm
@@ -270,23 +406,44 @@ Khởi động: `make aml-up`.
 ## 7. Triển khai
 
 ```mermaid
-graph TB
-    subgraph VM["VM GCP"]
-        CADDY["caddy<br/>TLS + cổng duy nhất ra Internet"]
-        W["web"]
-        A["api"]
-        WK["worker"]
-        PGV[("postgres")]
-        RDV[("redis")]
+flowchart LR
+    Net(["Internet"])
+
+    subgraph VM["VM GCP — chỉ Caddy mở cổng ra ngoài"]
+        direction LR
+        CADDY["caddy<br/><i>TLS · Let's Encrypt</i>"]
+
+        subgraph Internal["mạng nội bộ Compose — không lộ ra Internet"]
+            direction LR
+            W["web · nginx"]
+            A["api"]
+            WK["worker"]
+            PGV[("postgres")]
+            RDV[("redis")]
+        end
+
+        CADDY --> W
+        W --> A
+        A --> PGV
+        A --> RDV
+        WK --> RDV
+        WK --> PGV
     end
 
-    Net([Internet]) -->|443| CADDY
-    CADDY --> W
-    W --> A
-    A --> PGV
-    A --> RDV
-    WK --> RDV
-    WK --> PGV
+    Net -->|"443"| CADDY
+
+    classDef edge fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#78350F
+    classDef gate fill:#FED7AA,stroke:#EA580C,stroke-width:3px,color:#7C2D12
+    classDef svc fill:#E2E8F0,stroke:#475569,stroke-width:2px,color:#0F172A
+    classDef store fill:#DBEAFE,stroke:#2563EB,stroke-width:2px,color:#1E3A8A
+
+    class Net edge
+    class CADDY gate
+    class W,A,WK svc
+    class PGV,RDV store
+
+    style VM fill:#FAFAF9,stroke:#D6D3D1,color:#57534E
+    style Internal fill:#F8FAFC,stroke:#CBD5E1,stroke-dasharray:5 4,color:#475569
 ```
 
 Caddy là **tiến trình duy nhất mở cổng ra Internet**; mọi dịch vụ khác chỉ nghe
