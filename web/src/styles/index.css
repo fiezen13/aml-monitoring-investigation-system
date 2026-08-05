@@ -4,38 +4,109 @@
 
 @layer base {
   html {
-    font-family: "Inter", system-ui, sans-serif;
+    font-family: "Geist", "Inter", system-ui, sans-serif;
   }
 
   body {
     @apply bg-app text-ink-hi antialiased;
     font-size: 13px;
+    line-height: 1.45;
   }
 
+  /* Thanh cuộn mảnh, viền cùng màu nền để không cắt ngang bố cục tối. */
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 9px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.25);
-    border-radius: 4px;
+    background: #14283c;
+    border-radius: 6px;
+    border: 2px solid #050b12;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(148, 163, 184, 0.4);
+
+  :focus-visible {
+    outline: 2px solid #12d6c5;
+    outline-offset: 1px;
+  }
+
+  /* Trình duyệt vẽ <option> bằng nền hệ thống — sáng trắng trên giao diện tối
+     nếu không ép màu ở đây. */
+  select option {
+    background: #0a1724;
+    color: #e6f0f8;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #4a5d70;
+  }
+}
+
+@layer components {
+  /* Thẻ nội dung chuẩn. Gần như mọi khối trong prototype là biến thể của nó. */
+  .fc-panel {
+    @apply rounded-panel border border-line bg-panel;
+  }
+
+  /* Nhãn nhóm viết hoa, giãn chữ — đứng đầu mỗi cụm trong sidebar và inspector. */
+  .fc-eyebrow {
+    @apply text-3xs uppercase tracking-[0.14em] text-ink-dim;
+  }
+
+  /* Ô nhập liệu và select dùng chung một dáng. */
+  .fc-input {
+    @apply rounded-control border border-line bg-sunken px-2.5 py-1.5 text-base text-ink-hi outline-none;
+  }
+  .fc-input:focus {
+    @apply border-primary/40;
+  }
+
+  .fc-btn {
+    @apply cursor-pointer rounded-control border border-line-strong px-2.5 py-1.5 text-sm text-ink-soft transition-colors;
+  }
+  .fc-btn:hover {
+    @apply border-line-strong/60 text-ink-hi;
+  }
+
+  .fc-btn-primary {
+    @apply cursor-pointer rounded-control border border-primary-line bg-primary-soft px-3 py-1.5 text-sm font-semibold text-primary transition-colors;
+  }
+  .fc-btn-primary:hover {
+    background: rgba(18, 214, 197, 0.24);
+  }
+
+  /* Viên thuốc trạng thái. Màu do chỗ dùng truyền vào qua style inline. */
+  .fc-chip {
+    @apply rounded-chip border px-2 py-0.5 text-center text-2xs;
   }
 }
 
 @layer utilities {
+  /* Số liệu phải thẳng cột khi giá trị thay đổi — dùng cho mọi ô số. */
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+
+  /* Cắt một dòng, thêm dấu ba chấm. Lặp lại rất nhiều trong các bảng dày cột. */
+  .truncate-1 {
+    @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap;
+  }
 }
 
-/* React Flow — nền tối, bỏ attribution mặc định chồng lên minimap */
+/* React Flow — nền tối, bỏ nền trắng mặc định của attribution. */
 .react-flow__attribution {
   background: transparent;
-  color: #64748b;
+  color: #4a5d70;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

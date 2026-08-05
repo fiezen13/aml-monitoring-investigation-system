@@ -238,6 +238,257 @@ export interface ApiSetting {
 }
 
 // ---------------------------------------------------------------------
+// Kiểu dữ liệu của các màn hình "Thành phố tài chính".
+// Khớp src/models/fc_schemas.py. Ở đây số đã là number: fc_routes.py ép kiểu
+// Decimal trước khi trả về, khác với các endpoint cũ trả chuỗi.
+// ---------------------------------------------------------------------
+
+export interface FcNavCounts {
+  alerts: number;
+  approvals: number;
+  critical: number;
+}
+
+export interface FcSearchHit {
+  id: string;
+  label: string;
+  kind: string;
+  href: string;
+}
+
+export interface FcHub {
+  id: string;
+  name: string;
+  country: string;
+  lat: number;
+  lon: number;
+  jurisdiction_risk: "low" | "medium" | "high";
+  inbound: number;
+  outbound: number;
+  volume_usd: number;
+  alerts: number;
+  entities: number;
+  risk_score: number;
+}
+
+export interface FcFlow {
+  id: string;
+  source_hub: string;
+  target_hub: string;
+  source_name: string;
+  target_name: string;
+  slat: number;
+  slon: number;
+  tlat: number;
+  tlon: number;
+  channel: "bank" | "p2p" | "vasp" | "chain" | "gamb" | "proj";
+  currency: string;
+  volume_usd: number;
+  txn_count: number;
+  risk_score: number;
+  typology_hint: string | null;
+  alert_count: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface FcWorld {
+  hubs: FcHub[];
+  flows: FcFlow[];
+  simulation_id: string | null;
+  scenario_package: string | null;
+}
+
+export interface FcGraphNode {
+  id: string;
+  type: string;
+  label: string;
+  sub: string;
+  risk: number;
+  first: string;
+  last: string;
+  hub: string | null;
+  negative: boolean;
+}
+
+export interface FcGraphEdge {
+  s: string;
+  t: string;
+  kind: string;
+  label: string;
+  amt: number | null;
+  inferred: boolean;
+  conf: number | null;
+  logic: string | null;
+  known_from: string;
+}
+
+export interface FcGraph {
+  nodes: FcGraphNode[];
+  edges: FcGraphEdge[];
+}
+
+export interface FcCryptoTransfer {
+  id: string;
+  chain: string;
+  tx_hash: string;
+  from_address: string;
+  to_address: string;
+  asset: string;
+  amount: number;
+  amount_usd: number;
+  block_time: string;
+  kind: string;
+  link_confidence: number | null;
+}
+
+export interface FcExposure {
+  address: string;
+  service_id: string;
+  service_type: string;
+  exposure_kind: "direct" | "indirect";
+  hops: number;
+  confidence: number;
+  source_id: string;
+  known_from: string;
+}
+
+export interface FcCrypto {
+  transfers: FcCryptoTransfer[];
+  exposures: FcExposure[];
+  total_usd: number;
+}
+
+export interface FcProject {
+  id: string;
+  name: string;
+  symbol: string;
+  chain: string;
+  contract_address: string;
+  deployer_address: string;
+  launched_at: string;
+  holder_gini: number | null;
+  liquidity_usd: number;
+  liquidity_removed_pct: number | null;
+  privileged_functions: string[];
+  kol_channels: number;
+  domain_age_days: number | null;
+  risk_score: number;
+  status: string;
+}
+
+export interface FcAgentStep {
+  id: string;
+  index: number;
+  tool: string;
+  input_summary: string;
+  output_summary: string;
+  status: "ok" | "error" | "skipped" | "blocked";
+  started_at: string;
+  duration_ms: number;
+  evidence_refs: string[];
+}
+
+export interface FcAgentRun {
+  id: string;
+  case_id: string | null;
+  alert_id: string | null;
+  tier: "A_INSTITUTION" | "B_REGULATOR" | "C_INVESTIGATION";
+  started_at: string;
+  finished_at: string | null;
+  status: "running" | "succeeded" | "failed" | "needs_human";
+  model_version: string;
+  conclusion: string;
+  confidence: number | null;
+  token_cost: number;
+  step_count: number;
+}
+
+export interface FcAgentRunDetail extends FcAgentRun {
+  steps: FcAgentStep[];
+}
+
+export interface FcBenchmark {
+  id: string;
+  task_id: string;
+  scenario_package: string;
+  model_version: string;
+  split: string;
+  metric_name: string;
+  metric_value: number;
+  target_value: number | null;
+  evaluated_at: string;
+  passed: boolean | null;
+}
+
+export interface FcModelMonitor {
+  model_version: string;
+  observed_at: string;
+  metric_name: string;
+  metric_value: number;
+  drift_score: number | null;
+  status: "ok" | "watch" | "breach";
+}
+
+export interface FcDataQuality {
+  id: string;
+  dataset: string;
+  check_name: string;
+  dimension: string;
+  observed_at: string;
+  pass_rate: number;
+  threshold: number;
+  rows_checked: number;
+  rows_failed: number;
+  status: "ok" | "warn" | "fail";
+  detail: string;
+}
+
+export interface FcObservation {
+  id: string;
+  evidence_item_id: string;
+  observer_role: "BANK" | "FIU" | "REGULATOR" | "LAW_ENFORCEMENT" | "PUBLIC";
+  available_from: string;
+  acquisition_type: string;
+  legal_basis_id: string | null;
+  redaction_profile: string;
+  source_confidence: number;
+  chain_of_custody_id: string | null;
+  is_visible_to_model: boolean;
+  summary: string;
+}
+
+export interface FcSource {
+  source_id: string;
+  source_type: string;
+  scope: string;
+  period: string;
+  jurisdiction: string;
+  confidence: number;
+  access_level: string;
+  prohibited_uses: string;
+}
+
+export interface FcTxRow {
+  id: number;
+  occurred_at: string;
+  from_account: string;
+  to_account: string;
+  amount: number;
+  currency: string;
+  channel: string;
+  remarks: string;
+  is_laundering: boolean | null;
+}
+
+export interface FcTxPage {
+  rows: FcTxRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// ---------------------------------------------------------------------
 // Điểm gọi
 // ---------------------------------------------------------------------
 
@@ -319,6 +570,41 @@ export const api = {
 
   audit: (params: { case_id?: string; event_type?: string; limit?: number } = {}) =>
     request<ApiAuditEvent[]>(`/audit${query(params)}`),
+
+  // -------------------------------------------------------------------
+  // Màn hình "Thành phố tài chính" — dữ liệu do ABM sinh, đọc schema `fc`.
+  // Xem src/api/fc_routes.py.
+  // -------------------------------------------------------------------
+
+  navCounts: () => request<FcNavCounts>("/nav-counts"),
+
+  search: (q: string) => request<FcSearchHit[]>(`/search${query({ q })}`),
+
+  world: () => request<FcWorld>("/world"),
+
+  entityGraph: (limit = 400) => request<FcGraph>(`/fc/graph${query({ limit })}`),
+
+  crypto: (limit = 200) => request<FcCrypto>(`/fc/crypto${query({ limit })}`),
+
+  projects: () => request<FcProject[]>("/fc/projects"),
+
+  agentRuns: () => request<FcAgentRun[]>("/fc/agent-runs"),
+
+  agentRun: (runId: string) => request<FcAgentRunDetail>(`/fc/agent-runs/${encodeURIComponent(runId)}`),
+
+  benchmarks: () => request<FcBenchmark[]>("/fc/benchmarks"),
+
+  modelMonitor: () => request<FcModelMonitor[]>("/fc/model-monitor"),
+
+  dataQuality: () => request<FcDataQuality[]>("/fc/data-quality"),
+
+  observations: () => request<FcObservation[]>("/fc/observations"),
+
+  sources: () => request<FcSource[]>("/fc/sources"),
+
+  transactions: (
+    params: { q?: string; channel?: string; min_amount?: number; page?: number; page_size?: number } = {},
+  ) => request<FcTxPage>(`/transactions${query(params)}`),
 
   // Không nằm dưới /api/v1 — đây là endpoint hạ tầng của chính ứng dụng.
   ready: () => {

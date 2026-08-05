@@ -1,296 +1,315 @@
-import {
-  AlertTriangle,
-  BellRing,
-  Database,
-  FileWarning,
-  FolderSearch,
-  Gauge,
-  RefreshCw,
-  Server,
-} from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useMemo } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 import { api, num } from "../api/client";
-import { detectorLabel, formatRelative, initials } from "../api/format";
+import { usd } from "../api/fcFormat";
+import { formatRelative } from "../api/format";
 import { useApi } from "../api/useApi";
-import { RiskBadge, StatusBadge } from "../components/common/Badges";
-import { Panel } from "../components/common/Panel";
-import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
-import { DataTable, type Column } from "../components/tables/DataTable";
-import type { ApiAlert } from "../api/client";
+import { Chart, type ChartSpec } from "../components/fc/Chart";
+import { ChartCard } from "../components/fc/ChartCard";
+import { Empty, KpiCard, Panel, PulseDot, RiskScore, ScreenTitle, Skeleton } from "../components/fc/primitives";
+import { useConsole, WINDOW_LABEL } from "../context/ConsoleContext";
+import { C, SERIES } from "../design/palette";
 
-const TYPOLOGY_COLORS = ["#00B2A9", "#EA8458", "#EF4444", "#F59E0B", "#3B82F6", "#8B5CF6"];
+/**
+ * Tổng quan giám sát — màn hình mặc định.
+ *
+ * Bố cục theo prototype: hàng KPI trên cùng để liếc một cái là nắm tình hình,
+ * rồi tới biểu đồ xu hướng, cuối cùng là hàng đợi ưu tiên — thứ analyst thực
+ * sự phải làm gì đó với nó.
+ */
+
+const QUEUE_COLS = "112px minmax(140px,1fr) 150px 92px 84px 100px 110px";
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const { window: win } = useConsole();
   const dashboard = useApi(() => api.dashboard(), []);
-  const ready = useApi(() => api.ready(), []);
+  const world = useApi(() => api.world(), []);
+  const benchmarks = useApi(() => api.benchmarks(), []);
 
   const d = dashboard.data;
 
-  const kpis = [
-    {
-      label: "Cảnh báo chưa đóng",
-      value: d ? String(d.open_alerts) : "—",
-      icon: BellRing,
-      note: "bảng alert, status ≠ closed",
-    },
-    {
-      label: "Rủi ro cao",
-      value: d ? String(d.high_risk_alerts) : "—",
-      icon: AlertTriangle,
-      note: "điểm rủi ro ≥ 80",
-    },
-    {
-      label: "Vụ việc đang điều tra",
-      value: d ? String(d.cases_investigating) : "—",
-      icon: FolderSearch,
-      note: "chưa xuất hồ sơ, chưa đóng",
-    },
-    {
-      label: "Hồ sơ chờ duyệt",
-      value: d ? String(d.sar_pending) : "—",
-      icon: FileWarning,
-      note: "bảng approval, decision = pending",
-    },
-  ];
+  const kpis = useMemo(() => {
+    if (!d) return [];
+    return [
+      { label: "Cảnh báo đang mở", value: d.open_alerts, color: C.inkHi, delta: "trong hàng đợi" },
+      {
+        label: "Rủi ro cao (≥80)",
+        value: d.high_risk_alerts,
+        color: C.risk,
+        delta: `${Math.round((d.high_risk_alerts / Math.max(1, d.open_alerts)) * 100)}% hàng đợi`,
+      },
+      { label: "Vụ việc đang xử lý", value: d.cases_investigating, color: C.warn, delta: "chưa kết luận" },
+      { label: "SAR chờ duyệt", value: d.sar_pending, color: C.agent, delta: "cần người có thẩm quyền" },
+      { label: "Điểm rủi ro trung bình", value: d.avg_risk_score, color: C.info, delta: "trên toàn hàng đợi" },
+      {
+        label: "Hàng lệnh worker",
+        value: d.queue_depth,
+        color: d.worker_alive ? C.ok : C.risk,
+        delta: d.worker_alive ? "worker đang chạy" : "worker không phản hồi",
+      },
+    ];
+  }, [d]);
 
-  const alertColumns: Column<ApiAlert>[] = [
-    {
-      key: "alert_id",
-      header: "Mã cảnh báo",
-      render: (a) => <span className="tabular font-medium text-info">{a.alert_id}</span>,
-    },
-    {
-      key: "typology",
-      header: "Typology",
-      render: (a) => (
-        <span title={a.typology_code}>
-          <span className="tabular font-semibold text-ink-hi">{a.typology_code}</span>{" "}
-          <span className="text-ink-mid">{a.typology_label}</span>
-        </span>
-      ),
-    },
-    {
-      key: "subject",
-      header: "Chủ thể",
-      render: (a) => (
-        <span className="inline-flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-elev text-2xs font-bold text-primary">
-            {initials(a.customer_id)}
-          </span>
-          <span className="tabular">{a.customer_id}</span>
-        </span>
-      ),
-    },
-    { key: "risk", header: "Rủi ro", render: (a) => <RiskBadge score={Math.round(num(a.risk_score))} /> },
-    {
-      key: "detector",
-      header: "Phát hiện bởi",
-      render: (a) => <span className="text-ink-mid">{detectorLabel(a.detector)}</span>,
-    },
-    {
-      key: "time",
-      header: "Thời gian",
-      render: (a) => <span className="text-ink-mid">{formatRelative(a.created_at)}</span>,
-    },
-    { key: "action", header: "Thao tác", render: () => <span className="font-medium text-primary">Xem</span> },
-  ];
+  // Xu hướng dựng từ chính thời điểm tạo cảnh báo — số thật, không phải đường
+  // cong minh hoạ.
+  const trendSpec = useMemo<ChartSpec | null>(() => {
+    if (!d?.top_alerts?.length) return null;
+    const buckets = new Map<string, { total: number; high: number }>();
+    for (const a of d.top_alerts) {
+      const key = new Date(a.created_at).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+      const cur = buckets.get(key) ?? { total: 0, high: 0 };
+      cur.total += 1;
+      if (num(a.risk_score) >= 80) cur.high += 1;
+      buckets.set(key, cur);
+    }
+    const labels = [...buckets.keys()].reverse();
+    return {
+      type: "bars",
+      labels,
+      series: [
+        { name: "Tổng cảnh báo", data: labels.map((l) => buckets.get(l)!.total), color: C.info },
+        { name: "Rủi ro cao", data: labels.map((l) => buckets.get(l)!.high), color: C.risk },
+      ],
+    };
+  }, [d]);
+
+  const typologySpec = useMemo<ChartSpec | null>(() => {
+    if (!d?.typology_distribution?.length) return null;
+    return {
+      type: "donut",
+      items: d.typology_distribution.map((t, i) => ({
+        label: t.typology_code,
+        value: t.alert_count,
+        color: SERIES[i % SERIES.length],
+      })),
+    };
+  }, [d]);
+
+  const corridorSpec = useMemo<ChartSpec | null>(() => {
+    const flows = world.data?.flows;
+    if (!flows?.length) return null;
+    const top = [...flows].sort((a, b) => b.risk_score - a.risk_score).slice(0, 6);
+    return {
+      type: "hbars",
+      items: top.map((f) => ({
+        label: `${f.source_name} → ${f.target_name}`,
+        value: Math.round(f.volume_usd / 1e6),
+        color: f.risk_score >= 80 ? C.risk : f.risk_score >= 60 ? C.warn : C.ok,
+        sub: `${f.channel} · risk ${f.risk_score}`,
+      })),
+    };
+  }, [world.data]);
+
+  const benchSpec = useMemo<ChartSpec | null>(() => {
+    const rows = benchmarks.data;
+    if (!rows?.length) return null;
+    // Chỉ lấy chỉ số thang 0–1 để một trục chung còn có nghĩa; lead time tính
+    // bằng ngày nên để riêng ở màn hình Benchmarks.
+    const ratio = rows.filter((r) => r.metric_value <= 1 && r.target_value != null);
+    if (!ratio.length) return null;
+    return {
+      type: "bars",
+      labels: ratio.map((r) => r.metric_name.replace(/_/g, " ").slice(0, 18)),
+      series: [
+        { name: "Đạt được", data: ratio.map((r) => r.metric_value), color: C.primary },
+        { name: "Ngưỡng yêu cầu", data: ratio.map((r) => r.target_value!), color: C.inkDim },
+      ],
+    };
+  }, [benchmarks.data]);
 
   return (
-    <div className="mx-auto max-w-[1280px]">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[20px] font-bold text-ink-hi">Trung tâm Điều hành AML</h1>
-          <p className="mt-0.5 text-[13px] text-ink-mid">
-            Mọi số liệu trên trang này đếm trực tiếp từ PostgreSQL tại thời điểm tải trang.
-          </p>
+    <div className="flex animate-up flex-col gap-3.5 p-4">
+      <ScreenTitle
+        title="Tổng quan giám sát"
+        meta={
+          <>
+            Cửa sổ {WINDOW_LABEL[win]} · dữ liệu synthetic
+            {world.data?.scenario_package ? ` · kịch bản ${world.data.scenario_package}` : ""}
+          </>
+        }
+      />
+
+      {dashboard.error && (
+        <div className="rounded-panel border border-risk/40 bg-risk/10 px-3.5 py-2.5 text-sm text-risk-soft">
+          {dashboard.error}
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            dashboard.reload();
-            ready.reload();
-          }}
-          className="inline-flex items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-primary/50"
-        >
-          <RefreshCw size={12} aria-hidden />
-          Làm mới
-        </button>
+      )}
+
+      <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(168px,1fr))" }}>
+        {dashboard.loading && !d
+          ? Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-[76px] animate-pulse rounded-panel bg-panel" />
+            ))
+          : kpis.map((k) => (
+              <KpiCard key={k.label} label={k.label} value={k.value} valueColor={k.color} delta={k.delta} />
+            ))}
       </div>
 
-      {dashboard.error && <ErrorState detail={dashboard.error} onRetry={dashboard.reload} />}
-
-      {!dashboard.error && (
-        <>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            {kpis.map(({ label, value, note, icon: Icon }) => (
-              <div key={label} className="rounded-panel border border-line bg-panel p-4">
-                <div className="flex items-center justify-between">
-                  <Icon size={15} className="text-ink-mid" aria-hidden />
-                </div>
-                <div className="mt-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">{label}</div>
-                <div className="tabular mt-1 text-[28px] font-bold leading-none text-ink-hi">
-                  {dashboard.loading ? <span className="text-ink-low">…</span> : value}
-                </div>
-                <div className="mt-1.5 text-2xs text-ink-low">{note}</div>
-              </div>
-            ))}
+      <div className="flex flex-wrap items-start gap-3.5">
+        <div className="flex min-w-0 flex-[2.4_1_520px] flex-col gap-3.5">
+          <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
+            <ChartCard
+              title="Cảnh báo theo ngày"
+              subtitle="Tổng · rủi ro cao · kéo để phóng to, nháy đúp để đặt lại"
+              spec={trendSpec}
+              state={dashboard.loading ? "loading" : trendSpec ? "ok" : "empty"}
+              note="Nguồn: bảng alert · điểm số do Risk Fusion chấm"
+            />
+            <ChartCard
+              title="Hành lang rủi ro nhất"
+              subtitle="Khối lượng (triệu USD), tô màu theo mức rủi ro"
+              spec={corridorSpec}
+              tools={["data", "dl", "full"]}
+              state={world.loading ? "loading" : corridorSpec ? "ok" : "empty"}
+            />
           </div>
 
-          <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_320px]">
-            <div className="space-y-3">
-              <Panel title="Phân bổ cảnh báo theo typology">
-                {dashboard.loading && <LoadingSkeleton rows={4} />}
-                {d && d.typology_distribution.length === 0 && (
-                  <EmptyState title="Chưa có cảnh báo" detail="Hệ thống chưa sinh cảnh báo nào." />
-                )}
-                {d && d.typology_distribution.length > 0 && (
-                  <>
-                    <div className="space-y-3">
-                      {d.typology_distribution.map((t, i) => (
-                        <div key={t.typology_code}>
-                          <div className="mb-1 flex items-center justify-between text-2xs">
-                            <span className="text-ink-mid">
-                              <span className="tabular font-semibold text-ink-hi">{t.typology_code}</span>{" "}
-                              {t.typology_label}
-                            </span>
-                            <span className="tabular font-semibold text-ink-hi">
-                              {t.alert_count} ({t.share_pct}%)
-                            </span>
-                          </div>
-                          <div className="h-1.5 overflow-hidden rounded bg-elev">
-                            <div
-                              className="h-full rounded"
-                              style={{
-                                width: `${t.share_pct}%`,
-                                background: TYPOLOGY_COLORS[i % TYPOLOGY_COLORS.length],
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-4 flex items-center justify-between border-t border-line pt-3 text-2xs">
-                      <span className="inline-flex items-center gap-1.5 text-ink-mid">
-                        <Gauge size={12} className="text-primary" aria-hidden />
-                        Điểm rủi ro trung bình
+          <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
+            <ChartCard
+              title="Kiểm định mô hình"
+              subtitle="Chỉ số đạt được so với ngưỡng đặt trước"
+              height={176}
+              spec={benchSpec}
+              tools={["data", "dl", "full"]}
+              state={benchmarks.loading ? "loading" : benchSpec ? "ok" : "empty"}
+              note="Không dùng accuracy làm chỉ số chính — xem màn hình Benchmarks."
+            />
+            <Panel title="Phân bố typology" subtitle="Theo số cảnh báo đang mở">
+              <div className="flex items-center gap-3">
+                <div className="w-[118px] flex-none">
+                  <Chart spec={typologySpec} height={118} />
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-xs">
+                  {d?.typology_distribution.map((t, i) => (
+                    <div key={t.typology_code} className="flex items-center gap-1.5 overflow-hidden">
+                      <span
+                        className="h-2 w-2 flex-none rounded-sm"
+                        style={{ background: SERIES[i % SERIES.length] }}
+                      />
+                      <span className="truncate-1 text-ink-soft" title={t.typology_label}>
+                        {t.typology_label}
                       </span>
-                      <span className="tabular text-[18px] font-bold text-ink-hi">{d.avg_risk_score}</span>
+                      <b className="tabular ml-auto font-mono">{t.alert_count}</b>
                     </div>
-                  </>
-                )}
-              </Panel>
-
-              <Panel
-                title="Cảnh báo ưu tiên cao nhất"
-                padded={false}
-                action={
-                  <button
-                    type="button"
-                    onClick={() => navigate("/alerts")}
-                    className="text-2xs font-medium text-primary hover:underline"
-                  >
-                    Xem tất cả
-                  </button>
-                }
-              >
-                {dashboard.loading && <LoadingSkeleton rows={5} />}
-                {d && d.top_alerts.length === 0 && <EmptyState title="Chưa có cảnh báo" />}
-                {d && d.top_alerts.length > 0 && (
-                  <DataTable
-                    columns={alertColumns}
-                    rows={d.top_alerts}
-                    rowKey={(a) => a.alert_id}
-                    onRowClick={(a) => navigate(`/alerts/${a.alert_id}`)}
-                    dense
-                  />
-                )}
-              </Panel>
-            </div>
-
-            <div className="space-y-3">
-              <Panel
-                title={
-                  <span className="inline-flex items-center gap-1.5">
-                    <Server size={13} className="text-primary" aria-hidden />
-                    Tình trạng hệ thống
-                  </span>
-                }
-              >
-                <div className="space-y-2.5">
-                  <StatusRow
-                    label="PostgreSQL"
-                    ok={ready.data?.database ?? false}
-                    loading={ready.loading}
-                    icon={<Database size={12} aria-hidden />}
-                  />
-                  <StatusRow
-                    label="Redis"
-                    ok={ready.data?.redis ?? false}
-                    loading={ready.loading}
-                    icon={<Database size={12} aria-hidden />}
-                  />
-                  <StatusRow
-                    label="Worker nền"
-                    ok={d?.worker_alive ?? false}
-                    loading={dashboard.loading}
-                    icon={<Server size={12} aria-hidden />}
-                  />
+                  ))}
                 </div>
-                <div className="mt-3 flex items-center justify-between border-t border-line pt-3 text-2xs">
-                  <span className="text-ink-mid">Tác vụ đang chờ trong hàng đợi</span>
-                  <span className="tabular font-bold text-ink-hi">{d ? d.queue_depth : "—"}</span>
-                </div>
-              </Panel>
-
-              <Panel title="Đọc số liệu này thế nào">
-                <ul className="space-y-2 text-2xs leading-relaxed text-ink-mid">
-                  <li>
-                    <span className="font-semibold text-ink-hi">Điểm rủi ro</span> là kết quả của bộ luật và
-                    heuristic trong dữ liệu mẫu, chưa phải mô hình đã huấn luyện. Mở một cảnh báo để xem các
-                    yếu tố đóng góp (NT7).
-                  </li>
-                  <li>
-                    <span className="font-semibold text-ink-hi">Typology</span> là gợi ý của hệ thống. Mọi kết
-                    luận đều cần con người rà soát trước khi vào hồ sơ.
-                  </li>
-                  <li>
-                    <span className="font-semibold text-ink-hi">Mức rủi ro hồ sơ</span> suy ra từ nguyên mẫu và
-                    quốc gia đăng ký, không suy ra từ nhãn rửa tiền (ND1).
-                  </li>
-                </ul>
-              </Panel>
-            </div>
+              </div>
+            </Panel>
           </div>
-        </>
-      )}
-    </div>
-  );
-}
 
-function StatusRow({
-  label,
-  ok,
-  loading,
-  icon,
-}: {
-  label: string;
-  ok: boolean;
-  loading: boolean;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="inline-flex items-center gap-1.5 text-2xs text-ink-mid">
-        <span className="text-primary">{icon}</span>
-        {label}
-      </span>
-      {loading ? (
-        <span className="text-2xs text-ink-low">đang kiểm tra…</span>
-      ) : (
-        <StatusBadge tone={ok ? "ok" : "risk"} label={ok ? "Hoạt động" : "Không phản hồi"} />
-      )}
+          <Panel
+            title="Hàng đợi ưu tiên — cần xử lý trước"
+            actions={
+              <Link to="/alerts" className="text-sm text-primary hover:text-primary-hover">
+                Mở Alert Center →
+              </Link>
+            }
+            bodyClassName="overflow-x-auto"
+          >
+            <div className="min-w-[720px]">
+              <div
+                className="grid gap-2 border-b border-line px-2 py-1.5 text-3xs uppercase tracking-[0.07em] text-ink-low"
+                style={{ gridTemplateColumns: QUEUE_COLS }}
+              >
+                <span>Cảnh báo</span>
+                <span>Tài khoản</span>
+                <span>Typology</span>
+                <span>Risk</span>
+                <span>Detector</span>
+                <span>Tạo lúc</span>
+                <span>Trạng thái</span>
+              </div>
+              {dashboard.loading && <Skeleton rows={5} />}
+              {!dashboard.loading && !d?.top_alerts.length && <Empty text="Hàng đợi trống" />}
+              {d?.top_alerts.map((a) => (
+                <div
+                  key={a.alert_id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/alerts/${a.alert_id}`)}
+                  onKeyDown={(e) => e.key === "Enter" && navigate(`/alerts/${a.alert_id}`)}
+                  className="grid cursor-pointer items-center gap-2 border-b border-line-faint px-2 py-[7px] text-base transition-colors hover:bg-elev"
+                  style={{ gridTemplateColumns: QUEUE_COLS }}
+                >
+                  <span className="font-mono text-xs text-primary">{a.alert_id}</span>
+                  <span className="truncate-1 font-mono text-xs">{a.account_key}</span>
+                  <span className="truncate-1 text-xs text-ink-soft" title={a.typology_label}>
+                    {a.typology_label}
+                  </span>
+                  <RiskScore score={Math.round(num(a.risk_score))} />
+                  <span className="text-xs text-ink-soft">{a.detector}</span>
+                  <span className="text-xs text-ink-soft">{formatRelative(a.created_at)}</span>
+                  <span className="text-2xs text-ink-soft">{a.status}</span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+
+        <div className="flex min-w-0 max-w-[420px] flex-[1_1_320px] flex-col gap-3.5">
+          <Panel title="Tình hình dòng tiền" subtitle="Tổng hợp từ World Monitor">
+            {world.loading && <Skeleton rows={4} />}
+            {world.data && (
+              <div className="flex flex-col gap-2">
+                {[...world.data.hubs]
+                  .sort((a, b) => b.volume_usd - a.volume_usd)
+                  .slice(0, 6)
+                  .map((h) => (
+                    <div key={h.id} className="flex items-center gap-2 text-xs">
+                      <span className="truncate-1 flex-1 text-ink-mid">{h.name}</span>
+                      <span className="tabular flex-none font-mono text-2xs text-ink-low">
+                        {h.inbound}↓ {h.outbound}↑
+                      </span>
+                      <b className="tabular w-16 flex-none text-right font-mono">{usd(h.volume_usd)}</b>
+                    </div>
+                  ))}
+                <Link to="/world" className="mt-1 text-center text-sm text-primary hover:text-primary-hover">
+                  Mở World Monitor →
+                </Link>
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            title={
+              <span className="flex items-center gap-2">
+                <PulseDot color={C.primary} size={6} />
+                Trạng thái hệ thống
+              </span>
+            }
+          >
+            <dl className="flex flex-col gap-2 text-xs">
+              {[
+                ["Lần chạy mô phỏng", world.data?.simulation_id ?? "—"],
+                ["Gói kịch bản", world.data?.scenario_package ?? "—"],
+                ["Trung tâm tài chính", world.data ? String(world.data.hubs.length) : "—"],
+                ["Hành lang theo dõi", world.data ? String(world.data.flows.length) : "—"],
+                ["Worker nền", d?.worker_alive ? "đang chạy" : "không phản hồi"],
+                ["Chiều sâu hàng lệnh", d ? String(d.queue_depth) : "—"],
+              ].map(([k, v]) => (
+                <div key={k} className="flex items-center gap-2">
+                  <dt className="flex-1 text-ink-low">{k}</dt>
+                  <dd className="tabular font-mono text-ink-mid">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </Panel>
+
+          <Panel title="Giới hạn cần biết" subtitle="Công bố kèm mọi kết quả">
+            <p className="text-xs leading-relaxed text-ink-soft">
+              Toàn bộ dữ liệu ở đây là tổng hợp từ mô phỏng ABM. Nó đủ để dựng PoC và benchmark có căn cứ, nhưng{" "}
+              <b className="text-ink-mid">chưa đủ để khẳng định mô hình sẵn sàng triển khai</b> — việc đó cần hiệu
+              chỉnh và kiểm định trên dữ liệu thật đã được bảo vệ tại một tổ chức có thẩm quyền.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-ink-low">
+              Không có thiết kế dataset nào bảo đảm phát hiện đầy đủ giao dịch tiền mặt hoặc tài sản ẩn danh không đi
+              qua điểm on/off-ramp quan sát được.
+            </p>
+          </Panel>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 .PHONY: help up down restart logs ps health seed seed-verify db-reset db-shell redis-shell \
+        migrate migrate-status abm abm-dry \
         build run worker test test-unit lint format typecheck check clean \
         aml-up aml-down aml-status aml-topics aml-fixture aml-producer-sample aml-producer-run \
         aml-producer-eventtime aml-producer-resume aml-flink-build aml-flink-test aml-submit \
@@ -45,6 +46,18 @@ seed:  ## Nạp lại dữ liệu mẫu (xoá dữ liệu hiện có)
 
 seed-verify:  ## In vân tay dữ liệu mẫu, không ghi cơ sở dữ liệu
 	$(COMPOSE) run --rm seed python scripts/seed_data.py --verify
+
+migrate:  ## Áp các file lược đồ trong db/init còn thiếu (giữ nguyên dữ liệu)
+	$(COMPOSE) run --rm seed python scripts/migrate.py
+
+migrate-status:  ## Liệt kê file lược đồ nào đã áp, file nào còn chờ
+	$(COMPOSE) run --rm seed python scripts/migrate.py --status
+
+abm:  ## Sinh và nạp một case ABM (kịch bản VN-CA-03)
+	$(COMPOSE) run --rm seed python scripts/abm_generate.py --force
+
+abm-dry:  ## In thống kê dữ liệu ABM sẽ sinh, không ghi cơ sở dữ liệu
+	$(COMPOSE) run --rm seed python scripts/abm_generate.py --dry-run
 
 db-reset:  ## Xoá volume PostgreSQL và dựng lại từ db/init (mất toàn bộ dữ liệu)
 	$(COMPOSE) down -v

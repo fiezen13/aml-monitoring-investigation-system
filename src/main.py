@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from src.api.fc_routes import router as fc_router
 from src.api.routes import router
 from src.config import get_settings
 from src.db import session as db
@@ -43,6 +44,8 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+# Màn hình "Thành phố tài chính" — đọc schema `fc` do ABM sinh ra.
+app.include_router(fc_router, prefix="/api/v1")
 
 
 @app.get("/health", response_model=HealthOut)

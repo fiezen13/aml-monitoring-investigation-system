@@ -1,123 +1,116 @@
-import { Bell, MessageSquare, Moon } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 
-import { api } from "../../api/client";
-import { useApi } from "../../api/useApi";
 import { useApp } from "../../context/AppContext";
-import { SearchInput } from "../common/SearchInput";
+import { useConsole, WINDOW_LABEL, type TimeWindow } from "../../context/ConsoleContext";
+import { PulseDot } from "../fc/primitives";
 
-interface HeaderProps {
-  title?: string;
+interface Props {
+  /** Đường dẫn hiển thị của màn hình hiện tại. */
+  crumb?: string;
+  /** Số cảnh báo mức critical, hiện ở chuông thông báo. */
+  criticalCount?: number;
 }
 
-export function Header({ title }: HeaderProps) {
-  const { currentUser, logout, pushToast } = useApp();
-  const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const [accountOpen, setAccountOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
-  const dashboard = useApi(() => api.dashboard(), []);
+const WORLDS = ["FIN-07 Primary", "FIN-07 Stress Sim"];
+const WINDOWS: TimeWindow[] = ["1h", "24h", "7d", "30d"];
+
+export function Header({ crumb, criticalCount = 0 }: Props) {
+  const { currentUser } = useApp();
+  const { window: win, setWindow, world, setWorld, setPaletteOpen } = useConsole();
+  const [bellOpen, setBellOpen] = useState(false);
+
+  const initials = (currentUser?.name ?? "")
+    .split(" ")
+    .slice(-2)
+    .map((w) => w[0])
+    .join("");
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b border-line bg-app/95 px-4 backdrop-blur">
-      {title && (
-        <h1 className="whitespace-nowrap text-[16px] font-bold text-ink-hi">{title}</h1>
-      )}
-      <div className="max-w-md flex-1">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Tìm kiếm giao dịch, khách hàng, hồ sơ... (⌘K)"
-        />
+    <header className="flex h-[52px] flex-none items-center gap-3 border-b border-line bg-side px-4">
+      <div className="truncate-1 flex-none text-xl font-semibold">{crumb}</div>
+
+      <button
+        type="button"
+        onClick={() => setPaletteOpen(true)}
+        className="flex min-w-[110px] flex-[0_1_270px] items-center gap-2 overflow-hidden rounded-control border border-line bg-sunken px-2.5 py-[5px] text-ink-low transition-colors hover:border-primary/40"
+      >
+        <Search size={13} className="flex-none" aria-hidden />
+        <span className="truncate-1 flex-1 text-left text-base">Tìm entity, case, alert…</span>
+        <span className="flex-none rounded-[5px] border border-line-strong/80 px-1.5 font-mono text-2xs">⌘K</span>
+      </button>
+
+      <div className="flex-1" />
+
+      <select
+        aria-label="Thế giới mô phỏng"
+        value={world}
+        onChange={(e) => setWorld(e.target.value)}
+        className="fc-input py-[5px] text-base"
+      >
+        {WORLDS.map((w) => (
+          <option key={w} value={w}>
+            World: {w}
+          </option>
+        ))}
+      </select>
+
+      <select
+        aria-label="Cửa sổ thời gian"
+        value={win}
+        onChange={(e) => setWindow(e.target.value as TimeWindow)}
+        className="fc-input py-[5px] text-base"
+      >
+        {WINDOWS.map((w) => (
+          <option key={w} value={w}>
+            {WINDOW_LABEL[w]}
+          </option>
+        ))}
+      </select>
+
+      {/* Nhãn này không phải trang trí: toàn bộ dữ liệu trong console là tổng
+          hợp, và người xem phải biết điều đó ở mọi màn hình. */}
+      <span className="whitespace-nowrap rounded-[6px] border border-warn/40 bg-warn/10 px-2 py-[3px] font-mono text-2xs tracking-[0.08em] text-warn">
+        SYNTHETIC
+      </span>
+
+      <div
+        title="Trạng thái luồng dữ liệu"
+        className="flex items-center gap-1.5 whitespace-nowrap text-xs text-ink-soft"
+      >
+        <PulseDot />
+        LIVE
       </div>
 
-      <div className="ml-auto flex items-center gap-1.5">
-        <div className="relative">
-          <button
-            type="button"
-            aria-label="Thông báo"
-            onClick={() => setNotifOpen((v) => !v)}
-            className="relative rounded p-2 text-ink-mid hover:bg-panel hover:text-ink-hi"
-          >
-            <Bell size={16} />
-            <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-risk" aria-hidden />
-          </button>
-          {notifOpen && (
-            <div className="absolute right-0 top-full z-40 mt-1 w-72 rounded-panel border border-line bg-elev p-3 shadow-xl">
-              <div className="mb-2 text-2xs font-semibold uppercase tracking-wide text-ink-mid">
-                Thông báo nội bộ
-              </div>
-              <p className="text-2xs leading-relaxed text-ink-mid">
-                {dashboard.data?.high_risk_alerts ?? 0} cảnh báo đang vượt ngưỡng rủi ro cao. Thông báo chỉ gửi nội bộ —
-                không có kênh nào tới khách hàng đang bị điều tra (NT6).
-              </p>
-            </div>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setBellOpen((v) => !v)}
+          aria-label="Thông báo"
+          aria-expanded={bellOpen}
+          className="relative p-1 text-ink-soft transition-colors hover:text-ink-hi"
+        >
+          <Bell size={17} strokeWidth={1.8} />
+          {criticalCount > 0 && (
+            <span className="absolute right-[3px] top-[2px] h-[7px] w-[7px] rounded-full border-[1.5px] border-side bg-risk" />
           )}
-        </div>
-        <button
-          type="button"
-          aria-label="Tin nhắn"
-          onClick={() => pushToast({ tone: "info", title: "Hộp thư nội bộ chưa được cấu hình" })}
-          className="rounded p-2 text-ink-mid hover:bg-panel hover:text-ink-hi"
-        >
-          <MessageSquare size={16} />
         </button>
-        <button
-          type="button"
-          aria-label="Chế độ tối"
-          className="rounded p-2 text-ink-mid hover:bg-panel hover:text-ink-hi"
-        >
-          <Moon size={16} />
-        </button>
-
-        <span className="mx-1 h-6 w-px bg-line" aria-hidden />
-
-        {currentUser && (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setAccountOpen((v) => !v)}
-              aria-expanded={accountOpen}
-              className="flex items-center gap-2.5 rounded-control px-2 py-1 hover:bg-panel"
-            >
-              <div className="text-right">
-                <div className="text-[13px] font-semibold leading-tight text-ink-hi">
-                  {currentUser.name}
-                </div>
-                <div className="text-2xs uppercase tracking-wide text-ink-low">
-                  {currentUser.roleLabel}
-                </div>
-              </div>
-              <span className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/40 bg-elev text-2xs font-bold text-primary">
-                {currentUser.name
-                  .split(" ")
-                  .slice(-2)
-                  .map((w) => w[0])
-                  .join("")}
-              </span>
-            </button>
-            {accountOpen && (
-              <div className="absolute right-0 top-full z-40 mt-1 w-60 rounded-panel border border-line bg-elev py-1 shadow-xl">
-                <div className="border-b border-line px-3 py-2 text-2xs text-ink-mid">
-                  Phiên DB · {currentUser.email}
-                </div>
-                <div className="border-t border-line">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await logout();
-                      navigate("/login");
-                    }}
-                    className="block w-full px-3 py-2 text-left text-[13px] text-risk hover:bg-panel"
-                  >
-                    Đăng xuất
-                  </button>
-                </div>
-              </div>
-            )}
+        {bellOpen && (
+          <div className="absolute right-0 top-full z-40 mt-1.5 w-72 rounded-panel border border-line bg-elev p-3 shadow-2xl">
+            <div className="fc-eyebrow mb-2">Thông báo nội bộ</div>
+            <p className="text-xs leading-relaxed text-ink-mid">
+              {criticalCount} cảnh báo đang ở mức critical trong cửa sổ {WINDOW_LABEL[win]}. Thông báo chỉ phát trong
+              nội bộ — hệ thống không có kênh nào gửi tới chủ thể đang bị rà soát.
+            </p>
           </div>
         )}
+      </div>
+
+      <div
+        title={`${currentUser?.name} · ${currentUser?.roleLabel}`}
+        className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full border border-primary/35 bg-gradient-to-br from-[#134B5F] to-[#0E2A44] text-xs font-semibold text-ok-soft"
+      >
+        {initials}
       </div>
     </header>
   );
