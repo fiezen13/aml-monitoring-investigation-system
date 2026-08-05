@@ -2,7 +2,7 @@
 
 Tài liệu này hướng dẫn dựng và chạy toàn bộ hệ thống trên máy cá nhân bằng
 Docker, kể cả bước sinh dữ liệu ABM theo tài liệu thiết kế
-`ABM_Thanh_pho_tai_chinh_Viet_Nam_AI_Agent_AML_BAN_CUOI_v2.0.pdf`.
+[`docs/design/ABM-thanh-pho-tai-chinh-v2.0.pdf`](design/ABM-thanh-pho-tai-chinh-v2.0.pdf).
 
 Đối tượng: người vừa `git clone` xong và muốn thấy hệ thống chạy.
 

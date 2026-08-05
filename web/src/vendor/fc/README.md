@@ -1,7 +1,7 @@
 # Vendored — engine đồ hoạ của prototype "Financial City AML"
 
 Năm file `.js` trong thư mục này được **sao chép nguyên trạng** từ
-`Financial City AML Prototype/` ở gốc repo. Không sửa chúng tại đây.
+`docs/design/prototype/`. Không sửa chúng tại đây.
 
 | File           | Custom element   | Vai trò                                                    |
 | -------------- | ---------------- | ---------------------------------------------------------- |

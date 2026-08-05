@@ -1,7 +1,7 @@
 -- =====================================================================
 -- FIN-07 — "Thành phố tài chính Việt Nam": lược đồ ABM
 --
--- Nguồn: ABM_Thanh_pho_tai_chinh_Viet_Nam_AI_Agent_AML_BAN_CUOI_v2.0.pdf
+-- Nguồn: docs/design/ABM-thanh-pho-tai-chinh-v2.0.pdf
 --        chương 12 (đặc tả dữ liệu đầu ra), chương 13 (source registry),
 --        chương 10 (năm gói kịch bản), phụ lục C và D.
 --

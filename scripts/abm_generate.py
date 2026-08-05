@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sinh một case ABM "Thành phố tài chính Việt Nam" và nạp vào cơ sở dữ liệu.
 
-Nguồn thiết kế: ABM_Thanh_pho_tai_chinh_Viet_Nam_AI_Agent_AML_BAN_CUOI_v2.0.pdf.
+Nguồn thiết kế: docs/design/ABM-thanh-pho-tai-chinh-v2.0.pdf.
 Bản này hiện thực **kịch bản VN-CA-03** (đánh bạc trực tuyến kết hợp rửa tiền),
 là kịch bản mà tài liệu gọi là "điểm thiết kế quan trọng nhất cần sửa" ở
 chương 10.3, vì nó buộc phải tách hai lớp dữ liệu:

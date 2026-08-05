@@ -86,11 +86,11 @@ jenkins/.env
 pytest-report.xml
 .gstack/
 
-# Artifact của công cụ thiết kế trong thư mục prototype.
+# Artifact của công cụ thiết kế trong docs/design/prototype/.
 #
 # Bản thân prototype (HTML + các engine .js) được commit để giữ nguồn gốc cho
 # phần vendor ở web/src/vendor/fc/. Nhưng ảnh chụp dán vào lúc thiết kế và file
 # preview thì nặng 3,4 MB, không file nào tham chiếu tới, và không dựng lại
 # được gì từ chúng.
-Financial City AML Prototype/uploads/
-Financial City AML Prototype/.thumbnail
+docs/design/prototype/uploads/
+docs/design/prototype/.thumbnail
