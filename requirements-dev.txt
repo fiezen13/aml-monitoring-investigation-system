@@ -8,5 +8,5 @@ pytest-cov>=6.0.0
 httpx>=0.28.0
 
 # Kiểm chứng sự kiện AML đúng với hợp đồng dữ liệu ở
-# schemas/aml-transaction-v1.schema.json.
+# contracts/ingestion/aml-transaction-v1.schema.json.
 jsonschema>=4.23.0

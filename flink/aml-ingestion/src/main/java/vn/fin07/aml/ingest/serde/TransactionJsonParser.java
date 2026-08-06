@@ -33,7 +33,7 @@ public final class TransactionJsonParser implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** Tên trường bắt buộc, đúng theo schemas/aml-transaction-v1.schema.json. */
+    /** Tên trường bắt buộc, đúng theo contracts/ingestion/aml-transaction-v1.schema.json. */
     private static final Set<String> KNOWN_FIELDS = new HashSet<>(Arrays.asList(
             "transaction_id",
             "event_time",
