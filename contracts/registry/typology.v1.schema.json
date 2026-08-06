@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/registry/typology.v1.schema.json",
+  "title": "Typology registry entry v1",
+  "description": "Một typology rửa tiền trong registry (kiến trúc mục 7.2). Đây là artifact NGHIỆP VỤ, do AML SME sở hữu — người viết JSON chỉ giữ hình dạng. Trường `hard_negatives` là thứ phân biệt một registry dùng được với một danh sách mô tả suông: nó ghi lại các mẫu hình hợp pháp TRÔNG GIỐNG typology này, và không có nó thì mọi phép đo đều thổi phồng độ chính xác.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "typology_id",
+    "version",
+    "effective_from",
+    "risk_statement",
+    "required_signals",
+    "hard_negatives",
+    "applicable_segments",
+    "owner",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "typology_id": {
+      "type": "string",
+      "pattern": "^[A-Z0-9-]{3,64}$",
+      "description": "Ví dụ: BANK-MULE-FUNNEL-001."
+    },
+
+    "version": { "type": "string", "pattern": "^v[0-9]+$" },
+
+    "effective_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "effective_to": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+
+    "risk_statement": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 4096,
+      "description": "Mô tả hành vi bằng ngôn ngữ nghiệp vụ, không phải bằng ngưỡng kỹ thuật. Ví dụ: 'Tài khoản cá nhân mới nhận tiền từ nhiều người rồi chuyển nhanh sang cụm đích.' Ngưỡng thay đổi theo thời gian và theo ngân hàng; mô tả hành vi thì không."
+    },
+
+    "required_signals": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/signal" },
+      "description": "Tín hiệu BẮT BUỘC phải có mặt. Thiếu một trong số này thì không phải typology đó, dù các tín hiệu khác có mạnh đến đâu."
+    },
+
+    "optional_signals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/signal" },
+      "description": "Tín hiệu tăng cường độ tin cậy nhưng không bắt buộc."
+    },
+
+    "hard_negatives": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "description"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 2048,
+            "description": "Vì sao mẫu hình HỢP PHÁP này trông giống typology, và dấu hiệu nào phân biệt được hai bên."
+          },
+          "distinguishing_signals": {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 256 }
+          }
+        }
+      },
+      "description": "Tối thiểu MỘT. Ví dụ điển hình cho mule funnel: đơn vị chi hộ lương, người bán trên sàn thương mại điện tử, chiến dịch từ thiện. Bắt buộc phải liệt kê vì đây là nguồn false positive lớn nhất và là thứ analyst mất nhiều thời gian nhất để loại trừ."
+    },
+
+    "applicable_segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "enum": ["RETAIL", "SME", "CORPORATE", "MERCHANT", "FI"] }
+    },
+
+    "detectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["detector_id", "detector_type"],
+        "properties": {
+          "detector_id": { "type": "string", "maxLength": 128 },
+          "detector_type": {
+            "type": "string",
+            "enum": ["SCREENING", "RULE", "CEP", "BEHAVIORAL", "GRAPH", "ML_SUPERVISED", "ML_UNSUPERVISED"]
+          },
+          "version": { "type": "string", "maxLength": 64 }
+        }
+      },
+      "description": "Các detector hiện đang phát hiện typology này. Một typology không có detector nào là một lỗ hổng phát hiện đã biết — và biết được điều đó có giá trị hơn là không biết."
+    },
+
+    "evaluation_suite": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Bộ kiểm định của typology (mục 15). Không có nó thì không chứng minh được detector thật sự bắt được gì.",
+      "properties": {
+        "hidden_case_ids": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 }
+        },
+        "variant_ids": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 },
+          "description": "Biến thể chưa từng thấy, để đo khả năng khái quát chứ không phải khả năng học thuộc."
+        },
+        "expected_detection_window": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Kỳ vọng phát hiện trong bao lâu kể từ khi hành vi bắt đầu."
+        }
+      }
+    },
+
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product_owner"],
+      "properties": {
+        "product_owner": { "type": "string", "maxLength": 128 },
+        "approvers": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 },
+          "description": "Model Risk và Compliance theo mục 7.2. Maker-checker: người soạn không tự duyệt."
+        }
+      }
+    },
+
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "APPROVED", "ACTIVE", "DEPRECATED"],
+      "description": "Chỉ typology ACTIVE mới được dùng để gắn nhãn cho alert. DRAFT tồn tại để thảo luận, không để chạy."
+    },
+
+    "regulatory_refs": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 256 },
+      "description": "Căn cứ pháp lý/hướng dẫn liên quan, ví dụ điều khoản của Luật PCRT 14/2022/QH15 hoặc hướng dẫn NHNN."
+    },
+
+    "notes": { "type": "string", "maxLength": 4096 }
+  },
+
+  "$defs": {
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signal_id", "description"],
+      "properties": {
+        "signal_id": { "type": "string", "pattern": "^[a-z0-9_]{3,64}$" },
+        "description": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "feature_refs": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 }
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Cấu hình toàn hệ thống, nạp từ biến môi trường.
 
-    Mọi biến ở đây phải có mặt trong .env.example và docs/ENVIRONMENT.md.
+    Mọi biến ở đây phải có mặt trong .env.example và .env.example.
     Kiểm thử tests/test_config.py khẳng định điều đó, nên thêm một trường
     mà quên tài liệu thì CI đỏ.
     """

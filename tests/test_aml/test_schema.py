@@ -1,6 +1,6 @@
 """Hợp đồng dữ liệu: mã nguồn và file lược đồ phải nói cùng một chuyện.
 
-`schemas/aml-transaction-v1.schema.json` là thứ đội khác đọc để biết topic
+`contracts/ingestion/aml-transaction-v1.schema.json` là thứ đội khác đọc để biết topic
 chứa gì. Nếu nó lệch khỏi `src/aml/schema.py` thì nó tệ hơn là không có, vì
 nó khiến người đọc tin vào một điều sai. Bài kiểm thử này giữ hai bên khớp.
 """
@@ -16,9 +16,10 @@ from src.aml.schema import SCHEMA_VERSION
 from src.aml.transform import to_event
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_PATH = ROOT / "schemas" / "aml-transaction-v1.schema.json"
-VALID_EXAMPLE = ROOT / "schemas" / "examples" / "aml-transaction-valid.json"
-INVALID_EXAMPLE = ROOT / "schemas" / "examples" / "aml-transaction-invalid.json"
+CONTRACTS = ROOT / "contracts" / "ingestion"
+SCHEMA_PATH = CONTRACTS / "aml-transaction-v1.schema.json"
+VALID_EXAMPLE = CONTRACTS / "examples" / "aml-transaction-valid.json"
+INVALID_EXAMPLE = CONTRACTS / "examples" / "aml-transaction-invalid.json"
 
 jsonschema = pytest.importorskip("jsonschema", reason="cài bằng: pip install -r requirements-dev.txt")
 

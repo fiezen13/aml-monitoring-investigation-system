@@ -42,7 +42,7 @@ cd web && npm run typecheck && npm run build
 ## Đổi cấu hình / biến môi trường
 
 Thêm một trường vào `src/config.py` hoặc `src/aml/config.py` mà quên cập nhật `.env.example` và
-`docs/ENVIRONMENT.md` sẽ làm `tests/test_config_documented.py` đỏ — đây là chủ đích, không phải bug
+`.env.example` sẽ làm `tests/test_config_documented.py` đỏ — đây là chủ đích, không phải bug
 của test. Cập nhật cả ba nguồn cùng lúc.
 
 ## Đổi lược đồ cơ sở dữ liệu
@@ -53,17 +53,16 @@ chạy khi volume PostgreSQL rỗng.
 
 ## Đổi hợp đồng sự kiện AML
 
-Không đổi `schemas/aml-transaction-v1.schema.json` một cách phá vỡ tương thích. Bump
+Không đổi `contracts/ingestion/aml-transaction-v1.schema.json` một cách phá vỡ tương thích. Bump
 `schema_version`, thêm test tương thích, và cập nhật cả ba nơi đọc field set: `TransactionValidator`
 (Java), `TransactionJsonParser.KNOWN_FIELDS` (Java), `AmlTransactionEvent` (Python) — ba nơi này
 hiện không đồng bộ tự động, đổi một nơi mà quên hai nơi kia sẽ không bị CI bắt lỗi.
 
 ## Đọc thêm
 
-- [docs/RUNBOOK.md](docs/RUNBOOK.md) — dựng và vận hành
-- [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) — mọi biến môi trường
-- [docs/CI.md](docs/CI.md) — cổng chặn merge chạy gì
-- [docs/CICD.md](docs/CICD.md) — luồng giao hàng đầy đủ
-- [docs/architecture_diagram.md](docs/architecture_diagram.md) — kiến trúc hệ thống
+- [docs/operations/RUNBOOK.md](docs/operations/RUNBOOK.md) — dựng và vận hành
+- [.env.example](.env.example) — mọi biến môi trường
+- [docs/operations/CICD.md](docs/operations/CICD.md) — cổng chặn merge chạy gì
+- [docs/operations/CICD.md](docs/operations/CICD.md) — luồng giao hàng đầy đủ
+- [docs/architecture/](docs/architecture/) — kiến trúc hệ thống
 - [docs/repository/REPOSITORY_AUDIT.md](docs/repository/REPOSITORY_AUDIT.md) — audit cấu trúc repo
-</content>

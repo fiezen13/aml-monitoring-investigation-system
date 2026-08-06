@@ -21,7 +21,7 @@ need psql
 
 : "${POSTGRES_USER:?POSTGRES_USER chưa đặt}"
 : "${POSTGRES_DB:?POSTGRES_DB chưa đặt}"
-: "${FIN07_AGENT_DB_PASSWORD:?FIN07_AGENT_DB_PASSWORD chưa đặt — xem docs/ENVIRONMENT.md}"
+: "${FIN07_AGENT_DB_PASSWORD:?FIN07_AGENT_DB_PASSWORD chưa đặt — xem .env.example}"
 
 export PGHOST="${PGHOST:-localhost}"
 export POSTGRES_USER POSTGRES_DB FIN07_AGENT_DB_PASSWORD

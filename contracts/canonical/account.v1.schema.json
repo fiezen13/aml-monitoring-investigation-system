@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/account.v1.schema.json",
+  "title": "Canonical ACCOUNT v1",
+  "description": "Tài khoản ở vùng CANONICAL/GOLD (kiến trúc mục 6.2). Tuổi tài khoản và trạng thái là hai thuộc tính có sức nặng phát hiện lớn nhất ở đây: phần lớn typology mule đều liên quan tới tài khoản mới mở hoặc tài khoản ngủ đông bỗng hoạt động mạnh.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "account_id", "source_refs", "status", "valid_from"],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "account_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/source_ref" }
+    },
+
+    "owner_customer_ids": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 128 },
+      "description": "Mảng vì tài khoản đồng sở hữu là có thật, và đồng sở hữu là một cạnh quan hệ mạnh trong đồ thị."
+    },
+
+    "product_type": { "type": "string", "maxLength": 64 },
+
+    "currency": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/currency" },
+
+    "status": { "type": "string", "enum": ["ACTIVE", "DORMANT", "FROZEN", "CLOSED", "PENDING"] },
+
+    "opened_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "closed_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "balance_class": {
+      "type": "string",
+      "maxLength": 32,
+      "description": "Khoảng số dư dạng band chứ không phải số dư chính xác. Số dư thực là dữ liệu nhạy cảm và biến động liên tục; band là đủ cho phân tích rủi ro và ổn định hơn nhiều."
+    },
+
+    "branch_code": { "type": "string", "maxLength": 64 },
+    "opening_channel": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/channel" },
+
+    "is_dormant_reactivated": {
+      "type": "boolean",
+      "description": "Tài khoản ngủ đông vừa hoạt động trở lại. Tách thành cờ riêng vì đây là tín hiệu điển hình của tài khoản bị mua lại hoặc bị chiếm quyền."
+    },
+
+    "valid_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_to": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "provenance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" },
+    "data_class": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class" }
+  }
+}

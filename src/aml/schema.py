@@ -1,7 +1,7 @@
 """Lược đồ sự kiện chuẩn hoá (canonical) phiên bản 1.0.
 
 Một dòng CSV hợp lệ trở thành đúng một sự kiện JSON theo lược đồ này. Hợp
-đồng dữ liệu bản máy đọc được nằm ở `schemas/aml-transaction-v1.schema.json`;
+đồng dữ liệu bản máy đọc được nằm ở `contracts/ingestion/aml-transaction-v1.schema.json`;
 hai nơi phải khớp nhau và `tests/test_aml/test_schema.py` kiểm tra điều đó.
 
 Ba quy tắc định hình mọi thứ trong file này:

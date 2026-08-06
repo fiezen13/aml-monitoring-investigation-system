@@ -5,7 +5,7 @@
     python -m src.aml --csv-path data/raw/ibm-aml/LI-Small_Trans.csv
 
 Mọi tuỳ chọn đều có biến môi trường tương ứng (xem `src/aml/config.py` và
-`docs/ENVIRONMENT.md`). Tham số dòng lệnh ghi đè biến môi trường, để một lần
+`.env.example`). Tham số dòng lệnh ghi đè biến môi trường, để một lần
 chạy thử không phải sửa `.env`.
 """
 

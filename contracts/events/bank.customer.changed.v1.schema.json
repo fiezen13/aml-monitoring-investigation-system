@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/bank.customer.changed.v1.schema.json",
+  "title": "bank.customer.changed.v1 — payload",
+  "description": "Thay đổi hồ sơ khách hàng từ CIF/KYC/CRM. Topic `bank.customer.changed.v1`, khoá `customer_id`, retention: compacted kèm lịch sử (kiến trúc mục 10.2). Giữ lịch sử là bắt buộc, không phải tuỳ chọn: nghề nghiệp hay mức thu nhập kỳ vọng TẠI THỜI ĐIỂM giao dịch mới là thứ dùng để đánh giá, không phải giá trị hôm nay.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "customer_id",
+    "source_refs",
+    "change_type",
+    "event_time",
+    "ingestion_time",
+    "valid_from"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "customer_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/source_ref" }
+    },
+
+    "change_type": {
+      "type": "string",
+      "enum": ["CREATED", "PROFILE_UPDATED", "KYC_UPDATED", "RISK_RATING_CHANGED", "STATUS_CHANGED", "CLOSED"],
+      "description": "Loại thay đổi. RISK_RATING_CHANGED tách riêng vì nó là hành động có hệ quả nghiệp vụ, cần audit riêng chứ không lẫn vào cập nhật hồ sơ thường."
+    },
+
+    "event_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/event_time" },
+    "ingestion_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/ingestion_time" },
+
+    "valid_from": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Giá trị mới có hiệu lực từ thời điểm này. Cùng với valid_to tạo thành bi-temporal record."
+    },
+    "valid_to": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Bỏ trống nghĩa là còn hiệu lực."
+    },
+
+    "customer_type": {
+      "type": "string",
+      "enum": ["INDIVIDUAL", "SME", "CORPORATE", "FI", "OTHER"]
+    },
+
+    "kyc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kyc_state": {
+          "type": "string",
+          "enum": ["NOT_STARTED", "PENDING", "VERIFIED", "EXPIRED", "REJECTED"]
+        },
+        "kyc_level": { "type": "string", "maxLength": 32 },
+        "verified_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "document_types": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 64 },
+          "description": "Loại giấy tờ đã kiểm tra. Chỉ LOẠI, không bao giờ là số giấy tờ — số là C3 (phụ lục C)."
+        },
+        "is_pep": { "type": "boolean" },
+        "pep_category": { "type": "string", "maxLength": 128 }
+      }
+    },
+
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Hồ sơ dùng để so sánh hành vi thực tế với hành vi kỳ vọng. Đây là nền của mọi phát hiện lệch hồ sơ, nên độ tươi của nó quan trọng ngang độ chính xác.",
+      "properties": {
+        "occupation_code": { "type": "string", "maxLength": 64 },
+        "industry_code": { "type": "string", "maxLength": 64 },
+        "declared_income_band": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Khoảng thu nhập khai báo, dạng band chứ không phải số chính xác — đủ cho phân tích, giảm bề mặt PII."
+        },
+        "expected_monthly_turnover": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/money" },
+        "expected_channels": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/channel" }
+        },
+        "residency_country": { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "nationality_country": { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "customer_since": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "risk_rating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rating"],
+      "properties": {
+        "rating": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "PROHIBITED"] },
+        "rated_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "rated_by": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Hệ thống hoặc người đã xếp hạng. Thay đổi risk rating cần Compliance approval (mục 8.6) nên phải biết ai làm."
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/reason_code" }
+        }
+      }
+    },
+
+    "status": {
+      "type": "string",
+      "enum": ["ACTIVE", "DORMANT", "SUSPENDED", "CLOSED"]
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  }
+}

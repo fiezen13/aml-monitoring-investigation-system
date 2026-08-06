@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/agent/structured-case-output.v1.schema.json",
+  "title": "StructuredCaseOutput v1",
+  "description": "Đầu ra cuối cùng của một lượt chạy agent, đưa cho analyst (kiến trúc mục 8.8). Đây LUÔN là bản nháp/đề xuất; không trường nào ở đây tự nó thay đổi trạng thái case. Bốn trường bắt buộc — `hypotheses`, `claims`, `blind_spots`, `uncertainty` — cùng nhau ngăn một bản tóm tắt nghe thuyết phục mà không có cơ sở.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "case_id",
+    "generated_at",
+    "risk_summary",
+    "hypotheses",
+    "claims",
+    "blind_spots",
+    "policy_version",
+    "is_draft"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "run_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "generated_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "is_draft": {
+      "type": "boolean",
+      "const": true,
+      "description": "Luôn true. Hằng số này không thừa: nó khiến việc 'agent tạo ra kết quả chính thức' trở thành bất khả thi về mặt schema, chứ không chỉ là một quy ước mà ai đó có thể quên. Việc chuyển từ nháp sang chính thức là một sự kiện quyết định của con người ở topic aml.analyst.decision.v1."
+    },
+
+    "risk_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "confidence", "narrative"],
+      "properties": {
+        "level": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" },
+        "narrative": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192,
+          "description": "Tóm tắt cho người đọc. Ngôn ngữ phải hiệu chỉnh theo độ tin cậy — 'phù hợp với mô hình X' khi confidence 0.6, không phải 'đây là X'."
+        }
+      }
+    },
+
+    "hypotheses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["typology", "confidence", "supporting_evidence", "contradicting_evidence", "unknowns"],
+        "properties": {
+          "typology": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "typology_version": { "type": "string", "maxLength": 32 },
+          "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" },
+          "supporting_evidence": {
+            "type": "array",
+            "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" }
+          },
+          "contradicting_evidence": {
+            "type": "array",
+            "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" },
+            "description": "BẮT BUỘC có mặt, kể cả khi là mảng rỗng. Buộc phải khai báo tường minh 'tôi đã tìm và không thấy gì phản chứng' thay vì im lặng bỏ qua bước đó."
+          },
+          "unknowns": {
+            "type": "array",
+            "items": { "type": "string", "maxLength": 512 }
+          }
+        }
+      },
+      "description": "Luôn xếp hạng NHIỀU giả thuyết. Một giả thuyết duy nhất trình bày như câu trả lời là cách agent dẫn dắt analyst vào lối mòn xác nhận."
+    },
+
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence_refs", "fact_or_inference"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" },
+            "description": "Tối thiểu một. Đây là chỗ contract chặn hallucination một cách cơ học."
+          },
+          "fact_or_inference": { "type": "string", "enum": ["FACT", "INFERENCE"] },
+          "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" }
+        }
+      }
+    },
+
+    "recommended_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action", "approval_required", "reason"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "EDD_REQUEST",
+              "STR_DRAFT",
+              "ESCALATE",
+              "REQUEST_MORE_DATA",
+              "CLOSE_NO_REPORT",
+              "MONITOR_CONTINUE",
+              "RISK_RATING_REVIEW"
+            ],
+            "description": "Danh sách đóng. Cố ý KHÔNG có FREEZE_ACCOUNT, BLOCK_TRANSACTION hay SUBMIT_STR — agent không được đề xuất những hành động nó không có thẩm quyền, vì một đề xuất hiện trên màn hình là một bước tiến tới việc nó được bấm."
+          },
+          "approval_required": { "type": "boolean" },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 2048 },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" }
+          }
+        }
+      }
+    },
+
+    "timeline": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["at", "description", "evidence_refs"],
+        "properties": {
+          "at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+          "description": { "type": "string", "maxLength": 1024 },
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" }
+          }
+        }
+      },
+      "description": "Dòng thời gian sự việc. Mỗi mốc phải có bằng chứng — một timeline tự dựng không nguồn là dạng hallucination khó phát hiện nhất vì nó đọc rất thuyết phục."
+    },
+
+    "blind_spots": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 512 },
+      "description": "BẮT BUỘC, kể cả khi rỗng. Ở Level 1 hầu như luôn có ít nhất một mục: nền tảng chỉ nhìn thấy dữ liệu trong ranh giới một ngân hàng."
+    },
+
+    "uncertainty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "should_abstain": { "type": "boolean" },
+        "abstain_reason": { "type": "string", "maxLength": 1024 }
+      }
+    },
+
+    "data_quality_notes": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/quality_flag" }
+    },
+
+    "policy_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model_versions": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" }
+        },
+        "prompt_versions": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" }
+        }
+      }
+    }
+  }
+}

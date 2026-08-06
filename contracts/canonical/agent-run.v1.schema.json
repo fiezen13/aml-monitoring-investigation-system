@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/agent-run.v1.schema.json",
+  "title": "Canonical AGENT_RUN v1",
+  "description": "Bản ghi lưu trữ của một lượt chạy agent (kiến trúc mục 6.2). Khác `AgentCaseState` ở chỗ: state là thứ đang chạy và thay đổi liên tục, còn đây là bản ghi cuối cùng dùng để kiểm toán và đo lường. Lược đồ hiện tại `fc.agent_run`/`fc.agent_step` trong `db/init/005_financial_city.sql` là hiện thực gần nhất với contract này.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "case_id",
+    "started_at",
+    "status",
+    "snapshot_time",
+    "versions",
+    "steps"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "run_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "triggered_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_id", "role"],
+      "properties": {
+        "user_id": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "maxLength": 64 }
+      }
+    },
+
+    "purpose_id": { "type": "string", "maxLength": 64 },
+    "snapshot_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "started_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "completed_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "status": {
+      "type": "string",
+      "enum": ["RUNNING", "PAUSED_FOR_APPROVAL", "SUCCEEDED", "NEEDS_HUMAN", "FAILED", "ABORTED"],
+      "description": "NEEDS_HUMAN là kết thúc bình thường và mong đợi của một lượt điều tra — agent đề xuất, con người quyết định. Coi nó là lỗi sẽ dẫn tới việc tối ưu sai hướng."
+    },
+
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["step_index", "step_name", "status", "started_at"],
+        "properties": {
+          "step_index": { "type": "integer", "minimum": 0 },
+          "step_name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "module": {
+            "type": "string",
+            "enum": [
+              "CONTEXT_BUILDER",
+              "QUERY_PLANNER",
+              "EVIDENCE_COLLECTOR",
+              "GRAPH_ANALYST",
+              "HYPOTHESIS_MANAGER",
+              "NARRATIVE_COMPOSER",
+              "CLAIM_CHECKER",
+              "POLICY_CHECKER"
+            ],
+            "description": "Các skill theo mục 8.2. Chúng không tự gọi nhau — orchestrator điều phối, và đó là điều giữ cho lượt chạy quan sát được và có trần chi phí."
+          },
+          "tool_name": { "type": "string", "maxLength": 128 },
+          "tool_call_id": { "type": "string", "maxLength": 128 },
+          "status": {
+            "type": "string",
+            "enum": ["SUCCEEDED", "FAILED", "BLOCKED", "SKIPPED", "TIMEOUT"],
+            "description": "BLOCKED nghĩa là policy chặn bước này (ví dụ: vai trò tổ chức tài chính không có thẩm quyền yêu cầu dữ liệu VASP). Bước bị chặn PHẢI được ghi lại và hiển thị — nó nói cho analyst biết vùng mù của lượt chạy nằm ở đâu."
+          },
+          "started_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+          "duration_ms": { "type": "integer", "minimum": 0 },
+          "input_summary": { "type": "string", "maxLength": 2048 },
+          "output_summary": { "type": "string", "maxLength": 4096 },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" }
+          },
+          "blocked_reason": { "type": "string", "maxLength": 512 }
+        }
+      }
+    },
+
+    "output_ref": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Trỏ tới StructuredCaseOutput của lượt chạy này."
+    },
+
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_version"],
+      "properties": {
+        "policy_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "model_versions": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" }
+        },
+        "prompt_versions": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" }
+        },
+        "tool_versions": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" }
+        }
+      }
+    },
+
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Số liệu vận hành theo mục 8.10.",
+      "properties": {
+        "tool_call_count": { "type": "integer", "minimum": 0 },
+        "denied_tool_call_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Chỉ số an ninh cốt lõi. Tăng đột biến là dấu hiệu prompt injection hoặc lỗi cấu hình quyền."
+        },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "unsupported_claim_count": { "type": "integer", "minimum": 0 },
+        "policy_violation_count": { "type": "integer", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "failure_reason": { "type": "string", "maxLength": 1024 }
+  }
+}

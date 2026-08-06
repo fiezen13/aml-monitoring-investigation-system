@@ -21,7 +21,7 @@ set -eu
 if [ -z "${FIN07_AGENT_DB_PASSWORD:-}" ]; then
     echo "LỖI: FIN07_AGENT_DB_PASSWORD chưa được đặt." >&2
     echo "      Tạo vai trò không mật khẩu là chuyện không được phép xảy ra," >&2
-    echo "      nên khởi tạo cơ sở dữ liệu dừng ở đây. Xem docs/ENVIRONMENT.md." >&2
+    echo "      nên khởi tạo cơ sở dữ liệu dừng ở đây. Xem .env.example." >&2
     exit 1
 fi
 

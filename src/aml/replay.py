@@ -126,7 +126,7 @@ class ReplayRunner:
         if not path.exists():
             raise FileNotFoundError(
                 f"Không thấy file dữ liệu {path}. Đặt file CSV của bộ IBM AML vào đó "
-                f"hoặc trỏ AML_CSV_PATH sang nơi khác — xem docs/AML_INGESTION.md."
+                f"hoặc trỏ AML_CSV_PATH sang nơi khác — xem contracts/ingestion/README.md."
             )
 
         source_file = path.name

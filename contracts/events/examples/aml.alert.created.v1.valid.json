@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "alert_id": "ALR-2026-0813-0007",
+  "primary_entity": { "entity_type": "ACCOUNT", "entity_id": "ACC-0000191823" },
+  "related_entities": [
+    { "entity_type": "CUSTOMER", "entity_id": "CUS-0000044120" },
+    { "entity_type": "DEVICE", "entity_id": "DEV-9a41e0c7" }
+  ],
+  "created_at": "2026-08-13T09:41:02.118Z",
+  "aggregation_window": {
+    "window_start": "2026-08-12T09:41:00Z",
+    "window_end": "2026-08-13T09:41:00Z"
+  },
+  "risk": {
+    "score": 0.87,
+    "level": "HIGH",
+    "confidence": 0.74,
+    "fusion_version": { "name": "score-fusion", "version": "2.4.1" }
+  },
+  "priority": 2,
+  "detection_result_refs": [
+    "DR-2026-0813-114020",
+    "DR-2026-0813-114021",
+    "DR-2026-0813-114044"
+  ],
+  "reason_codes": [
+    {
+      "code": "FAN_IN_BURST",
+      "description": "86 người chuyển tiền vào tài khoản trong 24 giờ, so với 3 người ở 30 ngày trước đó.",
+      "contribution": 0.41,
+      "feature_refs": ["account_inbound_distinct_senders_24h"]
+    },
+    {
+      "code": "RAPID_PASS_THROUGH",
+      "description": "94% số tiền nhận được chuyển đi trong vòng dưới 30 phút.",
+      "contribution": 0.33,
+      "feature_refs": ["account_passthrough_ratio_24h"]
+    },
+    {
+      "code": "ACCOUNT_AGE_LOW",
+      "description": "Tài khoản mở 11 ngày trước thời điểm đánh giá.",
+      "contribution": 0.19,
+      "feature_refs": ["account_age_days"]
+    },
+    {
+      "code": "PAYROLL_PATTERN_PARTIAL",
+      "description": "Một phần dòng vào trùng chu kỳ trả lương, làm giảm mức bất thường.",
+      "contribution": -0.06,
+      "feature_refs": ["inbound_periodicity_score"]
+    }
+  ],
+  "typology_candidates": [
+    { "typology_id": "BANK-MULE-FUNNEL-001", "typology_version": "v3", "confidence": 0.78 }
+  ],
+  "suppression": { "is_suppressed": false },
+  "sla": { "due_at": "2026-08-14T09:41:02Z", "sla_policy_id": "SLA-HIGH-24H" },
+  "trace": { "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736" }
+}

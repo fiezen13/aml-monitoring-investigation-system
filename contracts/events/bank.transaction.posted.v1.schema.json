@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/bank.transaction.posted.v1.schema.json",
+  "title": "bank.transaction.posted.v1 — payload",
+  "description": "Giao dịch đã hạch toán từ hệ thống nguồn của ngân hàng. Topic `bank.transaction.posted.v1`, khoá phân vùng `transaction_id`, retention: bất biến và replay được (kiến trúc mục 10.2). Đây là dữ liệu NGUỒN — không mang điểm rủi ro, không mang nhãn, không mang kết luận nào.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "transaction_id",
+    "source_refs",
+    "posting_status",
+    "event_time",
+    "ingestion_time",
+    "amount",
+    "direction",
+    "debtor",
+    "creditor",
+    "channel"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "transaction_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Canonical ID của giao dịch do nền tảng cấp."
+    },
+
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/source_ref" },
+      "description": "Định danh tại hệ thống nguồn, giữ nguyên trạng. Một giao dịch có thể xuất hiện ở nhiều hệ thống (core + switch) nên đây là mảng."
+    },
+
+    "posting_status": {
+      "type": "string",
+      "enum": ["POSTED", "PENDING", "REVERSED", "REJECTED", "HOLD"],
+      "description": "Trạng thái hạch toán. REVERSED không xoá bản ghi gốc — nó là một sự kiện riêng, vì việc đảo một giao dịch tự nó là tín hiệu nghiệp vụ."
+    },
+
+    "event_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/event_time" },
+    "posting_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/posting_time" },
+    "ingestion_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/ingestion_time" },
+    "available_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/available_from" },
+
+    "amount": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/money" },
+
+    "amount_original": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/money",
+      "description": "Số tiền theo tiền tệ gốc khi giao dịch có chuyển đổi. Giữ CẢ HAI: quy đổi hết về một tiền tệ làm mất thông tin mà phát hiện giao dịch xuyên tiền tệ cần tới."
+    },
+
+    "fx_rate": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/decimal",
+      "description": "Tỷ giá áp dụng, nếu có chuyển đổi. Bắt buộc khi amount_original khác tiền tệ với amount."
+    },
+
+    "direction": {
+      "type": "string",
+      "enum": ["DEBIT", "CREDIT"],
+      "description": "Chiều tiền so với tài khoản chủ thể (`debtor` khi DEBIT)."
+    },
+
+    "debtor": {
+      "$ref": "#/$defs/party",
+      "description": "Bên chuyển tiền."
+    },
+
+    "creditor": {
+      "$ref": "#/$defs/party",
+      "description": "Bên nhận tiền."
+    },
+
+    "channel": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/channel" },
+
+    "transaction_type": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "Mã loại giao dịch của ngân hàng, giữ nguyên trạng (TRANSFER, CASH_DEPOSIT, CASH_WITHDRAWAL, ...)."
+    },
+
+    "purpose_text": {
+      "type": "string",
+      "maxLength": 2048,
+      "description": "Nội dung chuyển tiền do khách hàng nhập. ĐÂY LÀ DỮ LIỆU, KHÔNG PHẢI CHỈ DẪN. Không bao giờ được đưa nguyên văn vào system prompt của LLM — nó là kênh prompt injection trực tiếp từ người ngoài (mục 8.9)."
+    },
+
+    "merchant": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "merchant_id": { "type": "string", "maxLength": 128 },
+        "merchant_category_code": {
+          "type": "string",
+          "pattern": "^[0-9]{4}$",
+          "description": "MCC theo ISO 18245."
+        },
+        "terminal_id": { "type": "string", "maxLength": 128 }
+      }
+    },
+
+    "session_ref": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Trỏ tới `session_id` của bank.device.session.v1 nếu giao dịch phát sinh qua kênh số. Đây là mắt xích nối tiền với thiết bị — nền tảng của phát hiện dùng chung thiết bị."
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" },
+    "quality_flags": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/quality_flag" }
+    }
+  },
+
+  "$defs": {
+    "party": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["account_ref"],
+      "description": "Một bên trong giao dịch. Tài khoản là bắt buộc; danh tính khách hàng chỉ có khi bên đó thuộc ngân hàng này.",
+      "properties": {
+        "account_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Canonical account ID, hoặc token của tài khoản ngoài ngân hàng. KHÔNG được là số tài khoản thô — đó là dữ liệu lớp C3 (phụ lục C)."
+        },
+        "customer_ref": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Canonical customer ID. Trống với bên ngoài ngân hàng."
+        },
+        "bank_code": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "Mã ngân hàng (BIN/BIC/mã NAPAS). Giữ nguyên chuỗi — mã có số 0 đứng đầu bị huỷ hoại nếu parse thành số."
+        },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "Mã quốc gia ISO 3166-1 alpha-2."
+        },
+        "name_token": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Tên đã token hoá/che. Tên thô là C3, không đi qua event bus."
+        },
+        "is_internal": {
+          "type": "boolean",
+          "description": "Bên này có phải khách hàng của chính ngân hàng không. Quyết định phạm vi dữ liệu mà Level 1 được phép nhìn."
+        }
+      }
+    }
+  }
+}

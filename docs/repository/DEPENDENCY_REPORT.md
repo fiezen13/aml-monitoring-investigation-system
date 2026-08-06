@@ -74,4 +74,3 @@ npm) — không lẫn `yarn.lock`/`pnpm-lock.yaml`.
 - **Không quét lỗ hổng phía Java/Maven (`flink/aml-ingestion/pom.xml`)** trong lần audit này — đề
   xuất chạy `mvn org.owasp:dependency-check-maven:check` như một job riêng nếu ingestion pipeline
   tiến gần production hơn.
-</content>

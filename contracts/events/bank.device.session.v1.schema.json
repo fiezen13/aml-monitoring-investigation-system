@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/bank.device.session.v1.schema.json",
+  "title": "bank.device.session.v1 — payload",
+  "description": "Phiên đăng nhập/thiết bị từ Internet & Mobile Banking. Topic `bank.device.session.v1`, khoá `session_id`, retention theo chính sách bảo mật (kiến trúc mục 10.2). Đây là nguồn của tín hiệu 'dùng chung thiết bị' — một trong những cạnh mạnh nhất của đồ thị mule network, và cũng là dữ liệu nhạy cảm nhất về quyền riêng tư trong Level 1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "event_type",
+    "event_time",
+    "ingestion_time",
+    "channel"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "session_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "customer_ref": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Trống với phiên chưa xác thực — và phiên chưa xác thực vẫn phải được ghi lại, vì thăm dò trước khi chiếm quyền là tín hiệu."
+    },
+
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "LOGIN_SUCCESS",
+        "LOGIN_FAILED",
+        "LOGOUT",
+        "MFA_CHALLENGE",
+        "MFA_FAILED",
+        "DEVICE_BOUND",
+        "DEVICE_UNBOUND",
+        "PAYEE_ADDED",
+        "LIMIT_CHANGED",
+        "PROFILE_CHANGED"
+      ],
+      "description": "PAYEE_ADDED và LIMIT_CHANGED nằm ở đây có chủ đích: chúng là hành động chuẩn bị, thường xảy ra TRƯỚC dòng tiền đáng ngờ, nên là cơ hội phát hiện sớm."
+    },
+
+    "event_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/event_time" },
+    "ingestion_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/ingestion_time" },
+
+    "channel": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/channel" },
+
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Thuộc tính thiết bị. Mọi định danh ở đây là token, không phải giá trị thô: IMEI/MAC thô là C3 và không được rời khỏi hệ thống nguồn.",
+      "properties": {
+        "device_token": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Định danh thiết bị đã token hoá, ổn định qua các phiên. Đây là thứ tạo ra cạnh 'dùng chung thiết bị' trong đồ thị."
+        },
+        "device_type": { "type": "string", "enum": ["MOBILE_APP", "BROWSER", "TABLET", "UNKNOWN"] },
+        "os_family": { "type": "string", "maxLength": 32 },
+        "app_version": { "type": "string", "maxLength": 32 },
+        "is_rooted_or_emulator": {
+          "type": "boolean",
+          "description": "Thiết bị đã root/jailbreak hoặc là giả lập. Tín hiệu mạnh cho tài khoản được vận hành hàng loạt."
+        },
+        "is_new_device": { "type": "boolean" }
+      }
+    },
+
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Thông tin mạng ở mức THÔ ĐỦ DÙNG, không hơn. Không lưu toạ độ chính xác — kiến trúc yêu cầu geo coarse (mục 6.2).",
+      "properties": {
+        "ip_token": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "IP đã token hoá. Cùng token nghĩa là cùng IP, mà không lộ IP."
+        },
+        "asn": { "type": "integer", "description": "Autonomous System Number của nhà mạng." },
+        "country": { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "region_coarse": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Vùng ở mức tỉnh/thành, không chi tiết hơn."
+        },
+        "is_vpn_or_proxy": { "type": "boolean" },
+        "is_shared_nat_suspected": {
+          "type": "boolean",
+          "description": "Nghi ngờ IP dùng chung qua NAT nhà mạng. Cực kỳ quan trọng: cùng IP qua NAT KHÔNG phải bằng chứng liên kết giữa hai người, và cạnh đồ thị suy ra từ đó phải mang confidence thấp hẳn."
+        }
+      }
+    },
+
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "method": { "type": "string", "enum": ["PASSWORD", "OTP_SMS", "OTP_APP", "BIOMETRIC", "TOKEN_DEVICE", "OTHER"] },
+        "is_successful": { "type": "boolean" },
+        "failure_reason": { "type": "string", "maxLength": 128 }
+      }
+    },
+
+    "action_detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Chi tiết của hành động khi event_type là một thay đổi cấu hình.",
+      "properties": {
+        "payee_account_ref": { "type": "string", "maxLength": 128 },
+        "old_limit": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/money" },
+        "new_limit": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/money" }
+      }
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  }
+}

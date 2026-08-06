@@ -48,7 +48,7 @@ jenkins:
               - "Job/Build"
               - "View/Read"
 
-  # Agent kết nối vào bằng giao thức inbound. Xem docs/CICD.md mục 3.
+  # Agent kết nối vào bằng giao thức inbound. Xem docs/operations/CICD.md mục 3.
   nodes:
     - permanent:
         name: "fin07-agent-1"

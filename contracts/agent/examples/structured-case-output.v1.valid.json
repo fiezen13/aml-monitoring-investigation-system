@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "run_id": "RUN-2026-0813-0007-01",
+  "case_id": "CASE-2026-0813-0041",
+  "generated_at": "2026-08-13T10:02:44.907Z",
+  "is_draft": true,
+  "risk_summary": {
+    "level": "HIGH",
+    "confidence": 0.74,
+    "narrative": "Mẫu hình dòng tiền phù hợp với mạng lưới tài khoản trung gian: 86 người nạp vào một tài khoản mở 11 ngày trước, phần lớn được chuyển tiếp trong dưới 30 phút. Một phần dòng vào trùng chu kỳ trả lương nên chưa loại trừ được khả năng đây là đơn vị chi hộ. Cần EDD để xác định nguồn tiền và mục đích kinh tế."
+  },
+  "hypotheses": [
+    {
+      "typology": "BANK-MULE-FUNNEL-001",
+      "typology_version": "v3",
+      "confidence": 0.78,
+      "supporting_evidence": ["EV-101", "EV-108", "EV-112"],
+      "contradicting_evidence": ["EV-115"],
+      "unknowns": [
+        "Chủ sở hữu hưởng lợi của cụm tài khoản nhận",
+        "Quan hệ thực tế giữa 86 người nạp tiền và chủ tài khoản"
+      ]
+    },
+    {
+      "typology": "LEGITIMATE-PAYROLL-AGGREGATOR",
+      "typology_version": "v1",
+      "confidence": 0.19,
+      "supporting_evidence": ["EV-115"],
+      "contradicting_evidence": ["EV-101", "EV-112"],
+      "unknowns": ["Hợp đồng dịch vụ chi hộ, nếu có"]
+    }
+  ],
+  "claims": [
+    {
+      "text": "Tài khoản nhận tiền từ 86 người khác nhau trong 24 giờ.",
+      "evidence_refs": ["EV-101"],
+      "fact_or_inference": "FACT",
+      "confidence": 1
+    },
+    {
+      "text": "94% số tiền nhận được chuyển đi trong vòng dưới 30 phút.",
+      "evidence_refs": ["EV-108"],
+      "fact_or_inference": "FACT",
+      "confidence": 1
+    },
+    {
+      "text": "Mẫu hình dòng tiền phù hợp với vai trò tài khoản trung gian trong mạng lưới rửa tiền.",
+      "evidence_refs": ["EV-101", "EV-108", "EV-112"],
+      "fact_or_inference": "INFERENCE",
+      "confidence": 0.78
+    }
+  ],
+  "recommended_actions": [
+    {
+      "action": "EDD_REQUEST",
+      "approval_required": true,
+      "reason": "Cần xác định nguồn tiền và mục đích kinh tế của dòng vào bất thường.",
+      "evidence_refs": ["EV-101", "EV-108"]
+    },
+    {
+      "action": "MONITOR_CONTINUE",
+      "approval_required": false,
+      "reason": "Theo dõi tiếp 14 ngày để phân biệt chi hộ lương hợp pháp với mạng lưới trung gian.",
+      "evidence_refs": ["EV-115"]
+    }
+  ],
+  "timeline": [
+    {
+      "at": "2026-08-02T03:12:00Z",
+      "description": "Tài khoản được mở qua kênh mobile banking.",
+      "evidence_refs": ["EV-104"]
+    },
+    {
+      "at": "2026-08-12T22:05:00Z",
+      "description": "Đợt nạp tiền đầu tiên từ 31 người trong 40 phút.",
+      "evidence_refs": ["EV-101"]
+    }
+  ],
+  "blind_spots": [
+    "Không có dữ liệu từ ngân hàng khác — không xác định được điểm đến cuối của dòng tiền ra.",
+    "Không có thông tin về quan hệ ngoài ngân hàng giữa các bên nạp tiền."
+  ],
+  "uncertainty": { "should_abstain": false },
+  "data_quality_notes": ["PARTIAL_WINDOW"],
+  "policy_version": "AML-POL-12.4",
+  "versions": {
+    "model_versions": [{ "name": "hypothesis-manager", "version": "2026.08.1" }],
+    "prompt_versions": [{ "name": "case-narrative", "version": "v7" }]
+  }
+}

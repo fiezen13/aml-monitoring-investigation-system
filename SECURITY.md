@@ -3,7 +3,7 @@
 FIN-07 là hệ thống demo/PoC cho chương trình AI20K Build Phase, mô phỏng một console giám sát AML
 ngân hàng. Toàn bộ dữ liệu trong stack mặc định (`docker compose up`) là dữ liệu tổng hợp
 (`scripts/seed_data.py`, `scripts/abm_generate.py`) — không có khách hàng thật, không có danh sách
-trừng phạt thật. Xem [`docs/architecture_diagram.md`](docs/architecture_diagram.md) mục 8 để biết
+trừng phạt thật. Xem tài liệu kiến trúc trong `docs/architecture/` mục 8 để biết
 đầy đủ các biện pháp bảo mật đã hiện thực.
 
 ## Báo cáo lỗ hổng
@@ -37,14 +37,13 @@ riêng tư (không mở public issue cho lỗ hổng chưa vá). Nêu rõ:
   quyền truy cập DB trực tiếp, không có khả năng đóng băng tài khoản hay nộp SAR. Khi hiện thực
   agent thật, các ràng buộc bắt buộc: không sửa transaction gốc, không tự đóng băng tài khoản, không
   tự nộp STR/SAR, không đọc `fc_gt` (ground truth ẩn), không truy cập DB/SQL tuỳ ý ngoài vai trò
-  `fin07_agent`, không vượt RBAC. Xem `docs/architecture_diagram.md` mục 4.
+  `fin07_agent`, không vượt RBAC. Xem `docs/architecture/` mục 4.
 
 ## Chưa hoàn thiện (biết trước, chưa phải bị bỏ sót)
 
 - Chưa có quét lỗ hổng image tự động trong CI (Trivy/Grype) — xem
   [`docs/repository/DEPENDENCY_REPORT.md`](docs/repository/DEPENDENCY_REPORT.md).
-- Chưa bật branch protection trên GitHub cho `main`/`develop` — xem `docs/CI.md` mục 5.
+- Chưa bật branch protection trên GitHub cho `main`/`develop` — xem `docs/operations/CICD.md` mục 5.
 - Staging/production-like không mở cổng PostgreSQL/Redis ra ngoài, chỉ Caddy mở cổng ra Internet ở
-  môi trường VM (`docs/DEPLOY_VM.md`) — môi trường phát triển mặc định thì mở cổng ra máy chủ để
+  môi trường VM (`docs/operations/DEPLOY_VM.md`) — môi trường phát triển mặc định thì mở cổng ra máy chủ để
   tiện gỡ lỗi, có chủ đích, không dùng cho dữ liệu thật.
-</content>
