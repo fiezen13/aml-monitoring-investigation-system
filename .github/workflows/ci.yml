@@ -20,10 +20,17 @@ name: CI
 #     The job was not started because recent account payments have failed
 #     or your spending limit needs to be increased.
 #
-# Ban tổ chức cung cấp runner tự vận hành, dùng chung cho mọi team. Vì dùng
-# chung nên runner KHÔNG sạch giữa các lần chạy: cổng, thư mục làm việc và
-# daemon Docker đều chia sẻ với job của team khác. Xem ghi chú ở job `test`
-# và `compose-smoke` về chỗ có thể đụng nhau.
+# Ban tổ chức cung cấp runner tự vận hành. Mỗi job nhận một VM ephemeral
+# riêng (`eph-vmrunner-*`), nên không đụng thư mục làm việc của team khác.
+#
+# Nhưng VM đó KHÔNG trống: có sẵn thứ gì đó nghe trên 5432. Lần chạy đầu,
+# `test` và `compose-smoke` cùng hỏng vì cùng một câu:
+#
+#     failed to bind host port 0.0.0.0:5432/tcp: address already in use
+#
+# Nên không cổng cố định nào ở đây được coi là an toàn. `test` xin cổng động
+# cho service container; `compose-smoke` đẩy toàn bộ cổng ra dải cao. Xem
+# ghi chú tại hai job đó.
 # ---------------------------------------------------------------------
 
 on:
@@ -74,12 +81,14 @@ jobs:
     # của FIN-07 (nhật ký bất biến, cách ly vai trò agent) nằm ở tầng
     # PostgreSQL, mock không kiểm chứng được cái gì cả.
     #
-    # LƯU Ý trên runner dùng chung: hai cổng dưới đây bind cố định vào máy chủ
-    # runner. Nếu một team khác đang chạy job có PostgreSQL hoặc Redis trên
-    # cùng runner, lần bind thứ hai sẽ hỏng với thông báo dạng
-    # "port is already allocated" và job này đỏ dù mã nguồn không sai.
-    # Gặp đúng triệu chứng đó thì đổi sang cổng động — `ports: ["5432/tcp"]`
-    # rồi đọc cổng thật từ `job.services.postgres.ports['5432']`.
+    # Cổng ĐỘNG, không bind cố định. VM runner của ban tổ chức đã có sẵn thứ gì
+    # đó nghe trên 5432, nên `ports: ["5432:5432"]` hỏng ngay ở bước
+    # "Initialize containers":
+    #
+    #     failed to bind host port 0.0.0.0:5432/tcp: address already in use
+    #
+    # Dạng "5432/tcp" bảo Docker tự chọn một cổng rảnh trên máy chủ; số cổng
+    # thật đọc lại từ `job.services.*.ports` ở bước bên dưới.
     services:
       postgres:
         image: postgres:16-alpine
@@ -87,7 +96,7 @@ jobs:
           POSTGRES_USER: fin07
           POSTGRES_PASSWORD: fin07_ci_password
           POSTGRES_DB: fin07
-        ports: ["5432:5432"]
+        ports: ["5432/tcp"]
         options: >-
           --health-cmd "pg_isready -U fin07 -d fin07"
           --health-interval 5s
@@ -95,17 +104,17 @@ jobs:
           --health-retries 20
       redis:
         image: redis:7-alpine
-        ports: ["6379:6379"]
+        ports: ["6379/tcp"]
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
 
+    # DATABASE_URL và REDIS_URL KHÔNG đặt ở đây được: chúng cần số cổng thật,
+    # mà context `job` không dùng được ở `env` cấp job. Xem bước đầu tiên.
     env:
       APP_ENV: test
-      DATABASE_URL: postgresql+psycopg://fin07:fin07_ci_password@localhost:5432/fin07
-      REDIS_URL: redis://localhost:6379/0
       POSTGRES_USER: fin07
       POSTGRES_DB: fin07
       FIN07_AGENT_DB_PASSWORD: fin07_agent_ci_password
@@ -114,6 +123,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # psql đọc PGPORT, còn ứng dụng đọc DATABASE_URL/REDIS_URL — cả ba đều
+      # phải trỏ đúng cổng mà runner vừa cấp cho service container.
+      - name: Đọc cổng thật của service container
+        run: |
+          {
+            echo "PGPORT=${{ job.services.postgres.ports['5432'] }}"
+            echo "DATABASE_URL=postgresql+psycopg://fin07:fin07_ci_password@localhost:${{ job.services.postgres.ports['5432'] }}/fin07"
+            echo "REDIS_URL=redis://localhost:${{ job.services.redis.ports['6379'] }}/0"
+          } >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
@@ -281,6 +300,14 @@ jobs:
     env:
       APP_IMAGE: ${{ needs.images.outputs.app_image }}
       WEB_IMAGE: ${{ needs.images.outputs.web_image }}
+      # VM runner đã có sẵn thứ gì đó nghe trên 5432, nên `docker compose up`
+      # với cổng mặc định hỏng ở ngay dịch vụ đầu tiên. Mọi cổng máy chủ trong
+      # docker-compose.yml đều tham số hoá được, nên đẩy hết ra dải cao.
+      # Cổng bên trong container không đổi, healthcheck vì thế vẫn nguyên.
+      POSTGRES_PORT: "15432"
+      REDIS_PORT: "16379"
+      API_PORT: "18000"
+      WEB_PORT: "15173"
 
     steps:
       - uses: actions/checkout@v4
@@ -325,7 +352,8 @@ jobs:
           fi
 
       # Cùng bộ kiểm tra khói mà Jenkins chạy sau mỗi lần triển khai.
-      - run: ./ci/smoke.sh http://localhost:8000 http://localhost:5173
+      # Cổng phải khớp API_PORT/WEB_PORT đặt ở trên.
+      - run: ./ci/smoke.sh http://localhost:18000 http://localhost:15173
 
       - name: Log khi thất bại
         if: failure()
