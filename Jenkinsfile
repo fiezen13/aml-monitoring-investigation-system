@@ -18,13 +18,13 @@
 // nên hai hệ thống không lệch nhau được — đó là điều kiện để việc chạy
 // song song hai hệ thống không trở thành nợ kỹ thuật.
 //
-// Tài liệu: docs/CICD.md
+// Tài liệu: docs/operations/CICD.md
 // =====================================================================
 
 pipeline {
 
     // Agent cần: docker, docker compose v2, python3.11, node 22, psql, jq,
-    // curl, git. Xem docs/CICD.md mục 3 để dựng agent.
+    // curl, git. Xem docs/operations/CICD.md mục 3 để dựng agent.
     agent { label 'fin07' }
 
     options {
@@ -93,7 +93,7 @@ pipeline {
                     done
                     if [ -n "$missing" ]; then
                         echo "Agent thiếu công cụ:${missing}"
-                        echo "Xem docs/CICD.md mục 3 để dựng agent đúng."
+                        echo "Xem docs/operations/CICD.md mục 3 để dựng agent đúng."
                         exit 1
                     fi
                     docker compose version >/dev/null 2>&1 || {
@@ -343,7 +343,7 @@ pipeline {
         }
         failure {
             echo "Build ${env.BUILD_NUMBER} thất bại ở giai đoạn ${env.STAGE_NAME}."
-            // Kênh thông báo cấu hình ở docs/CICD.md mục 7. Cố ý để trống
+            // Kênh thông báo cấu hình ở docs/operations/CICD.md mục 7. Cố ý để trống
             // thay vì cắm sẵn webhook giả — một thông báo không tới nơi còn
             // tệ hơn không có thông báo, vì người ta tưởng là có.
         }

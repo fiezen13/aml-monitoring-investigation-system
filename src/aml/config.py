@@ -5,7 +5,7 @@ Tách khỏi `src.config.Settings` có chủ ý: đó là cấu hình của API 
 liệu hoàn toàn khác, chạy độc lập và thường chạy trong container riêng.
 
 Ràng buộc tài liệu vẫn giữ nguyên như phần còn lại của repo: mọi trường ở
-đây phải có mặt trong `.env.example` và `docs/ENVIRONMENT.md`, và
+đây phải có mặt trong `.env.example` và `.env.example`, và
 `tests/test_config_documented.py` kiểm tra điều đó ở mỗi lần chạy CI.
 """
 

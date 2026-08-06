@@ -4,7 +4,7 @@
 #
 # Chạy được ngay trên máy vừa clone repo: mọi biến đều có giá trị mặc định
 # cho môi trường phát triển, không cần tạo .env trước. Khi có .env thì file
-# đó ghi đè (xem `env_file` bên dưới). Danh sách biến: docs/ENVIRONMENT.md.
+# đó ghi đè (xem `env_file` bên dưới). Danh sách biến: .env.example.
 #
 # Thứ tự khởi động do healthcheck quyết định, không do sleep:
 #   postgres, redis  →  seed (chạy một lần rồi thoát)  →  api, worker  →  web
@@ -18,7 +18,7 @@
 #
 # Cùng file, cùng project, cùng mạng — nên producer, Flink và các dịch vụ
 # sẵn có nói chuyện được với nhau mà không cần cấu hình mạng thêm.
-# Chi tiết: docs/AML_INGESTION.md
+# Chi tiết: contracts/ingestion/README.md
 
 name: fin07
 

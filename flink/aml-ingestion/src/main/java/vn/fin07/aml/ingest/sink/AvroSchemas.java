@@ -21,7 +21,7 @@ import vn.fin07.aml.ingest.model.AmlTransaction;
  * producer chỉ ghi ra số JSON khi giá trị quay ngược lại đúng bằng chính nó
  * (dưới 15 chữ số có nghĩa — đúng với toàn bộ bộ dữ liệu IBM), nên vòng
  * decimal → JSON → double không làm sai con số. Xem mục giới hạn trong
- * docs/AML_INGESTION.md.
+ * contracts/ingestion/README.md.
  */
 public final class AvroSchemas {
 

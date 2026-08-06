@@ -14,14 +14,14 @@
 - [ ] `db/init` — lược đồ cơ sở dữ liệu
 - [ ] `web/` — frontend
 - [ ] `flink/aml-ingestion`, `src/aml` — luồng nạp dữ liệu Kafka → Flink → HDFS
-- [ ] `schemas/` — hợp đồng sự kiện/dữ liệu
+- [ ] `contracts/` — hợp đồng dữ liệu, sự kiện, tool
 - [ ] `ci/`, `.github/workflows`, `Jenkinsfile` — CI/CD
 - [ ] `docker-compose.yml`, `deploy/`, `Dockerfile*` — hạ tầng/triển khai
 - [ ] Tài liệu (`docs/`)
 
 ## Ảnh hưởng tới contract
 
-<!-- Có đổi event schema (schemas/aml-transaction-v1.schema.json), API response shape,
+<!-- Có đổi event schema (contracts/), API response shape,
      hay bảng trong db/init/ không? Nếu có, mô tả và trỏ tới kế hoạch migration. -->
 
 - [ ] Không đổi contract nào
@@ -30,7 +30,7 @@
 ## Ảnh hưởng migration
 
 <!-- Có cần chạy `make migrate` / thêm file db/init/00N mới không? Có cần đổi biến môi trường không
-     (nhớ cập nhật .env.example và docs/ENVIRONMENT.md nếu có)? -->
+     (nhớ cập nhật .env.example và .env.example nếu có)? -->
 
 ## Kiểm thử đã chạy
 
@@ -53,5 +53,4 @@
 
 - [ ] Không có dataset, model binary, hay credential nào bị commit
 - [ ] Không có file sinh ra (`.pytest_cache`, `coverage.xml`, `node_modules`, checkpoint Flink, v.v.) bị commit
-- [ ] `.env.example` và `docs/ENVIRONMENT.md` đã cập nhật nếu có biến môi trường mới
-</content>
+- [ ] `.env.example` và `.env.example` đã cập nhật nếu có biến môi trường mới
