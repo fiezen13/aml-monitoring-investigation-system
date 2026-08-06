@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/aml.feature.updated.v1.schema.json",
+  "title": "aml.feature.updated.v1 — payload",
+  "description": "Một feature snapshot vừa được tính. Topic `aml.feature.updated.v1`, khoá `entity_id` (kiến trúc mục 10.2). Mọi feature phải mang `as_of_time` và version của định nghĩa — thiếu một trong hai thì không thể chứng minh là mô hình không nhìn thấy tương lai.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "feature_set_id",
+    "entity",
+    "as_of_time",
+    "computed_at",
+    "definition_version",
+    "features"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "feature_set_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Định danh của bộ feature, ví dụ `account_velocity_30d`."
+    },
+
+    "entity": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/entity_ref" },
+
+    "as_of_time": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Feature này mô tả trạng thái TẠI thời điểm nào. Đây là trục thời gian dùng cho point-in-time join khi huấn luyện. Dùng nhầm `computed_at` thay cho trường này là cách tạo ra rò rỉ dữ liệu tương lai kinh điển nhất, và nó cho ra chỉ số offline đẹp mà production không bao giờ đạt được."
+    },
+
+    "computed_at": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Thời điểm phép tính được chạy. Chỉ dùng cho vận hành và đo độ tươi, KHÔNG dùng cho join."
+    },
+
+    "definition_version": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref",
+      "description": "Phiên bản định nghĩa feature. Đổi công thức mà giữ nguyên tên là thay đổi phá vỡ tương thích — mô hình cũ sẽ nhận đầu vào mang ý nghĩa khác mà không báo lỗi gì."
+    },
+
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Cửa sổ thời gian mà feature được tính trên đó.",
+      "properties": {
+        "window_start": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "window_end": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "window_label": { "type": "string", "maxLength": 32, "description": "Ví dụ: 1h, 24h, 7d, 30d." }
+      }
+    },
+
+    "features": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Cặp tên → giá trị. Giá trị số dùng chuỗi thập phân để giữ độ chính xác; boolean và chuỗi giữ nguyên kiểu.",
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null"]
+      }
+    },
+
+    "peer_group": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Nhóm so sánh, nếu feature là so sánh tương đối. Bắt buộc khi có percentile — một percentile không nói rõ so với ai thì vô nghĩa.",
+      "properties": {
+        "peer_group_id": { "type": "string", "maxLength": 128 },
+        "peer_group_version": { "type": "string", "maxLength": 64 },
+        "peer_group_size": { "type": "integer", "minimum": 0 },
+        "definition": { "type": "string", "maxLength": 512 }
+      }
+    },
+
+    "quality_flags": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/quality_flag" },
+      "description": "PARTIAL_WINDOW và LOW_SAMPLE_PEER_GROUP đặc biệt quan trọng ở đây: chúng quyết định feature này có được dùng để ra quyết định hay không."
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  }
+}

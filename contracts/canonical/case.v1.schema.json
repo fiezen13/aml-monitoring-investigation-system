@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/case.v1.schema.json",
+  "title": "Canonical CASE v1",
+  "description": "Hồ sơ vụ việc — system of record của điều tra AML (kiến trúc mục 9). Trạng thái chính thức do workflow service và người có thẩm quyền kiểm soát; agent chỉ đóng góp bản nháp và bằng chứng.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "state", "created_at", "primary_entity", "alert_refs"],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "state": {
+      "type": "string",
+      "enum": ["NEW", "TRIAGED", "INVESTIGATING", "PENDING_INFO", "ESCALATED", "REPORTED", "CLOSED", "REOPENED"]
+    },
+
+    "primary_entity": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/entity_ref" },
+
+    "related_entities": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/entity_ref" }
+    },
+
+    "alert_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "maxLength": 128 },
+      "description": "Case luôn bắt nguồn từ ít nhất một alert. Case tạo tay không có alert nào là ngoại lệ cần một alert 'manual' tường minh, không phải một mảng rỗng."
+    },
+
+    "priority": { "type": "integer", "minimum": 1, "maximum": 5 },
+
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "level": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] }
+      }
+    },
+
+    "typology_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["typology_id", "confidence"],
+        "properties": {
+          "typology_id": { "type": "string", "maxLength": 128 },
+          "typology_version": { "type": "string", "maxLength": 32 },
+          "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" }
+        }
+      }
+    },
+
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assigned_to": { "type": "string", "maxLength": 128 },
+        "unit": { "type": "string", "maxLength": 128 },
+        "assigned_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "sla": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "due_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "policy_id": { "type": "string", "maxLength": 64 },
+        "is_breached": { "type": "boolean" }
+      }
+    },
+
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" }
+    },
+
+    "agent_run_refs": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 128 }
+    },
+
+    "created_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "updated_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "closed_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "rationale", "decided_by"],
+      "description": "Chỉ có mặt khi case ở trạng thái kết thúc. `rationale` bắt buộc — mục 9: điều kiện vào CLOSED là disposition và rationale đầy đủ.",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["TRUE_POSITIVE", "FALSE_POSITIVE", "INCONCLUSIVE", "REPORTED_STR", "CLOSED_NO_REPORT"]
+        },
+        "rationale": { "type": "string", "minLength": 10, "maxLength": 8192 },
+        "decided_by": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "decided_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "confirmed_typology_id": { "type": "string", "maxLength": 128 },
+        "str_reference": { "type": "string", "maxLength": 128 }
+      }
+    },
+
+    "linked_case_ids": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 128 },
+      "description": "Các case liên quan. Mule network hiếm khi gói gọn trong một case, và mối liên kết giữa chúng thường là phát hiện quan trọng nhất."
+    }
+  },
+
+  "allOf": [
+    {
+      "if": {
+        "properties": { "state": { "enum": ["CLOSED", "REPORTED"] } },
+        "required": ["state"]
+      },
+      "then": { "required": ["disposition"] }
+    }
+  ]
+}

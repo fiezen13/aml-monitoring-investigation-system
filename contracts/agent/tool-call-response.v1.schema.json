@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/agent/tool-call-response.v1.schema.json",
+  "title": "ToolCallResponse v1",
+  "description": "Kết quả một lần gọi tool (kiến trúc phụ lục B). Mọi phản hồi đều mang provenance và version của nguồn — nếu không, agent có dữ liệu nhưng không có cách nào trích dẫn nó, và mọi claim dựng trên đó đều không kiểm chứng được.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool_call_id",
+    "status",
+    "policy_decision",
+    "started_at",
+    "completed_at"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "tool_call_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "status": {
+      "type": "string",
+      "enum": ["SUCCEEDED", "FAILED", "DENIED", "TIMEOUT", "RATE_LIMITED", "PARTIAL"],
+      "description": "PARTIAL nghĩa là có kết quả nhưng không đầy đủ. Nó là một trạng thái riêng chứ không phải SUCCEEDED, vì agent phải xử lý hai tình huống này khác nhau."
+    },
+
+    "policy_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "policy_version"],
+      "properties": {
+        "allowed": { "type": "boolean" },
+        "policy_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "denial_reason": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Lý do từ chối, viết cho agent hiểu được để đổi kế hoạch. Nhưng KHÔNG được tiết lộ dữ liệu mà agent không có quyền thấy — 'khách hàng này thuộc chi nhánh khác' là được, 'khách hàng Nguyễn Văn A thuộc chi nhánh Y' thì không."
+        }
+      }
+    },
+
+    "result": {
+      "description": "Dữ liệu trả về. Hình dạng do schema riêng của từng tool quy định. Vắng mặt khi status là DENIED hoặc FAILED."
+    },
+
+    "result_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "row_count": { "type": "integer", "minimum": 0 },
+        "truncated": {
+          "type": "boolean",
+          "description": "Bắt buộc phản ánh đúng. Agent kết luận 'chỉ có 12 giao dịch' từ một kết quả bị cắt ở 12 dòng là một sai lầm im lặng mà không ai phát hiện được sau đó."
+        },
+        "result_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 của kết quả đã chuẩn hoá. Cho phép chứng minh rằng replay cho ra đúng dữ liệu cũ (mục 8.10: deterministic replay of tool outputs)."
+        }
+      }
+    },
+
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" },
+      "description": "Các mục đã được ghi vào evidence ledger. Agent chỉ được trích dẫn những ID này, không được trích dẫn nội dung tự nhớ."
+    },
+
+    "source_versions": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" },
+      "description": "Phiên bản của mọi nguồn đã tham gia: rule, model, watchlist, tài liệu policy. Cần cho replay và cho việc trả lời 'tại thời điểm đó hệ thống biết gì'."
+    },
+
+    "provenance": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" }
+    },
+
+    "quality_flags": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/quality_flag" }
+    },
+
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Những gì đã bị che trước khi trả về. Agent cần BIẾT là có trường bị che — khác hẳn với việc trường đó không tồn tại.",
+      "properties": {
+        "fields_redacted": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 }
+        },
+        "data_class": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class" }
+      }
+    },
+
+    "untrusted_content": {
+      "type": "boolean",
+      "description": "Kết quả có chứa nội dung do bên ngoài soạn (OSINT, nội dung chuyển tiền của khách hàng, tài liệu tải về) hay không. Khi true, orchestrator PHẢI đánh dấu nội dung này là dữ liệu chứ không phải chỉ dẫn trước khi đưa vào model context (mục 8.9: prompt injection)."
+    },
+
+    "started_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "completed_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "maxLength": 64 },
+        "message": { "type": "string", "maxLength": 1024 },
+        "retryable": { "type": "boolean" }
+      }
+    }
+  }
+}

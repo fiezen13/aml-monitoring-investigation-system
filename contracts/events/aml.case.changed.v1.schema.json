@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/aml.case.changed.v1.schema.json",
+  "title": "aml.case.changed.v1 — payload",
+  "description": "Một chuyển trạng thái của case. Topic `aml.case.changed.v1`, khoá `case_id` (kiến trúc mục 10.2). Máy trạng thái theo mục 9. Case Management là system of record: agent KHÔNG bao giờ là `changed_by` của một chuyển trạng thái chính thức.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "to_state",
+    "changed_at",
+    "changed_by"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "from_state": {
+      "$ref": "#/$defs/case_state",
+      "description": "Bỏ trống khi case vừa được tạo."
+    },
+    "to_state": { "$ref": "#/$defs/case_state" },
+
+    "changed_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "changed_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": ["HUMAN", "SYSTEM"],
+          "description": "Chỉ có hai giá trị, và đó là chủ đích. Agent KHÔNG phải một loại actor được chuyển trạng thái chính thức — nó chỉ đề xuất, và đề xuất đó được ghi nhận qua `agent_run_ref`. Mọi chuyển trạng thái có hệ quả đều quy về một con người hoặc một quy tắc tất định."
+        },
+        "actor_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": {
+          "type": "string",
+          "enum": ["ANALYST", "SENIOR_ANALYST", "COMPLIANCE_OFFICER", "MLRO", "ADMIN", "AUDITOR", "WORKFLOW_ENGINE"]
+        }
+      }
+    },
+
+    "rationale": {
+      "type": "string",
+      "maxLength": 4096,
+      "description": "Lý do chuyển trạng thái. BẮT BUỘC với các trạng thái kết thúc — xem `allOf` bên dưới. Một case bị đóng không kèm lý do là một lỗ hổng trong hồ sơ kiểm toán."
+    },
+
+    "alert_refs": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 128 },
+      "description": "Các alert đã được gom vào case này."
+    },
+
+    "agent_run_ref": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Lượt chạy agent đã hỗ trợ quyết định này, nếu có. Có mặt ở đây KHÔNG có nghĩa agent đã quyết định — nó ghi nhận rằng con người đã có thông tin gì khi quyết."
+    },
+
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assigned_to": { "type": "string", "maxLength": 128 },
+        "assigned_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "unit": { "type": "string", "maxLength": 128 }
+      }
+    },
+
+    "sla": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "due_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "is_breached": { "type": "boolean" }
+      }
+    },
+
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Chỉ có khi to_state là CLOSED hoặc REPORTED. Đây là dữ liệu đi vào LABEL/EVAL store — nhưng KHÔNG tự động cập nhật mô hình; nó phải đi qua label review và release pipeline (mục 7.3).",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["TRUE_POSITIVE", "FALSE_POSITIVE", "INCONCLUSIVE", "REPORTED_STR", "CLOSED_NO_REPORT"]
+        },
+        "confirmed_typology_id": { "type": "string", "maxLength": 128 },
+        "str_reference": { "type": "string", "maxLength": 128 }
+      }
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  },
+
+  "allOf": [
+    {
+      "if": {
+        "properties": { "to_state": { "enum": ["CLOSED", "REPORTED", "ESCALATED"] } },
+        "required": ["to_state"]
+      },
+      "then": {
+        "required": ["rationale"],
+        "properties": { "rationale": { "minLength": 10 } }
+      }
+    }
+  ],
+
+  "$defs": {
+    "case_state": {
+      "type": "string",
+      "enum": ["NEW", "TRIAGED", "INVESTIGATING", "PENDING_INFO", "ESCALATED", "REPORTED", "CLOSED", "REOPENED"],
+      "description": "Máy trạng thái case theo kiến trúc mục 9."
+    }
+  }
+}

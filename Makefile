@@ -1,6 +1,6 @@
 .PHONY: help up down restart logs ps health seed seed-verify db-reset db-shell redis-shell \
         migrate migrate-status abm abm-dry \
-        build run worker test test-unit lint format typecheck check clean \
+        build run worker test test-unit contracts-check lint format typecheck check clean \
         aml-up aml-down aml-status aml-topics aml-fixture aml-producer-sample aml-producer-run \
         aml-producer-eventtime aml-producer-resume aml-flink-build aml-flink-test aml-submit \
         aml-cancel aml-inspect-kafka aml-inspect-hdfs aml-patterns aml-smoke aml-logs
@@ -88,6 +88,9 @@ test:  ## Chạy toàn bộ kiểm thử
 test-unit:  ## Chỉ kiểm thử không cần cơ sở dữ liệu
 	pytest -m "not integration"
 
+contracts-check:  ## Kiểm chứng mọi hợp đồng dữ liệu trong contracts/
+	pytest tests/test_contracts -q
+
 lint:  ## ruff check
 	ruff check src tests scripts
 
@@ -103,7 +106,7 @@ check: lint test  ## Cổng chất lượng chạy trước khi mở pull reques
 # --- Luồng nạp dữ liệu AML (CSV → Kafka → Flink → HDFS) --------------
 #
 # Tất cả nằm trong profile `aml` của docker-compose.yml, không chạy cùng
-# `make up`. Hướng dẫn đầy đủ: docs/AML_INGESTION.md
+# `make up`. Hướng dẫn đầy đủ: contracts/ingestion/README.md
 
 AML := $(COMPOSE) --profile aml
 

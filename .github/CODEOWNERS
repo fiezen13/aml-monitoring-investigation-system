@@ -37,7 +37,9 @@
 # Bắt buộc Bảo review — hạ tầng, contract, CI/CD, kiến trúc, ranh giới
 # cross-workstream (Phase 13 của yêu cầu chuẩn hoá repo).
 /db/init/                  @NguyenGiaBao0706
-/schemas/                  @NguyenGiaBao0706
+/contracts/                @NguyenGiaBao0706
+/services/                 @NguyenGiaBao0706
+/tests/test_contracts/     @NguyenGiaBao0706
 /docker-compose.yml        @NguyenGiaBao0706
 /Dockerfile                @NguyenGiaBao0706
 /docker/                   @NguyenGiaBao0706
@@ -53,4 +55,3 @@
 /src/config.py              @NguyenGiaBao0706
 /docs/architecture/         @NguyenGiaBao0706
 /docs/adr/                  @NguyenGiaBao0706
-</content>

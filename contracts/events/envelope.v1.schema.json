@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/envelope.v1.schema.json",
+  "title": "FIN-07 — CloudEvents envelope v1",
+  "description": "Vỏ chung của MỌI sự kiện trên event bus (kiến trúc mục 5.2). Dựa trên CloudEvents 1.0, thêm vài trường bắt buộc mà CloudEvents để tuỳ chọn. Phần nghiệp vụ nằm ở `data` và tuân theo schema riêng của từng loại sự kiện — envelope không bao giờ chứa trường nghiệp vụ.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "specversion",
+    "type",
+    "source",
+    "id",
+    "time",
+    "datacontenttype",
+    "dataschema",
+    "data"
+  ],
+  "properties": {
+    "specversion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Phiên bản đặc tả CloudEvents."
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9]+)+\\.v[0-9]+$",
+      "description": "Loại sự kiện, kết thúc bằng version: `bank.transaction.posted.v1`, `aml.alert.created.v1`. Version nằm trong chính tên loại để một topic không bao giờ mang hai ý nghĩa."
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Hệ thống phát sinh: core-banking, card-switch, detection-engine, agent-orchestrator."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Định danh duy nhất của sự kiện trong phạm vi `source`. Khuyến nghị ULID (sắp xếp được theo thời gian). Cặp (source, id) là khoá chống trùng ở phía consumer."
+    },
+    "time": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Thời điểm sự kiện được PHÁT. Đây KHÔNG phải event_time nghiệp vụ — cái đó nằm trong `data`. Nhầm hai mốc này là lỗi phổ biến nhất khi nối một nguồn mới."
+    },
+    "subject": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Đối tượng chính của sự kiện, ví dụ `account/ACC-123`. Giúp lọc mà không cần giải mã `data`."
+    },
+    "datacontenttype": {
+      "type": "string",
+      "const": "application/json"
+    },
+    "dataschema": {
+      "type": "string",
+      "format": "uri",
+      "description": "URI của schema mà `data` tuân theo. Bắt buộc (CloudEvents để tuỳ chọn): consumer phải xác định được nó đang đọc contract nào, không được suy ra từ tên topic."
+    },
+    "traceparent": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "W3C Trace Context. Bắt buộc trên đường điều tra để nối được chuỗi correlation end-to-end (mục 13)."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Khoá chống xử lý trùng khi replay hoặc khi nguồn gửi lại (mục 5.3). Cùng khoá nghĩa là cùng một sự việc, kể cả khi `id` khác nhau."
+    },
+    "source_offset": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Vị trí bản ghi ở hệ thống nguồn (LSN, SCN, file+dòng). Cho phép reconcile và replay chính xác từ nguồn."
+    },
+    "partition_key": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Khoá phân vùng Kafka. Quyết định thứ tự: các sự kiện cần giữ đúng thứ tự tương đối phải cùng khoá."
+    },
+    "data_class": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class"
+    },
+    "data": {
+      "type": "object",
+      "description": "Payload nghiệp vụ. Hình dạng do `dataschema` quy định; envelope không ràng buộc gì thêm ở đây."
+    }
+  }
+}

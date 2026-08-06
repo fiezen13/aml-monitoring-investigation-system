@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/aml.agent.toolcall.v1.schema.json",
+  "title": "aml.agent.toolcall.v1 — payload",
+  "description": "Nhật ký một lần agent gọi tool. Topic `aml.agent.toolcall.v1`, khoá `run_id`, audit đầy đủ và nhạy cảm (kiến trúc mục 10.2). MỌI lần gọi tool đều phát ra event này, kể cả khi bị policy từ chối — đặc biệt là khi bị từ chối, vì đó là tín hiệu an ninh.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool_call_id",
+    "run_id",
+    "case_id",
+    "tool_name",
+    "tool_version",
+    "purpose_id",
+    "requested_at",
+    "status",
+    "policy_decision"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "tool_call_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "run_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "tool_name": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "tool_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+
+    "purpose_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Mục đích truy cập dữ liệu. Bắt buộc vì phân quyền là ABAC theo vai trò VÀ mục đích (mục 12) — không có purpose thì không quyết định được quyền."
+    },
+
+    "acting_user": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_id", "role"],
+      "description": "Agent luôn hành động THAY MẶT một người dùng, không bao giờ nhân danh chính nó. Quyền của lần gọi này là giao của quyền người dùng và quyền tool.",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "type": "string", "maxLength": 64 }
+      }
+    },
+
+    "requested_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "completed_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+
+    "snapshot_time": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Tool phải trả dữ liệu như tại thời điểm này, không phải dữ liệu mới nhất. Đây là thứ giữ cho một lượt điều tra nhất quán khi nó chạy hàng phút và dữ liệu vẫn đang chảy vào."
+    },
+
+    "arguments_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 của tham số đã chuẩn hoá. Lưu DIGEST chứ không lưu tham số thô: tham số có thể chứa định danh khách hàng, và topic này tuy nhạy cảm nhưng vẫn rộng hơn phạm vi một case. Tham số đầy đủ nằm ở evidence ledger, dưới kiểm soát truy cập chặt hơn."
+    },
+
+    "status": {
+      "type": "string",
+      "enum": ["SUCCEEDED", "FAILED", "DENIED", "TIMEOUT", "RATE_LIMITED"],
+      "description": "DENIED nghĩa là policy chặn. Đây là metric an ninh cốt lõi (mục 13): số lần gọi tool bị từ chối tăng đột biến là dấu hiệu prompt injection hoặc lỗi cấu hình quyền."
+    },
+
+    "policy_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "policy_version"],
+      "properties": {
+        "allowed": { "type": "boolean" },
+        "policy_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "denial_reason": { "type": "string", "maxLength": 512 },
+        "matched_rules": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 }
+        }
+      }
+    },
+
+    "result_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Tóm tắt kết quả ở mức đếm được, không chứa nội dung. Nội dung nằm ở evidence ledger.",
+      "properties": {
+        "row_count": { "type": "integer", "minimum": 0 },
+        "truncated": {
+          "type": "boolean",
+          "description": "Kết quả bị cắt vì chạm max_rows. Agent PHẢI biết điều này — kết luận rút ra từ dữ liệu bị cắt mà tưởng là đầy đủ là một dạng sai lầm im lặng."
+        },
+        "result_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" },
+      "description": "Các mục evidence được ghi ra từ lần gọi này."
+    },
+
+    "quality_flags": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/quality_flag" }
+    },
+
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Chi phí để theo dõi budget (mục 8.10).",
+      "properties": {
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  }
+}
