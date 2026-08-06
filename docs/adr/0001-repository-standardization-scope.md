@@ -35,7 +35,7 @@ Audit đầy đủ (`docs/repository/REPOSITORY_AUDIT.md`) phát hiện:
    `.github/pull_request_template.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`,
    `.editorconfig`, `.gitattributes`, `docs/adr/`, `docs/repository/DEPENDENCY_REPORT.md`, và vá hai
    khoảng trống tài liệu đã xác minh (biến môi trường Flink chưa được liệt kê trong
-   `docs/ENVIRONMENT.md`; comment lạc hậu trong `web/.env.example`).
+   `.env.example`; comment lạc hậu trong `web/.env.example`).
 4. CODEOWNERS dùng placeholder `TODO` cho username GitHub của Tin Tin và Hiển — chưa xác nhận được
    từ lịch sử commit (Hiển chưa có commit nào; tác giả `fiezen13` chỉ có một commit tài liệu, không
    đủ căn cứ để gán cho một người cụ thể).
@@ -48,4 +48,3 @@ Audit đầy đủ (`docs/repository/REPOSITORY_AUDIT.md`) phát hiện:
 - Nếu quy mô hệ thống lớn lên tới mức cần tách nhiều service độc lập thật (không chỉ một image dùng
   chung), xét lại quyết định 2 bằng một ADR mới, dẫn chứng cụ thể service nào cần tách và vì sao.
 - CODEOWNERS cần Bảo điền username GitHub thật của Tin Tin/Hiển trước khi coi là hoàn chỉnh.
-</content>

@@ -137,4 +137,3 @@ commit độc lập, có thể revert không ảnh hưởng các phần khác v�
 2. `chore: add repository hygiene files (CODEOWNERS, PR template, CONTRIBUTING, SECURITY, LICENSE, editorconfig, gitattributes)`
 3. `docs: add ADR-0001 on repository standardization scope`
 4. `docs: document missing Flink env vars and fix stale frontend env comment`
-</content>

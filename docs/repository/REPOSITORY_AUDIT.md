@@ -571,4 +571,3 @@ chủ yếu là **hygiene cấp repo** (CODEOWNERS, PR template, LICENSE, vài f
 quyết định cần Bảo** (mục 0.1 team/ML workstream, mục 0.2 mức độ áp cấu trúc monorepo lớn). Đề nghị
 xác nhận hai điểm đó trước khi mình làm tiếp Phase 2 trở đi (CODEOWNERS thật, PR template, ADR, và
 các file hygiene còn thiếu ở mục 21).
-</content>
