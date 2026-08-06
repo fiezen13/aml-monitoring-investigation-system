@@ -402,21 +402,16 @@ hai lần giữa hai hệ thống, đây là một quyết định thiết kế 
 `.pytest_cache/`, `.ruff_cache/`** — đã xác minh bằng `git ls-files`, tất cả các file này **không**
 được track (đã bị `.gitignore` chặn đúng cách từ đầu).
 
-**Một điểm cần Bảo xác nhận:** `.env.example` (dòng 162) chứa giá trị trông như secret thật, không
-phải placeholder:
+**Phát hiện đã được xử lý ở working tree ngày 2026-08-06:** `.env.example` từng chứa giá trị trông
+như secret thật, không phải placeholder. Giá trị không còn được lặp lại trong tài liệu này:
 
 ```
-AI_LOG_API_KEY=f3p1dEOhD_z8qjjtbeCtb2t9ASMEliz-4juZfWe3ZPgCtPZp-LjWthBfeNU8d5dP
+AI_LOG_API_KEY=<redacted; removed from current tree>
 ```
 
-Comment ngay phía trên ghi rõ đây là "do giảng viên cung cấp" (instructor-provided) — tức nhiều khả
-năng là một khoá chấm điểm dùng chung toàn khoá học (mọi đội AI20K Cohort đều có cùng key này trong
-template gốc, không phải khoá riêng của repo này), không phải bí mật của FIN-07. Nhưng theo đúng
-nguyên tắc "báo cáo, không tự ý xoá": đây **là** một giá trị thật (không phải `xxx`/`changeme`) nằm
-trong một file `.env.example` mà quy ước chuẩn nói "chỉ chứa tên biến, không bao giờ chứa giá trị
-thật". Đề xuất: xác nhận với giảng viên/BTC đây có đúng là key dùng chung công khai cho mọi đội hay
-không; nếu có nghi ngờ, nên coi là cần xoay vòng (rotate) vì đã nằm trong một repo GitHub (dù
-private).
+Khoá đã từng nằm trong lịch sử Git nên việc xoá khỏi cây hiện tại không thu hồi được khoá. Bảo vẫn
+cần xác nhận với giảng viên/BTC, yêu cầu rotate/revoke, kiểm tra nhật ký sử dụng phía nhà cung cấp và
+phối hợp dọn lịch sử nếu chính sách của tổ chức yêu cầu.
 
 **Rủi ro khác đã ghi nhận:**
 - `src/api/fc_routes.py` — 14 endpoint không có auth (mục 7). Không lộ dữ liệu thật (dữ liệu ABM

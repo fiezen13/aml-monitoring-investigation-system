@@ -49,7 +49,10 @@ group_end
 # --- 4. Giao diện phục vụ được -----------------------------------------
 group_start "Giao diện"
 curl -fsS "${WEB_URL}/healthz" >/dev/null || die "Giao diện không trả lời"
-curl -fsS "${WEB_URL}/" | grep -q "AML Console" || die "Giao diện trả về nội dung lạ"
+# Kiểm tra app shell ổn định thay vì một nhãn thương hiệu hiển thị. Tiêu đề
+# giao diện có thể đổi hợp lệ; phần tử root mới là dấu hiệu image đang phục vụ
+# đúng SPA thay vì một trang lỗi hoặc nội dung từ service khác.
+curl -fsS "${WEB_URL}/" | grep -q '<div id="root"></div>' || die "Giao diện trả về nội dung lạ"
 curl -fsS "${WEB_URL}/api/v1/queue" | jq -e '.depth >= 0' >/dev/null \
     || die "Giao diện không gọi được API qua proxy"
 ok "Giao diện phục vụ được và gọi được API"

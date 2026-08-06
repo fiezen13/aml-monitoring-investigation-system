@@ -17,11 +17,10 @@ riêng tư (không mở public issue cho lỗ hổng chưa vá). Nêu rõ:
 
 ## Nguyên tắc bảo mật đang áp dụng
 
-- **Bí mật:** không giá trị thật nào nằm trong repo. `.env` nằm trong `.gitignore`, `.env.example`
-  chỉ chứa placeholder (ngoại lệ đã biết: `AI_LOG_API_KEY` — xem
-  [`docs/repository/REPOSITORY_AUDIT.md`](docs/repository/REPOSITORY_AUDIT.md) mục 16–17, khoá này
-  do giảng viên cung cấp dùng chung cho toàn khoá học, không phải bí mật của riêng FIN-07, nhưng vẫn
-  cần Bảo xác nhận và cân nhắc xoay vòng).
+- **Bí mật:** `.env` nằm trong `.gitignore`; `.env.example` chỉ được chứa giá trị phát triển vô hại
+  hoặc placeholder. Một giá trị `AI_LOG_API_KEY` từng bị commit đã được xoá khỏi cây hiện tại ngày
+  2026-08-06, nhưng vẫn cần rotate/revoke và đánh giá dọn lịch sử — xem
+  [`docs/repository/REPOSITORY_AUDIT.md`](docs/repository/REPOSITORY_AUDIT.md) mục 16–17.
 - **Kiểm tra đầu vào:** Pydantic ở mọi endpoint FastAPI.
 - **Phân quyền:** 5 vai trò (`compliance_officer`, `mlro`, `auditor`, `admin`, `analyst`), kiểm tra
   role inline theo từng endpoint ghi ở `src/api/routes.py`. Router `src/api/fc_routes.py` (đọc dữ
