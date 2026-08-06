@@ -1,11 +1,16 @@
 # Kafka-Flink-HDFS pipeline audit scope
 
-Status: Phase 1 safety baseline  
-Audit date: 2026-08-06 (Asia/Ho_Chi_Minh)  
-Owner: Bảo — PM / Solution Architect / DevOps  
-Repository: `P-022`  
-Branch: `develop`  
-Audited commit: `c8895e1` (`origin/develop`)  
+Status: Phase 1 safety baseline
+
+Audit date: 2026-08-06 (Asia/Ho_Chi_Minh)
+
+Owner: Bảo — PM / Solution Architect / DevOps
+
+Repository: `P-022`
+
+Branch: `develop`
+
+Audited commit: `c8895e1` (`origin/develop`)
 
 ## Safety baseline
 

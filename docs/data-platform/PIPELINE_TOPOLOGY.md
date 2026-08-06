@@ -1,7 +1,8 @@
 # Current Kafka-Flink-HDFS topology
 
-Status: code-and-configuration topology at commit `c8895e1`  
-Runtime verification: ordinary application Compose smoke passed; AML-profile runtime verification remains pending  
+Status: code-and-configuration topology at commit `c8895e1`
+
+Runtime verification: ordinary application Compose smoke passed; AML-profile runtime verification remains pending
 
 This document describes only components present in the repository. It does not describe a target production architecture.
 

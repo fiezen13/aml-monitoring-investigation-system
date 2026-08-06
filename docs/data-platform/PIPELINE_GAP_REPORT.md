@@ -1,8 +1,10 @@
 # Initial Kafka-Flink-HDFS gap report
 
-Status: initial classification after Phase 1 and Phase 2 static audit  
-Audited commit: `c8895e1` on `develop`  
-Runtime tests: isolated ordinary application Compose smoke passed; Kafka-Flink-HDFS ingest/restart/replay not run in this phase  
+Status: initial classification after Phase 1 and Phase 2 static audit
+
+Audited commit: `c8895e1` on `develop`
+
+Runtime tests: isolated ordinary application Compose smoke passed; Kafka-Flink-HDFS ingest/restart/replay not run in this phase
 
 Severity reflects operational impact if the current single-node development topology were relied on as an integration gate. Items that are intentional local-development trade-offs remain recorded so they cannot be mistaken for production properties.
 
