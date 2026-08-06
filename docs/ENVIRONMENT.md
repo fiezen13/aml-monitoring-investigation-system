@@ -238,6 +238,20 @@ là không giới hạn.
 | `AML_KAFKA_OFFSET_RESET` | `earliest` | Vị trí đọc khi group chưa có offset đã commit: `earliest`, `latest`, `none`. |
 | `AML_CHECKPOINT_INTERVAL_MS` | `30000` | Nhịp checkpoint của Flink. Với định dạng Parquet, **đây cũng là thứ quyết định kích thước file**: file chỉ được chốt tại checkpoint. |
 | `AML_WATERMARK_OUT_OF_ORDER_SECONDS` | `120` | Mức trễ tối đa mà watermark cho phép. Giai đoạn này chưa có cửa sổ nào dùng tới, nhưng trục thời gian phải đúng từ lúc nạp. |
+| `AML_WATERMARK_IDLE_SECONDS` | `60` | Sau bao lâu một partition không có dữ liệu mới thì bị coi là "idle", để watermark của các partition khác không bị nó chặn lại. |
+| `AML_RESTART_ATTEMPTS` | `10` | Số lần Flink tự khởi động lại job khi task fail, trước khi để job chuyển hẳn sang `FAILED`. |
+| `AML_RESTART_DELAY_SECONDS` | `10` | Thời gian chờ giữa hai lần thử khởi động lại (`fixed-delay` restart strategy). |
+| `AML_SCHEMA_VERSION` | `1.0` | Phiên bản schema mà `TransactionValidator` yêu cầu khớp — sự kiện có `schema_version` khác giá trị này bị coi là không hợp lệ. |
+| `AML_ROLLOVER_INTERVAL_MS` | `300000` | Chỉ áp dụng khi `AML_HDFS_FORMAT=json`. Thời gian tối đa một file được giữ mở trước khi bị chốt (rolling policy dạng row format; Parquet dùng `OnCheckpointRollingPolicy`, không đọc biến này). |
+| `AML_ROLLOVER_INACTIVITY_MS` | `120000` | Chỉ áp dụng khi `AML_HDFS_FORMAT=json`. File bị chốt sớm nếu không có ghi mới trong khoảng thời gian này. |
+| `AML_ROLLOVER_MAX_MB` | `128` | Chỉ áp dụng khi `AML_HDFS_FORMAT=json`. Kích thước tối đa một file trước khi bị chốt. |
+
+> Bảy biến trên (`AML_WATERMARK_IDLE_SECONDS` → `AML_ROLLOVER_MAX_MB`) được `JobConfig.java` đọc
+> trực tiếp từ biến môi trường của container Flink lúc JVM khởi động, không đi qua interpolation
+> `${...}` của `docker-compose.yml`. Vì vậy `tests/test_config_documented.py` — vốn chỉ soi các
+> class `pydantic-settings` phía Python và các `${VAR}` trong `docker-compose.yml` — không có khả
+> năng phát hiện nếu bảy biến này drift khỏi tài liệu. Sửa `JobConfig.java` mà quên cập nhật bảng
+> trên sẽ **không** làm CI đỏ; đây là một điểm mù đã biết, không phải bị bỏ sót lần này.
 
 ### 12.7. HDFS
 

@@ -1,0 +1,56 @@
+# CODEOWNERS — FIN-07
+#
+# Dựa trên quyền sở hữu thật ghi ở WORKLOG.md mục "Ai sở hữu cái gì", không
+# phải phân công lý thuyết. Xác nhận qua git log ngày 2026-08-06:
+#   NguyenGiaBao0706  → Bảo
+#   nqhung5679        → Hưng
+# GitHub username của Tin Tin và Hiển chưa xác nhận được từ git log (Hiển
+# chưa có commit nào; "fiezen13" chỉ có một commit docs, không đủ để suy ra
+# là ai) — dùng TODO cho tới khi Bảo xác nhận.
+#
+# TODO(bao): xác nhận username GitHub thật của Tin Tin
+# TODO(bao): xác nhận username GitHub thật của Hiển
+
+# ---------------------------------------------------------------------
+# Mặc định: Bảo review mọi thứ không khớp quy tắc cụ thể hơn bên dưới —
+# đúng vai trò kiến trúc/hạ tầng/repo-wide trong WORKLOG.md.
+* @NguyenGiaBao0706
+
+# ---------------------------------------------------------------------
+# Hưng — Frontend
+/web/src/ @nqhung5679
+
+# web/Dockerfile, nginx.conf, vite.config.ts, tsconfig.json là "chung" hoặc
+# của Bảo theo WORKLOG.md — không override, giữ nguyên quy tắc `*` ở trên.
+
+# ---------------------------------------------------------------------
+# Tin Tin — Backend (theo WORKLOG.md; username GitHub cần xác nhận)
+# /src/api/routes.py       @TODO-tin-tin-github-username
+# /src/models/schemas.py   @TODO-tin-tin-github-username
+# /src/worker/main.py      @TODO-tin-tin-github-username
+
+# ---------------------------------------------------------------------
+# Hiển — AI Engineer (theo WORKLOG.md; username GitHub cần xác nhận)
+# /src/agents/             @TODO-hien-github-username
+
+# ---------------------------------------------------------------------
+# Bắt buộc Bảo review — hạ tầng, contract, CI/CD, kiến trúc, ranh giới
+# cross-workstream (Phase 13 của yêu cầu chuẩn hoá repo).
+/db/init/                  @NguyenGiaBao0706
+/schemas/                  @NguyenGiaBao0706
+/docker-compose.yml        @NguyenGiaBao0706
+/Dockerfile                @NguyenGiaBao0706
+/docker/                   @NguyenGiaBao0706
+/deploy/                   @NguyenGiaBao0706
+/ci/                       @NguyenGiaBao0706
+/jenkins/                  @NguyenGiaBao0706
+/Jenkinsfile                @NguyenGiaBao0706
+/.github/workflows/         @NguyenGiaBao0706
+/.github/CODEOWNERS         @NguyenGiaBao0706
+/flink/                    @NguyenGiaBao0706
+/src/db/session.py         @NguyenGiaBao0706
+/src/main.py                @NguyenGiaBao0706
+/src/config.py              @NguyenGiaBao0706
+/docs/architecture/         @NguyenGiaBao0706
+/docs/adr/                  @NguyenGiaBao0706
+</content>
