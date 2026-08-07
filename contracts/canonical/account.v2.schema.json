@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/account.v2.schema.json",
+  "title": "ABM-BANK canonical ACCOUNT v2",
+  "description": "Versioned ABM-BANK account proposal with stable ownership, opening balance, and lifecycle times. It is bank-observable and label-free.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "account_id",
+    "source_refs",
+    "owner_customer_ids",
+    "product_type",
+    "currency",
+    "status",
+    "opening_balance",
+    "opened_at",
+    "created_at",
+    "valid_from"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "2.0" },
+    "account_id": { "type": "string", "pattern": "^ACC-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/source_ref" }
+    },
+    "owner_customer_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^CUS-[A-Za-z0-9_-]+$", "maxLength": 128 }
+    },
+    "product_type": { "type": "string", "enum": ["CURRENT", "SAVINGS", "TERM_DEPOSIT", "LOAN", "CARD_SETTLEMENT", "MERCHANT_SETTLEMENT", "OTHER"] },
+    "currency": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/currency" },
+    "status": { "type": "string", "enum": ["ACTIVE", "DORMANT", "FROZEN", "CLOSED", "PENDING"] },
+    "opening_balance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/money" },
+    "opened_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "closed_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "branch_code": { "type": "string", "maxLength": 64 },
+    "opening_channel": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/channel" },
+    "is_dormant_reactivated": { "type": "boolean" },
+    "created_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_to": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "provenance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" },
+    "data_class": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class" }
+  }
+}
