@@ -1,0 +1,636 @@
+---
+# Vietnam KYC source registry for the P-022 canonical dataset rebuild.
+#
+# Every synthetic customer and business attribute must trace to a card in this
+# file. A card grants exactly the uses listed in `use_for` and nothing else.
+#
+# READ THIS BEFORE USING ANY CARD
+#
+# `acquisition_status` is the field that matters most. A registered source is a
+# source someone has decided to use; an acquired-and-profiled source is one whose
+# numbers are actually in the repository. Only the second kind may parameterize a
+# generator. Deriving a distribution from a card marked `registered_not_acquired`
+# means copying a number out of a report from memory, which is how false
+# precision enters a dataset and never leaves.
+#
+# The traceability chain each parameter must complete:
+#
+#   source card + checksum
+#     -> machine-readable source profile in artifacts/source_profiles/
+#     -> derived conditional distribution in abm/parameters/
+#     -> generator component
+#     -> release manifest
+#
+# SOURCE INCOMPATIBILITY CONTROLS
+#
+# Harvested verbatim in substance from docs/abm/STATISTICAL_HARMONIZATION.md
+# before that document was retired. The rebuild makes these more important, not
+# less, because it now joins a foreign transaction dataset to Vietnamese
+# population statistics.
+#
+#   1. No row-level join is ever performed across public sources. They are
+#      independent aggregate constraints on one synthetic population, never
+#      records describing the same people.
+#   2. National population statistics constrain documented coarse marginals
+#      only. They do not license a joint distribution that was never published.
+#   3. Survey categories mapped into canonical categories must have the mapping
+#      recorded as an explicit assumption, with its own parameter card.
+#   4. Public synthetic transaction datasets inform candidate shapes and
+#      validation methods, never population identity.
+#   5. Low-confidence values stay in YAML with a sensitivity range so they can
+#      be varied without touching generator code.
+
+registry_id: P022-VN-SOURCE-REGISTRY
+registry_version: 0.1.0
+status: proposed
+last_reviewed: 2026-08-07
+owner: Bao
+scope: >-
+  Vietnamese individual and business population context for the ABM-BANK
+  canonical release. Transaction and network behavior comes from the separate
+  IBM backbone registered at the end of this file.
+
+acquisition_status_values:
+  registered_not_acquired: >-
+    Reference recorded and intended use agreed. The file is not in the
+    repository and no statistic has been extracted. MUST NOT parameterize a
+    generator.
+  acquired_not_profiled: >-
+    File present under data/raw/ with a checksum, but no profiling run yet.
+  acquired_and_profiled: >-
+    File present, checksummed, and a machine-readable profile exists under
+    artifacts/source_profiles/. Only this state may parameterize a generator.
+
+sources:
+
+  # ---------------------------------------------------------------------------
+  # Population structure
+  # ---------------------------------------------------------------------------
+
+  - source_id: VN_GSO_POPULATION_2024
+    name: Statistical Yearbook of Viet Nam — population and demographic tables
+    publisher: National Statistics Office of Viet Nam (formerly General Statistics Office)
+    reference: https://www.gso.gov.vn/en/statistic-book/
+    year: 2024
+    geography: Viet Nam, national and by province / socio-economic region
+    source_type: official_population_statistics
+    license_or_usage_note: >-
+      Official statistics. Cite table number, classification version, unit,
+      reference year, and access date. Record the access date in the profile.
+    acquisition_status: registered_not_acquired
+
+    variables_used:
+      - population by five-year age band
+      - population by sex
+      - population by urban and rural residence
+      - population by socio-economic region and province
+
+    use_for:
+      - P(age_band)
+      - P(region)
+      - P(urban_rural | region)
+      - P(gender | age_band)
+      - marginal totals that the synthetic population must reproduce
+
+    do_not_use_for:
+      - bank customer composition, which is a selected subset of the population
+      - income, which requires the labour-force or living-standards source
+      - any transaction behavior
+      - AML prevalence
+
+    confidence:
+      national_age_sex_margins: high
+      regional_urban_rural_margins: high
+      bank_customer_representation: low
+
+    limitations: >-
+      Describes the resident population, not the banked population. Adults under
+      15 are in scope here but out of scope for Global Findex, so the two cannot
+      share a denominator without an explicit reconciliation step.
+
+  # ---------------------------------------------------------------------------
+  # Employment, occupation, income
+  # ---------------------------------------------------------------------------
+
+  - source_id: VN_GSO_LFS_2024
+    name: Report on the Labour Force Survey 2024
+    publisher: National Statistics Office of Viet Nam
+    reference: https://www.gso.gov.vn/en/employment/
+    year: 2024
+    geography: Viet Nam, national with urban/rural and regional breakdowns
+    source_type: official_labour_force_survey
+    license_or_usage_note: >-
+      Official statistics. Cite the survey round and table. Preserve the
+      occupation and industry classification version used by the tables.
+    acquisition_status: registered_not_acquired
+
+    variables_used:
+      - labour force participation by age band and sex
+      - employment status (wage worker, own-account, employer, unpaid family)
+      - employment by occupation group
+      - employment by industry
+      - monthly income of wage workers by occupation and region
+
+    use_for:
+      - P(employment_status | age_band)
+      - P(occupation_group | age_band, region)
+      - P(income_band | occupation_group, region)
+      - salaried-customer segmentation
+
+    do_not_use_for:
+      - person-level join with Global Findex or any other source
+      - declared income on a bank KYC form, which is a different quantity
+      - account turnover, which is not income
+      - business revenue — use the enterprise source instead
+      - AML prevalence
+
+    confidence:
+      employment_status_margins: high
+      occupation_by_region: medium
+      income_band_design: medium
+      income_to_bank_turnover_mapping: low
+
+    limitations: >-
+      Survey income is self-reported labour income. It is not the same as the
+      income a customer declares at onboarding, and it is not the same as money
+      flowing through an account. The gap between survey income and account
+      turnover is a modeling assumption that Phase 8 must state explicitly, not
+      a fact this source supplies.
+
+  - source_id: VN_GSO_VHLSS_2022
+    name: Viet Nam Household Living Standards Survey
+    publisher: National Statistics Office of Viet Nam
+    reference: https://www.gso.gov.vn/en/data-and-statistics/
+    year: 2022
+    geography: Viet Nam, national with regional and urban/rural breakdowns
+    source_type: official_household_survey
+    license_or_usage_note: Official statistics; cite survey round and table.
+    acquisition_status: registered_not_acquired
+
+    variables_used:
+      - household income per capita by quintile
+      - income by source (wage, agriculture, non-farm business, transfers)
+      - expenditure structure
+      - regional and urban/rural income differentials
+
+    use_for:
+      - income band boundaries and their regional spread
+      - relative weight of wage income versus household-business income
+      - cross-check on the labour-force income distribution
+
+    do_not_use_for:
+      - individual-level income assignment without a household-to-individual step
+      - business revenue
+      - transaction amounts
+      - AML prevalence
+
+    confidence:
+      income_distribution_shape: high
+      income_band_boundaries: high
+      individual_level_assignment: low
+
+    limitations: >-
+      Household-level, not individual-level. Converting to per-person income
+      requires a household size assumption that must be registered as its own
+      parameter card. The survey round predates the other sources, so a year
+      alignment note is required in any parameter derived from it.
+
+  # ---------------------------------------------------------------------------
+  # Financial inclusion and digital behavior
+  # ---------------------------------------------------------------------------
+
+  - source_id: VN_WB_FINDEX_2024
+    name: World Bank Global Findex — Viet Nam
+    publisher: World Bank
+    reference: https://www.worldbank.org/en/publication/globalfindex/download-data
+    microdata_reference: https://microdata.worldbank.org/catalog/7998
+    year: 2024
+    geography: Viet Nam
+    source_type: nationally_representative_survey
+    license_or_usage_note: >-
+      Indicator data published CC BY 4.0; retain attribution. Microdata carries
+      separate terms that must be accepted before download.
+    acquisition_status: acquired_and_profiled
+    acquired_via: World Bank open data API, source 28 (Global Findex)
+    raw_cache: data/raw/worldbank/
+    profile: artifacts/source_profiles/vn_worldbank_acquisition.json
+    derived_distributions: data/source_registry/distributions/vn_population.yaml
+    reference_year_observed: 2024
+
+    variables_used:
+      - account ownership at a financial institution
+      - made or received a digital payment
+      - formal saving
+      - formal borrowing
+      - wage payments received into an account
+      - mobile phone and internet access
+      - all of the above by age, sex, income quintile, education, urban/rural
+
+    use_for:
+      - P(bank_account_access | age_band, income_band, urban_rural)
+      - P(digital_payment_usage | age_band, income_band)
+      - P(formal_saving | income_band)
+      - P(formal_borrowing | income_band, employment_status)
+      - P(salary_paid_into_account | employment_status)
+
+    do_not_use_for:
+      - number of accounts a customer holds at one bank
+      - transaction counts, amounts, or timing
+      - business population attributes
+      - AML prevalence or typology parameters
+      - treating unweighted sample counts as population shares
+
+    confidence:
+      national_account_ownership: high
+      conditional_digital_use: high
+      single_bank_portfolio_share: low
+      transaction_behavior: prohibited
+
+    limitations: >-
+      Adults aged 15 and over only, so it cannot be joined to a total-population
+      denominator without restriction. Measures whether a behavior happened at
+      all in the past year, never how often or for how much. Survey weights must
+      be applied; unweighted counts are not population shares.
+
+  - source_id: VN_SBV_PAYMENT_STATISTICS
+    name: State Bank of Viet Nam payment system statistics and Annual Report
+    publisher: State Bank of Viet Nam
+    reference: https://www.sbv.gov.vn/
+    year: 2023
+    geography: Viet Nam, banking system aggregate
+    source_type: official_banking_and_payment_statistics
+    license_or_usage_note: Official publication; cite report, table, and page.
+    acquisition_status: registered_not_acquired
+
+    variables_used:
+      - transaction volume and value by payment channel
+      - interbank electronic payment system totals
+      - card, internet banking, and mobile banking aggregates
+      - number of accounts and payment instruments in issue
+
+    use_for:
+      - relative shares of payment channels, as a macro constraint
+      - which payment rails exist and what they are called in Viet Nam
+      - sanity bounds on aggregate system-level volume
+
+    do_not_use_for:
+      - per-customer transaction frequency or amount distributions
+      - customer demographics
+      - one bank's market share
+      - AML prevalence or scenario quotas
+
+    confidence:
+      payment_rail_taxonomy: high
+      macro_channel_shares: medium
+      customer_level_behavior: prohibited
+
+    limitations: >-
+      System-wide aggregates. A national channel share is a weighted average
+      across every bank and customer type and does not constrain the channel mix
+      of any individual customer. Instrument definitions change between reporting
+      years; the definition in force must be recorded with any extracted number.
+
+  # ---------------------------------------------------------------------------
+  # Business population
+  # ---------------------------------------------------------------------------
+
+  - source_id: VN_GSO_ENTERPRISE_2024
+    name: Enterprise statistics and the Statistical Yearbook enterprise tables
+    publisher: National Statistics Office of Viet Nam
+    reference: https://www.gso.gov.vn/en/enterprises/
+    year: 2024
+    geography: Viet Nam, national and by province
+    source_type: official_business_statistics
+    license_or_usage_note: >-
+      Official statistics. Coverage differs between "acting enterprises" and
+      "enterprises with business outcomes"; record which frame each number uses.
+    acquisition_status: registered_not_acquired
+
+    variables_used:
+      - enterprise counts by industry (VSIC), province, legal form, size
+      - employees by industry and size band
+      - net turnover by industry and size band
+      - capital by industry
+
+    use_for:
+      - P(industry_group)
+      - P(legal_form | industry_group)
+      - P(employee_size_band | industry_group)
+      - P(revenue_band | industry_group, employee_size_band)
+      - P(region | industry_group)
+
+    do_not_use_for:
+      - individual income distributions
+      - household businesses, which use a different statistical frame
+      - beneficial ownership structures
+      - daily or monthly transaction patterns
+      - a specific bank's SME portfolio composition
+      - AML prevalence
+
+    confidence:
+      national_business_margins: high
+      revenue_bands: medium
+      within_band_revenue_shape: low
+      bank_SME_portfolio: low
+
+    limitations: >-
+      Registered formal enterprises only. Aggregate turnover per size band gives
+      a mean, not a distribution; the within-band shape is a fitted assumption
+      that must be registered separately and sensitivity-tested.
+
+  - source_id: VN_GSO_HOUSEHOLD_BUSINESS
+    name: Non-farm individual business establishment statistics
+    publisher: National Statistics Office of Viet Nam
+    reference: https://www.gso.gov.vn/en/enterprises/
+    year: 2024
+    geography: Viet Nam
+    source_type: official_business_statistics
+    license_or_usage_note: Official statistics; distinct statistical frame from registered enterprises.
+    acquisition_status: registered_not_acquired
+
+    variables_used:
+      - count of non-farm individual business establishments
+      - establishments by industry and region
+      - employment in household businesses
+
+    use_for:
+      - relative weight of household businesses versus registered enterprises
+      - the cash-intensive small-trader segment
+      - sole-proprietor customer population share
+
+    do_not_use_for:
+      - registered enterprise turnover bands
+      - treating household businesses and enterprises as one population
+      - AML prevalence
+
+    confidence:
+      establishment_counts: high
+      turnover: low
+
+    limitations: >-
+      Household businesses are counted under a different frame from registered
+      enterprises and the two must not be summed without an explicit
+      reconciliation. This segment matters disproportionately for AML realism
+      because it is where cash intensity concentrates, and it is exactly where
+      the published statistics are thinnest.
+
+  # ---------------------------------------------------------------------------
+  # Acquired through the World Bank open data API
+  #
+  # These three cards are what the KYC generator actually runs on. The National
+  # Statistics Office cards above remain registered because they are still the
+  # better source for anything sub-national and for enterprise size and turnover
+  # — none of which the API serves. Where both could supply a quantity, the API
+  # is used because it is acquired, checksummed, and re-fetchable; where only the
+  # NSO could, the parameter stays an assumption.
+  # ---------------------------------------------------------------------------
+
+  - source_id: WB_WDI_VN_POPULATION
+    name: World Development Indicators — Viet Nam population structure
+    publisher: World Bank, from UN World Population Prospects
+    reference: https://api.worldbank.org/v2/country/VNM/indicator/
+    year: 2025
+    geography: Viet Nam, national only
+    source_type: official_population_statistics
+    license_or_usage_note: CC BY 4.0. Retain attribution to the World Bank and the UN.
+    acquisition_status: acquired_and_profiled
+    acquired_via: World Bank open data API, source 2
+    raw_cache: data/raw/worldbank/
+    profile: artifacts/source_profiles/vn_worldbank_acquisition.json
+    derived_distributions: data/source_registry/distributions/vn_population.yaml
+
+    indicators_used:
+      - SP.POP.<band>.{MA,FE}.5Y for fourteen five-year adult bands
+      - SP.POP.TOTL.{MA,FE}.IN
+      - SP.URB.TOTL.IN.ZS
+      - SE.SEC.CUAT.LO.ZS
+
+    use_for:
+      - P(age_band) for adults 15 and over
+      - P(gender)
+      - P(urban_rural) nationally
+      - P(education_band)
+
+    do_not_use_for:
+      - any sub-national or regional breakdown
+      - the banked population, which is a selected subset
+      - AML prevalence
+
+    confidence:
+      national_age_sex_structure: high
+      national_urban_rural: high
+      regional_detail: prohibited
+
+    limitations: >-
+      National aggregates only. Five-year bands are published as a share of each
+      sex's population and must be reweighted by the sex population counts before
+      being combined, which the derivation does.
+
+  - source_id: WB_WDI_VN_LABOUR_INCOME
+    name: World Development Indicators — Viet Nam labour force and income distribution
+    publisher: World Bank, from ILO modelled estimates and national accounts
+    reference: https://api.worldbank.org/v2/country/VNM/indicator/
+    year: 2025 for labour, 2022 for income shares
+    geography: Viet Nam, national only
+    source_type: official_labour_and_national_accounts_statistics
+    license_or_usage_note: CC BY 4.0. ILO modelled estimates are modelled, not observed.
+    acquisition_status: acquired_and_profiled
+    acquired_via: World Bank open data API, source 2
+    raw_cache: data/raw/worldbank/
+
+    indicators_used:
+      - SL.TLF.CACT.ZS, SL.UEM.TOTL.ZS
+      - SL.EMP.WORK.ZS, SL.EMP.SELF.ZS, SL.EMP.MPYR.ZS, SL.FAM.WORK.ZS
+      - SL.AGR.EMPL.ZS, SL.IND.EMPL.ZS, SL.SRV.EMPL.ZS
+      - SI.DST.FRST.20 through SI.DST.05TH.20, SI.POV.GINI
+      - NY.GDP.PCAP.CN
+
+    use_for:
+      - P(employment_status) unconditionally
+      - P(occupation_group | employed) at three-sector granularity
+      - income quintile shares and the derived band means
+      - the VND monetary anchor
+
+    do_not_use_for:
+      - P(employment_status | age_band), which is not published here
+      - finer occupation groups than three sectors
+      - declared KYC income
+      - household income without the stated correction, since the anchor is
+        GDP per capita rather than household income
+
+    confidence:
+      employment_status_margins: high
+      three_sector_occupation: high
+      income_quintile_shares: high
+      household_income_level: low
+
+    limitations: >-
+      Labour series are ILO modelled estimates rather than direct observations.
+      The income anchor is GDP per capita, which includes corporate and
+      government value added and divides by everyone rather than by earners, so
+      it overstates household income by an unmeasured factor. That factor is
+      registered as ASSUME_HOUSEHOLD_INCOME_RATIO.
+
+  - source_id: WB_ENTERPRISE_SURVEYS_VN_2023
+    name: World Bank Enterprise Surveys — Viet Nam 2023
+    publisher: World Bank
+    reference: https://www.enterprisesurveys.org/
+    year: 2023
+    geography: Viet Nam
+    source_type: firm_level_survey
+    license_or_usage_note: CC BY 4.0. Cite survey round and year.
+    acquisition_status: acquired_and_profiled
+    acquired_via: World Bank open data API, source 2
+    raw_cache: data/raw/worldbank/
+
+    indicators_used:
+      - IC.FRM.BNKS.ZS
+      - IC.FRM.BKWC.ZS
+      - IC.FRM.FEMO.ZS
+      - IC.FRM.CMPU.ZS
+
+    use_for:
+      - share of firms holding bank credit
+      - share of firms financing working capital through banks
+      - share of firms with female participation in ownership
+
+    do_not_use_for:
+      - firm size distribution, which it does not publish
+      - firm turnover distribution, which it does not publish
+      - household businesses, which are outside its frame
+      - AML prevalence
+
+    confidence:
+      firm_banking_behavior: high
+      firm_size_distribution: prohibited
+      firm_turnover_distribution: prohibited
+
+    limitations: >-
+      Surveys registered private firms above a size threshold, so it says nothing
+      about household businesses — which are the majority of Vietnamese business
+      entities and where cash intensity concentrates.
+
+  # ---------------------------------------------------------------------------
+  # Transaction backbone — not a Vietnamese population source
+  # ---------------------------------------------------------------------------
+
+  - source_id: IBM_AML_HI_MEDIUM
+    name: IBM Transactions for Anti-Money Laundering — HI-Medium
+    publisher: IBM
+    reference: https://github.com/IBM/AML-Data
+    kaggle_reference: https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml
+    year: 2023
+    geography: synthetic global banking world; no real jurisdiction
+    source_type: public_synthetic_dataset
+    license_or_usage_note: >-
+      IBM states the released data is CDLA-Sharing-1.0. Preserve attribution.
+    acquisition_status: acquired_and_profiled
+    files:
+      - name: HI-Medium_Trans.csv
+        sha256: 3126afb8155e7c8815d62bc5370549a7b5ae6bf7dfe872b3cd7813e66a3d7ff5
+        size_bytes: 3031783420
+        rows: 31898238
+        profile: artifacts/source_profiles/ibm_aml_profile.json
+      - name: HI-Medium_accounts.csv
+        rows: 2087786
+        note: account-to-entity reference with legal form
+      - name: HI-Medium_Patterns.txt
+        note: 493 labeled laundering typology instances
+
+    variables_used:
+      - transaction timestamp, endpoints, amount, currency, payment format
+      - account-level behavioral structure derived in Phase 2
+      - transaction network topology
+      - entity identity and legal form from the accounts file
+      - laundering typology instances from the patterns file
+
+    use_for:
+      - transaction and network behavioral backbone
+      - relative amount structure, before monetary calibration
+      - counterparty topology, fan-in and fan-out structure
+      - temporal ordering and inter-arrival structure
+      - ground-truth labels, in the physically separate ground_truth subtree only
+
+    do_not_use_for:
+      - Vietnamese customer demographics
+      - Vietnamese payment channel shares
+      - absolute monetary scale in VND — see MONETARY_CALIBRATION
+      - real-world AML prevalence
+      - person-record linkage to any Vietnamese source
+      - behavioral archetype derivation using the laundering label
+
+    confidence:
+      transaction_network_topology: high
+      relative_amount_structure: medium
+      payment_format_realism: low
+      Vietnam_population_representation: prohibited
+      AML_prevalence: prohibited
+
+    limitations: >-
+      Three constraints are established by measurement, not assumption, and are
+      documented in docs/data-rebuild/IBM_DATASET_PROFILE.md:
+      (1) the file covers 27.67 days, not the 90 days the previous design
+      assumed; (2) the entity population is 99.7 percent businesses and holds
+      only 3,050 individuals, so it cannot supply behavioral profiles for a
+      mostly-individual retail population; (3) payment format is strongly
+      associated with the laundering label — 87 percent of laundering rows are
+      ACH against a 12 percent baseline, and Wire and Reinvestment contain no
+      laundering rows at all — so carrying IBM's payment format into Bank View
+      unchanged would leak the label.
+
+unresolved:
+  - id: UNRESOLVED_REGIONAL_GRANULARITY
+    question: >-
+      The acquired API serves national aggregates only. P(region) and
+      P(urban_rural | region) need the National Statistics Office. Until then the
+      KYC population has no sub-national structure at all.
+    blocks: [Phase 6, Phase 7]
+
+  - id: UNRESOLVED_ENTERPRISE_SIZE_DISTRIBUTION
+    question: >-
+      No acquired source publishes Vietnamese firm size or turnover bands. The
+      generator uses a Pareto shape, which is a cross-country regularity rather
+      than a measurement of Viet Nam.
+    blocks: [Phase 7]
+
+  - id: UNRESOLVED_INDIVIDUAL_BEHAVIOR
+    question: >-
+      IBM supplies 3,050 individual accounts against 2.08 million business
+      accounts. What supplies behavioral profiles for a retail individual
+      population that the Vietnamese KYC model is mostly made of?
+    blocks: [Phase 3, Phase 9]
+
+  - id: UNRESOLVED_OBSERVATION_WINDOW
+    question: >-
+      IBM covers 27.67 days. Behavioral AML features and the split policy assume
+      roughly 90. Accept a 28-day release, or extend the window synthetically?
+    blocks: [Phase 11, Phase 16]
+
+  - id: UNRESOLVED_PAYMENT_FORMAT_LEAKAGE
+    question: >-
+      IBM's payment format predicts its own label. Which of: drop the format,
+      re-map it through a Vietnamese channel model independent of the label, or
+      keep it and accept a leaking feature?
+    blocks: [Phase 11, Phase 12, Phase 14]
+
+  - id: UNRESOLVED_TEMPORAL_REALISM
+    question: >-
+      IBM assigns times uniformly at random: every hour from 01:00 to 23:00 holds
+      3.88-3.90 percent of transactions. Night-activity and business-hours
+      features would be noise. Re-draw timestamps through a Vietnamese diurnal
+      model and lose IBM's inter-arrival structure, or declare the temporal
+      feature family unsupported for v0.1.0?
+    blocks: [Phase 11, Phase 12]
+
+  - id: UNRESOLVED_INCOME_TO_TURNOVER
+    question: >-
+      No registered source links declared income to account turnover. The ratio
+      is the hinge of Phase 8 monetary calibration and is currently unevidenced.
+    blocks: [Phase 8]
+
+  - id: UNRESOLVED_ACCOUNTS_PER_CUSTOMER
+    question: >-
+      Findex gives account ownership, not accounts per customer at one bank. IBM
+      gives accounts per entity but for a business population in another country.
+      Neither answers the question Phase 10 asks.
+    blocks: [Phase 10]

@@ -49,6 +49,11 @@ data/raw/ibm-aml/*
 !data/raw/ibm-aml/.gitkeep
 !data/raw/ibm-aml/README.md
 
+# Sổ đăng ký nguồn dữ liệu công khai. Đây là bằng chứng xuất xứ của mọi tham số
+# sinh dữ liệu, không phải dữ liệu sinh ra — phải nằm trong Git.
+!data/source_registry/
+!data/source_registry/**
+
 # Khoá API Kaggle — không bao giờ nằm trong repo.
 kaggle.json
 .kaggle/

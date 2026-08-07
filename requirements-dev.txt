@@ -10,3 +10,9 @@ httpx>=0.28.0
 # Kiểm chứng sự kiện AML đúng với hợp đồng dữ liệu ở
 # contracts/ingestion/aml-transaction-v1.schema.json.
 jsonschema>=4.23.0
+
+# Phân cụm hành vi tài khoản IBM (giai đoạn 3 của quá trình dựng lại dữ liệu).
+# Nằm ở requirements-dev chứ không phải requirements: đây là bước phân tích
+# ngoại tuyến chạy một lần để rút ra archetype, image api/worker không cần tới.
+numpy>=2.0.0
+scikit-learn>=1.5.0
