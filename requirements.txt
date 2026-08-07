@@ -28,5 +28,10 @@ redis>=5.2.0
 # idempotent producer — thứ quyết định việc thử lại không đẻ ra bản trùng.
 confluent-kafka>=2.6.0
 
+# Canonical ABM-BANK releases. PyArrow provides bounded-batch Parquet I/O;
+# pinning keeps release serialization behavior reviewable and reproducible.
+pyarrow==25.0.0
+PyYAML>=6.0.2
+
 # Vector Store (mở khi cần)
 # chromadb>=0.5.0

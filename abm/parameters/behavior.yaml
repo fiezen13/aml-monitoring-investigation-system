@@ -1,0 +1,140 @@
+registry_version: 0.1.0
+component: normal_behavior
+last_reviewed: 2026-08-07
+parameters:
+  - parameter_id: TXN_DAILY_RATE_BY_SEGMENT_001
+    description: Mean normal transactions per active account-day by segment.
+    value: {SALARIED: 0.70, HOUSEHOLD: 0.85, AFFLUENT: 1.10, STUDENT: 0.55, RETIRED: 0.38, HOUSEHOLD_BUSINESS: 1.80, SME: 3.20, CORPORATE: 5.20}
+    source_ids: [SRC_IBM_AML_DATA_2023, SRC_SYNTHAML_2023, SRC_SBV_ANNUAL_REPORT_2023]
+    derivation_method: Explicit MVP rates informed by synthetic benchmark scale and macro payment context.
+    assumption: true
+    confidence: low
+    sensitivity_range: {multiplier: [0.55, 1.65]}
+    effect_on_simulation: Primary determinant of transaction volume and degree.
+    reason: No representative customer-level Vietnamese transaction source is public.
+
+  - parameter_id: TXN_TYPE_MIX_BY_SEGMENT_001
+    description: Conditional normal transaction-type probabilities.
+    value:
+      INDIVIDUAL: {TRANSFER: 0.24, BILL_PAYMENT: 0.15, MERCHANT_PURCHASE: 0.34, CASH_DEPOSIT: 0.06, CASH_WITHDRAWAL: 0.08, LOAN_REPAYMENT: 0.05, SAVINGS_TRANSFER: 0.07, INTERNATIONAL_PAYMENT: 0.01}
+      BUSINESS: {TRANSFER: 0.15, BILL_PAYMENT: 0.06, MERCHANT_PURCHASE: 0.05, CASH_DEPOSIT: 0.08, CASH_WITHDRAWAL: 0.03, BUSINESS_PAYMENT: 0.22, SUPPLIER_PAYMENT: 0.29, LOAN_REPAYMENT: 0.06, SAVINGS_TRANSFER: 0.04, INTERNATIONAL_PAYMENT: 0.02}
+    source_ids: [SRC_IBM_AML_DATA_2023, SRC_SYNTHAML_2023, SRC_SBV_ANNUAL_REPORT_2023]
+    derivation_method: Benchmark conditional mix with explicit business/individual separation.
+    assumption: true
+    confidence: low
+    sensitivity_range: {category_probability_relative_change: [-0.25, 0.25]}
+    effect_on_simulation: Controls channel, merchant, counterparty, and amount distributions.
+    reason: Source taxonomies and geographies are not directly portable.
+
+  - parameter_id: TXN_AMOUNT_MEDIAN_VND_001
+    description: Median normal amount by transaction type before segment scaling.
+    value: {SALARY: 12000000, TRANSFER: 1400000, BILL_PAYMENT: 550000, MERCHANT_PURCHASE: 320000, CASH_DEPOSIT: 3000000, CASH_WITHDRAWAL: 1800000, BUSINESS_PAYMENT: 8500000, SUPPLIER_PAYMENT: 16000000, LOAN_REPAYMENT: 4200000, SAVINGS_TRANSFER: 3500000, INTERNATIONAL_PAYMENT: 24000000, FEE: 11000, REVERSAL: 320000}
+    source_ids: [SRC_VN_NSO_LFS_2024, SRC_SBV_ANNUAL_REPORT_2023]
+    derivation_method: Income-anchored benchmark medians with payment-type ordering constraints.
+    assumption: true
+    confidence: low
+    sensitivity_range: {multiplier: [0.50, 2.00]}
+    effect_on_simulation: Controls amounts, balance turnover, and ledger feasibility.
+    reason: Aggregate sources do not expose transaction-level conditional amounts.
+
+  - parameter_id: TXN_AMOUNT_LOG_SIGMA_001
+    description: Lognormal dispersion by transaction type.
+    value: {DEFAULT: 0.80, MERCHANT_PURCHASE: 0.95, TRANSFER: 1.00, CASH_DEPOSIT: 0.85, CASH_WITHDRAWAL: 0.70, BUSINESS_PAYMENT: 0.90, SUPPLIER_PAYMENT: 1.05, INTERNATIONAL_PAYMENT: 1.10}
+    source_ids: [SRC_IBM_AML_DATA_2023]
+    derivation_method: Heavy-tail benchmark assumption to be replaced by source profiles.
+    assumption: true
+    confidence: low
+    sensitivity_range: {sigma: [0.55, 1.35]}
+    effect_on_simulation: Controls amount tails and outlier frequency.
+    reason: Local public source profiles have not yet supplied fitted conditional dispersions.
+
+  - parameter_id: TXN_SEGMENT_AMOUNT_SCALE_001
+    description: Segment multiplier applied to transaction amount medians.
+    value: {SALARIED: 1.00, HOUSEHOLD: 0.85, AFFLUENT: 2.40, STUDENT: 0.38, RETIRED: 0.70, HOUSEHOLD_BUSINESS: 1.70, SME: 4.20, CORPORATE: 11.00}
+    source_ids: [SRC_VN_NSO_LFS_2024, SRC_VN_NSO_ENTERPRISES_2024]
+    derivation_method: Explicit income/turnover-relative benchmark scaling.
+    assumption: true
+    confidence: low
+    sensitivity_range: {multiplier: [0.65, 1.55]}
+    effect_on_simulation: Preserves amount ordering across customer and business segments.
+    reason: Bank transaction distributions by segment are unavailable.
+
+  - parameter_id: TXN_CHANNEL_BY_TYPE_001
+    description: Channel probabilities conditional on transaction type.
+    value:
+      TRANSFER: {MOBILE: 0.62, INTERNET: 0.20, BRANCH: 0.06, ATM: 0.02, API: 0.05, BATCH: 0.05}
+      BILL_PAYMENT: {MOBILE: 0.65, INTERNET: 0.20, API: 0.10, BRANCH: 0.05}
+      MERCHANT_PURCHASE: {POS: 0.58, CARD: 0.28, MOBILE: 0.14}
+      CASH_DEPOSIT: {BRANCH: 0.72, ATM: 0.28}
+      CASH_WITHDRAWAL: {ATM: 0.86, BRANCH: 0.14}
+      BUSINESS_PAYMENT: {INTERNET: 0.32, API: 0.28, BATCH: 0.28, BRANCH: 0.12}
+      SUPPLIER_PAYMENT: {INTERNET: 0.30, API: 0.24, BATCH: 0.30, BRANCH: 0.10, SWIFT: 0.06}
+      LOAN_REPAYMENT: {BATCH: 0.46, MOBILE: 0.30, INTERNET: 0.18, BRANCH: 0.06}
+      SAVINGS_TRANSFER: {MOBILE: 0.60, INTERNET: 0.28, BRANCH: 0.12}
+      INTERNATIONAL_PAYMENT: {SWIFT: 0.62, INTERNET: 0.18, BRANCH: 0.14, API: 0.06}
+    source_ids: [SRC_SBV_ANNUAL_REPORT_2023, SRC_IBM_AML_DATA_2023]
+    derivation_method: Payment-rail-constrained benchmark mix.
+    assumption: true
+    confidence: low
+    sensitivity_range: {category_probability_relative_change: [-0.20, 0.20]}
+    effect_on_simulation: Controls device/session observability and temporal behavior.
+    reason: System-level payment aggregates do not provide these conditional shares.
+
+  - parameter_id: TXN_HOUR_WEIGHTS_001
+    description: Local-hour weights for normal retail and business transactions.
+    value:
+      RETAIL: {0: 0.01, 1: 0.005, 2: 0.005, 6: 0.02, 7: 0.04, 8: 0.07, 9: 0.08, 10: 0.08, 11: 0.07, 12: 0.06, 13: 0.06, 14: 0.07, 15: 0.07, 16: 0.07, 17: 0.07, 18: 0.06, 19: 0.05, 20: 0.05, 21: 0.04, 22: 0.025, 23: 0.015}
+      BUSINESS: {7: 0.03, 8: 0.08, 9: 0.11, 10: 0.12, 11: 0.11, 12: 0.07, 13: 0.08, 14: 0.12, 15: 0.12, 16: 0.10, 17: 0.05, 18: 0.01}
+    source_ids: [SRC_IBM_AML_DATA_2023, SRC_SYNTHAML_2023]
+    derivation_method: Explicit diurnal benchmark profile.
+    assumption: true
+    confidence: low
+    sensitivity_range: {off_hours_share: [0.02, 0.12]}
+    effect_on_simulation: Controls night-activity features and burst timing.
+    reason: Representative Vietnamese intraday profiles are unavailable.
+
+  - parameter_id: TXN_WEEKEND_FACTOR_001
+    description: Activity rate multiplier on weekend days.
+    value: {INDIVIDUAL: 0.82, BUSINESS: 0.38}
+    source_ids: [SRC_IBM_AML_DATA_2023]
+    derivation_method: Explicit seasonality assumption.
+    assumption: true
+    confidence: low
+    sensitivity_range: {INDIVIDUAL: [0.65, 1.00], BUSINESS: [0.20, 0.65]}
+    effect_on_simulation: Controls weekly periodicity.
+    reason: Local source temporal profile is pending.
+
+  - parameter_id: TXN_SALARY_SCHEDULE_001
+    description: Salary posting days and jitter.
+    value: {days: [25, 28], hour_start: 8, hour_end: 11, jitter_days: 1}
+    source_ids: []
+    derivation_method: Explicit monthly schedule assumption.
+    assumption: true
+    confidence: low
+    sensitivity_range: {day_min: 20, day_max: 31}
+    effect_on_simulation: Creates recurring legitimate salary patterns.
+    reason: No representative public payroll-posting schedule was identified.
+
+  - parameter_id: TXN_SESSION_CHANNELS_001
+    description: Channels that can produce device sessions in Bank View.
+    value: [MOBILE, INTERNET, API]
+    source_ids: []
+    derivation_method: Schema and observability rule.
+    assumption: false
+    confidence: high
+    sensitivity_range: null
+    effect_on_simulation: Limits device/session references to meaningful digital channels.
+    reason: Digital-session linkage is a product data-contract policy rather than a population estimate.
+
+  - parameter_id: SPLIT_POLICY_001
+    description: Canonical entity cohorts and chronological activity windows.
+    value:
+      entity_weights: {TRAIN: 0.70, VALIDATION: 0.10, TEST: 0.10, HIDDEN_TEST: 0.10}
+      day_fractions: {TRAIN: [0.00, 0.60], VALIDATION: [0.60, 0.80], TEST: [0.80, 0.90], HIDDEN_TEST: [0.90, 1.00]}
+    source_ids: []
+    derivation_method: Leakage-control policy, not a population estimate.
+    assumption: false
+    confidence: high
+    sensitivity_range: null
+    effect_on_simulation: Keeps entity cohorts and scenario networks isolated across chronological windows.
+    reason: Split proportions are a benchmark governance decision chosen to prevent entity and temporal leakage.

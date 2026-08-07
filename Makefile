@@ -1,11 +1,14 @@
 .PHONY: help up down restart logs ps health seed seed-verify db-reset db-shell redis-shell \
-        migrate migrate-status abm abm-dry \
+        migrate migrate-status abm abm-dry abm-profile-sources abm-validate-parameters \
+        abm-generate-small abm-validate-small abm-generate-mvp abm-validate abm-release \
+        abm-stream-sample abm-test \
         build run worker test test-unit contracts-check lint format typecheck check clean \
         aml-up aml-down aml-status aml-topics aml-fixture aml-producer-sample aml-producer-run \
         aml-producer-eventtime aml-producer-resume aml-flink-build aml-flink-test aml-submit \
         aml-cancel aml-inspect-kafka aml-inspect-hdfs aml-patterns aml-smoke aml-logs
 
 COMPOSE ?= docker compose
+ABM_PYTHON ?= .venv/bin/python
 
 help:  ## Danh sách lệnh
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -58,6 +61,31 @@ abm:  ## Sinh và nạp một case ABM (kịch bản VN-CA-03)
 
 abm-dry:  ## In thống kê dữ liệu ABM sẽ sinh, không ghi cơ sở dữ liệu
 	$(COMPOSE) run --rm seed python scripts/abm_generate.py --dry-run
+
+abm-profile-sources:  ## Profile one source: set ABM_SOURCE_INPUT and ABM_SOURCE_ID
+	@test -n "$(ABM_SOURCE_INPUT)" -a -n "$(ABM_SOURCE_ID)" || (echo "Set ABM_SOURCE_INPUT and ABM_SOURCE_ID" && exit 2)
+	$(ABM_PYTHON) -m abm profile-source "$(ABM_SOURCE_INPUT)" --source-id "$(ABM_SOURCE_ID)" --output "artifacts/profiles/$(ABM_SOURCE_ID)/summary.json"
+
+abm-validate-parameters:  ## Validate ABM evidence and parameter registries
+	$(ABM_PYTHON) -m abm validate-parameters
+
+abm-generate-small:  ## Generate the deterministic 200-customer smoke release
+	$(ABM_PYTHON) -m abm generate --config abm/configs/tiny.yaml --output-root artifacts --overwrite
+
+abm-validate-small:  ## Independently validate the smoke release and checksums
+	$(ABM_PYTHON) -m abm validate --config abm/configs/tiny.yaml --release artifacts/ABM-BANK-v0.1.0-tiny
+
+abm-generate-mvp abm-release:  ## Generate the complete 10,000-customer MVP release
+	$(ABM_PYTHON) -m abm generate --config abm/configs/mvp.yaml --output-root artifacts --overwrite
+
+abm-validate:  ## Independently validate the MVP release and checksums
+	$(ABM_PYTHON) -m abm validate --config abm/configs/mvp.yaml --release artifacts/ABM-BANK-v0.1.0
+
+abm-stream-sample:  ## Export 1,000 label-free canonical events as JSONL
+	$(ABM_PYTHON) -m abm stream-sample --release artifacts/ABM-BANK-v0.1.0 --output artifacts/events/ABM-BANK-v0.1.0.sample.jsonl --limit 1000
+
+abm-test:  ## Run deterministic ABM tests only
+	$(ABM_PYTHON) -m pytest tests/abm -q
 
 db-reset:  ## Xoá volume PostgreSQL và dựng lại từ db/init (mất toàn bộ dữ liệu)
 	$(COMPOSE) down -v

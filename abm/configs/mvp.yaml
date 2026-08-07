@@ -1,0 +1,17 @@
+dataset_id: ABM-BANK
+dataset_version: 0.1.0
+schema_version: 1.0
+simulation_seed: 20260807
+simulation_start: 2026-01-01T00:00:00+07:00
+simulation_end: 2026-03-31T23:59:59+07:00
+customer_count: 10000
+merchant_count: 1200
+currency: VND
+scenario_scale: 1.0
+hard_negative_scale: 1.0
+release_owner: Bao
+parameter_registry_version: 0.1.0
+source_registry_version: 0.1.0
+parquet_compression: zstd
+transaction_partition: month
+

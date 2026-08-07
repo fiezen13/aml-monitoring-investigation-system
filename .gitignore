@@ -30,6 +30,9 @@ Thumbs.db
 
 # Data (never commit large data)
 data/
+artifacts/
+simulation_output/
+*.parquet
 *.db
 *.sqlite3
 
