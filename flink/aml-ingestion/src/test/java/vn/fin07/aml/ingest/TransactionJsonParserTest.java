@@ -35,6 +35,30 @@ class TransactionJsonParserTest {
                 + "\"schema_version\":\"1.0\"}";
     }
 
+    static String canonicalEventJson() {
+        return "{"
+                + "\"specversion\":\"1.0\","
+                + "\"type\":\"bank.transaction.posted.v1\","
+                + "\"source\":\"abm-bank/ABM-BANK-v0.2.0\","
+                + "\"id\":\"EVT-S000-0000000001\","
+                + "\"time\":\"2026-01-01T00:00:05Z\","
+                + "\"datacontenttype\":\"application/json\","
+                + "\"dataschema\":\"https://fin07.local/contracts/events/bank.transaction.posted.v1.schema.json\","
+                + "\"source_offset\":\"run-001/TXN-S000-0000000001\","
+                + "\"data\":{"
+                + "\"schema_version\":\"1.0\","
+                + "\"transaction_id\":\"TXN-S000-0000000001\","
+                + "\"posting_status\":\"POSTED\","
+                + "\"event_time\":\"2026-01-01T00:00:00Z\","
+                + "\"posting_time\":\"2026-01-01T00:00:01Z\","
+                + "\"ingestion_time\":\"2026-01-01T00:00:05Z\","
+                + "\"amount\":{\"amount\":\"1250000.25\",\"currency\":\"VND\"},"
+                + "\"direction\":\"DEBIT\","
+                + "\"debtor\":{\"account_ref\":\"ACC-S000-0000000001\",\"is_internal\":true},"
+                + "\"creditor\":{\"account_ref\":\"CPY-EXTERNAL-01\",\"is_internal\":false},"
+                + "\"channel\":\"MOBILE\"}}";
+    }
+
     @Test
     void readsEveryFieldOfTheContract() throws Exception {
         AmlTransaction tx = parser.parse(validJson());
@@ -51,6 +75,19 @@ class TransactionJsonParserTest {
     @Test
     void leadingZeroOfBankIdSurvives() throws Exception {
         assertEquals("015768", parser.parse(validJson()).fromBank);
+    }
+
+    @Test
+    void readsLabelFreeCanonicalCloudEvent() throws Exception {
+        AmlTransaction tx = parser.parse(canonicalEventJson());
+        assertEquals("TXN-S000-0000000001", tx.transactionId);
+        assertEquals(1767225600000L, tx.eventTimeEpochMs);
+        assertEquals("ABMBANK", tx.fromBank);
+        assertEquals("EXTERNAL", tx.toBank);
+        assertEquals(new BigDecimal("1250000.25"), tx.amountPaid);
+        assertEquals("VND", tx.paymentCurrency);
+        assertEquals(null, tx.isLaundering);
+        assertEquals("abm-bank/ABM-BANK-v0.2.0", tx.sourceDataset);
     }
 
     @Test

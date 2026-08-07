@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from abm.adapters.events import iter_release_events, write_jsonl
+from abm.adapters.kafka import publish_release
 from abm.exporters.release import load_release, verify_manifest
+from abm.large_release import build_large_release, validate_large_release
 from abm.profiling.profile_source import profile_source, write_profile
 from abm.registry import ParameterRegistry, SimulationConfig
 from abm.release import build_release
@@ -37,17 +39,36 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--overwrite", action="store_true")
     generate.set_defaults(handler=_generate)
 
+    large = subparsers.add_parser("generate-large", help="generate a bounded-memory multi-GB release")
+    large.add_argument("--config", default="abm/configs/large.yaml")
+    large.add_argument("--output-root", default="data/generated")
+    large.add_argument("--overwrite", action="store_true")
+    large.set_defaults(handler=_generate_large)
+
     validate = subparsers.add_parser("validate", help="validate a materialized release and its checksums")
     validate.add_argument("--config", default="abm/configs/mvp.yaml")
     validate.add_argument("--release", required=True)
     validate.add_argument("--report")
     validate.set_defaults(handler=_validate_release)
 
+    validate_large = subparsers.add_parser("validate-large", help="validate every shard in a large release")
+    validate_large.add_argument("--config", default="abm/configs/large.yaml")
+    validate_large.add_argument("--release", required=True)
+    validate_large.add_argument("--workers", type=int, default=6)
+    validate_large.set_defaults(handler=_validate_large)
+
     stream = subparsers.add_parser("stream-sample", help="write label-free transaction event JSONL")
     stream.add_argument("--release", required=True)
     stream.add_argument("--output", required=True)
     stream.add_argument("--limit", type=int, default=1000)
     stream.set_defaults(handler=_stream_sample)
+
+    publish = subparsers.add_parser("publish", help="publish canonical ABM events to Kafka")
+    publish.add_argument("--release", required=True)
+    publish.add_argument("--bootstrap-servers", default="localhost:29092")
+    publish.add_argument("--topic", default="bank.transactions.raw.v1")
+    publish.add_argument("--limit", type=int, default=1000)
+    publish.set_defaults(handler=_publish)
     return parser
 
 
@@ -86,6 +107,11 @@ def _generate(arguments: argparse.Namespace) -> dict[str, Any]:
     return result
 
 
+def _generate_large(arguments: argparse.Namespace) -> dict[str, Any]:
+    _, result = build_large_release(arguments.config, arguments.output_root, overwrite=arguments.overwrite)
+    return result
+
+
 def _validate_release(arguments: argparse.Namespace) -> dict[str, Any]:
     config = SimulationConfig.load(arguments.config)
     registry = ParameterRegistry()
@@ -101,8 +127,25 @@ def _validate_release(arguments: argparse.Namespace) -> dict[str, Any]:
     return result
 
 
+def _validate_large(arguments: argparse.Namespace) -> dict[str, Any]:
+    return validate_large_release(
+        arguments.release,
+        arguments.config,
+        workers=arguments.workers,
+    )
+
+
 def _stream_sample(arguments: argparse.Namespace) -> dict[str, Any]:
     if arguments.limit < 1:
         raise ValueError("limit must be positive")
     count = write_jsonl(iter_release_events(arguments.release, arguments.limit), arguments.output)
     return {"status": "PASS", "event_count": count, "output": str(Path(arguments.output).resolve())}
+
+
+def _publish(arguments: argparse.Namespace) -> dict[str, Any]:
+    return publish_release(
+        arguments.release,
+        bootstrap_servers=arguments.bootstrap_servers,
+        topic=arguments.topic,
+        limit=arguments.limit,
+    )

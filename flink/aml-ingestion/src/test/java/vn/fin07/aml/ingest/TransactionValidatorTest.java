@@ -99,6 +99,14 @@ class TransactionValidatorTest {
     }
 
     @Test
+    void acceptsCanonicalTransactionWithoutAHiddenLabel() {
+        AmlTransaction tx = valid();
+        tx.transactionId = "TXN-S000-0000000001";
+        tx.isLaundering = null;
+        assertNull(validator.validate(tx));
+    }
+
+    @Test
     void rejectsMissingSourceReference() {
         AmlTransaction tx = valid();
         tx.sourceLineNumber = 0;

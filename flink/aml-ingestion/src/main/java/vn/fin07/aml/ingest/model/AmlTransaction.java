@@ -48,7 +48,7 @@ public class AmlTransaction implements Serializable {
     public BigDecimal amountPaid;
     public String paymentCurrency;
     public String paymentFormat;
-    public int isLaundering;
+    public Integer isLaundering;
     public String sourceDataset;
     public String sourceFile;
     public long sourceLineNumber;

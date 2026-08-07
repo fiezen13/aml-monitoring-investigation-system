@@ -43,7 +43,8 @@ import vn.fin07.aml.ingest.validation.TransactionValidator;
  * <p><b>Job này chỉ nạp dữ liệu.</b> Không có ngưỡng số tiền, không gộp theo
  * tài khoản, không cửa sổ trượt, không dò chu trình, không fan-in/fan-out,
  * không chấm điểm rủi ro, không suy luận mô hình, không dựng đồ thị, không
- * sinh cảnh báo. Nhãn {@code is_laundering} đi qua như một cột dữ liệu.
+ * sinh cảnh báo. Nhãn {@code is_laundering} của hợp đồng legacy đi qua như
+ * một cột dữ liệu; sự kiện ABM Bank View không mang nhãn và được ghi là null.
  *
  * <p>Event time và watermark được khai báo dù giai đoạn này chưa có cửa sổ
  * nào: chúng thuộc về *hợp đồng của luồng dữ liệu*, và gắn sẵn từ bây giờ

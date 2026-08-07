@@ -345,7 +345,7 @@ services:
     profiles: ["aml"]
     build: &flink-build
       context: .
-      dockerfile: docker/flink/Dockerfile
+      dockerfile: ${AML_FLINK_DOCKERFILE:-docker/flink/Dockerfile}
     command: ["jobmanager"]
     environment: &flink-env
       # Địa chỉ JobManager phải giống nhau ở cả hai phía, nếu không

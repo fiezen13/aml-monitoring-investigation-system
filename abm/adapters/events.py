@@ -12,7 +12,12 @@ from typing import Any
 import pyarrow.parquet as pq
 
 
-def transaction_to_event(row: dict[str, Any]) -> dict[str, Any]:
+def transaction_to_event(
+    row: dict[str, Any],
+    *,
+    dataset_version: str = "unknown",
+    simulation_run_id: str = "unknown",
+) -> dict[str, Any]:
     forbidden = {"label", "scenario_instance_id", "network_id", "hidden_intent", "is_laundering"}
     contamination = sorted(set(row) & forbidden)
     if contamination:
@@ -51,14 +56,14 @@ def transaction_to_event(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "specversion": "1.0",
         "type": "bank.transaction.posted.v1",
-        "source": row["source_system"],
+        "source": f"{row['source_system']}/ABM-BANK-v{dataset_version}",
         "id": row["event_id"],
         "time": row["available_from"].isoformat(),
         "subject": f"transaction/{row['transaction_id']}",
         "datacontenttype": "application/json",
         "dataschema": "https://fin07.local/contracts/events/bank.transaction.posted.v1.schema.json",
         "idempotency_key": row["event_id"],
-        "source_offset": row["source_record_id"],
+        "source_offset": f"{simulation_run_id}/{row['source_record_id']}",
         "partition_key": row["transaction_id"],
         "data_class": row["data_class"],
         "data": data,
@@ -67,11 +72,23 @@ def transaction_to_event(row: dict[str, Any]) -> dict[str, Any]:
 
 def iter_release_events(release_dir: str | Path, limit: int | None = None) -> Iterable[dict[str, Any]]:
     emitted = 0
-    paths = sorted((Path(release_dir) / "bank_view" / "transactions").glob("*/part-*.parquet"))
+    root = Path(release_dir)
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    dataset_version = str(manifest["dataset_version"])
+    simulation_run_id = str(manifest.get("logical_dataset_sha256") or manifest.get("logical_world_sha256"))[:24]
+    paths = sorted((root / "bank_view" / "transactions").glob("*/part-*.parquet"))
+    if not paths:
+        paths = sorted(root.glob("shards/shard-*/bank_view/transactions/*/part-*.parquet"))
+    if not paths:
+        raise FileNotFoundError(f"release contains no transaction Parquet files: {root}")
     for path in paths:
         for batch in pq.ParquetFile(path).iter_batches(batch_size=4096):
             for row in batch.to_pylist():
-                yield transaction_to_event(row)
+                yield transaction_to_event(
+                    row,
+                    dataset_version=dataset_version,
+                    simulation_run_id=simulation_run_id,
+                )
                 emitted += 1
                 if limit is not None and emitted >= limit:
                     return

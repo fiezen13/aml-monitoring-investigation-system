@@ -112,7 +112,7 @@ public final class OutputInspector {
                         str(record, "source_dataset"),
                         str(record, "event_date"),
                         str(record, "event_hour"),
-                        Integer.parseInt(str(record, "is_laundering")),
+                        nullableInteger(record.get("is_laundering")),
                         new BigDecimal(str(record, "amount_paid")));
                 if (stats.samples.size() < sampleSize) {
                     stats.samples.add(record.toString());
@@ -137,7 +137,7 @@ public final class OutputInspector {
                         jsonString(line, "source_dataset"),
                         jsonString(line, "event_date"),
                         jsonString(line, "event_hour"),
-                        Integer.parseInt(jsonNumber(line, "is_laundering")),
+                        jsonNullableInteger(line, "is_laundering"),
                         new BigDecimal(jsonNumber(line, "amount_paid")));
                 if (stats.samples.size() < sampleSize) {
                     stats.samples.add(line);
@@ -177,10 +177,28 @@ public final class OutputInspector {
         return start == end ? "0" : line.substring(start, end);
     }
 
+    private static Integer nullableInteger(Object value) {
+        return value == null ? null : Integer.valueOf(value.toString());
+    }
+
+    private static Integer jsonNullableInteger(String line, String field) {
+        String key = "\"" + field + "\":";
+        int start = line.indexOf(key);
+        if (start < 0) {
+            return null;
+        }
+        start += key.length();
+        if (line.startsWith("null", start)) {
+            return null;
+        }
+        return Integer.valueOf(jsonNumber(line, field));
+    }
+
     /** Số liệu tổng hợp, đủ để đối chiếu với phía producer. */
     private static final class Stats {
         long records;
         long laundering;
+        long nullLabels;
         final TreeSet<String> transactionIds = new TreeSet<>();
         final TreeSet<String> datasets = new TreeSet<>();
         final TreeMap<String, Long> byPartition = new TreeMap<>();
@@ -198,10 +216,12 @@ public final class OutputInspector {
                 String dataset,
                 String eventDate,
                 String eventHour,
-                int isLaundering,
+                Integer isLaundering,
                 BigDecimal amountPaid) {
             records++;
-            if (isLaundering == 1) {
+            if (isLaundering == null) {
+                nullLabels++;
+            } else if (isLaundering == 1) {
                 laundering++;
             }
             transactionIds.add(transactionId);
@@ -223,7 +243,8 @@ public final class OutputInspector {
             System.out.println("records=" + records);
             System.out.println("distinct_transaction_ids=" + transactionIds.size());
             System.out.println("laundering_label_1=" + laundering);
-            System.out.println("laundering_label_0=" + (records - laundering));
+            System.out.println("laundering_label_0=" + (records - laundering - nullLabels));
+            System.out.println("laundering_label_null=" + nullLabels);
             System.out.println("datasets=" + String.join(",", datasets));
             System.out.println("partitions=" + byPartition.size());
             System.out.println("banks_with_leading_zero=" + banksWithLeadingZero.size());

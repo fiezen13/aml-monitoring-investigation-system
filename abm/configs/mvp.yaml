@@ -14,4 +14,4 @@ parameter_registry_version: 0.1.0
 source_registry_version: 0.1.0
 parquet_compression: zstd
 transaction_partition: month
-
+id_namespace: ""

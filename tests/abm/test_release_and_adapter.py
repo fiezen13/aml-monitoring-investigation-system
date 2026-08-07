@@ -31,3 +31,27 @@ def test_event_adapter_excludes_ground_truth(tmp_path, tiny_world, tiny_config, 
     assert "is_laundering" not in serialized
     assert "scenario_instance_id" not in serialized
     assert "network_id" not in serialized
+
+
+def test_event_adapter_reads_sharded_large_release(tmp_path, tiny_world, tiny_config, parameter_registry):
+    exported = ReleaseExporter(tiny_config, parameter_registry, tmp_path).write(tiny_world)
+    large = tmp_path / "ABM-BANK-v9.9.9"
+    shard = large / "shards" / "shard-000"
+    shard.parent.mkdir(parents=True)
+    exported.rename(shard)
+    aggregate_fingerprint = "f" * 64
+    (large / "manifest.json").write_text(
+        json.dumps(
+            {
+                "dataset_version": "9.9.9",
+                "logical_dataset_sha256": aggregate_fingerprint,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    event = next(iter(iter_release_events(large, limit=1)))
+
+    assert event["source"] == "abm-bank/ABM-BANK-v9.9.9"
+    assert event["source_offset"].startswith(aggregate_fingerprint[:24] + "/")
+    assert event["data"]["transaction_id"].startswith("TXN-")

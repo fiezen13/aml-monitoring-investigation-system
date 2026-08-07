@@ -25,6 +25,17 @@ make abm-stream-sample
 
 The output is `data/generated/ABM-BANK-v0.1.0/`. `data/raw/` is reserved for downloaded source datasets, while `data/generated/` contains reproducible synthetic releases. Review `manifest.json`, all reports, table counts, scenario/control quotas, runtime versions, checksums, and known limitations. `validate` reloads Parquet independently, verifies every manifest checksum, and reruns integrity gates.
 
+## Multi-GB MVP release
+
+```bash
+make abm-generate-large
+make abm-validate-large
+make abm-stream-sample
+make abm-ingest-smoke
+```
+
+The large output is `data/generated/ABM-BANK-v0.2.0/`. It is split into 128 independently generated and validated shards under `shards/`; each shard uses an ID namespace so primary keys cannot collide across shards. The aggregate manifest enforces a minimum physical size of 3,000,000,000 bytes. If a build is interrupted, `make abm-resume-large` keeps every shard with a passing quality report and regenerates only missing or failed shards.
+
 ## Release layout
 
 - `bank_view/`: feature-visible canonical Parquet, with transactions partitioned by event month;
@@ -36,7 +47,7 @@ The output is `data/generated/ABM-BANK-v0.1.0/`. `data/raw/` is reserved for dow
 
 ## Event adapter and ingestion boundary
 
-`make abm-stream-sample` writes label-free `bank.transaction.posted.v1` JSONL. The audited legacy topic requires `is_laundering`, which violates Bank View separation; therefore v0.1.0 does not silently publish canonical events into that contract. Deploy a versioned label-free Kafka topic/schema and update Flink input before an end-to-end production smoke test. The adapter already rejects ground-truth columns.
+`make abm-stream-sample` writes label-free `bank.transaction.posted.v1` JSONL. `make abm-ingest-smoke` creates an isolated Kafka topic and HDFS path, publishes 1,000 canonical CloudEvents, runs the Flink ingestion job, and verifies acknowledgements, record counts, unique IDs, null labels, and absence of hidden fields. It performs ingestion only: no feature fitting, model training, scoring, alerting, or customer decisioning. The adapter rejects ground-truth columns.
 
 ## Approval checklist
 

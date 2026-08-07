@@ -34,6 +34,7 @@ class SimulationConfig:
     source_registry_version: str
     parquet_compression: str
     transaction_partition: str
+    id_namespace: str
 
     @classmethod
     def load(cls, path: str | Path) -> SimulationConfig:
@@ -55,6 +56,7 @@ class SimulationConfig:
             source_registry_version=str(raw["source_registry_version"]),
             parquet_compression=str(raw["parquet_compression"]),
             transaction_partition=str(raw["transaction_partition"]),
+            id_namespace=str(raw.get("id_namespace", "")),
         )
         config.validate()
         return config
@@ -76,6 +78,8 @@ class SimulationConfig:
             raise ValueError("currency must be an uppercase ISO-4217-style code")
         if self.transaction_partition not in {"month", "day"}:
             raise ValueError("transaction_partition must be month or day")
+        if self.id_namespace and not self.id_namespace.replace("-", "").isalnum():
+            raise ValueError("id_namespace may contain only letters, numbers, and hyphens")
 
     @property
     def release_name(self) -> str:
@@ -103,6 +107,7 @@ class SimulationConfig:
             "source_registry_version": self.source_registry_version,
             "parquet_compression": self.parquet_compression,
             "transaction_partition": self.transaction_partition,
+            "id_namespace": self.id_namespace,
         }
 
     def fingerprint(self) -> str:

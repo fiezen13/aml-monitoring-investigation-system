@@ -45,7 +45,7 @@ public final class AvroSchemas {
             + "{\"name\":\"amount_paid\",\"type\":\"double\"},"
             + "{\"name\":\"payment_currency\",\"type\":\"string\"},"
             + "{\"name\":\"payment_format\",\"type\":\"string\"},"
-            + "{\"name\":\"is_laundering\",\"type\":\"int\"},"
+            + "{\"name\":\"is_laundering\",\"type\":[\"null\",\"int\"],\"default\":null},"
             + "{\"name\":\"source_dataset\",\"type\":\"string\"},"
             + "{\"name\":\"source_file\",\"type\":\"string\"},"
             + "{\"name\":\"source_line_number\",\"type\":\"long\"},"

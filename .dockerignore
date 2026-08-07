@@ -54,3 +54,5 @@ Jenkinsfile
 # đó để biên dịch. Chỉ loại thứ đã build ra — 30 MB jar gửi sang daemon ở
 # mỗi lần build là 30 MB không ai dùng tới.
 flink/**/target/
+!flink/aml-ingestion/target/
+!flink/aml-ingestion/target/aml-ingestion-1.0.0.jar

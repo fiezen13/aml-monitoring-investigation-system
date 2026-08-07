@@ -22,7 +22,7 @@ public final class TransactionValidator implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Pattern TRANSACTION_ID = Pattern.compile("^[0-9a-f]{32}$");
+    private static final Pattern TRANSACTION_ID = Pattern.compile("^([0-9a-f]{32}|TXN-[A-Z0-9-]{10,120})$");
 
     /** 2000-01-01 và 2100-01-01 tính bằng mili giây. */
     private static final long MIN_EVENT_TIME_MS = 946_684_800_000L;
@@ -78,7 +78,7 @@ public final class TransactionValidator implements Serializable {
         if (isBlank(tx.paymentFormat)) {
             return new Violation("payment_format_missing", "Thiếu payment_format");
         }
-        if (tx.isLaundering != 0 && tx.isLaundering != 1) {
+        if (tx.isLaundering != null && tx.isLaundering != 0 && tx.isLaundering != 1) {
             return new Violation("label_invalid", "is_laundering phải là 0 hoặc 1, nhận được " + tx.isLaundering);
         }
         if (isBlank(tx.sourceFile) || tx.sourceLineNumber < 2) {

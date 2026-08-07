@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -96,6 +97,10 @@ public final class TransactionJsonParser implements Serializable {
             throw new ParseException("json_not_an_object", "Payload không phải một đối tượng JSON");
         }
 
+        if (root.has("specversion") || "bank.transaction.posted.v1".equals(root.path("type").asText())) {
+            return parseCanonicalEvent(root);
+        }
+
         Set<String> unexpected = new TreeSet<>();
         for (Iterator<String> names = root.fieldNames(); names.hasNext(); ) {
             String name = names.next();
@@ -131,12 +136,66 @@ public final class TransactionJsonParser implements Serializable {
         return transaction;
     }
 
+    private AmlTransaction parseCanonicalEvent(JsonNode root) throws ParseException {
+        if (!"1.0".equals(text(root, "specversion"))) {
+            throw new ParseException("cloud_event_version_invalid", "CloudEvent specversion phải là 1.0");
+        }
+        if (!"bank.transaction.posted.v1".equals(text(root, "type"))) {
+            throw new ParseException("event_type_invalid", "Không hỗ trợ event type: " + root.path("type").asText());
+        }
+        JsonNode data = object(root, "data");
+        JsonNode amount = object(data, "amount");
+        JsonNode debtor = object(data, "debtor");
+        JsonNode creditor = object(data, "creditor");
+
+        AmlTransaction transaction = new AmlTransaction();
+        transaction.transactionId = text(data, "transaction_id");
+        transaction.eventTime = text(data, "event_time");
+        try {
+            transaction.eventTimeEpochMs = OffsetDateTime.parse(transaction.eventTime).toInstant().toEpochMilli();
+        } catch (Exception ex) {
+            throw new ParseException("event_time_invalid", "event_time không phải RFC-3339 có múi giờ: " + transaction.eventTime);
+        }
+        transaction.fromBank = bool(debtor, "is_internal") ? "ABMBANK" : "EXTERNAL";
+        transaction.fromAccount = text(debtor, "account_ref");
+        transaction.toBank = bool(creditor, "is_internal") ? "ABMBANK" : "EXTERNAL";
+        transaction.toAccount = text(creditor, "account_ref");
+        transaction.amountReceived = decimalText(amount, "amount");
+        transaction.receivingCurrency = text(amount, "currency");
+        transaction.amountPaid = transaction.amountReceived;
+        transaction.paymentCurrency = transaction.receivingCurrency;
+        transaction.paymentFormat = text(data, "channel");
+        transaction.isLaundering = null;
+        transaction.sourceDataset = text(root, "source");
+        transaction.sourceFile = text(root, "source_offset");
+        transaction.sourceLineNumber = 2L;
+        transaction.ingestedAt = text(data, "ingestion_time");
+        transaction.schemaVersion = text(data, "schema_version");
+        return transaction;
+    }
+
     private static JsonNode require(JsonNode root, String field) throws ParseException {
         JsonNode node = root.get(field);
         if (node == null || node.isNull()) {
             throw new ParseException("missing_field", "Thiếu trường bắt buộc: " + field);
         }
         return node;
+    }
+
+    private static JsonNode object(JsonNode root, String field) throws ParseException {
+        JsonNode node = require(root, field);
+        if (!node.isObject()) {
+            throw new ParseException("type_mismatch", "Trường " + field + " phải là object");
+        }
+        return node;
+    }
+
+    private static boolean bool(JsonNode root, String field) throws ParseException {
+        JsonNode node = require(root, field);
+        if (!node.isBoolean()) {
+            throw new ParseException("type_mismatch", "Trường " + field + " phải là boolean");
+        }
+        return node.asBoolean();
     }
 
     private static String text(JsonNode root, String field) throws ParseException {
@@ -165,5 +224,17 @@ public final class TransactionJsonParser implements Serializable {
                     "type_mismatch", "Trường " + field + " phải là số, nhận được " + node.getNodeType());
         }
         return node.decimalValue();
+    }
+
+    private static BigDecimal decimalText(JsonNode root, String field) throws ParseException {
+        JsonNode node = require(root, field);
+        if (!node.isTextual()) {
+            throw new ParseException("type_mismatch", "Trường " + field + " phải là chuỗi decimal chính xác");
+        }
+        try {
+            return new BigDecimal(node.asText());
+        } catch (NumberFormatException ex) {
+            throw new ParseException("amount_invalid", "Trường " + field + " không phải decimal: " + node.asText());
+        }
     }
 }

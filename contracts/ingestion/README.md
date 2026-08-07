@@ -1,8 +1,14 @@
-# Ingestion contract — CSV IBM AML → Kafka → Flink → HDFS
+# Ingestion contracts — IBM AML and canonical ABM Bank View → Kafka → Flink → HDFS
 
 Đây là phần **đang chạy thật** của nền tảng, khác với các contract còn lại trong `contracts/` vốn mô
 tả mô hình đích. Tài liệu vận hành chi tiết trước đây nằm ở `docs/AML_INGESTION.md`; phần kiến thức
 không suy ra được từ mã nguồn đã được gom về đây, cạnh chính cái contract mà nó mô tả.
+
+Ngoài luồng IBM CSV cũ, cùng Flink job nhận CloudEvent `bank.transaction.posted.v1` từ ABM-BANK.
+CloudEvent được phát lên topic riêng `bank.transactions.raw.v1`; trường `is_laundering` tại bronze
+được ghi `null`, vì label và hidden state không được phép đi vào Bank View. Lệnh
+`make abm-ingest-smoke` kiểm chứng ABM Parquet → Kafka → Flink → HDFS bằng 1.000 sự kiện và đối
+chiếu số lượng/ID tại HDFS. Đây chỉ là kiểm thử ingest, không huấn luyện hoặc chấm điểm mô hình.
 
 Cơ sở kiến trúc: mục 6.1 (vùng RAW/BRONZE), mục 5.3 (quy tắc xử lý sự kiện).
 

@@ -85,8 +85,8 @@ class AbmBankGenerator:
         split_weights = self.registry.value("SPLIT_POLICY_001")["entity_weights"]
 
         business_customer_specs: list[tuple[str, str]] = []
-        for index in range(1, self.config.customer_count + 1):
-            customer_id = f"CUS-{index:08d}"
+        for _ in range(self.config.customer_count):
+            customer_id = self._next_id("CUS")
             customer_kind = _weighted_choice(self.rng_population, type_mix)
             split = _weighted_choice(self.rng_population, split_weights)
             region = _weighted_choice(self.rng_population, region_mix)
@@ -673,6 +673,7 @@ class AbmBankGenerator:
             "data_class": "C2_CONFIDENTIAL",
         }
         projected = self.observation.project_transaction(raw)
+        projected["created_at"] = max(projected["created_at"], projected["available_from"])
         self.world.transactions.append(projected)
         return transaction_id
 
@@ -696,7 +697,11 @@ class AbmBankGenerator:
             "event_time": (event_time - timedelta(minutes=self.rng_behavior.randint(1, 15))).astimezone(UTC),
             "available_from": event_time.astimezone(UTC),
             "channel": channel,
-            "ip_token": f"IPT-{ip_bucket:08d}",
+            "ip_token": (
+                f"IPT-{self.config.id_namespace}-{ip_bucket:08d}"
+                if self.config.id_namespace
+                else f"IPT-{ip_bucket:08d}"
+            ),
             "country": "VN",
             "region_code": self.customer_by_id[customer_id]["region_code"],
             "is_vpn_or_proxy": self.rng_behavior.random() < 0.025,
@@ -953,7 +958,8 @@ class AbmBankGenerator:
 
     def _next_id(self, prefix: str) -> str:
         self.counters[prefix] += 1
-        return f"{prefix}-{self.counters[prefix]:010d}"
+        namespace = f"-{self.config.id_namespace}" if self.config.id_namespace else ""
+        return f"{prefix}{namespace}-{self.counters[prefix]:010d}"
 
     def _historical_time(self, rng: random.Random, minimum_days: int, maximum_days: int) -> datetime:
         return (self.config.simulation_start - timedelta(days=rng.randint(minimum_days, maximum_days))).astimezone(UTC)

@@ -47,7 +47,11 @@ public final class JsonEncoders implements Serializable {
         node.put("amount_paid", tx.amountPaid);
         node.put("payment_currency", tx.paymentCurrency);
         node.put("payment_format", tx.paymentFormat);
-        node.put("is_laundering", tx.isLaundering);
+        if (tx.isLaundering == null) {
+            node.putNull("is_laundering");
+        } else {
+            node.put("is_laundering", tx.isLaundering);
+        }
         node.put("source_dataset", tx.sourceDataset);
         node.put("source_file", tx.sourceFile);
         node.put("source_line_number", tx.sourceLineNumber);

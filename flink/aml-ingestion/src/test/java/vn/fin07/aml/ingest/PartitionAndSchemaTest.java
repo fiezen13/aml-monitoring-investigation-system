@@ -111,6 +111,22 @@ class PartitionAndSchemaTest {
     }
 
     @Test
+    void canonicalRecordSerialisesWithoutLaunderingLabel() throws Exception {
+        AmlTransaction tx = TransactionValidatorTest.valid();
+        tx.transactionId = "TXN-S000-0000000001";
+        tx.isLaundering = null;
+        tx.deriveTimeFields();
+        GenericRecord record = AvroSchemas.toRecord(tx);
+        assertEquals(null, record.get("is_laundering"));
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(out, null);
+        new GenericDatumWriter<GenericRecord>(AvroSchemas.transactionSchema()).write(record, encoder);
+        encoder.flush();
+        assertTrue(out.size() > 0);
+    }
+
+    @Test
     void amountKeepsItsValueThroughTheDoubleColumn() {
         AmlTransaction tx = TransactionValidatorTest.valid();
         tx.amountPaid = new BigDecimal("0.00000340");
