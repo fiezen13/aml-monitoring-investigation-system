@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     generate = subparsers.add_parser("generate", help="generate, validate, and write a release")
     generate.add_argument("--config", default="abm/configs/mvp.yaml")
-    generate.add_argument("--output-root", default="artifacts")
+    generate.add_argument("--output-root", default="data/generated")
     generate.add_argument("--overwrite", action="store_true")
     generate.set_defaults(handler=_generate)
 

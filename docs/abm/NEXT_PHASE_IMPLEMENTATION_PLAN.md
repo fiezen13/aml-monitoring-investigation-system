@@ -48,7 +48,7 @@ docs/abm/
 contracts/canonical/
 ```
 
-Directories will be added only when their first working component is added. Large source and release artifacts remain outside Git. `.gitignore` will explicitly ignore `artifacts/ABM-BANK-v*/`, profile data extracts, checkpoints, and simulator scratch files while preserving small deterministic fixtures.
+Directories will be added only when their first working component is added. Large source and generated data remain outside Git. `.gitignore` ignores `data/generated/ABM-BANK-v*/`, profile data extracts, checkpoints, and simulator scratch files while preserving the raw-data placement guide and small deterministic fixtures.
 
 ## Step 3 — public source profiling
 
@@ -238,9 +238,9 @@ Exit gate: all required quality gates emit machine-readable pass/fail results; n
 Release command target:
 
 ```bash
-python -m abm.cli generate --config abm/configs/mvp.yaml --seed 20260807 --output artifacts
-python -m abm.cli validate --release artifacts/ABM-BANK-v0.1.0
-python -m abm.cli release --release artifacts/ABM-BANK-v0.1.0
+python -m abm generate --config abm/configs/mvp.yaml --output-root data/generated
+python -m abm validate --config abm/configs/mvp.yaml --release data/generated/ABM-BANK-v0.1.0
+python -m abm stream-sample --release data/generated/ABM-BANK-v0.1.0 --output data/generated/events/ABM-BANK-v0.1.0.sample.jsonl
 ```
 
 Manifest content:

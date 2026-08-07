@@ -87,7 +87,7 @@ class ReleaseExporter:
         self,
         config: SimulationConfig,
         registry: ParameterRegistry,
-        output_root: str | Path = "artifacts",
+        output_root: str | Path = "data/generated",
     ) -> None:
         self.config = config
         self.registry = registry

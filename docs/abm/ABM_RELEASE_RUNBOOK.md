@@ -23,7 +23,7 @@ make abm-validate
 make abm-stream-sample
 ```
 
-The output is `artifacts/ABM-BANK-v0.1.0/`. Review `manifest.json`, all reports, table counts, scenario/control quotas, runtime versions, checksums, and known limitations. `validate` reloads Parquet independently, verifies every manifest checksum, and reruns integrity gates.
+The output is `data/generated/ABM-BANK-v0.1.0/`. `data/raw/` is reserved for downloaded source datasets, while `data/generated/` contains reproducible synthetic releases. Review `manifest.json`, all reports, table counts, scenario/control quotas, runtime versions, checksums, and known limitations. `validate` reloads Parquet independently, verifies every manifest checksum, and reruns integrity gates.
 
 ## Release layout
 

@@ -64,25 +64,25 @@ abm-dry:  ## In thống kê dữ liệu ABM sẽ sinh, không ghi cơ sở dữ 
 
 abm-profile-sources:  ## Profile one source: set ABM_SOURCE_INPUT and ABM_SOURCE_ID
 	@test -n "$(ABM_SOURCE_INPUT)" -a -n "$(ABM_SOURCE_ID)" || (echo "Set ABM_SOURCE_INPUT and ABM_SOURCE_ID" && exit 2)
-	$(ABM_PYTHON) -m abm profile-source "$(ABM_SOURCE_INPUT)" --source-id "$(ABM_SOURCE_ID)" --output "artifacts/profiles/$(ABM_SOURCE_ID)/summary.json"
+	$(ABM_PYTHON) -m abm profile-source "$(ABM_SOURCE_INPUT)" --source-id "$(ABM_SOURCE_ID)" --output "data/profiles/$(ABM_SOURCE_ID)/summary.json"
 
 abm-validate-parameters:  ## Validate ABM evidence and parameter registries
 	$(ABM_PYTHON) -m abm validate-parameters
 
 abm-generate-small:  ## Generate the deterministic 200-customer smoke release
-	$(ABM_PYTHON) -m abm generate --config abm/configs/tiny.yaml --output-root artifacts --overwrite
+	$(ABM_PYTHON) -m abm generate --config abm/configs/tiny.yaml --output-root data/generated --overwrite
 
 abm-validate-small:  ## Independently validate the smoke release and checksums
-	$(ABM_PYTHON) -m abm validate --config abm/configs/tiny.yaml --release artifacts/ABM-BANK-v0.1.0-tiny
+	$(ABM_PYTHON) -m abm validate --config abm/configs/tiny.yaml --release data/generated/ABM-BANK-v0.1.0-tiny
 
 abm-generate-mvp abm-release:  ## Generate the complete 10,000-customer MVP release
-	$(ABM_PYTHON) -m abm generate --config abm/configs/mvp.yaml --output-root artifacts --overwrite
+	$(ABM_PYTHON) -m abm generate --config abm/configs/mvp.yaml --output-root data/generated --overwrite
 
 abm-validate:  ## Independently validate the MVP release and checksums
-	$(ABM_PYTHON) -m abm validate --config abm/configs/mvp.yaml --release artifacts/ABM-BANK-v0.1.0
+	$(ABM_PYTHON) -m abm validate --config abm/configs/mvp.yaml --release data/generated/ABM-BANK-v0.1.0
 
 abm-stream-sample:  ## Export 1,000 label-free canonical events as JSONL
-	$(ABM_PYTHON) -m abm stream-sample --release artifacts/ABM-BANK-v0.1.0 --output artifacts/events/ABM-BANK-v0.1.0.sample.jsonl --limit 1000
+	$(ABM_PYTHON) -m abm stream-sample --release data/generated/ABM-BANK-v0.1.0 --output data/generated/events/ABM-BANK-v0.1.0.sample.jsonl --limit 1000
 
 abm-test:  ## Run deterministic ABM tests only
 	$(ABM_PYTHON) -m pytest tests/abm -q

@@ -41,6 +41,7 @@ simulation_output/
 # phải có sẵn, nếu không người mới sẽ không biết đặt file vào đâu.
 !data/
 data/*
+!data/README.md
 !data/raw/
 data/raw/*
 !data/raw/ibm-aml/

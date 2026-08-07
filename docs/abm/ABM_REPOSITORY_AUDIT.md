@@ -250,7 +250,7 @@ Repository-native locations proposed for later phases:
 - `abm/generators/`, `abm/scenarios/`, and `abm/observation/` for simulation;
 - `abm/validation/`, `abm/exporters/`, and `abm/adapters/` for release/integration;
 - `tests/abm/` for deterministic tiny-run gates;
-- ignored `artifacts/ABM-BANK-v*/` for generated releases.
+- ignored `data/generated/ABM-BANK-v*/` for generated releases; `data/raw/` remains reserved for downloaded inputs.
 
 ## 8. Audit conclusion
 

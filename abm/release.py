@@ -14,7 +14,7 @@ from abm.validation.release import validate_world
 
 def build_release(
     config_path: str | Path,
-    output_root: str | Path = "artifacts",
+    output_root: str | Path = "data/generated",
     *,
     overwrite: bool = False,
 ) -> tuple[Path, dict[str, Any]]:
