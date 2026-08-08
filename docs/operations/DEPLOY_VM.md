@@ -172,5 +172,5 @@ từ bộ luật và heuristic trong `scripts/seed_data.py`, chưa phải mô h�
 huấn luyện.
 
 Luồng nạp dữ liệu IBM AML (Kafka → Flink → HDFS) nằm trong profile `aml` và
-không chạy cùng stack này — xem [AML_INGESTION.md](AML_INGESTION.md). Nó cần
+không chạy cùng stack này — xem [contracts/ingestion/README.md](../../contracts/ingestion/README.md). Nó cần
 khoảng 4 GB RAM riêng, nên kiểm tra dung lượng VM trước khi bật.

@@ -2,7 +2,7 @@
 
 FIN-07 là hệ thống demo/PoC cho chương trình AI20K Build Phase, mô phỏng một console giám sát AML
 ngân hàng. Toàn bộ dữ liệu trong stack mặc định (`docker compose up`) là dữ liệu tổng hợp
-(`scripts/seed_data.py`, `scripts/abm_generate.py`) — không có khách hàng thật, không có danh sách
+(`scripts/seed_data.py`) — không có khách hàng thật, không có danh sách
 trừng phạt thật. Xem tài liệu kiến trúc trong `docs/architecture/` mục 8 để biết
 đầy đủ các biện pháp bảo mật đã hiện thực.
 
@@ -20,7 +20,7 @@ riêng tư (không mở public issue cho lỗ hổng chưa vá). Nêu rõ:
 - **Bí mật:** `.env` nằm trong `.gitignore`; `.env.example` chỉ được chứa giá trị phát triển vô hại
   hoặc placeholder. Một giá trị `AI_LOG_API_KEY` từng bị commit đã được xoá khỏi cây hiện tại ngày
   2026-08-06, nhưng vẫn cần rotate/revoke và đánh giá dọn lịch sử — xem
-  [`docs/repository/REPOSITORY_AUDIT.md`](docs/repository/REPOSITORY_AUDIT.md) mục 16–17.
+  lịch sử git (audit repo đợt chuẩn hoá, đã gỡ khỏi cây làm việc).
 - **Kiểm tra đầu vào:** Pydantic ở mọi endpoint FastAPI.
 - **Phân quyền:** 5 vai trò (`compliance_officer`, `mlro`, `auditor`, `admin`, `analyst`), kiểm tra
   role inline theo từng endpoint ghi ở `src/api/routes.py`. Router `src/api/fc_routes.py` (đọc dữ
@@ -41,7 +41,7 @@ riêng tư (không mở public issue cho lỗ hổng chưa vá). Nêu rõ:
 ## Chưa hoàn thiện (biết trước, chưa phải bị bỏ sót)
 
 - Chưa có quét lỗ hổng image tự động trong CI (Trivy/Grype) — xem
-  [`docs/repository/DEPENDENCY_REPORT.md`](docs/repository/DEPENDENCY_REPORT.md).
+  lịch sử git (báo cáo phụ thuộc đợt chuẩn hoá, đã gỡ khỏi cây làm việc).
 - Chưa bật branch protection trên GitHub cho `main`/`develop` — xem `docs/operations/CICD.md` mục 5.
 - Staging/production-like không mở cổng PostgreSQL/Redis ra ngoài, chỉ Caddy mở cổng ra Internet ở
   môi trường VM (`docs/operations/DEPLOY_VM.md`) — môi trường phát triển mặc định thì mở cổng ra máy chủ để

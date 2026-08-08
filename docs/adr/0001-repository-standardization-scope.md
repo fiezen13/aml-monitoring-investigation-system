@@ -14,11 +14,11 @@ Một yêu cầu chuẩn hoá repository toàn diện (15 phase) được đưa 
 2. Cấu trúc monorepo mục tiêu dạng `apps/ + services/ + ml/{behavioral,graph} + contracts/ +
    packages/ + infrastructure/ + deployment/` — phù hợp cho một hệ thống nhiều service độc lập.
 
-Audit đầy đủ (`docs/repository/REPOSITORY_AUDIT.md`) phát hiện:
+Audit đầy đủ (đã gỡ khỏi cây làm việc sau khi hoàn tất; xem lịch sử git) phát hiện:
 
 - Team thật, theo `WORKLOG.md`, là **Bảo/Hưng/Tin Tin/Hiển** — không có ai tên Hường.
 - Không có hai workstream ML độc lập nào tồn tại trong code. Chỉ có một bộ sinh dữ liệu ABM
-  (`scripts/abm_generate.py`, do Bảo viết) và một agent LangGraph còn ở dạng khung mẫu chưa hiện
+  (`scripts/seed_data.py`, do Bảo viết) và một agent LangGraph còn ở dạng khung mẫu chưa hiện
   thực (`src/agents/`, do Hiển sở hữu theo kế hoạch, chưa bắt đầu).
 - Repo thật là một backend monolith (một image dùng chung cho api/worker/seed/producer) + một SPA +
   một pipeline ingestion tách biệt qua Docker Compose profile — không phải nhiều service độc lập.
@@ -33,7 +33,7 @@ Audit đầy đủ (`docs/repository/REPOSITORY_AUDIT.md`) phát hiện:
    lớn mà không giải quyết vấn đề thật nào.
 3. **Phạm vi Phase 2 trở đi chỉ gồm hygiene cấp repo còn thiếu thật sự:** `.github/CODEOWNERS`,
    `.github/pull_request_template.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE`,
-   `.editorconfig`, `.gitattributes`, `docs/adr/`, `docs/repository/DEPENDENCY_REPORT.md`, và vá hai
+   `.editorconfig`, `.gitattributes`, `docs/adr/`, báo cáo phụ thuộc, và vá hai
    khoảng trống tài liệu đã xác minh (biến môi trường Flink chưa được liệt kê trong
    `.env.example`; comment lạc hậu trong `web/.env.example`).
 4. CODEOWNERS dùng placeholder `TODO` cho username GitHub của Tin Tin và Hiển — chưa xác nhận được

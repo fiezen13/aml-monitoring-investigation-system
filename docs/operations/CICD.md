@@ -233,7 +233,7 @@ Mọi script trong `ci/` chạy độc lập được — đây cũng là cách 
 ## 10. Những chỗ chưa làm, nói rõ ra
 
 - **Chưa bật branch protection** — mục 4. Chưa bật thì CI đỏ vẫn merge được.
-- **Chưa có quét bảo mật image** (Trivy/Grype). Xem `docs/repository/DEPENDENCY_REPORT.md`.
+- **Chưa có quét bảo mật image** (Trivy/Grype).
 - **Không có hạ tầng dưới dạng mã.** VPS thuê ngoài, dựng bằng tay. Pipeline triển khai lên máy chủ
   *đã tồn tại* qua `docker context`, không tự tạo ra máy chủ. Đây là quyết định, không phải chỗ bị
   bỏ sót — nhưng hệ quả là dựng lại máy chủ từ đầu không tái lập được từ repo.

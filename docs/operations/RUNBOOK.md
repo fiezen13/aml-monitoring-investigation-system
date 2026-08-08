@@ -127,8 +127,6 @@ cd web && npm install && npm run dev    # console
 
 ## 8. Sự cố
 
-Xem bảng triệu chứng ở [ENVIRONMENT.md mục 11](ENVIRONMENT.md#11-kiểm-tra-nhanh-khi-có-sự-cố).
-
 Hai điểm hay mất thời gian nhất:
 
 **Sửa file trong `db/init/` mà không thấy tác dụng.** Script khởi tạo chỉ chạy
@@ -140,7 +138,7 @@ container bỏ qua toàn bộ thư mục đó và không nói gì. `make db-rese
 
 ## 9. Liên quan
 
-- [ENVIRONMENT.md](ENVIRONMENT.md) — mọi biến môi trường
-- [CI.md](CI.md) — pipeline chạy gì trên mỗi pull request
+- [`.env.example`](../../.env.example) — mọi biến môi trường, có test bắt buộc khai báo
+- [CICD.md](CICD.md) — pipeline chạy gì trên mỗi pull request
 - FIN-07-ARC-001 — tài liệu kiến trúc
 - FIN-07-DAT-001 — đặc tả dữ liệu

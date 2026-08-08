@@ -65,4 +65,3 @@ hiện không đồng bộ tự động, đổi một nơi mà quên hai nơi ki
 - [docs/operations/CICD.md](docs/operations/CICD.md) — cổng chặn merge chạy gì
 - [docs/operations/CICD.md](docs/operations/CICD.md) — luồng giao hàng đầy đủ
 - [docs/architecture/](docs/architecture/) — kiến trúc hệ thống
-- [docs/repository/REPOSITORY_AUDIT.md](docs/repository/REPOSITORY_AUDIT.md) — audit cấu trúc repo

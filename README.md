@@ -88,7 +88,8 @@ ci/ deploy/ jenkins/  CI/CD và triển khai
 docs/
   architecture/     Tài liệu kiến trúc (PDF)
   operations/       Runbook, CI/CD, triển khai VM
-  repository/       Audit và báo cáo chuẩn hoá repo
+  ml/               Đặc tả huấn luyện, đặc trưng, EDA, kiến trúc ML/Agent
+  data-platform/    Topology đường ống Kafka/Flink/HDFS
   adr/              Quyết định kiến trúc
 tests/              pytest, chia theo module
 ```
@@ -195,5 +196,5 @@ Quy trình làm việc: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 | [`docs/operations/CICD.md`](docs/operations/CICD.md) | Cổng chặn merge và pipeline giao hàng |
 | [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai lên VM sau Caddy + TLS |
 | [`.env.example`](.env.example) | Toàn bộ biến môi trường, kèm giải thích |
-| [`docs/repository/`](docs/repository/) | Audit repo, báo cáo phụ thuộc |
+| [`docs/ml/`](docs/ml/) | Đặc tả huấn luyện, đặc trưng và kiến trúc ML/Agent |
 | [`docs/adr/`](docs/adr/) | Quyết định kiến trúc |

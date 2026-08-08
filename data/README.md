@@ -1,16 +1,18 @@
-# Data directory
+# Thư mục dữ liệu
 
-This directory is the repository's local data workspace. Large files are ignored by Git.
+Vùng làm việc dữ liệu cục bộ của repo. File lớn nằm trong `.gitignore` và
+không bao giờ được commit.
 
-- `raw/`: immutable downloaded source datasets, organized by source.
-- `profiles/`: machine-readable profiling results derived from approved source data.
-- `generated/`: reproducible synthetic datasets, including `ABM-BANK-v<version>/`.
-- `aml/`: runtime checkpoints and rejected records used by the legacy AML ingestion pipeline.
+| Thư mục | Nội dung |
+|---|---|
+| `raw/` | Bộ dữ liệu nguồn tải về, không sửa. Hiện có `ibm-aml/` — xem README trong đó |
+| `aml/` | Checkpoint và bản ghi bị từ chối của đường ống nạp AML |
 
-The canonical MVP release is generated at:
+Bộ dữ liệu ngân hàng Việt Nam mô phỏng (`generated/ABM-BANK-*`) đã được gỡ
+tháng 08/2026. Dự án dùng bộ IBM AML LI-Small làm nguồn duy nhất cho cả huấn
+luyện, đánh giá và trình diễn — lý do ghi trong
+[`docs/ml/FIN-07-ML-002`](../docs/ml/FIN-07-ML-002_EDA_Dac_trung_va_Kien_truc.md).
 
-```text
-data/generated/ABM-BANK-v0.1.0/
-```
-
-Run `make abm-release` to rebuild it and `make abm-validate` to verify its manifest and Parquet tables. Generated data must not be committed to Git.
+Kết quả EDA nằm ở `artifacts/eda/` và **có** được commit: chỉ vài chục KB, và
+tài liệu trích số liệu cùng checksum từ đó nên người đọc kiểm chứng được mà
+không cần tải bộ dữ liệu 650 MB.
