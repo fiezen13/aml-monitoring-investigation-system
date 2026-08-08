@@ -30,7 +30,15 @@ Thumbs.db
 
 # Data (never commit large data)
 data/
-artifacts/
+# `artifacts/*` chứ không phải `artifacts/`: git không đi vào một thư mục đã bị
+# loại, nên viết `artifacts/` thì mọi ngoại lệ bên dưới đều vô hiệu.
+artifacts/*
+# Ngoại lệ: kết quả EDA là báo cáo, không phải dữ liệu. Vài chục KB, và tài
+# liệu docs/ml/ trích số liệu cùng checksum từ đây — có nó trong repo thì
+# người đọc kiểm chứng được mà không cần tải bộ dữ liệu 650 MB.
+!artifacts/eda/
+artifacts/eda/*
+!artifacts/eda/*.json
 simulation_output/
 *.parquet
 *.db

@@ -1,0 +1,438 @@
+{
+  "nguon": {
+    "file": "LI-Small_Trans.csv",
+    "kich_thuoc_byte": 650422357
+  },
+  "thoi_gian_chay_giay": 27.0,
+  "quy_mo": {
+    "so_giao_dich": 6924049,
+    "so_tai_khoan": 705907,
+    "moc_dau": "2022/09/01 00:00",
+    "moc_cuoi": "2022/09/17 15:28",
+    "so_ngay_co_giao_dich": 17
+  },
+  "ti_le_nen": {
+    "dong_laundering": 3565,
+    "muc_giao_dich_pct": 0.0515,
+    "tai_khoan_cham_laundering": 5304,
+    "muc_tai_khoan_pct": 0.7514,
+    "ti_so_giua_hai_muc": 14.6
+  },
+  "bac": {
+    "tong": {
+      "p25": 2,
+      "p50": 6,
+      "p75": 27,
+      "p95": 70,
+      "p99": 119,
+      "max": 223590
+    },
+    "so_tai_khoan_bac_>=20": 237741,
+    "so_tai_khoan_bac_>=100": 13266,
+    "so_tai_khoan_bac_>=1000": 15,
+    "bac_ra_max": 222037,
+    "bac_vao_max": 1553
+  },
+  "nhan_theo_ngay": [
+    {
+      "ngay": "2022/09/01",
+      "tong_giao_dich": 1524807,
+      "laundering": 310
+    },
+    {
+      "ngay": "2022/09/02",
+      "tong_giao_dich": 1027758,
+      "laundering": 350
+    },
+    {
+      "ngay": "2022/09/03",
+      "tong_giao_dich": 283326,
+      "laundering": 292
+    },
+    {
+      "ngay": "2022/09/04",
+      "tong_giao_dich": 282476,
+      "laundering": 291
+    },
+    {
+      "ngay": "2022/09/05",
+      "tong_giao_dich": 657397,
+      "laundering": 370
+    },
+    {
+      "ngay": "2022/09/06",
+      "tong_giao_dich": 657170,
+      "laundering": 380
+    },
+    {
+      "ngay": "2022/09/07",
+      "tong_giao_dich": 658504,
+      "laundering": 368
+    },
+    {
+      "ngay": "2022/09/08",
+      "tong_giao_dich": 657938,
+      "laundering": 402
+    },
+    {
+      "ngay": "2022/09/09",
+      "tong_giao_dich": 891573,
+      "laundering": 367
+    },
+    {
+      "ngay": "2022/09/10",
+      "tong_giao_dich": 282877,
+      "laundering": 301
+    },
+    {
+      "ngay": "2022/09/11",
+      "tong_giao_dich": 77,
+      "laundering": 47
+    },
+    {
+      "ngay": "2022/09/12",
+      "tong_giao_dich": 48,
+      "laundering": 27
+    },
+    {
+      "ngay": "2022/09/13",
+      "tong_giao_dich": 48,
+      "laundering": 29
+    },
+    {
+      "ngay": "2022/09/14",
+      "tong_giao_dich": 31,
+      "laundering": 18
+    },
+    {
+      "ngay": "2022/09/15",
+      "tong_giao_dich": 9,
+      "laundering": 6
+    },
+    {
+      "ngay": "2022/09/16",
+      "tong_giao_dich": 7,
+      "laundering": 5
+    },
+    {
+      "ngay": "2022/09/17",
+      "tong_giao_dich": 3,
+      "laundering": 2
+    }
+  ],
+  "kenh_thanh_toan": [
+    {
+      "gia_tri": "Cheque",
+      "so_dong": 2503158,
+      "ti_le_toan_file_pct": 36.152,
+      "so_dong_laundering": 459,
+      "ti_le_trong_laundering_pct": 12.875,
+      "P_laundering_pct": 0.0183,
+      "lift": 0.36
+    },
+    {
+      "gia_tri": "Credit Card",
+      "so_dong": 1780389,
+      "ti_le_toan_file_pct": 25.713,
+      "so_dong_laundering": 261,
+      "ti_le_trong_laundering_pct": 7.321,
+      "P_laundering_pct": 0.0147,
+      "lift": 0.28
+    },
+    {
+      "gia_tri": "ACH",
+      "so_dong": 796581,
+      "ti_le_toan_file_pct": 11.505,
+      "so_dong_laundering": 2611,
+      "ti_le_trong_laundering_pct": 73.24,
+      "P_laundering_pct": 0.3278,
+      "lift": 6.37
+    },
+    {
+      "gia_tri": "Cash",
+      "so_dong": 655688,
+      "ti_le_toan_file_pct": 9.47,
+      "so_dong_laundering": 124,
+      "ti_le_trong_laundering_pct": 3.478,
+      "P_laundering_pct": 0.0189,
+      "lift": 0.37
+    },
+    {
+      "gia_tri": "Reinvestment",
+      "so_dong": 650458,
+      "ti_le_toan_file_pct": 9.394,
+      "so_dong_laundering": 0,
+      "ti_le_trong_laundering_pct": 0.0,
+      "P_laundering_pct": 0.0,
+      "lift": 0.0
+    },
+    {
+      "gia_tri": "Bitcoin",
+      "so_dong": 309208,
+      "ti_le_toan_file_pct": 4.466,
+      "so_dong_laundering": 110,
+      "ti_le_trong_laundering_pct": 3.086,
+      "P_laundering_pct": 0.0356,
+      "lift": 0.69
+    },
+    {
+      "gia_tri": "Wire",
+      "so_dong": 228567,
+      "ti_le_toan_file_pct": 3.301,
+      "so_dong_laundering": 0,
+      "ti_le_trong_laundering_pct": 0.0,
+      "P_laundering_pct": 0.0,
+      "lift": 0.0
+    }
+  ],
+  "tien_te": [
+    {
+      "gia_tri": "US Dollar",
+      "so_dong": 2553887,
+      "ti_le_toan_file_pct": 36.884,
+      "so_dong_laundering": 1456,
+      "ti_le_trong_laundering_pct": 40.842,
+      "P_laundering_pct": 0.057,
+      "lift": 1.11
+    },
+    {
+      "gia_tri": "Euro",
+      "so_dong": 1595859,
+      "ti_le_toan_file_pct": 23.048,
+      "so_dong_laundering": 1025,
+      "ti_le_trong_laundering_pct": 28.752,
+      "P_laundering_pct": 0.0642,
+      "lift": 1.25
+    },
+    {
+      "gia_tri": "Yuan",
+      "so_dong": 483603,
+      "ti_le_toan_file_pct": 6.984,
+      "so_dong_laundering": 189,
+      "ti_le_trong_laundering_pct": 5.302,
+      "P_laundering_pct": 0.0391,
+      "lift": 0.76
+    },
+    {
+      "gia_tri": "Rupee",
+      "so_dong": 340641,
+      "ti_le_toan_file_pct": 4.92,
+      "so_dong_laundering": 112,
+      "ti_le_trong_laundering_pct": 3.142,
+      "P_laundering_pct": 0.0329,
+      "lift": 0.64
+    },
+    {
+      "gia_tri": "Bitcoin",
+      "so_dong": 309240,
+      "ti_le_toan_file_pct": 4.466,
+      "so_dong_laundering": 110,
+      "ti_le_trong_laundering_pct": 3.086,
+      "P_laundering_pct": 0.0356,
+      "lift": 0.69
+    },
+    {
+      "gia_tri": "Saudi Riyal",
+      "so_dong": 257948,
+      "ti_le_toan_file_pct": 3.725,
+      "so_dong_laundering": 115,
+      "ti_le_trong_laundering_pct": 3.226,
+      "P_laundering_pct": 0.0446,
+      "lift": 0.87
+    },
+    {
+      "gia_tri": "Australian Dollar",
+      "so_dong": 211155,
+      "ti_le_toan_file_pct": 3.05,
+      "so_dong_laundering": 77,
+      "ti_le_trong_laundering_pct": 2.16,
+      "P_laundering_pct": 0.0365,
+      "lift": 0.71
+    },
+    {
+      "gia_tri": "Yen",
+      "so_dong": 210125,
+      "ti_le_toan_file_pct": 3.035,
+      "so_dong_laundering": 86,
+      "ti_le_trong_laundering_pct": 2.412,
+      "P_laundering_pct": 0.0409,
+      "lift": 0.79
+    },
+    {
+      "gia_tri": "Brazil Real",
+      "so_dong": 199840,
+      "ti_le_toan_file_pct": 2.886,
+      "so_dong_laundering": 72,
+      "ti_le_trong_laundering_pct": 2.02,
+      "P_laundering_pct": 0.036,
+      "lift": 0.7
+    },
+    {
+      "gia_tri": "Canadian Dollar",
+      "so_dong": 176069,
+      "ti_le_toan_file_pct": 2.543,
+      "so_dong_laundering": 86,
+      "ti_le_trong_laundering_pct": 2.412,
+      "P_laundering_pct": 0.0488,
+      "lift": 0.95
+    }
+  ],
+  "gio_trong_ngay": {
+    "phan_bo": [
+      {
+        "gio": "00",
+        "ti_le_pct": 12.551
+      },
+      {
+        "gio": "01",
+        "ti_le_pct": 3.804
+      },
+      {
+        "gio": "02",
+        "ti_le_pct": 3.78
+      },
+      {
+        "gio": "03",
+        "ti_le_pct": 3.812
+      },
+      {
+        "gio": "04",
+        "ti_le_pct": 3.792
+      },
+      {
+        "gio": "05",
+        "ti_le_pct": 3.804
+      },
+      {
+        "gio": "06",
+        "ti_le_pct": 3.82
+      },
+      {
+        "gio": "07",
+        "ti_le_pct": 3.787
+      },
+      {
+        "gio": "08",
+        "ti_le_pct": 3.786
+      },
+      {
+        "gio": "09",
+        "ti_le_pct": 3.798
+      },
+      {
+        "gio": "10",
+        "ti_le_pct": 3.815
+      },
+      {
+        "gio": "11",
+        "ti_le_pct": 3.79
+      },
+      {
+        "gio": "12",
+        "ti_le_pct": 3.794
+      },
+      {
+        "gio": "13",
+        "ti_le_pct": 3.804
+      },
+      {
+        "gio": "14",
+        "ti_le_pct": 3.787
+      },
+      {
+        "gio": "15",
+        "ti_le_pct": 3.796
+      },
+      {
+        "gio": "16",
+        "ti_le_pct": 3.818
+      },
+      {
+        "gio": "17",
+        "ti_le_pct": 3.8
+      },
+      {
+        "gio": "18",
+        "ti_le_pct": 3.814
+      },
+      {
+        "gio": "19",
+        "ti_le_pct": 3.818
+      },
+      {
+        "gio": "20",
+        "ti_le_pct": 3.79
+      },
+      {
+        "gio": "21",
+        "ti_le_pct": 3.82
+      },
+      {
+        "gio": "22",
+        "ti_le_pct": 3.809
+      },
+      {
+        "gio": "23",
+        "ti_le_pct": 3.812
+      }
+    ],
+    "ti_le_min_pct": 3.78,
+    "ti_le_max_pct": 12.551,
+    "ky_vong_neu_deu_pct": 4.167
+  },
+  "so_tien": {
+    "toan_bo_mau": {
+      "p25": 24.69,
+      "p50": 2266.37,
+      "p75": 39638.32,
+      "p95": 2101476.83
+    },
+    "chi_dong_laundering": {
+      "p25": 1461.77,
+      "p50": 4295.24,
+      "p75": 13971.04,
+      "p95": 312500.45
+    },
+    "theo_tien_te": {
+      "US Dollar": {
+        "p25": 22.22,
+        "p50": 1858.53,
+        "p75": 20516.28
+      },
+      "Euro": {
+        "p25": 31.09,
+        "p50": 1280.73,
+        "p75": 13249.53
+      },
+      "Bitcoin": {
+        "p25": 0.011733,
+        "p50": 0.078092,
+        "p75": 0.521942
+      },
+      "Yuan": {
+        "p25": 884.42,
+        "p50": 7221.32,
+        "p75": 55383.36
+      },
+      "Yen": {
+        "p25": 16317.21,
+        "p50": 95194.21,
+        "p75": 581283.07
+      },
+      "Australian Dollar": {
+        "p25": 216.85,
+        "p50": 1238.23,
+        "p75": 7286.13
+      }
+    },
+    "dong_cheo_tien_te": 98876,
+    "ti_le_cheo_tien_te_pct": 1.428
+  },
+  "loi_im_lang": {
+    "canh_tu_tro": 804477,
+    "ti_le_canh_tu_tro_pct": 11.62,
+    "ma_ngan_hang_tho": 41866,
+    "ma_ngan_hang_sau_chuan_hoa": 41814,
+    "so_ma_bi_gop_do_zero_padding": 52
+  }
+}

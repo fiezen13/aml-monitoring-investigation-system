@@ -1,0 +1,238 @@
+{
+  "nguon": {
+    "file": "LI-Small-Patterns.txt",
+    "kich_thuoc_byte": 99155,
+    "sha256": "f4d24a1391fe38d0a2a022a27ae0034dfd7b8fe7555a1ee540de3df6816e1a88"
+  },
+  "tong_quan": {
+    "so_instance_hoan_chinh": 117,
+    "so_khoi_thieu_dong_END": 0,
+    "so_giao_dich_trong_pattern": 1023,
+    "so_tai_khoan_trong_pattern": 1168,
+    "so_tai_khoan_thuoc_nhieu_instance": 49
+  },
+  "typology": {
+    "FAN-OUT": {
+      "so_instance": 19,
+      "giao_dich_moi_instance": {
+        "min": 1,
+        "p50": 7,
+        "max": 15,
+        "tong": 149
+      },
+      "tai_khoan_moi_instance": {
+        "min": 2,
+        "p50": 8,
+        "max": 16,
+        "tong": 169
+      },
+      "so_ngay_trai_qua": {
+        "min": 1,
+        "p50": 4,
+        "max": 5,
+        "tong": 69
+      }
+    },
+    "STACK": {
+      "so_instance": 18,
+      "giao_dich_moi_instance": {
+        "min": 2,
+        "p50": 6,
+        "max": 30,
+        "tong": 180
+      },
+      "tai_khoan_moi_instance": {
+        "min": 2,
+        "p50": 9,
+        "max": 45,
+        "tong": 264
+      },
+      "so_ngay_trai_qua": {
+        "min": 1,
+        "p50": 3,
+        "max": 5,
+        "tong": 58
+      }
+    },
+    "BIPARTITE": {
+      "so_instance": 16,
+      "giao_dich_moi_instance": {
+        "min": 1,
+        "p50": 8,
+        "max": 14,
+        "tong": 129
+      },
+      "tai_khoan_moi_instance": {
+        "min": 2,
+        "p50": 16,
+        "max": 28,
+        "tong": 258
+      },
+      "so_ngay_trai_qua": {
+        "min": 1,
+        "p50": 2,
+        "max": 3,
+        "tong": 37
+      }
+    },
+    "RANDOM": {
+      "so_instance": 15,
+      "giao_dich_moi_instance": {
+        "min": 1,
+        "p50": 5,
+        "max": 11,
+        "tong": 77
+      },
+      "tai_khoan_moi_instance": {
+        "min": 2,
+        "p50": 6,
+        "max": 12,
+        "tong": 92
+      },
+      "so_ngay_trai_qua": {
+        "min": 1,
+        "p50": 3,
+        "max": 5,
+        "tong": 44
+      }
+    },
+    "SCATTER-GATHER": {
+      "so_instance": 13,
+      "giao_dich_moi_instance": {
+        "min": 2,
+        "p50": 12,
+        "max": 30,
+        "tong": 182
+      },
+      "tai_khoan_moi_instance": {
+        "min": 2,
+        "p50": 8,
+        "max": 17,
+        "tong": 112
+      },
+      "so_ngay_trai_qua": {
+        "min": 1,
+        "p50": 5,
+        "max": 5,
+        "tong": 48
+      }
+    },
+    "FAN-IN": {
+      "so_instance": 12,
+      "giao_dich_moi_instance": {
+        "min": 1,
+        "p50": 6,
+        "max": 13,
+        "tong": 73
+      },
+      "tai_khoan_moi_instance": {
+        "min": 2,
+        "p50": 7,
+        "max": 14,
+        "tong": 85
+      },
+      "so_ngay_trai_qua": {
+        "min": 1,
+        "p50": 4,
+        "max": 5,
+        "tong": 41
+      }
+    },
+    "GATHER-SCATTER": {
+      "so_instance": 12,
+      "giao_dich_moi_instance": {
+        "min": 1,
+        "p50": 15,
+        "max": 25,
+        "tong": 150
+      },
+      "tai_khoan_moi_instance": {
+        "min": 1,
+        "p50": 16,
+        "max": 26,
+        "tong": 158
+      },
+      "so_ngay_trai_qua": {
+        "min": 1,
+        "p50": 7,
+        "max": 9,
+        "tong": 63
+      }
+    },
+    "CYCLE": {
+      "so_instance": 12,
+      "giao_dich_moi_instance": {
+        "min": 2,
+        "p50": 7,
+        "max": 13,
+        "tong": 83
+      },
+      "tai_khoan_moi_instance": {
+        "min": 2,
+        "p50": 7,
+        "max": 13,
+        "tong": 83
+      },
+      "so_ngay_trai_qua": {
+        "min": 2,
+        "p50": 4,
+        "max": 5,
+        "tong": 42
+      }
+    }
+  },
+  "kenh_thanh_toan_trong_pattern": [
+    {
+      "kenh": "ACH",
+      "so_dong": 1022,
+      "ti_le_pct": 99.9
+    },
+    {
+      "kenh": "Bitcoin",
+      "so_dong": 1,
+      "ti_le_pct": 0.1
+    }
+  ],
+  "tien_te_trong_pattern": [
+    {
+      "tien_te": "US Dollar",
+      "so_dong": 541
+    },
+    {
+      "tien_te": "Euro",
+      "so_dong": 414
+    },
+    {
+      "tien_te": "Yuan",
+      "so_dong": 19
+    },
+    {
+      "tien_te": "Yen",
+      "so_dong": 12
+    },
+    {
+      "tien_te": "Australian Dollar",
+      "so_dong": 11
+    },
+    {
+      "tien_te": "Canadian Dollar",
+      "so_dong": 7
+    },
+    {
+      "tien_te": "Swiss Franc",
+      "so_dong": 4
+    },
+    {
+      "tien_te": "Brazil Real",
+      "so_dong": 3
+    },
+    {
+      "tien_te": "Rupee",
+      "so_dong": 3
+    },
+    {
+      "tien_te": "Mexican Peso",
+      "so_dong": 2
+    }
+  ]
+}

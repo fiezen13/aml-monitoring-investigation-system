@@ -16,3 +16,7 @@ jsonschema>=4.23.0
 # ngoại tuyến chạy một lần để rút ra archetype, image api/worker không cần tới.
 numpy>=2.0.0
 scikit-learn>=1.5.0
+
+# Sinh biểu đồ EDA (scripts/eda/plot_eda.py). Cũng là bước ngoại tuyến chạy
+# một lần: đọc artifacts/eda/*.json và ghi ra docs/ml/figures/*.png.
+matplotlib>=3.9.0
