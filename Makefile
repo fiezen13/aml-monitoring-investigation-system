@@ -2,7 +2,8 @@
         build run worker test test-unit lint format typecheck check clean \
         aml-up aml-down aml-status aml-topics aml-fixture aml-producer-sample aml-producer-run \
         aml-producer-eventtime aml-producer-resume aml-flink-build aml-flink-test aml-submit \
-        aml-cancel aml-inspect-kafka aml-inspect-hdfs aml-patterns aml-smoke aml-logs
+        aml-cancel aml-inspect-kafka aml-inspect-hdfs aml-patterns aml-smoke aml-logs \
+        ml-pipeline
 
 COMPOSE ?= docker compose
 
@@ -66,6 +67,13 @@ worker:  ## Chạy worker bằng venv cục bộ
 
 build:  ## Build image mà không khởi động
 	$(COMPOSE) build
+
+# --- Offline ML (Isolation Forest + Graph + Rules) -------------------
+
+ml-pipeline:  ## Extract features → train/score → evaluate (train/val/test)
+	python scripts/extract_features.py && \
+	python scripts/train_isolation_forest.py && \
+	python scripts/evaluate_model.py
 
 # --- Chất lượng ------------------------------------------------------
 
