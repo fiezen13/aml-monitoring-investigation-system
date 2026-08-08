@@ -29,7 +29,7 @@ hơn không có tài liệu.
 | Nhật ký kiểm toán bất biến, phê duyệt ghi một lần | **ĐANG CHẠY** — cưỡng chế bằng trigger PostgreSQL | `db/init/002` |
 | Cách ly nhãn khỏi vai trò agent | **ĐANG CHẠY** — cưỡng chế bằng quyền PostgreSQL | `db/init/003` |
 | Đường ống CSV → Kafka → Flink → HDFS | **ĐANG CHẠY** — profile `aml`, không chạy mặc định | `src/aml/`, `flink/` |
-| Bộ sinh dữ liệu ABM (mô phỏng) | **ĐANG CHẠY** | `scripts/abm_generate.py` |
+| Bộ dữ liệu huấn luyện và đánh giá | **IBM AML công khai** — nguồn duy nhất của mọi con số hiệu năng | `data/raw/ibm-aml/` |
 | Hợp đồng dữ liệu, sự kiện, tool | **ĐÃ ĐỊNH NGHĨA**, phần lớn chưa có bên hiện thực | `contracts/` |
 | Detection Engine (rules, behavioral, graph, ML) | **CHƯA CÓ** | `services/detection/` |
 | Feature platform, entity resolution | **CHƯA CÓ** | `services/feature-platform/` |
@@ -83,7 +83,7 @@ services/           Nhà chờ sẵn cho các thành phần chưa viết (detect
 flink/              Job Flink nạp dữ liệu vào HDFS
 web/                Console React + Vite + TypeScript
 db/init/            Lược đồ SQL đánh số, chạy tuần tự khi PostgreSQL khởi tạo
-scripts/            Vận hành: seed, migrate, sinh ABM, thao tác AML
+scripts/            Vận hành: seed, migrate, thao tác AML
 ci/ deploy/ jenkins/  CI/CD và triển khai
 docs/
   architecture/     Tài liệu kiến trúc (PDF)
@@ -101,7 +101,6 @@ tests/              pytest, chia theo module
 
 ```bash
 docker compose up -d --wait     # postgres, redis, seed, api, worker, web
-make abm                        # sinh và nạp case ABM (kịch bản VN-CA-03)
 make help                       # danh sách lệnh
 ```
 

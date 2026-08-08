@@ -1,15 +1,11 @@
 .PHONY: help up down restart logs ps health seed seed-verify db-reset db-shell redis-shell \
-        migrate migrate-status abm abm-dry abm-profile-sources abm-validate-parameters \
-        abm-generate-small abm-validate-small abm-generate-mvp abm-generate-large \
-        abm-resume-large abm-validate abm-validate-large abm-release \
-        abm-stream-sample abm-ingest-smoke abm-test \
+        migrate migrate-status \
         build run worker test test-unit contracts-check lint format typecheck check clean \
         aml-up aml-down aml-status aml-topics aml-fixture aml-producer-sample aml-producer-run \
         aml-producer-eventtime aml-producer-resume aml-flink-build aml-flink-test aml-submit \
         aml-cancel aml-inspect-kafka aml-inspect-hdfs aml-patterns aml-smoke aml-logs
 
 COMPOSE ?= docker compose
-ABM_PYTHON ?= .venv/bin/python
 
 help:  ## Danh sách lệnh
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -56,49 +52,6 @@ migrate:  ## Áp các file lược đồ trong db/init còn thiếu (giữ nguy�
 
 migrate-status:  ## Liệt kê file lược đồ nào đã áp, file nào còn chờ
 	$(COMPOSE) run --rm seed python scripts/migrate.py --status
-
-abm:  ## Sinh và nạp một case ABM (kịch bản VN-CA-03)
-	$(COMPOSE) run --rm seed python scripts/abm_generate.py --force
-
-abm-dry:  ## In thống kê dữ liệu ABM sẽ sinh, không ghi cơ sở dữ liệu
-	$(COMPOSE) run --rm seed python scripts/abm_generate.py --dry-run
-
-abm-profile-sources:  ## Profile one source: set ABM_SOURCE_INPUT and ABM_SOURCE_ID
-	@test -n "$(ABM_SOURCE_INPUT)" -a -n "$(ABM_SOURCE_ID)" || (echo "Set ABM_SOURCE_INPUT and ABM_SOURCE_ID" && exit 2)
-	$(ABM_PYTHON) -m abm profile-source "$(ABM_SOURCE_INPUT)" --source-id "$(ABM_SOURCE_ID)" --output "data/profiles/$(ABM_SOURCE_ID)/summary.json"
-
-abm-validate-parameters:  ## Validate ABM evidence and parameter registries
-	$(ABM_PYTHON) -m abm validate-parameters
-
-abm-generate-small:  ## Generate the deterministic 200-customer smoke release
-	$(ABM_PYTHON) -m abm generate --config abm/configs/tiny.yaml --output-root data/generated --overwrite
-
-abm-validate-small:  ## Independently validate the smoke release and checksums
-	$(ABM_PYTHON) -m abm validate --config abm/configs/tiny.yaml --release data/generated/ABM-BANK-v0.1.0-tiny
-
-abm-generate-mvp abm-release:  ## Generate the complete 10,000-customer MVP release
-	$(ABM_PYTHON) -m abm generate --config abm/configs/mvp.yaml --output-root data/generated --overwrite
-
-abm-generate-large:  ## Generate the multi-GB sharded ABM-BANK v0.2.0 release
-	$(ABM_PYTHON) -m abm generate-large --config abm/configs/large.yaml --output-root data/generated --overwrite
-
-abm-resume-large:  ## Resume only missing/failed shards from an interrupted large build
-	$(ABM_PYTHON) -m abm generate-large --config abm/configs/large.yaml --output-root data/generated
-
-abm-validate-large:  ## Validate every shard and aggregate count/size gate
-	$(ABM_PYTHON) -m abm validate-large --config abm/configs/large.yaml --release data/generated/ABM-BANK-v0.2.0 --workers 6
-
-abm-validate:  ## Independently validate the MVP release and checksums
-	$(ABM_PYTHON) -m abm validate --config abm/configs/mvp.yaml --release data/generated/ABM-BANK-v0.1.0
-
-abm-stream-sample:  ## Export 1,000 label-free canonical events as JSONL
-	$(ABM_PYTHON) -m abm stream-sample --release data/generated/ABM-BANK-v0.2.0 --output data/generated/events/ABM-BANK-v0.2.0.sample.jsonl --limit 1000
-
-abm-ingest-smoke:  ## Test ABM Parquet -> Kafka -> Flink -> HDFS without model training
-	./scripts/aml/abm_smoke_test.sh
-
-abm-test:  ## Run deterministic ABM tests only
-	$(ABM_PYTHON) -m pytest tests/abm -q
 
 db-reset:  ## Xoá volume PostgreSQL và dựng lại từ db/init (mất toàn bộ dữ liệu)
 	$(COMPOSE) down -v
