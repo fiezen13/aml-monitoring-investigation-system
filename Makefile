@@ -70,7 +70,8 @@ build:  ## Build image mà không khởi động
 
 # --- Offline ML (Isolation Forest + Graph + Rules) -------------------
 
-ml-pipeline:  ## Extract features → train/score → evaluate (train/val/test)
+ml-pipeline:  ## Ingest LI-Small → features → train/score → evaluate
+	python scripts/ingest_data.py && \
 	python scripts/extract_features.py && \
 	python scripts/train_isolation_forest.py && \
 	python scripts/evaluate_model.py

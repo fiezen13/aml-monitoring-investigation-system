@@ -1,168 +1,138 @@
-import os
+"""Fit IsolationForest trên train; score Train/Val/Test + Graph (NetworkX) + Rules."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
 import joblib
-import pandas as pd
-import numpy as np
 import networkx as nx
+import numpy as np
+import pandas as pd
+import polars as pl
 from sklearn.ensemble import IsolationForest
 
+PROCESSED_DIR = Path("data/processed")
+MODEL_PATH = Path("data/isolation_forest_model.joblib")
+SPLITS = ("train", "val", "test")
 
-def _feature_matrix(df: pd.DataFrame, feature_cols: list[str]) -> pd.DataFrame:
-    return df[feature_cols].fillna(0)
+
+def _feature_cols(df: pd.DataFrame) -> list[str]:
+    return [c for c in df.columns if c != "account_key"]
 
 
-def _raw_to_ml_score(raw_scores: np.ndarray, min_s: float, max_s: float) -> np.ndarray:
-    """Đảo Min-Max: decision_function càng âm → ml_score càng cao. Scale neo theo train."""
+def _raw_to_ml_score(raw: np.ndarray, min_s: float, max_s: float) -> np.ndarray:
     if max_s - min_s == 0:
-        return np.full(len(raw_scores), 50.0)
-    scaled = ((max_s - raw_scores) / (max_s - min_s)) * 100
-    return np.clip(scaled, 0, 100).round(2)
+        return np.full(len(raw), 50.0)
+    scaled = ((max_s - raw) / (max_s - min_s)) * 100.0
+    return np.clip(scaled, 0.0, 100.0)
 
 
-def _build_graph_scores(df_trans: pd.DataFrame) -> dict[str, float]:
-    df_trans = df_trans.copy()
-    df_trans["from_account_key"] = (
-        df_trans["From Bank"].astype(str) + "_" + df_trans["Account"].astype(str)
+def _graph_scores_from_tx(tx_path: Path) -> dict[str, float]:
+    """Degree + cycle proxy (SCC size>1 / self-loop) — vectorized edge agg, không iter từng TX."""
+    print(f"   Graph: aggregate edges từ {tx_path.name}...")
+    edges = (
+        pl.read_parquet(tx_path)
+        .group_by(["from_account_key", "to_account_key"])
+        .agg(pl.col("amount").sum().alias("weight"))
     )
-    df_trans["to_account_key"] = (
-        df_trans["To Bank"].astype(str) + "_" + df_trans["Account.1"].astype(str)
-    )
+    src = edges["from_account_key"].to_list()
+    dst = edges["to_account_key"].to_list()
+    w = edges["weight"].to_list()
 
     G = nx.DiGraph()
-    for _, row in df_trans.iterrows():
-        u = row["from_account_key"]
-        v = row["to_account_key"]
-        w = float(row["Amount Paid"])
-        if G.has_edge(u, v):
-            G[u][v]["weight"] += w
-        else:
-            G.add_edge(u, v, weight=w)
+    G.add_weighted_edges_from(zip(src, dst, w))
 
-    in_degrees = dict(G.in_degree())
-    out_degrees = dict(G.out_degree())
+    in_deg = dict(G.in_degree())
+    out_deg = dict(G.out_degree())
 
-    try:
-        cycles = list(nx.simple_cycles(G))
-        cycle_nodes = {node for cycle in cycles for node in cycle}
-    except Exception:
-        cycle_nodes = set()
+    # simple_cycles không khả thi ở quy mô lớn → SCC (>1) + self-loop ≡ thuộc chu trình
+    cycle_nodes: set[str] = set()
+    for scc in nx.strongly_connected_components(G):
+        if len(scc) > 1:
+            cycle_nodes.update(scc)
+    cycle_nodes.update(n for n in G.nodes if G.has_edge(n, n))
 
-    graph_scores: dict[str, float] = {}
-    for acc in set(in_degrees) | set(out_degrees) | cycle_nodes:
-        in_d = in_degrees.get(acc, 0)
-        out_d = out_degrees.get(acc, 0)
-        deg_score = min((in_d + out_d) * 15, 70)
+    scores: dict[str, float] = {}
+    for acc in set(in_deg) | set(out_deg):
+        deg_score = min((in_deg.get(acc, 0) + out_deg.get(acc, 0)) * 15, 70)
         cycle_score = 30 if acc in cycle_nodes else 0
-        graph_scores[acc] = min(deg_score + cycle_score, 100)
-    return graph_scores
+        scores[acc] = float(min(deg_score + cycle_score, 100))
+    print(f"   Graph: nodes={G.number_of_nodes():,} edges={G.number_of_edges():,} cycle_nodes={len(cycle_nodes):,}")
+    return scores
 
 
-def _rule_score_row(row: pd.Series) -> float:
-    r_score = 0
-    if row["vol_30d"] > 30000:
-        r_score += 40
-    if row["near_threshold_ratio"] > 0:
-        r_score += 30
-    if row["off_hour_ratio"] > 0.3:
-        r_score += 30
-    return min(r_score, 100)
+def _rule_scores(df: pd.DataFrame) -> np.ndarray:
+    """Vectorized rule engine."""
+    r = np.zeros(len(df), dtype=np.float64)
+    r += np.where(df["vol_30d"].to_numpy() > 30000, 40.0, 0.0)
+    r += np.where(df["near_threshold_ratio"].to_numpy() > 0, 30.0, 0.0)
+    r += np.where(df["off_hour_ratio"].to_numpy() > 0.3, 30.0, 0.0)
+    return np.minimum(r, 100.0)
 
 
 def _score_split(
-    df_feat: pd.DataFrame,
+    df: pd.DataFrame,
     model: IsolationForest,
     feature_cols: list[str],
     min_s: float,
     max_s: float,
     graph_scores: dict[str, float],
 ) -> pd.DataFrame:
-    scored = df_feat.copy()
-    X = _feature_matrix(scored, feature_cols)
-    raw_scores = model.decision_function(X)
-    scored["ml_score"] = _raw_to_ml_score(raw_scores, min_s, max_s)
-    scored["graph_score"] = scored["account_key"].map(graph_scores).fillna(0).round(2)
-    scored["rule_score"] = scored.apply(_rule_score_row, axis=1)
-    scored["risk_score"] = (
-        0.5 * scored["ml_score"] + 0.3 * scored["graph_score"] + 0.2 * scored["rule_score"]
+    X = df[feature_cols].fillna(0.0).to_numpy(dtype=np.float64)
+    raw = model.decision_function(X)
+    out = df.copy()
+    out["ml_score"] = np.round(_raw_to_ml_score(raw, min_s, max_s), 2)
+    out["graph_score"] = out["account_key"].map(graph_scores).fillna(0.0).astype(float).round(2)
+    out["rule_score"] = np.round(_rule_scores(out), 2)
+    out["risk_score"] = (
+        0.5 * out["ml_score"] + 0.3 * out["graph_score"] + 0.2 * out["rule_score"]
     ).round(2)
-    scored["is_anomaly"] = scored["risk_score"] > 60
-    scored["typology_code"] = np.where(scored["is_anomaly"], "T01", "NONE")
-    return scored
+    return out
 
 
-def train_and_score():
-    output_dir = "data"
-    train_path = os.path.join(output_dir, "features_train.csv")
-    val_path = os.path.join(output_dir, "features_val.csv")
-    test_path = os.path.join(output_dir, "features_test.csv")
+def train_and_score() -> None:
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    train_feat_path = PROCESSED_DIR / "features_train.csv"
+    if not train_feat_path.exists():
+        raise FileNotFoundError(
+            f"❌ Không tìm thấy {train_feat_path}. Chạy extract_features.py trước!"
+        )
 
-    scored_train_path = os.path.join(output_dir, "scored_train.csv")
-    scored_val_path = os.path.join(output_dir, "scored_val.csv")
-    scored_test_path = os.path.join(output_dir, "scored_test.csv")
-    model_output_path = os.path.join(output_dir, "isolation_forest_model.joblib")
+    print("⏳ 1. Đọc features_train và fit IsolationForest...")
+    df_train = pd.read_csv(train_feat_path)
+    feature_cols = _feature_cols(df_train)
+    X_train = df_train[feature_cols].fillna(0.0).to_numpy(dtype=np.float64)
 
-    trans_path = "HI-Sample_Trans.csv"
-    if not os.path.exists(trans_path):
-        trans_path = "tests/fixtures/aml/HI-Sample_Trans.csv"
-
-    print("⏳ 1. Đang đọc features_train / val / test và file giao dịch...")
-    for path in (train_path, val_path, test_path):
-        if not os.path.exists(path):
-            raise FileNotFoundError(
-                f"❌ Không tìm thấy file {path}. Hãy chạy scripts/extract_features.py trước!"
-            )
-    if not os.path.exists(trans_path):
-        raise FileNotFoundError(f"❌ Không tìm thấy file giao dịch {trans_path}.")
-
-    df_train = pd.read_csv(train_path)
-    df_val = pd.read_csv(val_path)
-    df_test = pd.read_csv(test_path)
-    df_trans = pd.read_csv(trans_path)
-
-    # -------------------------------------------------------------
-    # NHÁNH 1: ML ENGINE — fit CHỈ trên train
-    # -------------------------------------------------------------
-    print("⏳ 2. [Nhánh 1] Fit Isolation Forest trên data/features_train.csv...")
-    feature_cols = [c for c in df_train.columns if c != "account_key"]
-    X_train = _feature_matrix(df_train, feature_cols)
-
-    model = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
+    model = IsolationForest(
+        n_estimators=100,
+        contamination=0.0005,
+        random_state=42,
+        n_jobs=-1,
+    )
     model.fit(X_train)
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, MODEL_PATH)
+    print(f"💾 Model → {MODEL_PATH}")
 
-    os.makedirs(output_dir, exist_ok=True)
-    joblib.dump(model, model_output_path)
-    print(f"💾 Đã lưu model: {model_output_path}")
-
-    # Scale ml_score neo theo phân phối train (tránh leakage từ val/test)
     train_raw = model.decision_function(X_train)
     min_s, max_s = float(train_raw.min()), float(train_raw.max())
 
-    # -------------------------------------------------------------
-    # NHÁNH 2: GRAPH ENGINE (NetworkX) — dựng 1 lần từ toàn bộ TX
-    # -------------------------------------------------------------
-    print("⏳ 3. [Nhánh 2] Dựng đồ thị tài khoản NetworkX & Phân tích cấu trúc...")
-    graph_scores = _build_graph_scores(df_trans)
+    for split in SPLITS:
+        feat_path = PROCESSED_DIR / f"features_{split}.csv"
+        tx_path = PROCESSED_DIR / f"transactions_{split}.parquet"
+        print(f"⏳ 2. Score [{split}] — ML + Graph + Rules...")
+        df = pd.read_csv(feat_path)
+        graph_scores = _graph_scores_from_tx(tx_path)
+        scored = _score_split(df, model, feature_cols, min_s, max_s, graph_scores)
+        out = PROCESSED_DIR / f"scored_{split}.csv"
+        scored.to_csv(out, index=False)
+        print(
+            f"   ✅ {out} | n={len(scored):,} | "
+            f"risk>60={int((scored['risk_score'] > 60).sum()):,} | "
+            f"mean_risk={scored['risk_score'].mean():.2f}"
+        )
 
-    # -------------------------------------------------------------
-    # Score cả 3 tập: ML (model đã fit) + Graph + Rule → risk_score
-    # -------------------------------------------------------------
-    print("⏳ 4. Chấm điểm Train / Val / Test (ML + Graph + Rule Fusion)...")
-    scored_train = _score_split(df_train, model, feature_cols, min_s, max_s, graph_scores)
-    scored_val = _score_split(df_val, model, feature_cols, min_s, max_s, graph_scores)
-    scored_test = _score_split(df_test, model, feature_cols, min_s, max_s, graph_scores)
-
-    scored_train.to_csv(scored_train_path, index=False)
-    scored_val.to_csv(scored_val_path, index=False)
-    scored_test.to_csv(scored_test_path, index=False)
-
-    print("🎉 BƯỚC 2 HOÀN THÀNH!")
-    print(
-        f"🔥 High-risk (>60): train={scored_train['is_anomaly'].sum()}, "
-        f"val={scored_val['is_anomaly'].sum()}, test={scored_test['is_anomaly'].sum()}"
-    )
-    print(f"📁 {scored_train_path}")
-    print(f"📁 {scored_val_path}")
-    print(f"📁 {scored_test_path}")
-    print(f"💾 {model_output_path}")
+    print("🎉 TRAIN + SCORE FUSION XONG")
 
 
 if __name__ == "__main__":
