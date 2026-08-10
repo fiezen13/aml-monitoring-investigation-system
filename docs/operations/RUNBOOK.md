@@ -140,5 +140,7 @@ container bỏ qua toàn bộ thư mục đó và không nói gì. `make db-rese
 
 - [`.env.example`](../../.env.example) — mọi biến môi trường, có test bắt buộc khai báo
 - [CICD.md](CICD.md) — pipeline chạy gì trên mỗi pull request
+- [`contracts/ingestion/README.md`](../../contracts/ingestion/README.md) — đường ống Kafka/Flink/HDFS: lệnh, ba giao diện, bẫy khi chạy lần đầu
+- [PRODUCTION_ARCHITECTURE.md](../architecture/PRODUCTION_ARCHITECTURE.md) — hiện trạng triển khai và kiến trúc đích
 - FIN-07-ARC-001 — tài liệu kiến trúc
 - FIN-07-DAT-001 — đặc tả dữ liệu

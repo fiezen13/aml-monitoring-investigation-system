@@ -1,4 +1,4 @@
-# Ingestion contracts — IBM AML and canonical ABM Bank View → Kafka → Flink → HDFS
+# Ingestion contracts — IBM AML → Kafka → Flink → HDFS
 
 Đây là phần **đang chạy thật** của nền tảng, khác với các contract còn lại trong `contracts/` vốn mô
 tả mô hình đích. Tài liệu vận hành chi tiết trước đây nằm ở `docs/AML_INGESTION.md`; phần kiến thức
@@ -8,6 +8,28 @@ Luồng duy nhất hiện nay là IBM CSV → Kafka → Flink → HDFS. Đườn
 `bank.transaction.posted.v1` từ tầng ABM-BANK đã bị gỡ cùng bộ dữ liệu đó (08/2026).
 
 Cơ sở kiến trúc: mục 6.1 (vùng RAW/BRONZE), mục 5.3 (quy tắc xử lý sự kiện).
+
+```mermaid
+flowchart LR
+    CSV["CSV định dạng IBM<br/>gắn chỉ đọc"]
+    P["aml-producer<br/>python -m src.aml"]
+    RAW["Kafka<br/>aml.transactions.raw.v1<br/>3 partition"]
+    PDLQ["aml.transactions.dlq.v1<br/>dòng CSV hỏng"]
+    ERR["JSONL cục bộ<br/>khi Kafka chính là thứ đang hỏng"]
+    V["Flink: parse → validate<br/>tách nhánh"]
+    BRONZE["HDFS bronze/transactions<br/>Parquet, phân vùng ngày/giờ"]
+    REJECT["HDFS rejected/transactions<br/>JSONL, phân vùng theo error_type"]
+    CP["HDFS _checkpoints"]
+
+    CSV --> P
+    P -- "acks=all, idempotent<br/>khoá = from_bank:from_account" --> RAW
+    P -- "dòng dựng không thành sự kiện" --> PDLQ
+    P -.-> ERR
+    RAW -- "group aml-hdfs-ingestion-v1" --> V
+    V -- "hợp lệ" --> BRONZE
+    V -- "không qua validator" --> REJECT
+    V -.-> CP
+```
 
 ---
 
@@ -113,12 +135,14 @@ không phải suy đoán — đổi nó là đổi phân vùng ngày/giờ trên
 ## 7. Lệnh
 
 ```bash
-make aml-up                 # Kafka + HDFS + Flink, tạo topic
+make aml-up                 # Kafka + Kafka UI + HDFS + Flink, tạo topic
 make aml-submit             # nộp job Flink
 make aml-producer-sample    # phát 1.000 giao dịch đầu
 make aml-inspect-kafka      # topic, offset, vài message
 make aml-inspect-hdfs       # phân vùng và số file
 make aml-smoke              # kiểm tra khói đầu–cuối bằng fixture có sẵn, không cần Kaggle
+make aml-cancel             # dừng job Flink
+make aml-down               # dừng hạ tầng, giữ dữ liệu
 ```
 
 `make aml-smoke` là cách nhanh nhất để biết chuỗi có thông không: nó dùng fixture 204 dòng
@@ -128,9 +152,88 @@ với 200 `transaction_id` khác nhau.
 
 Bộ dữ liệu đặt ở `data/raw/ibm-aml/` (không commit — xem README ở đó).
 
+### Ba giao diện
+
+| | Địa chỉ | Nhìn thấy gì |
+|---|---|---|
+| Kafka UI | <http://localhost:8082> | Topic, offset từng partition, **độ trễ consumer group**, nội dung message kèm header |
+| Flink UI | <http://localhost:8081> | DAG kèm số bản ghi thật, **tab Checkpoints**, backpressure, watermark |
+| HDFS UI | <http://localhost:9870> | Cây phân vùng, file `.inprogress` chưa chốt |
+
+Hai tab đáng mở nhất khi nghi có trục trặc: **Consumers** trên Kafka UI (lag tăng đơn điệu = Flink
+không theo kịp) và **Checkpoints** trên Flink UI (không có checkpoint mới = HDFS sẽ không có file
+mới, vì file chỉ chốt sau checkpoint thành công).
+
+Trên HDFS UI, bấm vào một file để xem nội dung sẽ treo: trình duyệt bị chuyển sang `datanode:9864`,
+một hostname chỉ phân giải được bên trong mạng compose. Duyệt thư mục thì bình thường; muốn đọc nội
+dung thì dùng `make aml-inspect-hdfs`.
+
+Kafka UI đặt `DYNAMIC_CONFIG_ENABLED=false` — đây là công cụ để nhìn, không phải để một cú bấm nhầm
+xoá mất topic đang có dữ liệu.
+
+### Cổng và điều kiện xanh
+
+| Dịch vụ | Cổng ra máy chủ | Xanh khi |
+|---|---:|---|
+| `kafka` | 29092 | trả lời được lệnh metadata của client |
+| `kafka-ui` | 8082 | `/actuator/health` trả 200 |
+| `namenode` | 9870 | **`dfsadmin -safemode get` trả `OFF`** |
+| `datanode` | — | giao diện DataNode trong container trả lời |
+| `flink-jobmanager` | 8081 | `/overview` trả 200 |
+| `flink-taskmanager` | — | không có healthcheck riêng |
+
 ---
 
-## 8. Giới hạn hiện tại, nói rõ ra
+## 8. Ba cái bẫy khi chạy ở máy cá nhân
+
+Cả ba đều đã làm hỏng một lượt chạy thật, không phải phòng xa.
+
+**`AML_DATASET_FILE` mặc định trỏ tới file bạn có thể không có.** Mặc định trong mã là
+`HI-Small_Trans.csv`. Ai tải file khác từ Kaggle sẽ thấy producer chạy vào một đường dẫn không tồn
+tại. Đặt trong `.env`:
+
+```dotenv
+AML_DATASET_FILE=LI-Small_Trans.csv
+AML_CSV_PATH=data/raw/ibm-aml/LI-Small_Trans.csv   # cho lần chạy ngoài Docker
+```
+
+**`make aml-up` có cờ `--build`, nên nó cần mạng tới Docker Hub mỗi lần.** Kể cả khi image đã dựng
+xong từ trước, BuildKit vẫn hỏi lại metadata của `maven:3.9-eclipse-temurin-11` và
+`apache/hadoop:3.3.6`. Mạng chậm là hỏng với `DeadlineExceeded`. Khi đó bỏ `--build`:
+
+```bash
+docker compose --profile aml up -d --wait \
+    kafka kafka-ui namenode datanode flink-jobmanager flink-taskmanager
+```
+
+Chỉ cần `--build` khi vừa sửa mã Java trong `flink/aml-ingestion/`.
+
+**Mạng compose treo sau khi tắt máy hoặc ngắt đột ngột.** Triệu chứng: `failed to set up container
+networking: network ... not found`, và — đáng chú ý — lệnh vẫn **thoát với mã 0**. Dọn:
+
+```bash
+docker compose --profile aml down --remove-orphans
+docker network prune -f
+```
+
+---
+
+## 9. Vì sao healthcheck của NameNode hỏi safe mode
+
+Trước đây nó hỏi `curl http://localhost:9870/`. Giao diện HTTP của NameNode trả lời từ rất sớm, kể
+cả khi nó còn trong safe mode và **từ chối mọi thao tác ghi**. Hệ quả: `--wait` báo xanh, rồi lệnh
+`hdfs dfs -mkdir` đầu tiên chết với *"Name node is in safe mode"* — đúng thứ đã làm hỏng một lượt
+`make aml-smoke`.
+
+Nay nó hỏi `hdfs dfsadmin -safemode get` và chờ tới khi nhận `OFF`. Lệnh này mất khoảng 2,5 giây vì
+phải khởi động JVM, nên `timeout` để 15 giây.
+
+Đây cùng một bài học đã rút ra ở healthcheck của `postgres`, chép lại vì nó đáng nhớ: **hỏi đúng thứ
+client sẽ hỏi.** Kiểm tra cổng có mở không nói lên điều gì về việc dịch vụ đã nhận việc được chưa.
+
+---
+
+## 10. Giới hạn hiện tại, nói rõ ra
 
 - **Chỉ là đường ống dữ liệu.** Không mô hình, không chấm điểm rủi ro, không sinh cảnh báo. Cột
   `is_laundering` được mang theo nguyên trạng như một cột dữ liệu bình thường — nó **không** được

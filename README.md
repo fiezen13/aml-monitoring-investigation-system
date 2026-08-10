@@ -86,10 +86,9 @@ db/init/            Lược đồ SQL đánh số, chạy tuần tự khi Postgr
 scripts/            Vận hành: seed, migrate, thao tác AML
 ci/ deploy/ jenkins/  CI/CD và triển khai
 docs/
-  architecture/     Tài liệu kiến trúc (PDF)
+  architecture/     Kiến trúc chuẩn (PDF) và kiến trúc production
   operations/       Runbook, CI/CD, triển khai VM
   ml/               Đặc tả huấn luyện, đặc trưng, EDA, kiến trúc ML/Agent
-  data-platform/    Topology đường ống Kafka/Flink/HDFS
   adr/              Quyết định kiến trúc
 tests/              pytest, chia theo module
 ```
@@ -110,14 +109,16 @@ make help                       # danh sách lệnh
 Nằm sau profile `aml`, **không** chạy cùng `docker compose up` (nặng ~4 GB RAM):
 
 ```bash
-make aml-up                 # Kafka + HDFS + Flink, tạo topic
+make aml-up                 # Kafka + Kafka UI + HDFS + Flink, tạo topic
 make aml-submit             # nộp job Flink
 make aml-producer-sample    # phát 1.000 giao dịch đầu
 make aml-smoke              # kiểm tra khói đầu–cuối, không cần tải gì từ Kaggle
 ```
 
-Chi tiết: [`contracts/ingestion/README.md`](contracts/ingestion/README.md).
-Flink UI <http://localhost:8081> · HDFS UI <http://localhost:9870>
+Chi tiết, kèm ba cái bẫy hay gặp khi chạy lần đầu:
+[`contracts/ingestion/README.md`](contracts/ingestion/README.md).
+
+Kafka UI <http://localhost:8082> · Flink UI <http://localhost:8081> · HDFS UI <http://localhost:9870>
 
 ### Phát triển ngoài Docker
 
@@ -191,6 +192,7 @@ Quy trình làm việc: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 | Tài liệu | Nội dung |
 |---|---|
 | [`docs/architecture/`](docs/architecture/) | Kiến trúc chuẩn (PDF) |
+| [`docs/architecture/PRODUCTION_ARCHITECTURE.md`](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Từ máy cá nhân tới production: hiện trạng, kiến trúc đích, khoảng cách |
 | [`contracts/README.md`](contracts/README.md) | Hợp đồng dữ liệu và quy tắc thay đổi |
 | [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
 | [`docs/operations/CICD.md`](docs/operations/CICD.md) | Cổng chặn merge và pipeline giao hàng |
