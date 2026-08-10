@@ -143,8 +143,18 @@ docker compose "${COMPOSE_FILES[@]}" exec -T api \
     python -c "import urllib.request,sys; print(urllib.request.urlopen('http://127.0.0.1:8000/health/ready').read().decode())"
 
 echo "-- Giao diện qua Caddy (HTTPS) --"
-if curl -fsS --max-time 20 "https://$SITE_DOMAIN/healthz" >/dev/null 2>&1; then
-    echo "https://$SITE_DOMAIN/healthz → ok"
+# `--resolve` ép gọi vào CHÍNH máy này, không đi qua DNS công cộng.
+#
+# Không có nó, phép thử hỏi tên miền — và tên miền có thể còn trỏ về một máy
+# chủ khác đang sống. Đã xảy ra thật: DNS còn sót bản ghi Vercel, curl nhận
+# HTTP 200 từ đó, script báo "ok", trong khi máy vừa dựng chưa phục vụ được
+# một request nào. Một phép kiểm tra nghiệm thu nhầm hạ tầng cũ còn tệ hơn
+# không kiểm tra gì.
+resolve_arg=()
+[[ -n "$PUBLIC_IP" ]] && resolve_arg=(--resolve "$SITE_DOMAIN:443:$PUBLIC_IP")
+
+if curl -fsS "${resolve_arg[@]}" --max-time 20 "https://$SITE_DOMAIN/healthz" >/dev/null 2>&1; then
+    echo "https://$SITE_DOMAIN/healthz → ok (gọi thẳng ${PUBLIC_IP:-qua DNS})"
 else
     printf '\033[1;33mChưa gọi được qua HTTPS. Xem log Caddy:\n'
     printf '  docker compose %s logs caddy --tail 50\033[0m\n' "${COMPOSE_FILES[*]}"
