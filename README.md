@@ -197,6 +197,7 @@ Quy trình làm việc: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 | [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
 | [`docs/operations/CICD.md`](docs/operations/CICD.md) | Cổng chặn merge và pipeline giao hàng |
 | [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai lên VM sau Caddy + TLS |
+| [`docs/operations/GCP_SETUP.md`](docs/operations/GCP_SETUP.md) | Dựng hạ tầng GCP từng bước: gcloud, VM, Terraform, DNS, Cloud SQL |
 | [`infra/terraform/README.md`](infra/terraform/README.md) | Hạ tầng GCP dưới dạng mã: IP tĩnh, tường lửa, Cloud SQL |
 | [`.env.example`](.env.example) | Toàn bộ biến môi trường, kèm giải thích |
 | [`docs/ml/`](docs/ml/) | Đặc tả huấn luyện, đặc trưng và kiến trúc ML/Agent |
