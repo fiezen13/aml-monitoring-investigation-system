@@ -1,0 +1,15 @@
+# Sao chép thành terraform.tfvars rồi điền. File thật KHÔNG commit.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+
+# Bắt buộc -----------------------------------------------------------
+project_id = "thay-bang-id-du-an-cua-ban"
+vm_name    = "thay-bang-ten-vm-dang-chay"
+
+# Phải cùng vùng với VM, nếu không IP tĩnh không gán được -------------
+region = "us-central1"
+zone   = "us-central1-a"
+
+# Tuỳ chọn -----------------------------------------------------------
+site_domain = "amlmonitoring.site"
+db_tier     = "db-f1-micro"

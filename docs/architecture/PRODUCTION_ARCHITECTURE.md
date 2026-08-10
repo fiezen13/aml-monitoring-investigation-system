@@ -81,9 +81,9 @@ bật thì cấu hình một broker / một DataNode cũng không phải cấu h
 |---|---|
 | Một máy = một điểm chết | Máy chết là toàn hệ thống chết. Không có failover |
 | Không có bản sao PostgreSQL | Hỏng đĩa là mất nhật ký kiểm toán — thứ có giá trị pháp lý |
-| Không sao lưu, chưa diễn tập khôi phục | Ghi rõ ở `CICD.md` mục 10 |
+| Không sao lưu, chưa diễn tập khôi phục | Ghi rõ ở `CICD.md` mục 10. Chuyển sang Cloud SQL là bước gỡ điều này — xem [`infra/terraform/`](../../infra/terraform/) |
 | Bí mật nằm trong `.env` trên máy | Ai vào được máy là đọc được mật khẩu cơ sở dữ liệu |
-| Không có hạ tầng dưới dạng mã | Dựng lại máy từ đầu không tái lập được từ repo |
+| Hạ tầng dưới dạng mã mới một phần | IP tĩnh, tường lửa và Cloud SQL đã có Terraform. **VM thì chưa** — dựng lại máy từ đầu vẫn không tái lập được từ repo |
 
 Đây là những giới hạn **đã biết và được chấp nhận** cho một bản demo. Chúng là lý do phần còn lại
 của tài liệu tồn tại.
@@ -390,8 +390,8 @@ Còn thiếu, nói rõ:
 
 - Chưa bật branch protection trên GitHub — chưa bật thì CI đỏ vẫn merge được
 - Chưa quét bảo mật image
-- **Không có hạ tầng dưới dạng mã** — máy chủ dựng bằng tay, pipeline chỉ triển khai lên máy *đã tồn
-  tại*. Đây là quyết định đã ghi nhận, nhưng hệ quả là dựng lại từ đầu không tái lập được từ repo
+- **Hạ tầng dưới dạng mã mới một phần** — `infra/terraform/` lo IP tĩnh, tường lửa và Cloud SQL;
+  bản thân VM vẫn dựng bằng tay và pipeline chỉ triển khai lên máy *đã tồn tại*
 - Chưa có kênh thông báo khi build hỏng
 - Chưa kiểm tra tải, chưa diễn tập khôi phục
 - **CI không chạy đường ống AML.** Không job nào trong `ci.yml` hay `Jenkinsfile` chạm tới profile

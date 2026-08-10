@@ -68,6 +68,45 @@ def _sql_files() -> list[Path]:
     return sorted(p for p in INIT_DIR.glob("*.sql"))
 
 
+def _check_agent_role(session) -> bool:
+    """Vai trò `fin07_agent` có tồn tại không, và nói to nếu không.
+
+    Vì sao phải kiểm riêng: `db/init/003_agent_readonly_role.sh` là shell
+    script, chỉ được chạy bởi entrypoint của image `postgres` khi volume còn
+    rỗng. Script này chỉ áp `*.sql`, nên trên MỌI cơ sở dữ liệu không dựng từ
+    image đó — Cloud SQL, RDS, một PostgreSQL cài sẵn — file 003 sẽ không bao
+    giờ chạy.
+
+    Hệ quả nếu im lặng: schema `agent` không tồn tại, vai trò chỉ đọc không
+    tồn tại, và ranh giới "agent không đọc được nhãn" (ND1/RD1, cưỡng chế bằng
+    quyền PostgreSQL) biến mất mà không có một dòng lỗi nào. Một ràng buộc an
+    toàn mất đi trong im lặng là thứ tệ hơn một ràng buộc chưa từng có: người
+    ta tin rằng nó đang bảo vệ mình.
+
+    Trả về True nếu vai trò có mặt.
+    """
+    exists = session.execute(text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fin07_agent')")).scalar()
+    if exists:
+        return True
+
+    log.warning("")
+    log.warning("  ⚠ Vai trò `fin07_agent` KHÔNG tồn tại trên cơ sở dữ liệu này.")
+    log.warning("    Cách ly nhãn khỏi agent (ND1/RD1) hiện KHÔNG được cưỡng chế.")
+    log.warning("")
+    log.warning("    Nguyên nhân: db/init/003_agent_readonly_role.sh là shell script,")
+    log.warning("    chỉ chạy khi cơ sở dữ liệu được dựng từ image postgres với volume rỗng.")
+    log.warning("")
+    log.warning("    Cách áp bằng tay — chính file đó, chạy như shell script:")
+    log.warning("      PGHOST=<host> PGPASSWORD=<mật khẩu chủ> \\")
+    log.warning("      POSTGRES_USER=fin07 POSTGRES_DB=fin07 \\")
+    log.warning("      FIN07_AGENT_DB_PASSWORD=<mật khẩu agent> \\")
+    log.warning("        bash db/init/003_agent_readonly_role.sh")
+    log.warning("")
+    log.warning("    Chi tiết: infra/terraform/README.md mục 5.")
+    log.warning("")
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--status", action="store_true", help="Chỉ liệt kê trạng thái, không ghi")
@@ -110,10 +149,13 @@ def main(argv: list[str] | None = None) -> int:
             for path in files:
                 mark = "đã áp " if path.name in applied else "CHỜ ÁP"
                 log.info("  %s  %s", mark, path.name)
+            has_role = _check_agent_role(session)
+            log.info("  %s  003_agent_readonly_role.sh", "đã áp " if has_role else "CHỜ ÁP")
             return 0
 
         if not pending:
             log.info("Lược đồ đã ở bản mới nhất (%d file).", len(files))
+            _check_agent_role(session)
             return 0
 
         for path in pending:
@@ -133,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
             log.info("  ✓ %s", path.name)
 
         log.info("Đã áp %d file.", len(pending))
+        _check_agent_role(session)
     return 0
 
 
