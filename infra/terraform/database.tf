@@ -21,7 +21,7 @@ resource "random_password" "db" {
 }
 
 resource "google_sql_database_instance" "main" {
-  name             = "fin07-postgres"
+  name             = var.db_instance_name
   region           = var.region
   database_version = var.db_version
 

@@ -42,6 +42,20 @@ variable "db_tier" {
   default     = "db-f1-micro"
 }
 
+variable "db_instance_name" {
+  description = <<-EOT
+    Tên instance Cloud SQL.
+
+    Cẩn thận khi đổi: Google GIỮ CHỖ tên đã xoá trong khoảng một tuần. Nghĩa là
+    xoá `fin07-postgres` rồi tạo lại ngay một instance cùng tên sẽ thất bại, và
+    thất bại ở giữa một lần `terraform apply` — sau khi instance cũ đã biến mất.
+    Chuyển vùng, đổi phiên bản, hay bất cứ thay đổi nào buộc phải dựng lại
+    instance đều phải kèm một tên mới.
+  EOT
+  type        = string
+  default     = "fin07-postgres"
+}
+
 variable "db_version" {
   description = "Phải khớp phiên bản đang chạy trong container: postgres:16-alpine"
   type        = string
