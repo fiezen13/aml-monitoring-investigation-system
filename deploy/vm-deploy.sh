@@ -76,6 +76,17 @@ if [[ "$USE_CLOUD_SQL_VALUE" == "true" ]]; then
         printf '\033[1;33mCảnh báo: DATABASE_URL thiếu ?sslmode=require — Cloud SQL sẽ từ chối kết nối.\033[0m\n'
     fi
 
+    # deploy/docker-compose.vm.yml khai báo POSTGRES_PASSWORD bằng `${...:?}`.
+    # Compose nội suy TOÀN BỘ file trước khi áp profile, nên yêu cầu đó vẫn nổ
+    # kể cả khi service postgres đã bị tắt — `docker compose build` chết ngay ở
+    # bước phân tích file, trước khi chạm tới service nào.
+    #
+    # Giá trị dưới đây không được dùng ở đâu cả: không có container postgres để
+    # nhận nó. Đặt tường minh và đặt tên nói rõ điều đó, thay vì bắt người vận
+    # hành nghĩ ra một mật khẩu cho một cơ sở dữ liệu không tồn tại — mật khẩu
+    # kiểu ấy rồi sẽ bị tưởng là thật.
+    export POSTGRES_PASSWORD="khong-dung-voi-cloudsql"
+
     log "Dùng Cloud SQL (container postgres không dựng)"
 else
     [[ -n "$POSTGRES_PASSWORD_VALUE" ]] || die "POSTGRES_PASSWORD chưa đặt trong .env"
