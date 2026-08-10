@@ -246,21 +246,37 @@ cd P-022 && git checkout develop
 cp .env.example .env
 ```
 
-Sửa `.env` — **khác [`DEPLOY_VM.md`](DEPLOY_VM.md) ở dòng `DATABASE_URL`**, vì giờ dùng Cloud SQL
-thay cho container `postgres`:
+Sửa `.env`. Khác [`DEPLOY_VM.md`](DEPLOY_VM.md) ở **hai** dòng, vì giờ dùng Cloud SQL thay cho
+container `postgres`:
 
 ```dotenv
+USE_CLOUD_SQL=true
 DATABASE_URL=<lấy từ: terraform output -raw database_url>
 FIN07_AGENT_DB_PASSWORD=<chuỗi ngẫu nhiên: openssl rand -base64 32>
 ACME_EMAIL=<email của bạn>
 SITE_DOMAIN=amlmonitoring.site
 ```
 
+**`USE_CLOUD_SQL=true` là bắt buộc, không phải tuỳ chọn.** Thiếu nó thì `DATABASE_URL` trong `.env`
+**không có tác dụng gì**: `docker-compose.yml` đặt `DATABASE_URL` trong khối `environment:`, mà
+Compose cho `environment:` quyền cao hơn `env_file:`. Stack sẽ lên bình thường, không báo lỗi, và
+lặng lẽ đọc ghi vào container `postgres` cũ trong khi bạn tin nó đang dùng Cloud SQL.
+
+Bật cờ đó khiến `vm-deploy.sh` thêm lớp phủ [`deploy/docker-compose.cloudsql.yml`](../../deploy/docker-compose.cloudsql.yml):
+container `postgres` không dựng, và ba service ứng dụng nhận đúng `DATABASE_URL` của bạn.
+
+`POSTGRES_PASSWORD` không còn tác dụng khi bật cờ này — script bỏ qua nó.
+
 Rồi dựng:
 
 ```bash
 bash deploy/vm-deploy.sh
 ```
+
+Script kiểm tra trước khi dựng: `DATABASE_URL` có tồn tại không, có lỡ trỏ vào `@postgres:` không,
+và có thiếu `?sslmode=require` không.
+
+**Mốc kiểm tra giữa chừng:** `docker compose ps` **không** có dòng nào tên `postgres`.
 
 **Mốc kiểm tra:** `curl -sI https://amlmonitoring.site/ | head -1` trả về `HTTP/2 200`.
 

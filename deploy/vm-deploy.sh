@@ -49,14 +49,41 @@ FIN07_AGENT_DB_PASSWORD_VALUE=${FIN07_AGENT_DB_PASSWORD:-$(dotenv_value FIN07_AG
 ACME_EMAIL_VALUE=${ACME_EMAIL:-$(dotenv_value ACME_EMAIL)}
 SITE_DOMAIN=${SITE_DOMAIN:-$(dotenv_value SITE_DOMAIN)}
 SITE_DOMAIN=${SITE_DOMAIN:-amlmonitoring.site}
+USE_CLOUD_SQL_VALUE=${USE_CLOUD_SQL:-$(dotenv_value USE_CLOUD_SQL)}
+DATABASE_URL_VALUE=${DATABASE_URL:-$(dotenv_value DATABASE_URL)}
 
-[[ -n "$POSTGRES_PASSWORD_VALUE" ]] || die "POSTGRES_PASSWORD chưa đặt trong .env"
 [[ -n "$FIN07_AGENT_DB_PASSWORD_VALUE" ]] || die "FIN07_AGENT_DB_PASSWORD chưa đặt trong .env"
 [[ -n "$ACME_EMAIL_VALUE" ]] || die "ACME_EMAIL chưa đặt trong .env"
 
-# Mật khẩu mặc định của môi trường dev không được mang lên máy có IP công cộng.
-if [[ "$POSTGRES_PASSWORD_VALUE" == "fin07_dev_password" ]]; then
-    die "POSTGRES_PASSWORD vẫn là mật khẩu mặc định của môi trường dev — đổi trước khi deploy"
+if [[ "$USE_CLOUD_SQL_VALUE" == "true" ]]; then
+    # Cloud SQL: container postgres không dựng, nên POSTGRES_PASSWORD không
+    # còn ý nghĩa. Thay vào đó DATABASE_URL trở thành thứ bắt buộc.
+    COMPOSE_FILES+=(-f deploy/docker-compose.cloudsql.yml)
+
+    [[ -n "$DATABASE_URL_VALUE" ]] \
+        || die "USE_CLOUD_SQL=true nhưng DATABASE_URL chưa đặt. Lấy bằng: terraform output -raw database_url"
+
+    # Trỏ vào host `postgres` nghĩa là chép nhầm giá trị của môi trường dev —
+    # với lớp phủ Cloud SQL thì container đó không tồn tại và stack sẽ hỏng ở
+    # chỗ khó hiểu. Bắt ngay tại đây.
+    if [[ "$DATABASE_URL_VALUE" == *"@postgres:"* ]]; then
+        die "DATABASE_URL đang trỏ vào container postgres, không phải Cloud SQL. Dùng: terraform output -raw database_url"
+    fi
+
+    # Instance đặt ssl_mode = ENCRYPTED_ONLY nên kết nối không mã hoá bị từ
+    # chối, mà thông báo của libpq khi thiếu tham số này không nói rõ nguyên do.
+    if [[ "$DATABASE_URL_VALUE" != *"sslmode="* ]]; then
+        printf '\033[1;33mCảnh báo: DATABASE_URL thiếu ?sslmode=require — Cloud SQL sẽ từ chối kết nối.\033[0m\n'
+    fi
+
+    log "Dùng Cloud SQL (container postgres không dựng)"
+else
+    [[ -n "$POSTGRES_PASSWORD_VALUE" ]] || die "POSTGRES_PASSWORD chưa đặt trong .env"
+
+    # Mật khẩu mặc định của môi trường dev không được mang lên máy có IP công cộng.
+    if [[ "$POSTGRES_PASSWORD_VALUE" == "fin07_dev_password" ]]; then
+        die "POSTGRES_PASSWORD vẫn là mật khẩu mặc định của môi trường dev — đổi trước khi deploy"
+    fi
 fi
 
 # ---------------------------------------------------------------------

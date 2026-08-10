@@ -139,13 +139,20 @@ DATABASE_URL="$(terraform output -raw database_url)" pytest tests/test_db/test_a
 
 ## 6. Chuyển VM sang dùng Cloud SQL
 
-Trên VM, trong `.env`:
+Trên VM, trong `.env` — **hai dòng, thiếu dòng đầu là dòng sau vô tác dụng**:
 
 ```dotenv
+USE_CLOUD_SQL=true
 DATABASE_URL=<giá trị từ terraform output -raw database_url>
 ```
 
-Rồi bỏ service `postgres` khỏi stack đang chạy. **Trước khi bỏ, chuyển dữ liệu**:
+`docker-compose.yml` đặt `DATABASE_URL` trong khối `environment:`, vốn có quyền cao hơn `env_file:`.
+Nên nếu chỉ đặt `DATABASE_URL` mà không bật `USE_CLOUD_SQL`, container vẫn nối vào `postgres` cũ và
+không có lỗi nào báo ra. `USE_CLOUD_SQL=true` khiến `vm-deploy.sh` thêm lớp phủ
+[`../../deploy/docker-compose.cloudsql.yml`](../../deploy/docker-compose.cloudsql.yml), nơi ghi đè
+đúng khoá đó ở cùng tầng ưu tiên và tắt hẳn service `postgres`.
+
+**Trước khi bỏ container postgres, chuyển dữ liệu**:
 
 ```bash
 # Trên VM — sao lưu từ container hiện tại
