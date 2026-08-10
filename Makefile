@@ -105,19 +105,20 @@ check: lint test  ## Cổng chất lượng chạy trước khi mở pull reques
 AML := $(COMPOSE) --profile aml
 
 aml-up:  ## Dựng Kafka, HDFS, Flink và chờ xanh
-	$(AML) up -d --build --wait kafka namenode datanode flink-jobmanager flink-taskmanager
+	$(AML) up -d --build --wait kafka kafka-ui namenode datanode flink-jobmanager flink-taskmanager
 	$(AML) up hdfs-init
 	@$(MAKE) --no-print-directory aml-topics
 	@echo ""
 	@echo "  Flink UI     http://localhost:$${AML_FLINK_UI_PORT:-8081}"
 	@echo "  HDFS UI      http://localhost:$${AML_HDFS_UI_PORT:-9870}"
+	@echo "  Kafka UI     http://localhost:$${AML_KAFKA_UI_PORT:-8082}"
 	@echo "  Kafka        localhost:$${AML_KAFKA_PORT:-29092}"
 
 aml-down:  ## Dừng luồng AML, giữ dữ liệu
 	$(AML) down
 
 aml-status:  ## Trạng thái các dịch vụ AML
-	@for s in kafka namenode datanode flink-jobmanager flink-taskmanager; do \
+	@for s in kafka kafka-ui namenode datanode flink-jobmanager flink-taskmanager; do \
 		cid=$$($(AML) ps -q $$s 2>/dev/null); \
 		if [ -z "$$cid" ]; then printf "  %-20s %s\n" "$$s" "chưa chạy"; \
 		else printf "  %-20s %s\n" "$$s" "$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $$cid)"; fi; \

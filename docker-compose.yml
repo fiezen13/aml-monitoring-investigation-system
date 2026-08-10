@@ -254,6 +254,42 @@ services:
     restart: "no"
 
   # -------------------------------------------------------------------
+  # Giao diện xem Kafka. Chỉ để quan sát: topic, offset từng partition, độ
+  # trễ của consumer group, và nội dung từng message kèm header — những thứ
+  # `inspect_kafka.sh` in ra, nhưng đọc được bằng mắt trong lúc dữ liệu đang
+  # chảy.
+  #
+  # Dùng bản kafbat, không phải `provectuslabs/kafka-ui`: dự án đã chuyển
+  # sang tổ chức kafbat và bản provectus dừng ở 2023, không có ảnh arm64.
+  #
+  # Không có trong đường dữ liệu. Tắt nó đi thì đường ống vẫn chạy y nguyên.
+  kafka-ui:
+    image: ${AML_KAFKA_UI_IMAGE:-ghcr.io/kafbat/kafka-ui:v1.5.0}
+    profiles: ["aml"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: ${AML_KAFKA_UI_CLUSTER_NAME:-fin07-aml}
+      # Tên `kafka` chỉ phân giải được trong mạng compose — đúng, vì chính
+      # container này nối vào broker, không phải trình duyệt trên máy chủ.
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      # Tắt sửa cấu hình cụm từ trình duyệt. Đây là công cụ để nhìn, không
+      # phải để một cú bấm nhầm xoá mất topic đang có dữ liệu.
+      DYNAMIC_CONFIG_ENABLED: "false"
+      SERVER_PORT: 8080
+    ports:
+      - "${AML_KAFKA_UI_PORT:-8082}:8080"
+    healthcheck:
+      # Ảnh không có curl; wget của busybox thì có sẵn.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
   # HDFS: một NameNode, một DataNode. Cấu hình đi qua biến môi trường theo
   # quy ước của image chính thức — `CORE-SITE.XML_khoá=giá trị` được dịch
   # thành phần tử tương ứng trong core-site.xml lúc container khởi động.
@@ -286,11 +322,19 @@ services:
     ports:
       - "${AML_HDFS_UI_PORT:-9870}:9870"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9870/ >/dev/null || exit 1"]
+      # Hỏi đúng thứ client sẽ hỏi — cùng bài học đã rút ra ở healthcheck của
+      # postgres. Giao diện HTTP trả lời từ rất sớm, kể cả khi NameNode còn
+      # trong safe mode và MỌI thao tác ghi đều bị từ chối. Kiểm tra bằng
+      # `curl /` sẽ báo xanh ở đúng khoảng thời gian đó, `--wait` trả về, rồi
+      # lệnh `hdfs dfs -mkdir` đầu tiên chết với "Name node is in safe mode".
+      #
+      # `dfsadmin -safemode get` mất khoảng 2,5 giây vì phải khởi động JVM,
+      # nên timeout phải rộng hơn nhịp thường gặp.
+      test: ["CMD-SHELL", "hdfs dfsadmin -safemode get 2>/dev/null | grep -q 'Safe mode is OFF'"]
       interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 20s
+      timeout: 15s
+      retries: 30
+      start_period: 30s
     restart: unless-stopped
 
   datanode:
