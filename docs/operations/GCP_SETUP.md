@@ -228,23 +228,31 @@ xong rồi mới dựng stack, đừng thử đi thử lại.
 
 ---
 
-## Bước 8 — Dựng ứng dụng trên VM
+## Bước 8 — Đưa mã nguồn lên VM
 
 ```bash
-gcloud compute ssh <VM> --zone <ZONE>
+gcloud compute ssh <VM> --zone <ZONE> --command "curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker \$USER"
 ```
 
-Trên VM:
+Đăng nhập lại sau lệnh đó thì `docker` chạy không cần `sudo`.
+
+**Repo là private**, nên `git clone` trên VM sẽ đòi thông tin đăng nhập GitHub mà máy đó không có.
+Hai đường:
+
+**a. Chép mã nguồn từ máy bạn** — không cần credential trên VM, và chỉ gửi file đã theo dõi trong
+git (không kèm `.git`, `node_modules`, hay `data/raw` nặng vài GB):
 
 ```bash
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker "$USER"
-newgrp docker
-
-git clone https://github.com/AI20K-Build-Phase-Cohort-3/P-022.git
-cd P-022 && git checkout develop
-cp .env.example .env
+git archive --format=tar.gz -o /tmp/fin07.tar.gz HEAD
+gcloud compute scp /tmp/fin07.tar.gz <VM>:~/fin07.tar.gz --zone <ZONE>
+gcloud compute ssh <VM> --zone <ZONE> --command "mkdir -p ~/P-022 && tar xzf ~/fin07.tar.gz -C ~/P-022"
 ```
+
+Gói khoảng 1,7 MB. Đổi lại: `vm-deploy.sh` sẽ không `git pull` được ở lần sau — khối đó được bọc
+trong `if [[ -d .git ]]` nên nó bỏ qua chứ không hỏng, và mỗi lần cập nhật bạn chép lại gói mới.
+
+**b. Tạo deploy key hoặc Personal Access Token** rồi `git clone` như bình thường. Đáng làm nếu VM
+cần tự cập nhật, nhưng là thêm một bí mật nữa phải quản lý.
 
 Sửa `.env`. Khác [`DEPLOY_VM.md`](DEPLOY_VM.md) ở **hai** dòng, vì giờ dùng Cloud SQL thay cho
 container `postgres`:
@@ -267,7 +275,56 @@ container `postgres` không dựng, và ba service ứng dụng nhận đúng `D
 
 `POSTGRES_PASSWORD` không còn tác dụng khi bật cờ này — script bỏ qua nó.
 
-Rồi dựng:
+**Chưa dựng stack vội** — lược đồ phải có trước. Sang bước 9.
+
+---
+
+## Bước 9 — Nạp lược đồ lên Cloud SQL, TRƯỚC khi dựng stack
+
+Thứ tự này quan trọng và ngược với trực giác.
+
+Với container `postgres`, lược đồ tự dựng lúc khởi tạo volume nên không ai phải nghĩ tới nó. Cloud
+SQL bắt đầu **rỗng hoàn toàn**. Mà dịch vụ `seed` chạy `check_schema()` trước khi nạp dữ liệu, và
+`api` với `worker` chỉ khởi động khi `seed` thoát với mã 0 — nên dựng stack trên một cơ sở dữ liệu
+rỗng sẽ dừng ở `seed` và cả stack không lên.
+
+Đó là hành vi đúng, cố ý: hỏng lược đồ biến thành *"cả stack không lên"* chứ không phải *"mọi thứ
+xanh, lỗi 500 lúc bấm vào"*. Nhưng nó có nghĩa là lược đồ phải đi trước.
+
+Nạp bằng image ứng dụng đã build, không cần cài Python trên VM:
+
+```bash
+docker compose -f docker-compose.yml -f deploy/docker-compose.vm.yml \
+               -f deploy/docker-compose.cloudsql.yml \
+    run --rm --no-deps seed python scripts/migrate.py
+```
+
+Lệnh đó áp `001`, `002`, `004`, `005` — **nhưng không áp `003_agent_readonly_role.sh`**, vì đó là
+shell script cần thay biến mật khẩu, thứ `psql` không làm được bên trong chuỗi `$$...$$`. Hệ quả nếu
+bỏ qua: vai trò `fin07_agent` và schema `agent` không tồn tại, và ranh giới *"agent không đọc được
+nhãn"* (ND1/RD1) không được cưỡng chế. `migrate.py` **cảnh báo to** khi thiếu.
+
+Áp bằng tay, chạy từ trong container để không phải cài `psql` lên VM:
+
+```bash
+docker compose -f docker-compose.yml -f deploy/docker-compose.vm.yml \
+               -f deploy/docker-compose.cloudsql.yml \
+    run --rm --no-deps --entrypoint bash seed -c '
+      apt-get update -qq && apt-get install -y -qq postgresql-client >/dev/null
+      PGHOST=$(python -c "import os,urllib.parse as u; print(u.urlparse(os.environ[\"DATABASE_URL\"].replace(\"+psycopg\",\"\")).hostname)")
+      PGPASSWORD=$(python -c "import os,urllib.parse as u; print(u.urlparse(os.environ[\"DATABASE_URL\"].replace(\"+psycopg\",\"\")).password)")
+      PGSSLMODE=require POSTGRES_USER=fin07 POSTGRES_DB=fin07 \
+      PGHOST=$PGHOST PGPASSWORD=$PGPASSWORD bash db/init/003_agent_readonly_role.sh'
+```
+
+**Mốc kiểm tra:** `... run --rm --no-deps seed python scripts/migrate.py --status` hiện cả 5 file ở
+trạng thái `đã áp`, gồm cả dòng `003_agent_readonly_role.sh`.
+
+---
+
+## Bước 10 — Dựng stack
+
+Giờ mới dựng, khi lược đồ đã có:
 
 ```bash
 bash deploy/vm-deploy.sh
@@ -276,48 +333,11 @@ bash deploy/vm-deploy.sh
 Script kiểm tra trước khi dựng: `DATABASE_URL` có tồn tại không, có lỡ trỏ vào `@postgres:` không,
 và có thiếu `?sslmode=require` không.
 
-**Mốc kiểm tra giữa chừng:** `docker compose ps` **không** có dòng nào tên `postgres`.
-
-**Mốc kiểm tra:** `curl -sI https://amlmonitoring.site/ | head -1` trả về `HTTP/2 200`.
+**Mốc kiểm tra:** `docker compose ps` **không** có dòng nào tên `postgres`, và `seed` thoát mã 0.
 
 ---
 
-## Bước 9 — Nạp lược đồ lên Cloud SQL
-
-Đây là bước dễ bỏ sót nhất, và cái sai **không báo lỗi**.
-
-`db/init/*.sql` chỉ tự chạy khi cơ sở dữ liệu dựng từ image `postgres` với volume rỗng. Cloud SQL
-không có cơ chế đó.
-
-```bash
-python scripts/migrate.py
-```
-
-Script này áp `001`, `002`, `004`, `005` — **nhưng không áp `003_agent_readonly_role.sh`**, vì đó là
-shell script. Hệ quả nếu bỏ qua: vai trò `fin07_agent` và schema `agent` không tồn tại, và ranh giới
-*"agent không đọc được nhãn"* (ND1/RD1) không được cưỡng chế.
-
-`migrate.py` sẽ **cảnh báo to** khi thiếu. Áp bằng tay:
-
-```bash
-PGHOST=$(terraform output -raw db_public_ip) \
-PGPASSWORD=$(terraform output -raw db_password) \
-POSTGRES_USER=fin07 POSTGRES_DB=fin07 \
-FIN07_AGENT_DB_PASSWORD='<đúng giá trị đã đặt trong .env>' \
-    bash db/init/003_agent_readonly_role.sh
-```
-
-Xác minh — bài kiểm thử này tồn tại đúng để trả lời câu hỏi đó:
-
-```bash
-pytest tests/test_db/test_agent_role_isolation.py -v
-```
-
-**Mốc kiểm tra:** `python scripts/migrate.py --status` hiện cả 5 file ở trạng thái `đã áp`.
-
----
-
-## Bước 10 — Kiểm tra cuối
+## Bước 11 — Kiểm tra cuối
 
 ```bash
 curl -sI https://amlmonitoring.site/ | head -1        # HTTP/2 200

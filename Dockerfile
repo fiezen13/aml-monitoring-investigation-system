@@ -40,6 +40,16 @@ COPY --from=builder /opt/venv /opt/venv
 COPY src ./src
 COPY scripts ./scripts
 
+# db/init phải nằm trong image, không chỉ trong repo: `scripts/migrate.py` đọc
+# các file lược đồ từ đây, và nó luôn chạy BÊN TRONG container — cả `make
+# migrate` lẫn đường triển khai Cloud SQL. Thiếu thư mục này, migrate.py chạy
+# tới nơi rồi dừng với "Không tìm thấy file .sql nào trong /app/db/init".
+#
+# Container postgres nạp lược đồ qua bind mount trong docker-compose.yml, một
+# đường hoàn toàn khác — nên thiếu sót ở đây không lộ ra khi dựng bằng compose
+# ở máy cá nhân.
+COPY db ./db
+
 RUN mkdir -p /app/data && chown -R appuser:appuser /app
 
 USER appuser
