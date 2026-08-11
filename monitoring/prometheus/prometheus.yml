@@ -1,0 +1,67 @@
+# Prometheus cho FIN-07.
+#
+# Nguyên tắc chọn đối tượng đo: chỉ lấy những thứ trả lời được một câu hỏi vận
+# hành cụ thể. Thu thập cho đủ bộ rồi không ai nhìn là cách nhanh nhất biến
+# giám sát thành chi phí thuần.
+#
+#   node      → máy còn chỗ không (CPU, RAM, đĩa)
+#   cadvisor  → container nào đang ăn tài nguyên
+#   caddy     → người dùng thật thấy gì (tốc độ, mã lỗi)
+#   redis     → hàng đợi tác vụ có bị ứ không
+#   postgres  → Cloud SQL còn nhận kết nối không
+#
+# Chưa có: metrics ở tầng ứng dụng. `src/` chưa expose /metrics, nên độ trễ
+# theo từng endpoint hiện đo gián tiếp qua Caddy. Xem docs/operations/MONITORING.md.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  # Nhãn gắn vào mọi chuỗi số liệu rời khỏi Prometheus này. Có nó thì sau này
+  # gộp nhiều môi trường vào một Grafana mới phân biệt được.
+  external_labels:
+    environment: "${APP_ENV}"
+    project: fin07
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Máy chủ: CPU, RAM, đĩa, mạng.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # Từng container: CPU, bộ nhớ, I/O.
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    metric_relabel_configs:
+      # cAdvisor sinh rất nhiều chuỗi. Giữ lại đúng phần dùng trong dashboard;
+      # phần còn lại chỉ làm phình đĩa và chậm truy vấn.
+      - source_labels: [__name__]
+        regex: "container_(cpu_usage_seconds_total|memory_working_set_bytes|network_(receive|transmit)_bytes_total|fs_usage_bytes|spec_memory_limit_bytes|last_seen)"
+        action: keep
+      # Bỏ chuỗi không gắn với container nào (tổng của cgroup gốc).
+      - source_labels: [name]
+        regex: "^$"
+        action: drop
+
+  # Caddy đứng trước toàn bộ hệ thống nên số liệu của nó là thứ người dùng
+  # thật sự trải nghiệm: bao nhiêu request, chậm bao nhiêu, lỗi bao nhiêu.
+  - job_name: caddy
+    static_configs:
+      - targets: ["caddy:2020"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  # Cloud SQL. Exporter chạy trong mạng compose và nối ra ngoài bằng cùng
+  # chuỗi kết nối mà ứng dụng dùng.
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]

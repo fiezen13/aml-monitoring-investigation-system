@@ -1,0 +1,16 @@
+apiVersion: 1
+
+providers:
+  - name: fin07
+    orgId: 1
+    folder: FIN-07
+    type: file
+    # Người dùng sửa được trên giao diện để thử nhanh, nhưng file trong repo
+    # vẫn là nguồn sự thật: mỗi lần Grafana nạp lại, thay đổi không commit sẽ
+    # bị ghi đè. Muốn giữ thì xuất JSON ra và commit.
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

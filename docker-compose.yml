@@ -477,6 +477,154 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # ===================================================================
+  # GIÁM SÁT — profile `obs`, không chạy cùng `docker compose up`
+  #
+  # Prometheus thu thập, Grafana hiển thị, bốn exporter cung cấp số liệu.
+  # Toàn bộ nằm ngoài đường phục vụ người dùng: tắt hết cụm này thì hệ
+  # thống vẫn chạy y nguyên.
+  #
+  # Cổng của Grafana và Prometheus bind vào 127.0.0.1, KHÔNG ra Internet.
+  # Trên VM, xem bằng đường hầm SSH — chi tiết ở docs/operations/MONITORING.md.
+  # ===================================================================
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.54.1}
+    profiles: ["obs"]
+    user: root
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Giữ 15 ngày VÀ trần 2 GB. Chỉ đặt theo thời gian là chưa đủ: một đợt
+      # số liệu bất thường có thể làm đầy đĩa trước khi tới hạn xoá.
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+      - --storage.tsdb.retention.size=2GB
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    restart: unless-stopped
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:11.3.1}
+    profiles: ["obs"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Tắt đăng ký và mời người dùng: đây là công cụ nội bộ, không phải SaaS.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Gửi số liệu sử dụng ra ngoài là điều không nên mặc định bật ở một hệ
+      # thống làm việc với dữ liệu ngân hàng, kể cả khi dữ liệu ấy là tổng hợp.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: "10s"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 320m
+    restart: unless-stopped
+
+  # Số liệu của máy chủ. Cần nhìn vào /proc và /sys của HOST, không phải của
+  # container — nên pid: host và ba mount chỉ đọc bên dưới là bắt buộc.
+  node-exporter:
+    image: ${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.8.2}
+    profiles: ["obs"]
+    pid: host
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/docker/.+)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    deploy:
+      resources:
+        limits:
+          memory: 96m
+    restart: unless-stopped
+
+  # Số liệu từng container.
+  cadvisor:
+    image: ${CADVISOR_IMAGE:-gcr.io/cadvisor/cadvisor:v0.49.1}
+    profiles: ["obs"]
+    privileged: true
+    command:
+      # Chỉ bật đúng nhóm số liệu dùng trong dashboard. Mặc định cAdvisor thu
+      # rất nhiều thứ và là thành phần ngốn CPU nhất của cụm giám sát — trên
+      # một VM 4 GB thì đó là cái giá không đáng trả.
+      - --docker_only=true
+      - --housekeeping_interval=15s
+      - --disable_metrics=percpu,sched,tcp,udp,advtcp,process,hugetlb,referenced_memory,cpu_topology,resctrl
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    deploy:
+      resources:
+        limits:
+          memory: 320m
+    restart: unless-stopped
+
+  redis-exporter:
+    image: ${REDIS_EXPORTER_IMAGE:-oliver006/redis_exporter:v1.62.0}
+    profiles: ["obs"]
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    restart: unless-stopped
+
+  # Cloud SQL. Chuỗi kết nối riêng vì exporter dùng libpq, không hiểu tiền tố
+  # `+psycopg` trong DATABASE_URL của SQLAlchemy.
+  postgres-exporter:
+    image: ${POSTGRES_EXPORTER_IMAGE:-quay.io/prometheuscommunity/postgres-exporter:v0.15.0}
+    profiles: ["obs"]
+    environment:
+      DATA_SOURCE_NAME: ${MONITORING_PG_DSN:-postgresql://fin07:fin07_dev_password@postgres:5432/fin07?sslmode=disable}
+    deploy:
+      resources:
+        limits:
+          memory: 96m
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
@@ -484,3 +632,5 @@ volumes:
   kafka_data:
   namenode_data:
   datanode_data:
+  prometheus_data:
+  grafana_data:

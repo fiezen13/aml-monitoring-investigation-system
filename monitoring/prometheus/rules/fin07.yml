@@ -1,0 +1,77 @@
+# Cảnh báo vận hành.
+#
+# Bốn cái đầu tiên, chọn theo thứ tự giá trị chứ không theo thứ tự dễ viết.
+# Chưa nối Alertmanager — chúng hiện lên ở tab Alerts của Prometheus và ở
+# Grafana. Cắm sẵn một webhook không tới nơi còn tệ hơn không có thông báo,
+# cùng lý do khối `post { failure { } }` trong Jenkinsfile để trống.
+
+groups:
+  - name: fin07-ha-tang
+    rules:
+      - alert: DichVuKhongPhanHoi
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} không trả lời trong 2 phút"
+          description: "Prometheus không scrape được {{ $labels.instance }}."
+
+      - alert: DiaSapDay
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Đĩa còn dưới 15%"
+          description: "Image Docker và log là hai thứ đầy đĩa nhanh nhất trên máy này."
+
+      - alert: BoNhoSapCan
+        expr: |
+          (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAM dùng trên 90%"
+          description: "VM e2-medium chỉ có 4 GB. Build image là lúc hay chạm trần nhất."
+
+  - name: fin07-ung-dung
+    rules:
+      - alert: TyLeLoi5xxCao
+        expr: |
+          sum(rate(caddy_http_requests_total{code=~"5.."}[5m]))
+            / sum(rate(caddy_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Trên 5% request trả về lỗi 5xx"
+
+      - alert: PhanHoiCham
+        expr: |
+          histogram_quantile(0.95, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 thời gian phản hồi vượt 2 giây"
+
+      - alert: HangDoiTacVuUn
+        expr: redis_db_keys{db="db0"} > 500
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Hàng đợi Redis đang ứ"
+          description: "Worker có thể đã chết hoặc chậm hơn tốc độ API đẩy tác vụ vào."
+
+      - alert: CloudSQLKhongNoiDuoc
+        expr: pg_up == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Không nối được Cloud SQL"
+          description: "Kiểm tra IP tĩnh của VM có còn nằm trong authorized_networks không."

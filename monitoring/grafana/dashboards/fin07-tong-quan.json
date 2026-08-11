@@ -1,0 +1,686 @@
+{
+  "uid": "fin07-tong-quan",
+  "title": "FIN-07 — Tổng quan hệ thống",
+  "description": "Sức khoẻ nền tảng AML: máy chủ, container, lưu lượng qua Caddy, hàng đợi tác vụ và Cloud SQL. Đọc từ trên xuống — hàng đầu trả lời 'có đang hỏng không', các hàng dưới trả lời 'hỏng ở đâu'.",
+  "tags": ["fin07", "tong-quan"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "graphTooltip": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "DS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 2
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Cảnh báo đang bật",
+        "datasource": { "type": "prometheus", "uid": "${DS}" },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\"}",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{severity}}"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Tình trạng chung",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Dịch vụ đang sống",
+      "description": "Số mục tiêu Prometheus scrape được. Tụt xuống là có thứ gì đó chết.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 1 },
+      "targets": [{ "expr": "sum(up)", "refId": "A", "legendFormat": "sống" }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "colorMode": "background_solid",
+        "textMode": "value_and_name",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 4 },
+              { "color": "green", "value": 6 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "CPU máy chủ",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 1 },
+      "targets": [
+        {
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "refId": "A",
+          "legendFormat": "cpu"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "#EAB839", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "RAM đã dùng",
+      "description": "VM e2-medium chỉ có 4 GB. Build image là lúc hay chạm trần nhất.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 1 },
+      "targets": [
+        {
+          "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
+          "refId": "A",
+          "legendFormat": "ram"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "#EAB839", "value": 80 },
+              { "color": "red", "value": 92 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Đĩa đã dùng",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 1 },
+      "targets": [
+        {
+          "expr": "(1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}) * 100",
+          "refId": "A",
+          "legendFormat": "đĩa"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "#EAB839", "value": 75 },
+              { "color": "red", "value": 85 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "p95 phản hồi",
+      "description": "95% request nhanh hơn con số này. Dùng p95 chứ không dùng trung bình: trung bình che mất đúng những request làm người dùng khó chịu.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "p95"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "#EAB839", "value": 1 },
+              { "color": "red", "value": 2 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Tỷ lệ lỗi 5xx",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(rate(caddy_http_requests_total{code=~\"5..\"}[5m])) / clamp_min(sum(rate(caddy_http_requests_total[5m])), 0.0001) * 100",
+          "refId": "A",
+          "legendFormat": "5xx"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "area",
+        "colorMode": "value",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "#EAB839", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Máy chạy liên tục",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "targets": [
+        { "expr": "node_time_seconds - node_boot_time_seconds", "refId": "A", "legendFormat": "uptime" }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "colorMode": "value",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Lưu lượng người dùng (đo tại Caddy)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Request mỗi giây, theo nhóm mã trạng thái",
+      "description": "Đo ở Caddy nên đây là thứ người dùng thật sự nhận được, không phải thứ ứng dụng nghĩ là nó đã trả về.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "sum(rate(caddy_http_requests_total{code=~\"2..\"}[5m]))", "refId": "A", "legendFormat": "2xx thành công" },
+        { "expr": "sum(rate(caddy_http_requests_total{code=~\"3..\"}[5m]))", "refId": "B", "legendFormat": "3xx chuyển hướng" },
+        { "expr": "sum(rate(caddy_http_requests_total{code=~\"4..\"}[5m]))", "refId": "C", "legendFormat": "4xx lỗi phía client" },
+        { "expr": "sum(rate(caddy_http_requests_total{code=~\"5..\"}[5m]))", "refId": "D", "legendFormat": "5xx lỗi phía máy chủ" }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"], "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "2xx thành công" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "3xx chuyển hướng" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "4xx lỗi phía client" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "5xx lỗi phía máy chủ" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Thời gian phản hồi theo phân vị",
+      "description": "Ba đường tách xa nhau nghĩa là có một nhóm nhỏ request rất chậm — thường là truy vấn nặng hoặc chờ Cloud SQL.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "A", "legendFormat": "p50 — nửa số request" },
+        { "expr": "histogram_quantile(0.95, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "B", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le))", "refId": "C", "legendFormat": "p99 — chậm nhất" }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 2 }
+            ]
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p50 — nửa số request" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "super-light-blue" } }] },
+          { "matcher": { "id": "byName", "options": "p95" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] },
+          { "matcher": { "id": "byName", "options": "p99 — chậm nhất" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] }
+        ]
+      }
+    },
+    {
+      "type": "row",
+      "title": "Máy chủ",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU theo loại tải",
+      "description": "iowait cao mà user thấp nghĩa là đang chờ đĩa hoặc mạng, không phải thiếu CPU.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 15 },
+      "targets": [
+        { "expr": "avg by (mode) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) * 100", "refId": "A", "legendFormat": "{{mode}}" }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 25,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bộ nhớ",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 15 },
+      "targets": [
+        { "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes", "refId": "A", "legendFormat": "đang dùng" },
+        { "expr": "node_memory_MemAvailable_bytes", "refId": "B", "legendFormat": "còn trống" }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 25,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "đang dùng" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "còn trống" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Mạng",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 15 },
+      "targets": [
+        { "expr": "sum(rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[5m]))", "refId": "A", "legendFormat": "nhận" },
+        { "expr": "sum(rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[5m]))", "refId": "B", "legendFormat": "gửi" }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Container",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU theo container",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"fin07.*\"}[5m])) * 100",
+          "refId": "A",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"], "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bộ nhớ theo container",
+      "description": "So với giới hạn đặt trong deploy/docker-compose.vm.yml: api và worker 768 MB, web 192 MB, redis 384 MB.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "targets": [
+        {
+          "expr": "sum by (name) (container_memory_working_set_bytes{name=~\"fin07.*\"})",
+          "refId": "A",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"], "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Hàng đợi tác vụ và Cloud SQL",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Khoá trong Redis — độ sâu hàng đợi",
+      "description": "API đẩy tác vụ điều tra vào đây, worker lấy ra. Đường đi lên đều mà không tụt nghĩa là worker chết hoặc chậm hơn tốc độ nạp.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 32 },
+      "targets": [
+        { "expr": "sum(redis_db_keys)", "refId": "A", "legendFormat": "số khoá" }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "dashed" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 500 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Kết nối tới Cloud SQL",
+      "description": "Cloud SQL db-f1-micro có trần kết nối thấp. Số này chạm trần là API bắt đầu nhận lỗi kết nối.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 32 },
+      "targets": [
+        {
+          "expr": "sum(pg_stat_database_numbackends{datname=\"fin07\"})",
+          "refId": "A",
+          "legendFormat": "đang mở"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Giao dịch cơ sở dữ liệu mỗi giây",
+      "description": "rollback tăng cùng commit là bình thường; rollback tăng một mình là dấu hiệu lỗi ứng dụng.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 32 },
+      "targets": [
+        { "expr": "sum(rate(pg_stat_database_xact_commit{datname=\"fin07\"}[5m]))", "refId": "A", "legendFormat": "commit" },
+        { "expr": "sum(rate(pg_stat_database_xact_rollback{datname=\"fin07\"}[5m]))", "refId": "B", "legendFormat": "rollback" }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "showPoints": "never"
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "commit" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "rollback" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Mục tiêu Prometheus",
+      "description": "Hàng nào giá trị 0 là Prometheus không scrape được mục tiêu đó.",
+      "datasource": { "type": "prometheus", "uid": "${DS}" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 39 },
+      "targets": [{ "expr": "up", "refId": "A", "instant": true, "format": "table" }],
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Value", "desc": false }]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "environment": true, "project": true },
+            "renameByName": { "job": "Nhóm", "instance": "Địa chỉ", "Value": "Sống" }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "left", "cellOptions": { "type": "auto" } },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "CHẾT", "color": "red", "index": 0 },
+                "1": { "text": "sống", "color": "green", "index": 1 }
+              }
+            }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Sống" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+              { "id": "custom.width", "value": 120 }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
