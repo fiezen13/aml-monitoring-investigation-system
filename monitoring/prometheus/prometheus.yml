@@ -35,20 +35,23 @@ scrape_configs:
     static_configs:
       - targets: ["node-exporter:9100"]
 
-  # Từng container: CPU, bộ nhớ, I/O.
-  - job_name: cadvisor
-    static_configs:
-      - targets: ["cadvisor:8080"]
-    metric_relabel_configs:
-      # cAdvisor sinh rất nhiều chuỗi. Giữ lại đúng phần dùng trong dashboard;
-      # phần còn lại chỉ làm phình đĩa và chậm truy vấn.
-      - source_labels: [__name__]
-        regex: "container_(cpu_usage_seconds_total|memory_working_set_bytes|network_(receive|transmit)_bytes_total|fs_usage_bytes|spec_memory_limit_bytes|last_seen)"
-        action: keep
-      # Bỏ chuỗi không gắn với container nào (tổng của cgroup gốc).
-      - source_labels: [name]
-        regex: "^$"
-        action: drop
+  # KHÔNG có cAdvisor — số liệu theo từng container hiện không thu được.
+  #
+  # Docker 29 dùng containerd snapshotter (`Storage Driver: overlayfs`,
+  # `driver-type: io.containerd.snapshotter.v1`), bỏ hẳn bố cục
+  # /var/lib/docker/image/overlay2/layerdb mà cAdvisor dựa vào để nhận diện
+  # container. Nó khởi động được nhưng không đăng ký nổi container nào:
+  #
+  #   Failed to create existing container: … failed to identify the
+  #   read-write layer ID … no such file or directory
+  #
+  # Đã thử v0.49.1 và v0.52.1, cả hai đều cho 0 chuỗi có nhãn `name`, kể cả
+  # khi trỏ thẳng vào containerd bằng --containerd-namespace=moby.
+  #
+  # Hệ quả chấp nhận được: node-exporter vẫn cho toàn bộ tài nguyên máy, và
+  # đây là VM chạy đúng một hệ thống — biết máy hết RAM quan trọng hơn biết
+  # container nào chiếm phần lớn. Thà thiếu một tầng số liệu còn hơn để một
+  # thành phần hỏng nằm trong stack và ngốn CPU mà không cho lại gì.
 
   # Caddy đứng trước toàn bộ hệ thống nên số liệu của nó là thứ người dùng
   # thật sự trải nghiệm: bao nhiêu request, chậm bao nhiêu, lỗi bao nhiêu.

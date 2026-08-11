@@ -18,8 +18,7 @@ Grafana <http://localhost:3000> · Prometheus <http://localhost:9090>
 
 | Nguồn | Trả lời câu hỏi |
 |---|---|
-| `node-exporter` | Máy còn chỗ không — CPU, RAM, đĩa, mạng |
-| `cadvisor` | Container nào đang ăn tài nguyên |
+| `node-exporter` | Máy còn chỗ không — CPU, RAM, đĩa, mạng, tải |
 | `caddy` | **Người dùng thật thấy gì** — tốc độ, mã lỗi |
 | `redis-exporter` | Hàng đợi tác vụ có bị ứ không |
 | `postgres-exporter` | Cloud SQL còn nhận kết nối không |
@@ -29,6 +28,29 @@ chi phí thuần — tốn đĩa, tốn CPU, và làm chậm mọi truy vấn v�
 
 Số liệu Caddy là thứ đáng tin nhất trong năm nguồn: nó đo ở rìa hệ thống, nên phản ánh đúng cái
 người dùng nhận được, không phải cái ứng dụng *nghĩ* rằng nó đã trả về.
+
+### Không có: số liệu theo từng container
+
+Bộ này **cố ý không dùng cAdvisor**, dù đó là lựa chọn mặc định của hầu hết hướng dẫn.
+
+Docker 29 trên VM dùng containerd snapshotter (`Storage Driver: overlayfs`,
+`driver-type: io.containerd.snapshotter.v1`) và bỏ hẳn bố cục
+`/var/lib/docker/image/overlay2/layerdb` mà cAdvisor dựa vào để nhận diện container. Nó khởi động
+được, endpoint `/metrics` trả lời bình thường, nhưng không đăng ký nổi container nào:
+
+```
+Failed to create existing container: … failed to identify the read-write layer ID … no such file
+```
+
+Đã thử `v0.49.1` và `v0.52.1`, cả hai cho **0 chuỗi** có nhãn `name`, kể cả khi trỏ thẳng vào
+containerd bằng `--containerd-namespace=moby`.
+
+Hệ quả chấp nhận được: `node-exporter` vẫn cho toàn bộ tài nguyên máy, và đây là VM chạy đúng một
+hệ thống — biết máy sắp hết RAM quan trọng hơn biết container nào chiếm phần lớn. Thà thiếu một tầng
+số liệu còn hơn để một thành phần hỏng nằm trong stack, ngốn CPU và bộ nhớ mà không cho lại gì.
+
+Cần số liệu theo container thật thì hai đường: hạ Docker xuống bản dùng graphdriver `overlay2`, hoặc
+chờ cAdvisor hỗ trợ containerd snapshotter.
 
 ### Chưa có: số liệu tầng ứng dụng
 
@@ -63,7 +85,7 @@ trả lời *"hỏng ở đâu"*.
 | Tình trạng chung | 7 ô số: dịch vụ sống, CPU, RAM, đĩa, p95, tỷ lệ 5xx, uptime |
 | Lưu lượng người dùng | Request/giây theo nhóm mã trạng thái; p50/p95/p99 |
 | Máy chủ | CPU theo loại tải, bộ nhớ, mạng |
-| Container | CPU và bộ nhớ từng container |
+| Tải máy chủ và đĩa | Tải trung bình so với số nhân CPU, tốc độ đọc/ghi đĩa |
 | Hàng đợi và Cloud SQL | Độ sâu hàng đợi Redis, kết nối, commit/rollback |
 | (cuối) | Bảng mục tiêu Prometheus — hàng nào `CHẾT` là scrape hỏng |
 
@@ -117,7 +139,7 @@ Dựng trên VM cần thêm lớp phủ như phần còn lại của stack:
 ```bash
 docker compose -f docker-compose.yml -f deploy/docker-compose.vm.yml \
                -f deploy/docker-compose.cloudsql.yml --profile obs \
-    up -d --wait prometheus grafana node-exporter cadvisor redis-exporter postgres-exporter
+    up -d --wait prometheus grafana node-exporter redis-exporter postgres-exporter
 ```
 
 `MONITORING_PG_DSN` trong `.env` phải trỏ tới Cloud SQL và **không có tiền tố `+psycopg`** —
@@ -150,19 +172,17 @@ VM `e2-medium` chỉ có 4 GB, nên mọi service đều có trần bộ nhớ:
 |---|---|
 | prometheus | 512 MB |
 | grafana | 320 MB |
-| cadvisor | 320 MB |
 | postgres-exporter | 96 MB |
 | node-exporter | 96 MB |
 | redis-exporter | 64 MB |
 
-Tổng trần khoảng 1,4 GB; thực tế thấp hơn nhiều khi hệ thống rảnh. `cadvisor` là thành phần ngốn CPU
-nhất — đã tắt bớt nhóm số liệu không dùng qua `--disable_metrics`, và Prometheus còn lọc thêm một
-lần bằng `metric_relabel_configs` để không lưu những chuỗi dashboard không đụng tới.
+Tổng trần khoảng 1,1 GB; thực tế thấp hơn nhiều khi hệ thống rảnh.
 
 Prometheus giữ **15 ngày và trần 2 GB**. Đặt cả hai chứ không chỉ một: giới hạn theo thời gian không
 cứu được khi một đợt số liệu bất thường làm đầy đĩa trước hạn xoá.
 
-Chật quá thì bỏ `cadvisor` trước — mất số liệu theo container, giữ được phần còn lại.
+Chật quá thì hạ `PROMETHEUS_RETENTION` xuống trước — mất chiều sâu lịch sử, giữ được toàn bộ số liệu
+hiện tại.
 
 ---
 

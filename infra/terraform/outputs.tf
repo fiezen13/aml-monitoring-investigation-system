@@ -32,7 +32,33 @@ output "database_url" {
   value = format(
     "postgresql+psycopg://%s:%s@%s:5432/%s?sslmode=require",
     google_sql_user.app.name,
-    random_password.db.result,
+    # urlencode BẮT BUỘC: mật khẩu sinh ngẫu nhiên chứa `?`, `&`, `=`, `%`,
+    # `:` — đều là ký tự có nghĩa trong URL. Không mã hoá thì chuỗi kết nối
+    # bị cắt sai chỗ, và thư viện nào chặt chẽ sẽ từ chối:
+    #
+    #   invalid port ":WUP7=d&3XlRcI)M%xIj-2X" after host
+    #
+    # Đã gặp thật với postgres-exporter. SQLAlchemy dễ tính hơn nên ứng dụng
+    # vẫn nối được — đúng loại lỗi chỉ lộ ra ở thành phần thứ hai.
+    urlencode(random_password.db.result),
+    google_sql_database_instance.main.public_ip_address,
+    google_sql_database.fin07.name,
+  )
+}
+
+output "monitoring_pg_dsn" {
+  description = <<-EOT
+    Chuỗi kết nối cho postgres-exporter. Khác database_url ở chỗ KHÔNG có tiền
+    tố `+psycopg`: exporter dùng libpq, không hiểu cú pháp phương ngữ của
+    SQLAlchemy. Đặt vào MONITORING_PG_DSN trong .env.
+
+    terraform output -raw monitoring_pg_dsn
+  EOT
+  sensitive   = true
+  value = format(
+    "postgresql://%s:%s@%s:5432/%s?sslmode=require",
+    google_sql_user.app.name,
+    urlencode(random_password.db.result),
     google_sql_database_instance.main.public_ip_address,
     google_sql_database.fin07.name,
   )

@@ -575,32 +575,6 @@ services:
           memory: 96m
     restart: unless-stopped
 
-  # Số liệu từng container.
-  cadvisor:
-    image: ${CADVISOR_IMAGE:-gcr.io/cadvisor/cadvisor:v0.49.1}
-    profiles: ["obs"]
-    privileged: true
-    command:
-      # Chỉ bật đúng nhóm số liệu dùng trong dashboard. Mặc định cAdvisor thu
-      # rất nhiều thứ và là thành phần ngốn CPU nhất của cụm giám sát — trên
-      # một VM 4 GB thì đó là cái giá không đáng trả.
-      - --docker_only=true
-      - --housekeeping_interval=15s
-      - --disable_metrics=percpu,sched,tcp,udp,advtcp,process,hugetlb,referenced_memory,cpu_topology,resctrl
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    devices:
-      - /dev/kmsg
-    deploy:
-      resources:
-        limits:
-          memory: 320m
-    restart: unless-stopped
-
   redis-exporter:
     image: ${REDIS_EXPORTER_IMAGE:-oliver006/redis_exporter:v1.62.0}
     profiles: ["obs"]

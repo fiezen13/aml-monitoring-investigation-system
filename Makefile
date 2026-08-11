@@ -178,13 +178,13 @@ aml-smoke:  ## Kiểm tra khói đầu–cuối bằng file mẫu
 OBS := $(COMPOSE) --profile obs
 
 obs-up:  ## Dựng Prometheus, Grafana và các exporter
-	$(OBS) up -d --wait prometheus grafana node-exporter cadvisor redis-exporter postgres-exporter
+	$(OBS) up -d --wait prometheus grafana node-exporter redis-exporter postgres-exporter
 	@echo ""
 	@echo "  Grafana     http://localhost:$${GRAFANA_PORT:-3000}   (admin / $${GRAFANA_ADMIN_PASSWORD:-admin})"
 	@echo "  Prometheus  http://localhost:$${PROMETHEUS_PORT:-9090}"
 
 obs-down:  ## Dừng cụm giám sát, giữ dữ liệu đã thu
-	$(OBS) stop prometheus grafana node-exporter cadvisor redis-exporter postgres-exporter
+	$(OBS) stop prometheus grafana node-exporter redis-exporter postgres-exporter
 
 obs-status:  ## Mục tiêu nào Prometheus đang scrape được
 	@curl -s http://localhost:$${PROMETHEUS_PORT:-9090}/api/v1/targets \

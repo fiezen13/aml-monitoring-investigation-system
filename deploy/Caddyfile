@@ -7,6 +7,15 @@
 
 {
 	email {$ACME_EMAIL}
+
+	# Caddy TẮT số liệu HTTP theo mặc định vì chúng tốn chi phí trên đường
+	# phục vụ request. Không có dòng này thì endpoint /metrics vẫn trả lời,
+	# nhưng không có `caddy_http_requests_total` hay
+	# `caddy_http_request_duration_seconds` nào cả — nghĩa là dashboard trống
+	# đúng ở hai ô quan trọng nhất, mà không có lỗi nào chỉ ra vì sao.
+	servers {
+		metrics
+	}
 }
 
 # Số liệu cho Prometheus, trên một cổng riêng.
