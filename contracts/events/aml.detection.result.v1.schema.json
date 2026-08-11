@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/aml.detection.result.v1.schema.json",
+  "title": "aml.detection.result.v1 — payload",
+  "description": "Kết quả của MỘT detector trên MỘT thực thể. Topic `aml.detection.result.v1`, khoá `entity_id` (kiến trúc mục 10.2). Mọi kết quả đều được phát ra, kể cả khi không vượt ngưỡng — chúng là dữ liệu kiểm toán và là đầu vào của alert aggregation (mục 7.3). Một alert KHÔNG được tạo trực tiếp từ đây; nó là việc của alert-aggregator.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "result_id",
+    "entity",
+    "detector",
+    "evaluated_at",
+    "as_of_time",
+    "score",
+    "triggered",
+    "reason_codes"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "result_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "entity": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/entity_ref" },
+
+    "detector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["detector_id", "detector_type", "version"],
+      "properties": {
+        "detector_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "detector_type": {
+          "type": "string",
+          "enum": ["SCREENING", "RULE", "CEP", "BEHAVIORAL", "GRAPH", "ML_SUPERVISED", "ML_UNSUPERVISED"],
+          "description": "Ứng với các bước 2-6 của pipeline phát hiện (mục 7.1). Score fusion là một bước riêng, không phải một detector_type."
+        },
+        "version": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+
+    "evaluated_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "as_of_time": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Trạng thái dữ liệu tại thời điểm nào đã được dùng để đánh giá. Đây là thứ cho phép replay ra đúng kết quả cũ."
+    },
+
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Điểm đã chuẩn hoá về [0,1]. Detector nào có thang riêng thì phải calibrate trước khi phát ra — so sánh điểm giữa các detector chỉ có nghĩa khi cùng thang."
+    },
+
+    "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" },
+
+    "triggered": {
+      "type": "boolean",
+      "description": "Có vượt ngưỡng hiện hành không. Bản ghi không triggered VẪN được lưu: chúng là mẫu số để đo false negative khi tuning ngưỡng về sau."
+    },
+
+    "threshold": {
+      "type": "number",
+      "description": "Ngưỡng đang áp dụng tại thời điểm đánh giá. Lưu lại vì ngưỡng thay đổi theo thời gian và replay cần biết ngưỡng nào đã dùng."
+    },
+
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/reason_code" },
+      "description": "Tối thiểu một lý do. Một điểm rủi ro không kèm lý do là thứ không giải trình được với thanh tra và không dùng được cho analyst — nên contract từ chối nó ở tầng schema."
+    },
+
+    "typology_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["typology_id", "confidence"],
+        "properties": {
+          "typology_id": { "type": "string", "maxLength": 128 },
+          "typology_version": { "type": "string", "maxLength": 32 },
+          "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" }
+        }
+      },
+      "description": "Gợi ý typology, luôn là ỨNG VIÊN kèm độ tin cậy. Kiến trúc mục 1.2: không suy luận chắc chắn typology khi chỉ có dấu hiệu tài chính mơ hồ."
+    },
+
+    "feature_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature_set_id", "as_of_time"],
+        "properties": {
+          "feature_set_id": { "type": "string", "maxLength": 128 },
+          "as_of_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+          "definition_version": { "type": "string", "maxLength": 64 }
+        }
+      },
+      "description": "Chính xác những feature snapshot nào đã được dùng. Không có nó thì 'replayable' chỉ là một từ trong tài liệu."
+    },
+
+    "quality_flags": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/quality_flag" }
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  }
+}

@@ -1,224 +1,200 @@
-# 🤖 AI20K Agent Template
+# FIN-07 — Nền tảng phòng, chống rửa tiền Level 1 cho ngân hàng
 
-> ## 🚀 FIN-07 — chạy toàn bộ hệ thống bằng một lệnh
->
-> ```bash
-> docker compose up
-> ```
->
-> Dựng PostgreSQL, Redis, API FastAPI, worker, console React, và nạp sẵn dữ
-> liệu mẫu. Không cần tạo `.env` trước — mọi biến đều có mặc định cho môi
-> trường phát triển.
->
-> - Console — <http://localhost:5173>
-> - API docs — <http://localhost:8000/docs>
->
-> | Tài liệu | Nội dung |
-> |---|---|
-> | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
-> | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | Toàn bộ biến môi trường |
-> | [docs/CI.md](docs/CI.md) | Pipeline chạy gì trên mỗi pull request |
->
-> Phần còn lại của file này là README gốc của template AI20K.
+Console giám sát và điều tra rửa tiền, xây theo *Kiến trúc chi tiết nền tảng AML Level 1 cho ngân
+hàng* (v1.0, 05/08/2026). Level 1 nghĩa là: vận hành **trong ranh giới dữ liệu và quyền truy cập
+của một ngân hàng**, không phụ thuộc dữ liệu Nhà nước hay dữ liệu xuyên biên giới.
+
+```bash
+docker compose up
+```
+
+- Console — <http://localhost:5173>
+- API docs — <http://localhost:8000/docs>
+- Bản chạy thật — <https://amlmonitoring.site/>
+
+Không cần tạo `.env`, không cần cài Python hay Node. Chỉ cần Docker.
 
 ---
 
-Template chính thức cho học viên **VinUni AI20K Build Phase** — cung cấp sẵn cấu trúc dự án, code mẫu, và hướng dẫn kỹ thuật chi tiết để xây dựng AI Agent đạt điểm cao (35+/50).
+## 1. Trạng thái thật của từng phần
 
-> 📖 **Technical Guidebook:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
+Bảng này là thứ cần đọc trước tiên. Một tài liệu mô tả năng lực chưa tồn tại như thể đã chạy còn tệ
+hơn không có tài liệu.
 
-## 🎯 Template này dùng để làm gì?
+| Thành phần | Trạng thái | Ở đâu |
+|---|---|---|
+| Console 22 màn hình (React + Vite) | **ĐANG CHẠY** — mọi trang gọi API thật | `web/` |
+| API FastAPI, 40 endpoint | **ĐANG CHẠY** | `src/api/` |
+| Máy trạng thái vụ việc + worker nền | **ĐANG CHẠY** — chuyển trạng thái tất định, dừng ở chỗ cần người duyệt | `src/domain.py`, `src/worker/` |
+| Nhật ký kiểm toán bất biến, phê duyệt ghi một lần | **ĐANG CHẠY** — cưỡng chế bằng trigger PostgreSQL | `db/init/002` |
+| Cách ly nhãn khỏi vai trò agent | **ĐANG CHẠY** — cưỡng chế bằng quyền PostgreSQL | `db/init/003` |
+| Đường ống CSV → Kafka → Flink → HDFS | **ĐANG CHẠY** — profile `aml`, không chạy mặc định | `src/aml/`, `flink/` |
+| Bộ dữ liệu huấn luyện và đánh giá | **IBM AML công khai** — nguồn duy nhất của mọi con số hiệu năng | `data/raw/ibm-aml/` |
+| Hợp đồng dữ liệu, sự kiện, tool | **ĐÃ ĐỊNH NGHĨA**, phần lớn chưa có bên hiện thực | `contracts/` |
+| Detection Engine (rules, behavioral, graph, ML) | **CHƯA CÓ** | `services/detection/` |
+| Feature platform, entity resolution | **CHƯA CÓ** | `services/feature-platform/` |
+| AI Investigation Agent | **KHUNG MẪU** — `src/agents/` không gọi LLM, không gọi tool, không chạm DB | `services/agent-runtime/` |
 
-Khi tham gia AI20K Build Phase, mỗi đội cần xây dựng một AI Agent hoàn chỉnh — từ kiến trúc, code, test, đến deploy. Thay vì bắt đầu từ con số không, template này cung cấp:
+**Điểm rủi ro hiện tại đến từ luật và heuristic trong `scripts/seed_data.py`, chưa phải mô hình đã
+huấn luyện.** Toàn bộ dữ liệu là tổng hợp: không khách hàng thật, không danh sách trừng phạt thật.
 
-- **Cấu trúc thư mục chuẩn** — đã được thiết kế theo best practices (separation of concerns)
-- **Code mẫu** cho các phần cốt lõi: LangGraph agent, FastAPI API, config, schemas
-- **Docker + CI/CD sẵn** — Dockerfile multi-stage, GitHub Actions workflow
-- **Hướng dẫn kỹ thuật 10 chương** — từ clone template đến nộp bài Demo Day
-- **Checklist 10 deliverables** — đảm bảo không bỏ sót yêu cầu BTC
-- **AI Usage Logging tự động** — Pre-configured hooks cho Claude Code, Cursor, Codex, Gemini CLI, Antigravity, và GitHub Copilot
+---
 
-## ⚡ Quick Start
+## 2. Kiến trúc
 
-### Bước 1: Fork hoặc Clone
+Tài liệu kiến trúc chuẩn là PDF trong [`docs/architecture/`](docs/architecture/) — sáu mặt phẳng,
+mô hình thực thể, contract, ma trận phê duyệt agent, lộ trình Level 1.
+
+> **Cần bổ sung:** `Kien_truc_chi_tiet_AML_Level1_Ngan_hang.pdf` hiện **chưa được commit** vào repo.
+> Nó là nguồn sự thật của mọi quyết định thiết kế nên phải nằm trong repo, không chỉ trong chat.
+
+Sáu mặt phẳng và chỗ đặt code: xem [`services/README.md`](services/README.md).
+
+Bốn ranh giới quan trọng nhất, và chúng được cưỡng chế ở tầng nào:
+
+| Ranh giới | Cưỡng chế ở đâu |
+|---|---|
+| LLM không nằm trên đường quyết định đồng bộ | Agent chạy bất đồng bộ qua hàng đợi Redis |
+| Agent không đọc được nhãn / ground truth | Quyền PostgreSQL (`db/init/003`) |
+| Nhật ký và bằng chứng chỉ ghi thêm | Trigger PostgreSQL (`db/init/002`) |
+| Mọi khẳng định của agent phải có bằng chứng | JSON Schema (`contracts/agent/`, `minItems: 1`) |
+
+---
+
+## 3. Cấu trúc repo
+
+```
+contracts/          Hợp đồng dữ liệu, sự kiện, tool — NGUỒN SỰ THẬT DUY NHẤT về hình dạng dữ liệu
+  common/           $defs dùng chung
+  events/           Envelope CloudEvents + payload từng topic Kafka
+  canonical/        Thực thể vùng GOLD
+  agent/            Tool call, agent state, structured output
+  registry/         Typology registry
+  ingestion/        Hợp đồng đường ống IBM AML — phần ĐANG CHẠY
+
+src/                Backend Python
+  api/              FastAPI: routes.py (quy trình AML) + fc_routes.py (màn hình Financial City)
+  worker/           Worker nền, máy trạng thái vụ việc
+  aml/              Producer phát lại CSV → Kafka
+  agents/           Khung mẫu LangGraph (chưa hiện thực)
+  domain.py         Máy trạng thái và từ vựng nghiệp vụ dùng chung
+
+services/           Nhà chờ sẵn cho các thành phần chưa viết (detection, feature, agent runtime)
+flink/              Job Flink nạp dữ liệu vào HDFS
+web/                Console React + Vite + TypeScript
+db/init/            Lược đồ SQL đánh số, chạy tuần tự khi PostgreSQL khởi tạo
+scripts/            Vận hành: seed, migrate, thao tác AML
+ci/ deploy/ jenkins/  CI/CD và triển khai
+docs/
+  architecture/     Tài liệu kiến trúc (PDF)
+  operations/       Runbook, CI/CD, triển khai VM
+  ml/               Đặc tả huấn luyện, đặc trưng, EDA, kiến trúc ML/Agent
+  data-platform/    Topology đường ống Kafka/Flink/HDFS
+  adr/              Quyết định kiến trúc
+tests/              pytest, chia theo module
+```
+
+---
+
+## 4. Chạy
+
+### Toàn bộ hệ thống
 
 ```bash
-# Clone template
-git clone https://github.com/AI20K-Build-Cohort-2/starter-code-template.git team-YOUR_TEAM_NAME
-cd team-YOUR_TEAM_NAME
-
-# Xóa git history cũ và khởi tạo lại
-rm -rf .git
-git init
-git add .
-git commit -m "feat: khởi tạo dự án từ template"
+docker compose up -d --wait     # postgres, redis, seed, api, worker, web
+make help                       # danh sách lệnh
 ```
 
-### Bước 2: Setup môi trường
+### Đường ống nạp dữ liệu AML
+
+Nằm sau profile `aml`, **không** chạy cùng `docker compose up` (nặng ~4 GB RAM):
 
 ```bash
-# Tạo virtual environment
-python3.11 -m venv .venv
-source .venv/bin/activate
-
-# Cài dependencies
-pip install -e ".[dev]"
-
-# Cấu hình API keys
-cp .env.example .env
-# Mở .env và thêm OPENAI_API_KEY của bạn
-# Đồng thời cập nhật AI_LOG_API_KEY bằng key riêng từ link mời của BTC
-# (giá trị trong .env.example chỉ là placeholder)
+make aml-up                 # Kafka + HDFS + Flink, tạo topic
+make aml-submit             # nộp job Flink
+make aml-producer-sample    # phát 1.000 giao dịch đầu
+make aml-smoke              # kiểm tra khói đầu–cuối, không cần tải gì từ Kaggle
 ```
 
-### Bước 3: Cài AI Logging Hooks
+Chi tiết: [`contracts/ingestion/README.md`](contracts/ingestion/README.md).
+Flink UI <http://localhost:8081> · HDFS UI <http://localhost:9870>
+
+### Phát triển ngoài Docker
 
 ```bash
-# Linux / macOS / Git Bash
-bash scripts/setup_hooks.sh
-
-# Windows PowerShell
-# powershell -ExecutionPolicy Bypass -File scripts\setup_hooks.ps1
+docker compose up -d postgres redis
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env            # đổi host trong DATABASE_URL thành localhost
+make run                        # API
+make worker                     # worker, cửa sổ khác
+cd web && npm install && npm run dev
 ```
 
-Hooks tự động log mọi AI prompt khi dùng Claude Code, Cursor, Codex, Gemini CLI, Antigravity, hoặc GitHub Copilot. Không cần thao tác thủ công.
+---
 
-### Bước 4: Chạy server
+## 5. Kiểm thử
 
 ```bash
-# Chạy FastAPI backend
-uvicorn src.main:app --reload --port 8000
-
-# Mở Swagger UI
-# http://localhost:8000/docs
+make check                      # lint + toàn bộ test — chạy trước khi mở PR
+make contracts-check            # chỉ kiểm chứng hợp đồng dữ liệu
+cd web && npm run typecheck && npm run build
+cd flink/aml-ingestion && mvn -B test
 ```
 
-### Bước 5: Đọc hướng dẫn
+Kiểm thử tích hợp dùng PostgreSQL và Redis **thật**, không mock: các ràng buộc quan trọng nhất nằm
+ở tầng cơ sở dữ liệu, và mock một cơ sở dữ liệu rồi kiểm tra mock không chứng minh được gì.
 
-📖 Mở **[Technical Guidebook](https://phoenix.note.transformerlabs.ai/technical-book)** và làm theo từng chương.
+---
 
-## 📁 Cấu trúc dự án
+## 6. Hợp đồng dữ liệu — đọc trước khi viết code mới
 
-```
-├── src/
-│   ├── agents/           # 🧠 LangGraph Agent
-│   │   ├── graph.py      #    State graph (nodes + edges)
-│   │   ├── state.py      #    State schema (TypedDict)
-│   │   ├── nodes/        #    Node functions
-│   │   └── tools/        #    Agent tools (@tool)
-│   ├── api/              # 🌐 FastAPI Backend
-│   │   └── routes.py     #    API endpoints
-│   ├── models/           # 📋 Pydantic schemas
-│   ├── services/         # 🔧 Business logic (LLM, etc.)
-│   ├── config.py         # ⚙️ Pydantic Settings
-│   └── main.py           # 🚀 App entry point
-├── tests/                # 🧪 pytest suite
-│   ├── test_agents/      #    Agent/graph tests
-│   └── test_api/         #    API endpoint tests
-├── scripts/              # 🔌 AI Logging Hooks
-│   ├── log_hook.py       #    Auto-log cho Claude/Cursor/Codex/Gemini/Copilot
-│   ├── log_antigravity.py#    Antigravity IDE prompt scanner
-│   ├── log_manual.py     #    Manual log cho ChatGPT / web tools
-│   ├── submit_log.py     #    Submit logs on git push
-│   └── setup_hooks.sh    #    One-time hook installer
-├── .claude/ .codex/ .cursor/ .gemini/  # Per-tool hook configs
-├── .agents/              # Antigravity rules + workflows
-├── .ai-log/              # 📊 AI usage logs (auto-generated)
-├── docs/
-│   ├── guide/            # 📖 Technical Guidebook (10 chapters)
-│   └── architecture_diagram.md
-├── eval/                 # 📊 Evaluation results
-├── presentation/         # 🎤 Demo Day slides
-├── .github/workflows/    # ⚡ CI/CD (GitHub Actions)
-├── .github/hooks/        # 🪝 Copilot hook config
-├── Dockerfile            # 🐳 Multi-stage build
-├── docker-compose.yml    # 🐙 Full stack orchestration
-└── README_boilerplate.md # 📝 README template cho đội của bạn
-```
+Mọi thành phần đọc/ghi dữ liệu phải bám vào một schema trong [`contracts/`](contracts/README.md).
+Không thành phần nào được tự định nghĩa lại một cấu trúc đã có ở đó.
 
-## 📚 Technical Guidebook — 10 Chương
+Bảy quy ước bắt buộc (chi tiết trong `contracts/README.md`): `schema_version` bắt buộc; thời gian
+tách bạch `event_time`/`ingestion_time`/`posting_time`/`available_from`; số tiền là chuỗi thập phân;
+mọi khẳng định có `evidence_refs`; mọi liên kết suy luận có `confidence` và `provenance`;
+`additionalProperties: false`; không có trường nhãn ẩn.
 
-| Chương | Nội dung | Thời gian |
-|---------|----------|-----------|
-| 1 | Lời mở đầu — Mục tiêu, cách sử dụng | 15 phút |
-| 2 | Khởi tạo dự án — Clone, setup, git workflow | 4 giờ |
-| 3 | Thiết kế kiến trúc — 3-tier, diagrams, ADR | 6 giờ |
-| 4 | **LangGraph Agent** — State, nodes, edges, tools, RAG | 8 giờ |
-| 5 | FastAPI — Routes, validation, error handling, streaming | 6 giờ |
-| 6 | Giao diện — Next.js + Streamlit quickstart | 6 giờ |
-| 7 | DevOps — Docker, CI/CD, deploy, logging | 6 giờ |
-| 8 | Kiểm thử — Unit test, integration test, RAGAS | 4 giờ |
-| 9 | Demo Day — 10 deliverables, checklist, tips | 2 giờ |
-| 10 | Tài nguyên — Khóa học, docs, BMAD method | tham khảo |
+Thay đổi phá vỡ tương thích phải tạo version mới, giữ nguyên bản cũ, và có kế hoạch chuyển đổi.
 
-📖 **Đọc online:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
+---
 
-## 📋 10 Deliverables cho Demo Day
+## 7. Sở hữu
 
-| # | Deliverable | File vị trí | Template có sẵn |
-|---|-------------|-------------|:---:|
-| 1 | Source Code | `src/` | ✅ |
-| 2 | README.md | `README_boilerplate.md` → copy thành `README.md` | ✅ |
-| 3 | Architecture Diagram | `docs/architecture_diagram.md` | ✅ |
-| 4 | AI Logs | LangSmith (3 env vars) + Auto AI Usage Logging | ✅ |
-| 5 | Live URL | Deploy lên Render/Vercel | ⚡ CI/CD sẵn |
-| 6 | Video Demo | `presentation/` | 📝 |
-| 7 | Pitch Deck | `presentation/` | 📝 |
-| 8 | Development Journal | `JOURNAL.md` | ✅ |
-| 9 | Worklog | `WORKLOG.md` | ✅ |
-| 10 | Evaluation Evidence | `eval/` | 📝 |
+| Người | Phạm vi |
+|---|---|
+| Bảo | Kiến trúc, hạ tầng, CI/CD, `contracts/`, `db/init/`, `flink/` |
+| Hưng | `web/` |
+| Tin Tin | `src/api/`, `src/models/`, `src/worker/` |
+| Hiển | `src/agents/`, `services/agent-runtime/` |
 
-## 🛠 Tech Stack
+Chi tiết ở [`.github/CODEOWNERS`](.github/CODEOWNERS) và [`WORKLOG.md`](WORKLOG.md).
+Quy trình làm việc: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| AI Agent | LangGraph + LangChain | Latest |
-| Backend | FastAPI + Uvicorn | 0.100+ |
-| LLM | OpenAI GPT-4o-mini | API |
-| Frontend | Next.js / Streamlit | 14+ / 1.30+ |
-| Database | SQLite (dev) / PostgreSQL (prod) | — |
-| DevOps | Docker + GitHub Actions | — |
-| Testing | pytest + pytest-asyncio | 8+ |
+---
 
-## 📊 AI Usage Logging
+## 8. An toàn dữ liệu
 
-Template đã tích hợp sẵn auto-logging hooks cho 6 AI tools:
+- Toàn bộ dữ liệu trong repo là **tổng hợp từ mô phỏng**. Không dữ liệu khách hàng thật.
+- Bí mật đọc từ biến môi trường; `.env` không bao giờ commit. Xem [`SECURITY.md`](SECURITY.md).
+- Bộ dữ liệu IBM AML không commit (250 MB – 10 GB) — xem `data/raw/ibm-aml/README.md`.
+- Phạm vi khẳng định: bộ dữ liệu này đủ để dựng PoC và benchmark có căn cứ, **chưa đủ** để khẳng
+  định mô hình sẵn sàng triển khai sản xuất. Việc đó cần hiệu chỉnh và kiểm định trên dữ liệu thật
+  đã được bảo vệ tại một tổ chức có thẩm quyền.
 
-| Tool | Cơ chế | Config |
-|------|--------|--------|
-| Claude Code | `.claude/settings.json` hooks | Tự động |
-| Cursor | `.cursor/hooks.json` | Tự động |
-| OpenAI Codex CLI | `.codex/hooks.json` | Tự động |
-| Gemini CLI | `.gemini/settings.json` | Tự động |
-| GitHub Copilot | `.github/hooks/hooks.json` | Tự động |
-| Antigravity IDE | Pre-push scan transcript | Tự động trên `git push` |
+---
 
-Tất cả prompts và tool calls được log vào `.ai-log/session.jsonl` và tự động submit lên grading server mỗi khi `git push`.
+## 9. Tài liệu
 
-**ChatGPT / web tools khác** — log thủ công:
-```bash
-bash scripts/_pyrun.sh scripts/log_manual.py --tool chatgpt --prompt "What you asked"
-```
-
-> ⚠️ Chạy `bash scripts/setup_hooks.sh` một lần sau khi clone để cài pre-push hook.
-
-## 📖 Đọc Technical Guidebook
-
-**Online (khuyến nghị):** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
-
-Đăng nhập bằng GitHub (cùng account đã được BTC mời vào org `AI20K-Build-Cohort-2`)
-→ chọn tab **Technical Book** ở sidebar trái → đọc 10 chương + topic sections,
-có table of contents bên phải, hỗ trợ light/dark/cyberpunk theme.
-
-**Offline:** mọi chương đều ở thư mục `docs/guide/` trong template này — mở bằng
-bất kỳ markdown viewer/editor nào (VS Code, Obsidian, GitHub UI, …).
-
-## 🔗 Liên kết
-
-- 📖 **Technical Guidebook:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
-- 🏫 **AI20K Program:** VinUni AI20K Build Phase
-- 👨‍🏫 **Mentor:** Đặng Hải Lộc
-
-## 📄 License
-
-MIT — Sử dụng tự do cho mục đích giáo dục.
+| Tài liệu | Nội dung |
+|---|---|
+| [`docs/architecture/`](docs/architecture/) | Kiến trúc chuẩn (PDF) |
+| [`contracts/README.md`](contracts/README.md) | Hợp đồng dữ liệu và quy tắc thay đổi |
+| [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
+| [`docs/operations/CICD.md`](docs/operations/CICD.md) | Cổng chặn merge và pipeline giao hàng |
+| [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai lên VM sau Caddy + TLS |
+| [`.env.example`](.env.example) | Toàn bộ biến môi trường, kèm giải thích |
+| [`docs/ml/`](docs/ml/) | Đặc tả huấn luyện, đặc trưng và kiến trúc ML/Agent |
+| [`docs/adr/`](docs/adr/) | Quyết định kiến trúc |

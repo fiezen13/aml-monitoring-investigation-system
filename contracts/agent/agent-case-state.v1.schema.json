@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/agent/agent-case-state.v1.schema.json",
+  "title": "AgentCaseState v1",
+  "description": "Trạng thái bền vững của một lượt chạy agent (kiến trúc mục 8.3). Đây là thứ được checkpoint để lượt chạy tiếp tục được sau lỗi hoặc sau khi chờ người duyệt. Bất kỳ runtime nào (LangGraph, Temporal, tự viết) đều được, miễn là state khớp contract này — kiến trúc mục 8.7 nói rõ đó là lựa chọn triển khai, không phải ràng buộc.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "case_id",
+    "snapshot_time",
+    "user_id",
+    "role",
+    "purpose_id",
+    "workflow_state",
+    "budgets",
+    "status",
+    "versions"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "run_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "snapshot_time": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Toàn bộ lượt chạy nhìn dữ liệu như tại thời điểm này. Cố định ngay khi bắt đầu và KHÔNG đổi giữa chừng, kể cả khi lượt chạy bị tạm dừng vài giờ chờ người duyệt."
+    },
+
+    "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "role": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "purpose_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+
+    "workflow_state": {
+      "type": "string",
+      "enum": [
+        "INITIALIZED",
+        "CONTEXT_BUILT",
+        "PLANNING",
+        "COLLECTING_EVIDENCE",
+        "ANALYZING",
+        "CHECKING_CLAIMS",
+        "AWAITING_APPROVAL",
+        "COMPOSING_OUTPUT",
+        "COMPLETED",
+        "FAILED",
+        "ABORTED"
+      ],
+      "description": "Máy trạng thái tất định bao quanh phần suy luận xác suất (nguyên tắc kiến trúc số 4). Model không quyết định trạng thái kế tiếp — orchestrator quyết định."
+    },
+
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remaining_steps", "remaining_tokens"],
+      "description": "Ngân sách còn lại. Cạn ngân sách thì lượt chạy dừng và bàn giao cho người, KHÔNG phải chạy tiếp không giới hạn. Đây là cơ chế chống excessive agency (mục 8.9).",
+      "properties": {
+        "remaining_steps": { "type": "integer", "minimum": 0 },
+        "remaining_tokens": { "type": "integer", "minimum": 0 },
+        "remaining_tool_calls": { "type": "integer", "minimum": 0 },
+        "deadline_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "investigation_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["question_id", "text", "status"],
+        "properties": {
+          "question_id": { "type": "string", "maxLength": 128 },
+          "text": { "type": "string", "maxLength": 2048 },
+          "status": { "type": "string", "enum": ["OPEN", "ANSWERED", "UNANSWERABLE"] },
+          "answer_evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" }
+          }
+        }
+      },
+      "description": "UNANSWERABLE là một kết quả hợp lệ và có giá trị: nó nói cho analyst biết dữ liệu nào đang thiếu, thay vì để agent bịa ra câu trả lời."
+    },
+
+    "active_hypotheses": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hypothesis" }
+    },
+
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" }
+    },
+
+    "contradictory_evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" },
+      "description": "Giữ tách riêng để nó không bị lẫn vào đống bằng chứng ủng hộ rồi biến mất khỏi bản tóm tắt cuối."
+    },
+
+    "pending_tool_calls": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 128 }
+    },
+
+    "pending_approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["approval_id", "action", "requested_at"],
+        "properties": {
+          "approval_id": { "type": "string", "maxLength": 128 },
+          "action": {
+            "type": "string",
+            "enum": ["COMMIT_CASE_NOTE", "EDD_REQUEST", "STR_DRAFT", "RISK_RATING_CHANGE"],
+            "description": "Danh sách đóng theo ma trận phê duyệt (mục 8.6). Không có hành động nào tác động tới giao dịch — hold/freeze/reject KHÔNG nằm trong thẩm quyền agent ở bất kỳ mức phê duyệt nào."
+          },
+          "requested_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" }
+        }
+      }
+    },
+
+    "claims": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 128 },
+      "description": "ID của các claim đã sinh ra, chi tiết ở topic aml.agent.claim.v1."
+    },
+
+    "uncertainty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "overall_confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" },
+        "should_abstain": {
+          "type": "boolean",
+          "description": "Agent tự nhận là không đủ căn cứ để kết luận. Đây là đầu ra MONG MUỐN trong nhiều tình huống, không phải thất bại — mục 8.10 đo 'abstention quality' như một chỉ số chất lượng."
+        }
+      }
+    },
+
+    "blind_spots": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 512 },
+      "description": "Những gì lượt chạy này KHÔNG nhìn thấy được, ví dụ 'không có dữ liệu từ ngân hàng khác'. Bắt buộc phải nêu ở đầu ra cuối: một bản tóm tắt không nói về vùng mù sẽ được đọc như thể nó đã xét mọi khả năng."
+    },
+
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_version"],
+      "description": "Ghim mọi phiên bản đã tham gia. Không có nó thì không giải thích được vì sao lượt chạy hôm nay khác lượt chạy tuần trước trên cùng một case.",
+      "properties": {
+        "policy_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "model_versions": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" }
+        },
+        "prompt_versions": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" }
+        },
+        "tool_versions": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" }
+        }
+      }
+    },
+
+    "last_checkpoint": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "status": {
+      "type": "string",
+      "enum": ["RUNNING", "PAUSED_FOR_APPROVAL", "SUCCEEDED", "NEEDS_HUMAN", "FAILED", "ABORTED"],
+      "description": "NEEDS_HUMAN là kết thúc BÌNH THƯỜNG của một lượt điều tra, không phải lỗi. Agent đề xuất, con người quyết định."
+    },
+
+    "failure_reason": { "type": "string", "maxLength": 1024 }
+  },
+
+  "$defs": {
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hypothesis_id", "typology_id", "confidence", "status"],
+      "properties": {
+        "hypothesis_id": { "type": "string", "maxLength": 128 },
+        "typology_id": { "type": "string", "maxLength": 128 },
+        "statement": { "type": "string", "maxLength": 2048 },
+        "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" },
+        "status": { "type": "string", "enum": ["ACTIVE", "SUPPORTED", "WEAKENED", "REJECTED"] },
+        "supporting_evidence_refs": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" }
+        },
+        "contradicting_evidence_refs": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" }
+        },
+        "unknowns": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 512 }
+        }
+      }
+    }
+  }
+}

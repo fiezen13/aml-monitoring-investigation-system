@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/aml.analyst.decision.v1.schema.json",
+  "title": "aml.analyst.decision.v1 — payload",
+  "description": "Quyết định của con người trên một case. Topic `aml.analyst.decision.v1`, khoá `case_id`, dùng làm nhãn/feedback đã được phê duyệt (kiến trúc mục 10.2). Đây là nguồn nhãn DUY NHẤT được coi là đáng tin cho việc đánh giá — và nó KHÔNG bao giờ chảy thẳng vào feature online (mục 6.1: LABEL/EVAL tách quyền và tách vật lý).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "decision_id",
+    "case_id",
+    "decision_type",
+    "outcome",
+    "decided_at",
+    "decided_by",
+    "rationale"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "decision_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "decision_type": {
+      "type": "string",
+      "enum": [
+        "TRIAGE",
+        "DISPOSITION",
+        "ESCALATION",
+        "EDD_REQUEST_APPROVAL",
+        "STR_APPROVAL",
+        "RISK_RATING_CHANGE",
+        "SUPPRESSION_APPROVAL",
+        "REOPEN"
+      ]
+    },
+
+    "outcome": {
+      "type": "string",
+      "enum": ["APPROVED", "REJECTED", "MORE_INFO_REQUIRED", "TRUE_POSITIVE", "FALSE_POSITIVE", "INCONCLUSIVE"]
+    },
+
+    "decided_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "decided_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_id", "role"],
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": {
+          "type": "string",
+          "enum": ["ANALYST", "SENIOR_ANALYST", "COMPLIANCE_OFFICER", "MLRO", "ADMIN"]
+        }
+      }
+    },
+
+    "maker_checker": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Separation of duties (nguyên tắc kiến trúc số 7, mục 9.1). Với STR_APPROVAL và RISK_RATING_CHANGE, maker và checker BẮT BUỘC là hai người khác nhau — ràng buộc đó phải được cưỡng chế ở tầng service, schema chỉ ghi lại bằng chứng rằng nó đã được cưỡng chế.",
+      "properties": {
+        "maker_user_id": { "type": "string", "maxLength": 128 },
+        "checker_user_id": { "type": "string", "maxLength": 128 },
+        "is_segregated": {
+          "type": "boolean",
+          "description": "Xác nhận maker khác checker. Giá trị false trên một quyết định STR là một phát hiện kiểm toán, không phải một chi tiết kỹ thuật."
+        }
+      }
+    },
+
+    "rationale": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 8192,
+      "description": "Lý do bằng chữ, tối thiểu 10 ký tự. Không cho phép quyết định trống lý do — hồ sơ phải tái dựng được khi thanh tra hỏi, và 'đã duyệt' một mình không tái dựng được gì."
+    },
+
+    "confirmed_typology_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Typology được xác nhận, nếu outcome là TRUE_POSITIVE. Đây là nhãn có giá trị nhất cho việc đánh giá."
+    },
+
+    "agent_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Đánh giá chất lượng đầu ra của agent trong lượt này. Đây là cách đo giá trị thật của agent (mục 8.10), và nó phải đến từ người dùng chứ không từ chính agent tự chấm.",
+      "properties": {
+        "agent_run_ref": { "type": "string", "maxLength": 128 },
+        "was_agent_used": { "type": "boolean" },
+        "edit_distance_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Tỷ lệ nội dung analyst phải sửa trên bản nháp của agent. Càng gần 0 nghĩa là bản nháp càng dùng được."
+        },
+        "accepted_recommendations": { "type": "integer", "minimum": 0 },
+        "rejected_recommendations": { "type": "integer", "minimum": 0 },
+        "usefulness_rating": { "type": "integer", "minimum": 1, "maximum": 5 }
+      }
+    },
+
+    "label_eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["usable_as_training_label"],
+      "description": "Không phải quyết định nào cũng là nhãn tốt. Một case đóng vì hết thời hiệu, hoặc vì analyst không đủ dữ liệu, KHÔNG phải bằng chứng rằng nó là false positive — dùng nó làm nhãn âm sẽ dạy mô hình sai.",
+      "properties": {
+        "usable_as_training_label": { "type": "boolean" },
+        "exclusion_reason": { "type": "string", "maxLength": 512 },
+        "available_from": {
+          "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/available_from",
+          "description": "Nhãn này chỉ được dùng cho các đánh giá có as_of_time SAU mốc này. Chống rò rỉ nhãn ngược thời gian."
+        }
+      }
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  }
+}

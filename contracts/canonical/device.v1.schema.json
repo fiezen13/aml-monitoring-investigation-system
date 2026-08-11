@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/device.v1.schema.json",
+  "title": "ABM-BANK canonical DEVICE v1",
+  "description": "A tokenized device observed by the bank. Raw IMEI, MAC, phone number, true operator, and hidden controller fields are forbidden.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "device_id", "device_type", "created_at", "valid_from"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "device_id": { "type": "string", "pattern": "^DEV-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "source_refs": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/source_ref" }
+    },
+    "device_type": { "type": "string", "enum": ["MOBILE_APP", "BROWSER", "TABLET", "ATM_TERMINAL", "POS_TERMINAL", "UNKNOWN"] },
+    "os_family": { "type": "string", "maxLength": 32 },
+    "first_seen_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "last_seen_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "is_rooted_or_emulator": { "type": "boolean" },
+    "created_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_to": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "provenance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" },
+    "data_class": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class" }
+  }
+}

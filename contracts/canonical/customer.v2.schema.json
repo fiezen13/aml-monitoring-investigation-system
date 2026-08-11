@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/customer.v2.schema.json",
+  "title": "ABM-BANK canonical CUSTOMER v2",
+  "description": "Versioned proposal for a bank-observable customer relationship in ABM-BANK. A business customer points to a separate BUSINESS record; this record never contains simulator intent, criminal role, or scenario membership.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "customer_id",
+    "source_refs",
+    "customer_type",
+    "status",
+    "created_at",
+    "valid_from"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "2.0" },
+    "customer_id": { "type": "string", "pattern": "^CUS-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/source_ref" }
+    },
+    "customer_type": { "type": "string", "enum": ["INDIVIDUAL", "SME", "CORPORATE", "FI", "OTHER"] },
+    "business_id": {
+      "type": "string",
+      "pattern": "^BUS-[A-Za-z0-9_-]+$",
+      "maxLength": 128,
+      "description": "Required when the bank customer is represented by a separate BUSINESS legal entity."
+    },
+    "status": { "type": "string", "enum": ["ACTIVE", "DORMANT", "SUSPENDED", "CLOSED"] },
+    "kyc_state": { "type": "string", "enum": ["NOT_STARTED", "PENDING", "VERIFIED", "EXPIRED", "REJECTED"] },
+    "risk_rating": {
+      "type": "string",
+      "enum": ["LOW", "MEDIUM", "HIGH", "PROHIBITED"],
+      "description": "Observable bank rating at this valid time, not simulator ground truth."
+    },
+    "segment": { "type": "string", "maxLength": 64 },
+    "age_band": {
+      "type": "string",
+      "enum": ["15_24", "25_34", "35_44", "45_54", "55_64", "65_PLUS", "NOT_APPLICABLE", "UNKNOWN"]
+    },
+    "occupation_code": { "type": "string", "maxLength": 64 },
+    "declared_income_band": { "type": "string", "maxLength": 64 },
+    "residency_country": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "region_code": { "type": "string", "maxLength": 32 },
+    "customer_since": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "expected_activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "monthly_turnover": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/money" },
+        "monthly_transaction_count_band": { "type": "string", "maxLength": 32 },
+        "expected_channels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/channel" }
+        },
+        "expected_counterparty_countries": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z]{2}$" }
+        }
+      }
+    },
+    "created_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_to": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "provenance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" },
+    "data_class": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "customer_type": { "enum": ["SME", "CORPORATE", "FI"] } },
+        "required": ["customer_type"]
+      },
+      "then": { "required": ["business_id"] }
+    },
+    {
+      "if": {
+        "properties": { "customer_type": { "const": "INDIVIDUAL" } },
+        "required": ["customer_type"]
+      },
+      "then": { "properties": { "business_id": false } }
+    }
+  ]
+}

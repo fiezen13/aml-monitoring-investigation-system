@@ -1,0 +1,29 @@
+# Fast local/runtime image using the Maven-tested fat JAR built on the host.
+# The default Dockerfile remains the Docker-only build for environments
+# without a host JDK/Maven installation.
+
+FROM apache/hadoop:3.3.6 AS hadoop
+
+FROM flink:1.20.1-scala_2.12-java11
+
+USER root
+
+COPY --from=hadoop /opt/hadoop /opt/hadoop
+ENV HADOOP_HOME=/opt/hadoop
+ENV PATH="${HADOOP_HOME}/bin:${PATH}"
+ENV HADOOP_CLASSPATH="/opt/hadoop/etc/hadoop:/opt/hadoop/share/hadoop/common/lib/*:/opt/hadoop/share/hadoop/common/*:/opt/hadoop/share/hadoop/hdfs:/opt/hadoop/share/hadoop/hdfs/lib/*:/opt/hadoop/share/hadoop/hdfs/*:/opt/hadoop/share/hadoop/mapreduce/*:/opt/hadoop/share/hadoop/yarn:/opt/hadoop/share/hadoop/yarn/lib/*:/opt/hadoop/share/hadoop/yarn/*"
+
+RUN env -u HADOOP_CLASSPATH /opt/hadoop/bin/hadoop classpath > /opt/hadoop-classpath.txt \
+    && test -s /opt/hadoop-classpath.txt \
+    && test "$(cat /opt/hadoop-classpath.txt)" = "$HADOOP_CLASSPATH"
+
+COPY flink/aml-ingestion/target/aml-ingestion-1.0.0.jar /opt/flink/usrlib/aml-ingestion.jar
+COPY docker/flink/entrypoint.sh /usr/local/bin/aml-entrypoint.sh
+
+RUN chmod +x /usr/local/bin/aml-entrypoint.sh \
+    && chown -R flink:flink /opt/flink/usrlib
+
+USER flink
+
+ENTRYPOINT ["/usr/local/bin/aml-entrypoint.sh"]
+CMD ["help"]

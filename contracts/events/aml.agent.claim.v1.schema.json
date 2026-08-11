@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/aml.agent.claim.v1.schema.json",
+  "title": "aml.agent.claim.v1 — payload",
+  "description": "Một khẳng định do agent đưa ra, kèm bằng chứng chống đỡ nó. Topic `aml.agent.claim.v1`, khoá `run_id` (kiến trúc mục 10.2). Đây là contract cưỡng chế nguyên tắc evidence-first ở tầng dữ liệu: một claim không có evidence_refs KHÔNG hợp lệ về mặt schema, nên nó không thể tồn tại trên bus.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "claim_id",
+    "run_id",
+    "case_id",
+    "text",
+    "claim_kind",
+    "evidence_refs",
+    "created_at",
+    "verification"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "claim_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "run_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "Nội dung khẳng định, viết cho người đọc."
+    },
+
+    "claim_kind": {
+      "type": "string",
+      "enum": ["FACT", "INFERENCE"],
+      "description": "FACT là điều đọc trực tiếp từ bản ghi ('tài khoản nhận tiền từ 86 người trong 24 giờ'). INFERENCE là điều suy ra ('mô hình này phù hợp với mạng lưới mule'). Trộn hai loại là cách một suy đoán trở thành một sự thật trong mắt người đọc sau."
+    },
+
+    "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" },
+
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" },
+      "description": "Tối thiểu MỘT bằng chứng. `minItems: 1` ở đây là cơ chế kỹ thuật chống hallucination (mục 8.9): claim không nguồn không đi qua được validation, nên nó không bao giờ tới được analyst."
+    },
+
+    "contradicting_evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref" },
+      "description": "Bằng chứng ĐI NGƯỢC claim này. Trường này tồn tại vì hypothesis manager có nghĩa vụ tìm bằng chứng phản chứng (mục 8.1), không chỉ bằng chứng ủng hộ. Một lượt điều tra không bao giờ tìm thấy gì phản chứng là một lượt điều tra đáng nghi."
+    },
+
+    "created_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "hypothesis_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Giả thuyết mà claim này phục vụ, nếu có."
+    },
+
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verified_by_checker", "status"],
+      "description": "Kết quả của claim-checker (mục 8.2). Claim chưa qua checker không được hiển thị cho analyst như một kết luận.",
+      "properties": {
+        "verified_by_checker": { "type": "boolean" },
+        "checker_version": { "type": "string", "maxLength": 64 },
+        "status": {
+          "type": "string",
+          "enum": ["SUPPORTED", "UNSUPPORTED", "PARTIALLY_SUPPORTED", "CONTRADICTED"]
+        },
+        "notes": { "type": "string", "maxLength": 1024 }
+      }
+    },
+
+    "model_versions": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref" },
+      "description": "Model và prompt đã sinh ra claim này. Cần cho regression khi đổi model (mục 8.9: model drift/vendor change)."
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  }
+}

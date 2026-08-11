@@ -1,0 +1,7 @@
+# Vercel CLI: liên kết project và OIDC token cục bộ, không đưa lên repo.
+.vercel
+
+# Giá trị thật của biến môi trường; bản mẫu .env.example thì phải commit.
+.env
+.env.*
+!.env.example

@@ -1,0 +1,26 @@
+{
+  "_comment": "Cố ý sai bốn chỗ, mỗi chỗ là một quy tắc mà contract phải chặn được. Nếu file này validate THÀNH CÔNG thì contract đang lỏng hơn ta tưởng — xem tests/test_contracts/test_schemas_valid.py. (1) chỉ có 2 reason_codes, dưới mức tối thiểu 3 của quy tắc NT7. (2) risk.score = 1.4, ngoài khoảng [0,1]. (3) detection_result_refs rỗng — một alert không dựa trên detection result nào. (4) suppression.is_suppressed = true nhưng thiếu expires_at, tức là nén vĩnh viễn không ngày rà lại.",
+  "schema_version": "1.0",
+  "alert_id": "ALR-2026-0813-9999",
+  "primary_entity": { "entity_type": "ACCOUNT", "entity_id": "ACC-0000191824" },
+  "created_at": "2026-08-13T09:41:02.118Z",
+  "risk": {
+    "score": 1.4,
+    "level": "HIGH"
+  },
+  "detection_result_refs": [],
+  "reason_codes": [
+    {
+      "code": "FAN_IN_BURST",
+      "description": "Nhiều người chuyển tiền vào trong thời gian ngắn."
+    },
+    {
+      "code": "ACCOUNT_AGE_LOW",
+      "description": "Tài khoản mới mở."
+    }
+  ],
+  "suppression": {
+    "is_suppressed": true,
+    "reason": "Đang chờ xác minh từ chi nhánh"
+  }
+}

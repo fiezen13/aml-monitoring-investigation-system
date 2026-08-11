@@ -11,6 +11,9 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    // Khai báo import.meta.env cho TypeScript. Thiếu dòng này thì mọi truy cập
+    // biến môi trường của Vite đều đỏ ở bước typecheck dù chạy vẫn đúng.
+    "types": ["vite/client"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

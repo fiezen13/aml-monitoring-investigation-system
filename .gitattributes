@@ -1,0 +1,13 @@
+# Chuẩn hoá line ending khi checkout, tránh diff giả do CRLF/LF lẫn lộn giữa
+# máy Windows và macOS/Linux trong team.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.ico binary
+
+# Không tính vào thống kê ngôn ngữ của GitHub — vendor nguyên trạng từ
+# docs/design/prototype/, không phải mã do team viết (xem web/src/vendor/fc/README.md).
+web/src/vendor/fc/*.js linguist-vendored

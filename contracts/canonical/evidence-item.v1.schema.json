@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/evidence-item.v1.schema.json",
+  "title": "Canonical EVIDENCE_ITEM v1",
+  "description": "Một mục trong evidence ledger (kiến trúc mục 6.1, 6.2). Vùng EVIDENCE là CHỈ APPEND: một mục đã ghi không bao giờ được sửa hay xoá. Cần đính chính thì ghi một mục mới trỏ về mục cũ qua `supersedes` — lịch sử điều tra phải tái dựng được nguyên trạng, kể cả những chỗ đã sai.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evidence_id",
+    "case_id",
+    "evidence_type",
+    "collected_at",
+    "as_of_time",
+    "available_from",
+    "content_hash",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "evidence_id": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref",
+      "description": "Định danh mà mọi claim sẽ trích dẫn."
+    },
+
+    "case_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "evidence_type": {
+      "type": "string",
+      "enum": [
+        "TRANSACTION_RECORD",
+        "ACCOUNT_PROFILE",
+        "CUSTOMER_PROFILE",
+        "DEVICE_SESSION",
+        "GRAPH_SUBGRAPH",
+        "PEER_COMPARISON",
+        "DETECTION_EXPLANATION",
+        "WATCHLIST_MATCH",
+        "EXTERNAL_INTELLIGENCE",
+        "POLICY_DOCUMENT",
+        "ANALYST_NOTE",
+        "COMPUTED_METRIC"
+      ]
+    },
+
+    "record_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref_type", "ref_id"],
+        "properties": {
+          "ref_type": { "type": "string", "maxLength": 64 },
+          "ref_id": { "type": "string", "maxLength": 256 }
+        }
+      },
+      "description": "Trỏ về bản ghi gốc thay vì sao chép nó. Evidence ledger lưu tham chiếu và hash, không lưu bản sao dữ liệu khách hàng — giảm bề mặt PII và giữ một nguồn sự thật."
+    },
+
+    "summary": {
+      "type": "string",
+      "maxLength": 4096,
+      "description": "Tóm tắt để hiển thị. KHÔNG được chứa dữ liệu lớp C3."
+    },
+
+    "collected_at": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Thời điểm bằng chứng được thu thập."
+    },
+
+    "as_of_time": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Bằng chứng mô tả trạng thái TẠI thời điểm nào."
+    },
+
+    "available_from": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/available_from",
+      "description": "Từ khi nào bằng chứng này được phép dùng để suy luận. Đây là cơ chế chống rò rỉ: một bằng chứng chỉ biết được sau khi điều tra không được dùng để 'giải thích' vì sao lẽ ra phải phát hiện sớm hơn."
+    },
+
+    "collected_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type"],
+      "properties": {
+        "actor_type": { "type": "string", "enum": ["AGENT", "HUMAN", "SYSTEM"] },
+        "actor_id": { "type": "string", "maxLength": 128 },
+        "tool_call_id": { "type": "string", "maxLength": 128 },
+        "run_id": { "type": "string", "maxLength": 128 }
+      }
+    },
+
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 của nội dung đã chuẩn hoá. Bằng chứng tamper-evident: nội dung đổi mà hash không đổi là bất khả, nên hồ sơ chứng minh được là chưa bị sửa."
+    },
+
+    "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" },
+
+    "provenance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" },
+
+    "data_class": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class" },
+
+    "is_untrusted_content": {
+      "type": "boolean",
+      "description": "Nội dung do bên ngoài soạn (OSINT, nội dung chuyển tiền, tài liệu tải về). Khi true, nội dung này KHÔNG BAO GIỜ được đưa vào model context như chỉ dẫn — chỉ như dữ liệu được đánh dấu (mục 8.9)."
+    },
+
+    "redaction_applied": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 128 }
+    },
+
+    "supersedes": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/evidence_ref",
+      "description": "Mục này đính chính mục nào. Mục cũ VẪN TỒN TẠI — đây là cơ chế sửa sai duy nhất được phép trong một ledger chỉ append."
+    },
+
+    "retention_until": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Thời hạn lưu theo chính sách. Hết hạn thì xoá theo quy trình có kiểm soát, không phải xoá tuỳ ý."
+    }
+  }
+}

@@ -30,8 +30,44 @@ Thumbs.db
 
 # Data (never commit large data)
 data/
+# `artifacts/*` chứ không phải `artifacts/`: git không đi vào một thư mục đã bị
+# loại, nên viết `artifacts/` thì mọi ngoại lệ bên dưới đều vô hiệu.
+artifacts/*
+# Ngoại lệ: kết quả EDA là báo cáo, không phải dữ liệu. Vài chục KB, và tài
+# liệu docs/ml/ trích số liệu cùng checksum từ đây — có nó trong repo thì
+# người đọc kiểm chứng được mà không cần tải bộ dữ liệu 650 MB.
+!artifacts/eda/
+artifacts/eda/*
+!artifacts/eda/*.json
+simulation_output/
+*.parquet
 *.db
 *.sqlite3
+
+# Bộ dữ liệu IBM AML nặng từ hàng trăm megabyte tới hàng chục gigabyte và
+# tải về từ Kaggle, không commit. Nhưng thư mục và hướng dẫn đặt file thì
+# phải có sẵn, nếu không người mới sẽ không biết đặt file vào đâu.
+!data/
+data/*
+!data/README.md
+!data/raw/
+data/raw/*
+!data/raw/ibm-aml/
+data/raw/ibm-aml/*
+!data/raw/ibm-aml/.gitkeep
+!data/raw/ibm-aml/README.md
+
+# Sổ đăng ký nguồn dữ liệu công khai. Đây là bằng chứng xuất xứ của mọi tham số
+# sinh dữ liệu, không phải dữ liệu sinh ra — phải nằm trong Git.
+!data/source_registry/
+!data/source_registry/**
+
+# Khoá API Kaggle — không bao giờ nằm trong repo.
+kaggle.json
+.kaggle/
+
+# Sản phẩm build của job Flink
+flink/**/target/
 
 # Logs
 logs/
@@ -65,14 +101,13 @@ jenkins/.env
 # CI — sản phẩm trung gian
 .image-tags
 pytest-report.xml
+.gstack/
 
-# Terraform
-**/.terraform/*
-*.tfstate
-*.tfstate.*
-*.tfplan
-crash.log
-terraform.tfvars
-
-# .terraform.lock.hcl KHÔNG bỏ qua — nó ghim phiên bản provider và là
-# thứ đảm bảo hai người chạy terraform ra cùng kết quả.
+# Artifact của công cụ thiết kế trong docs/design/prototype/.
+#
+# Bản thân prototype (HTML + các engine .js) được commit để giữ nguồn gốc cho
+# phần vendor ở web/src/vendor/fc/. Nhưng ảnh chụp dán vào lúc thiết kế và file
+# preview thì nặng 3,4 MB, không file nào tham chiếu tới, và không dựng lại
+# được gì từ chúng.
+docs/design/prototype/uploads/
+docs/design/prototype/.thumbnail

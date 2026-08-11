@@ -1,0 +1,34 @@
+# Caddy đứng trước toàn bộ stack FIN-07 trên VM GCP.
+#
+# Caddy tự xin và tự gia hạn chứng chỉ Let's Encrypt cho tên miền dưới đây,
+# và tự chuyển hướng HTTP → HTTPS. Điều kiện: bản ghi A của tên miền phải
+# trỏ về IP công cộng của máy này, và cổng 80/443 phải mở ở firewall GCP —
+# quá trình xác thực ACME đi vào bằng cổng 80.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_DOMAIN}, www.{$SITE_DOMAIN} {
+	# Chuyển thẳng sang container web. Bên trong web, nginx phục vụ tệp tĩnh
+	# và proxy /api/ sang container api, nên ở đây không cần chia đường dẫn
+	# lần nữa — hai tầng cùng định tuyến một thứ là hai chỗ để sai.
+	reverse_proxy web:8080
+
+	encode gzip zstd
+
+	header {
+		# HSTS chỉ bật sau khi chứng chỉ đã cấp thành công; nếu bật sớm mà TLS
+		# hỏng thì trình duyệt từ chối cả đường HTTP để mà sửa.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

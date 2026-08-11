@@ -4,11 +4,34 @@ name: CI
 # request, và là status check mà branch protection kiểm.
 #
 # Phần giao hàng — triển khai staging, phê duyệt, triển khai production-like,
-# quay lui — nằm ở Jenkinsfile. Xem docs/CICD.md để hiểu vì sao tách làm hai.
+# quay lui — nằm ở Jenkinsfile. Xem docs/operations/CICD.md để hiểu vì sao tách làm hai.
 #
 # Mọi bước ở đây đều gọi script trong ci/. Cùng bộ script mà Jenkins gọi, và
 # cũng là bộ script chạy được trên máy cá nhân. Không có logic CI nào viết
 # hai lần, nên hai hệ thống không lệch nhau được.
+#
+# ---------------------------------------------------------------------
+# `runs-on: self-hosted` — đừng đổi lại thành ubuntu-latest.
+#
+# Repo này là private và thuộc tổ chức, nên runner của GitHub tính theo hạn
+# mức phút. Hạn mức của tổ chức đã hết, và job bị từ chối cấp máy ngay trước
+# khi chạy bước nào, kèm thông báo nghe như lỗi thanh toán:
+#
+#     The job was not started because recent account payments have failed
+#     or your spending limit needs to be increased.
+#
+# Ban tổ chức cung cấp runner tự vận hành. Mỗi job nhận một VM ephemeral
+# riêng (`eph-vmrunner-*`), nên không đụng thư mục làm việc của team khác.
+#
+# Nhưng VM đó KHÔNG trống: có sẵn thứ gì đó nghe trên 5432. Lần chạy đầu,
+# `test` và `compose-smoke` cùng hỏng vì cùng một câu:
+#
+#     failed to bind host port 0.0.0.0:5432/tcp: address already in use
+#
+# Nên không cổng cố định nào ở đây được coi là an toàn. `test` xin cổng động
+# cho service container; `compose-smoke` đẩy toàn bộ cổng ra dải cao. Xem
+# ghi chú tại hai job đó.
+# ---------------------------------------------------------------------
 
 on:
   pull_request:
@@ -32,7 +55,7 @@ jobs:
   # ===================================================================
   lint:
     name: Kiểm tra định dạng và lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
@@ -51,12 +74,21 @@ jobs:
   # ===================================================================
   test:
     name: Kiểm thử đơn vị và tích hợp
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
 
     # Kiểm thử tích hợp cần cơ sở dữ liệu thật: các ràng buộc quan trọng nhất
     # của FIN-07 (nhật ký bất biến, cách ly vai trò agent) nằm ở tầng
     # PostgreSQL, mock không kiểm chứng được cái gì cả.
+    #
+    # Cổng ĐỘNG, không bind cố định. VM runner của ban tổ chức đã có sẵn thứ gì
+    # đó nghe trên 5432, nên `ports: ["5432:5432"]` hỏng ngay ở bước
+    # "Initialize containers":
+    #
+    #     failed to bind host port 0.0.0.0:5432/tcp: address already in use
+    #
+    # Dạng "5432/tcp" bảo Docker tự chọn một cổng rảnh trên máy chủ; số cổng
+    # thật đọc lại từ `job.services.*.ports` ở bước bên dưới.
     services:
       postgres:
         image: postgres:16-alpine
@@ -64,7 +96,7 @@ jobs:
           POSTGRES_USER: fin07
           POSTGRES_PASSWORD: fin07_ci_password
           POSTGRES_DB: fin07
-        ports: ["5432:5432"]
+        ports: ["5432/tcp"]
         options: >-
           --health-cmd "pg_isready -U fin07 -d fin07"
           --health-interval 5s
@@ -72,17 +104,17 @@ jobs:
           --health-retries 20
       redis:
         image: redis:7-alpine
-        ports: ["6379:6379"]
+        ports: ["6379/tcp"]
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
 
+    # DATABASE_URL và REDIS_URL KHÔNG đặt ở đây được: chúng cần số cổng thật,
+    # mà context `job` không dùng được ở `env` cấp job. Xem bước đầu tiên.
     env:
       APP_ENV: test
-      DATABASE_URL: postgresql+psycopg://fin07:fin07_ci_password@localhost:5432/fin07
-      REDIS_URL: redis://localhost:6379/0
       POSTGRES_USER: fin07
       POSTGRES_DB: fin07
       FIN07_AGENT_DB_PASSWORD: fin07_agent_ci_password
@@ -91,6 +123,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # psql đọc PGPORT, còn ứng dụng đọc DATABASE_URL/REDIS_URL — cả ba đều
+      # phải trỏ đúng cổng mà runner vừa cấp cho service container.
+      - name: Đọc cổng thật của service container
+        run: |
+          {
+            echo "PGPORT=${{ job.services.postgres.ports['5432'] }}"
+            echo "DATABASE_URL=postgresql+psycopg://fin07:fin07_ci_password@localhost:${{ job.services.postgres.ports['5432'] }}/fin07"
+            echo "REDIS_URL=redis://localhost:${{ job.services.redis.ports['6379'] }}/0"
+          } >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
@@ -122,7 +164,7 @@ jobs:
   # ===================================================================
   web:
     name: Kiểm tra kiểu và build giao diện
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
     defaults:
       run:
@@ -143,7 +185,7 @@ jobs:
   # ===================================================================
   images:
     name: Build và đẩy image
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
     permissions:
       contents: read
@@ -247,7 +289,7 @@ jobs:
   # là câu đó, chạy lại trên một máy sạch ở mỗi pull request.
   compose-smoke:
     name: docker compose up trên máy sạch
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 8
     needs: images
     if: needs.images.outputs.pushed == 'true'
@@ -258,6 +300,14 @@ jobs:
     env:
       APP_IMAGE: ${{ needs.images.outputs.app_image }}
       WEB_IMAGE: ${{ needs.images.outputs.web_image }}
+      # VM runner đã có sẵn thứ gì đó nghe trên 5432, nên `docker compose up`
+      # với cổng mặc định hỏng ở ngay dịch vụ đầu tiên. Mọi cổng máy chủ trong
+      # docker-compose.yml đều tham số hoá được, nên đẩy hết ra dải cao.
+      # Cổng bên trong container không đổi, healthcheck vì thế vẫn nguyên.
+      POSTGRES_PORT: "15432"
+      REDIS_PORT: "16379"
+      API_PORT: "18000"
+      WEB_PORT: "15173"
 
     steps:
       - uses: actions/checkout@v4
@@ -267,6 +317,12 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # LƯU Ý trên runner dùng chung: job này dựng nguyên stack bằng
+      # docker-compose.yml, vốn bind 5432, 6379, 8000 và 5173 ra máy chủ. Đây
+      # là chỗ dễ đụng cổng nhất với job của team khác. Nếu xảy ra, đặt biến
+      # WEB_PORT/API_PORT khác đi, hoặc bỏ job này khỏi `needs` của job `ci`
+      # để nó không chặn merge.
 
       # Cố ý KHÔNG tạo .env: đây là mô phỏng máy vừa clone repo.
       - name: Kéo image vừa build
@@ -296,7 +352,8 @@ jobs:
           fi
 
       # Cùng bộ kiểm tra khói mà Jenkins chạy sau mỗi lần triển khai.
-      - run: ./ci/smoke.sh http://localhost:8000 http://localhost:5173
+      # Cổng phải khớp API_PORT/WEB_PORT đặt ở trên.
+      - run: ./ci/smoke.sh http://localhost:18000 http://localhost:15173
 
       - name: Log khi thất bại
         if: failure()
@@ -311,7 +368,7 @@ jobs:
   # chỉ cần thêm vào `needs` — không phải sửa cấu hình của repo trên GitHub.
   ci:
     name: CI
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 2
     if: always()
     needs: [lint, test, web, images, compose-smoke]

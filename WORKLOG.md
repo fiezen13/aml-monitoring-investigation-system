@@ -14,12 +14,12 @@
 | Bảo | Script sinh dữ liệu mẫu tái lập được | ✅ Done | `scripts/seed_data.py`, cài sẵn T01–T05 và T10 | — |
 | Bảo | CI chặn merge trên mọi pull request | ✅ Done | `.github/workflows/ci.yml`, ~4–5 phút | 2h |
 | Bảo | Pipeline CD đầy đủ bằng Jenkins | ✅ Done | `Jenkinsfile`, `ci/`, `deploy/`, `jenkins/` | 3h |
-| Bảo | Tài liệu vận hành và bàn giao | ✅ Done | `docs/RUNBOOK.md`, `ENVIRONMENT.md`, `CI.md`, `CICD.md` | — |
+| Bảo | Tài liệu vận hành và bàn giao | ✅ Done | `docs/operations/RUNBOOK.md`, `ENVIRONMENT.md`, `CI.md`, `CICD.md` | — |
 
 **Tổng kết ngày:** Hạ tầng đã sẵn sàng để Hưng và Tin Tin bắt đầu viết mã mà
 không phải dựng gì thêm. Máy mới chỉ cần Docker; clone repo, chạy một lệnh, có
-ngay database có dữ liệu, API chạy được, giao diện mở được. Chưa có Terraform
-và chưa có máy chủ staging thật — xem mục "Việc còn tồn".
+ngay database có dữ liệu, API chạy được, giao diện mở được. Chưa có máy chủ
+staging thật — xem mục "Việc còn tồn".
 
 ---
 
@@ -42,7 +42,7 @@ Xong. Mở:
 Dữ liệu mẫu đã có sẵn: 48 khách hàng, ~2.400 giao dịch, 5 vụ việc, một hồ sơ
 đang chờ duyệt. Không phải xin ai file dump.
 
-Đọc tiếp: [docs/RUNBOOK.md](docs/RUNBOOK.md).
+Đọc tiếp: [docs/operations/RUNBOOK.md](docs/operations/RUNBOOK.md).
 
 ## 2. Ai sở hữu cái gì
 
@@ -82,7 +82,7 @@ báo phải giải thích được bằng tối thiểu ba yếu tố có giá t
 | `src/worker/main.py` | **Tin Tin** + Hiển | Vòng lặp worker và nhịp tim là hạ tầng, giữ nguyên. Phần `HANDLERS` là chỗ cắm agent LangGraph vào. |
 | `src/db/session.py` | Bảo | Kết nối và pool. |
 | `src/main.py` — `/health`, `/health/ready` | Bảo | **Đừng đổi.** Healthcheck của container và pipeline triển khai đều dựa vào chúng. |
-| `src/config.py` | chung | Thêm biến thì phải cập nhật cả `.env.example` và `docs/ENVIRONMENT.md`, nếu không CI đỏ (có kiểm thử đối chiếu ba nguồn). |
+| `src/config.py` | chung | Thêm biến thì phải cập nhật cả `.env.example` và `.env.example`, nếu không CI đỏ (có kiểm thử đối chiếu ba nguồn). |
 | `db/init/**` | Bảo | Đổi lược đồ thì báo — xem mục 4. |
 
 Bắt đầu:
@@ -149,9 +149,8 @@ chúng thì **hỏi trước**, đừng gỡ ràng buộc:
 
 | Việc | Ai | Ghi chú |
 |---|---|---|
-| Bật branch protection cho `main` và `develop` | Bảo | **Chưa làm.** CI đỏ vẫn merge được cho tới khi bật. [docs/CI.md](docs/CI.md) mục 5 |
-| Dựng máy chủ staging và production-like | Bảo | Pipeline triển khai đã có, máy chủ thì chưa |
-| Module Terraform | Bảo | ARC-001 mục 6 có nhắc, hiện chưa viết |
+| Bật branch protection cho `main` và `develop` | Bảo | **Chưa làm.** CI đỏ vẫn merge được cho tới khi bật. [docs/operations/CICD.md](docs/operations/CICD.md) mục 5 |
+| Thuê VPS và mua tên miền cho staging / production-like | Bảo | Pipeline triển khai đã có, máy chủ thì chưa. Dựng bằng tay, không dùng Terraform |
 | Cắm kênh thông báo khi build hỏng | Bảo | Khối `post { failure }` trong `Jenkinsfile` đang để trống |
 | Quét bảo mật image (Trivy/Grype) | Bảo | Nên có trước khi bàn giao |
 | Kiểm tra tải theo mục tiêu ARC-001 mục 5.3 | Bảo | Sprint 5 |
@@ -161,10 +160,10 @@ chúng thì **hỏi trước**, đừng gỡ ràng buộc:
 
 | Tài liệu | Khi nào cần |
 |---|---|
-| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
-| [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | Mọi biến môi trường |
-| [docs/CI.md](docs/CI.md) | Cổng chặn merge chạy gì |
-| [docs/CICD.md](docs/CICD.md) | Luồng giao hàng đầy đủ, ba môi trường, quay lui |
+| [docs/operations/RUNBOOK.md](docs/operations/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
+| [.env.example](.env.example) | Mọi biến môi trường |
+| [docs/operations/CICD.md](docs/operations/CICD.md) | Cổng chặn merge chạy gì |
+| [docs/operations/CICD.md](docs/operations/CICD.md) | Luồng giao hàng đầy đủ, ba môi trường, quay lui |
 | FIN-07-ARC-001 | Kiến trúc, quyết định thiết kế |
 | FIN-07-DAT-001 | Nguồn dữ liệu, danh mục nhãn |
 | FIN-07-BUS-001 | Nghiệp vụ AML, danh mục typology T01–T10 |

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/transaction.v1.schema.json",
+  "title": "ABM-BANK canonical TRANSACTION v1",
+  "description": "Canonical, label-free Bank View transaction. Each side is either an internal account or a stable tokenized external counterparty. Simulator labels, true roles, criminal networks, and scenario identifiers are forbidden.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "transaction_id",
+    "event_id",
+    "source_refs",
+    "event_time",
+    "amount",
+    "transaction_type",
+    "channel",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "transaction_id": { "type": "string", "pattern": "^TXN-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "event_id": { "type": "string", "pattern": "^EVT-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/source_ref" }
+    },
+    "event_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/event_time" },
+    "posting_time": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/posting_time" },
+    "available_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/available_from" },
+    "source_account_id": { "type": "string", "pattern": "^ACC-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "source_counterparty_ref": { "type": "string", "pattern": "^CPY-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "destination_account_id": { "type": "string", "pattern": "^ACC-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "destination_counterparty_ref": { "type": "string", "pattern": "^CPY-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "amount": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/money" },
+    "transaction_type": {
+      "type": "string",
+      "enum": ["SALARY", "TRANSFER", "BILL_PAYMENT", "MERCHANT_PURCHASE", "CASH_DEPOSIT", "CASH_WITHDRAWAL", "BUSINESS_PAYMENT", "SUPPLIER_PAYMENT", "LOAN_REPAYMENT", "SAVINGS_TRANSFER", "INTERNATIONAL_PAYMENT", "FEE", "REVERSAL", "OTHER"]
+    },
+    "channel": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/channel" },
+    "merchant_id": { "type": "string", "pattern": "^MER-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "device_id": { "type": "string", "pattern": "^DEV-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "session_id": { "type": "string", "pattern": "^SES-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "purpose_code": { "type": "string", "maxLength": 64 },
+    "purpose_text": { "type": "string", "maxLength": 2048 },
+    "status": { "type": "string", "enum": ["POSTED", "PENDING", "REVERSED", "REJECTED", "HOLD"] },
+    "created_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "quality_flags": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/quality_flag" }
+    },
+    "provenance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" },
+    "data_class": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class" }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        { "required": ["source_account_id"], "not": { "required": ["source_counterparty_ref"] } },
+        { "required": ["source_counterparty_ref"], "not": { "required": ["source_account_id"] } }
+      ]
+    },
+    {
+      "oneOf": [
+        { "required": ["destination_account_id"], "not": { "required": ["destination_counterparty_ref"] } },
+        { "required": ["destination_counterparty_ref"], "not": { "required": ["destination_account_id"] } }
+      ]
+    }
+  ]
+}

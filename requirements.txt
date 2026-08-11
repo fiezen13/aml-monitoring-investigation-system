@@ -21,5 +21,26 @@ psycopg[binary]>=3.2.0
 # Hàng đợi tác vụ
 redis>=5.2.0
 
+# Kafka — producer phát lại dữ liệu AML (`python -m src.aml`).
+# Nằm ở đây chứ không ở requirements-dev vì producer chạy trong cùng image
+# với api và worker, đúng nguyên tắc "một image, nhiều lệnh khởi động" đã
+# áp dụng cho seed. Chọn confluent-kafka vì nó là client duy nhất hỗ trợ
+# idempotent producer — thứ quyết định việc thử lại không đẻ ra bản trùng.
+confluent-kafka>=2.6.0
+
+# Canonical ABM-BANK releases. PyArrow provides bounded-batch Parquet I/O;
+# pinning keeps release serialization behavior reviewable and reproducible.
+pyarrow==25.0.0
+PyYAML>=6.0.2
+
+# Offline ML / feature platform (Isolation Forest + DuckDB features)
+pandas>=2.2.0
+polars>=1.0.0
+scikit-learn>=1.5.0
+joblib>=1.4.0
+networkx>=3.0
+duckdb>=1.0.0
+pytz>=2024.1
+
 # Vector Store (mở khi cần)
 # chromadb>=0.5.0

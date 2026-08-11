@@ -801,6 +801,9 @@ REQUIRED_TABLES = [
     "watchlist_version",
     "watchlist_entry",
     "screening_result",
+    "app_user",
+    "app_session",
+    "system_setting",
 ]
 REQUIRED_ROLES = ["fin07_agent"]
 

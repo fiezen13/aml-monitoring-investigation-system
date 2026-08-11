@@ -21,6 +21,7 @@ from sqlalchemy import text
 
 from src.config import get_settings
 from src.db.session import get_session
+from src.domain import next_state, state_label
 from src.services.queue import get_redis
 
 logger = logging.getLogger("fin07.worker")
@@ -41,27 +42,39 @@ def beat() -> None:
 
 
 def handle_investigate_case(payload: dict[str, Any]) -> None:
-    """Khởi động điều tra một vụ việc.
+    """Chạy một bước điều tra: đẩy vụ việc sang trạng thái kế tiếp.
 
-    Chuyển vụ việc sang trạng thái TruyHoiBangChung và ghi nhật ký. Không
-    có nhánh nào ở đây đi thẳng tới XuatHoSo — theo máy trạng thái ở Hình 4,
-    lối vào duy nhất của XuatHoSo là ChoNguoiPheDuyet (NT3).
+    Bước kế tiếp do src.domain.next_state quyết định, nên worker đi đúng
+    chuỗi ở Hình 4 chứ không nhảy cóc. Chuỗi dừng ở ChoNguoiPheDuyet: không
+    có nhánh nào ở đây đi tới XuatHoSo — lối vào duy nhất của XuatHoSo là
+    một quyết định phê duyệt có người ký tên (NT3).
     """
     case_id = payload["case_id"]
     with get_session() as session:
-        updated = session.execute(
-            text(
-                """
-                UPDATE aml_case
-                   SET state = 'TruyHoiBangChung', updated_at = now()
-                 WHERE case_id = :case_id AND state = 'TiepNhanCanhBao'
-                """
-            ),
+        # Khoá dòng để hai lượt điều tra chạy song song không cùng đọc một
+        # trạng thái rồi cùng ghi đè: nếu không, hai lần bấm nút gần nhau chỉ
+        # tiến được một bước và một dòng nhật ký nói dối về trạng thái trước.
+        current = session.execute(
+            text("SELECT state FROM aml_case WHERE case_id = :case_id FOR UPDATE"),
             {"case_id": case_id},
-        ).rowcount
-        if not updated:
-            logger.warning("Vụ việc %s không ở trạng thái TiepNhanCanhBao — bỏ qua", case_id)
+        ).scalar_one_or_none()
+        if current is None:
+            logger.warning("Không tìm thấy vụ việc %s — bỏ qua", case_id)
             return
+
+        target = next_state(current)
+        if target is None:
+            logger.info(
+                "Vụ việc %s đang ở '%s' — cần quyết định của người phê duyệt, worker dừng",
+                case_id,
+                state_label(current),
+            )
+            return
+
+        session.execute(
+            text("UPDATE aml_case SET state = :target, updated_at = now() WHERE case_id = :case_id"),
+            {"case_id": case_id, "target": target},
+        )
         session.execute(
             text(
                 """
@@ -71,10 +84,10 @@ def handle_investigate_case(payload: dict[str, Any]) -> None:
             ),
             {
                 "case_id": case_id,
-                "payload": json.dumps({"from": "TiepNhanCanhBao", "to": "TruyHoiBangChung"}),
+                "payload": json.dumps({"from": current, "to": target}),
             },
         )
-    logger.info("Vụ việc %s chuyển sang TruyHoiBangChung", case_id)
+    logger.info("Vụ việc %s chuyển %s → %s", case_id, current, target)
 
 
 def handle_ping(payload: dict[str, Any]) -> None:

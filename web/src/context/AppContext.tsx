@@ -1,0 +1,87 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+
+import { api, SESSION_TOKEN_KEY } from "../api/client";
+import type { User } from "../types";
+
+export interface ToastItem {
+  id: number;
+  tone: "success" | "error" | "info";
+  title: string;
+  detail?: string;
+}
+
+interface AppState {
+  currentUser: User | null;
+  login: (email: string, password: string) => Promise<User>;
+  logout: () => Promise<void>;
+  toasts: ToastItem[];
+  pushToast: (toast: Omit<ToastItem, "id">) => void;
+  dismissToast: (id: number) => void;
+}
+
+const AppContext = createContext<AppState | null>(null);
+const SESSION_USER_KEY = "fin07.session.user";
+let toastSeq = 0;
+
+function readStoredUser(): User | null {
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_USER_KEY);
+    const token = window.sessionStorage.getItem(SESSION_TOKEN_KEY);
+    return raw && token ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [currentUser, setCurrentUser] = useState<User | null>(readStoredUser);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const pushToast = useCallback((toast: Omit<ToastItem, "id">) => {
+    const id = ++toastSeq;
+    setToasts((prev) => [...prev, { ...toast, id }]);
+    window.setTimeout(() => setToasts((prev) => prev.filter((item) => item.id !== id)), 4200);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const result = await api.login(email, password);
+    window.sessionStorage.setItem(SESSION_TOKEN_KEY, result.token);
+    window.sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(result.user));
+    setCurrentUser(result.user);
+    return result.user;
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      await api.logout();
+    } finally {
+      window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
+      window.sessionStorage.removeItem(SESSION_USER_KEY);
+      setCurrentUser(null);
+    }
+  }, []);
+
+  const value = useMemo<AppState>(
+    () => ({ currentUser, login, logout, toasts, pushToast, dismissToast }),
+    [currentUser, login, logout, toasts, pushToast, dismissToast],
+  );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+}
+
+export function useApp(): AppState {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error("useApp phải được dùng bên trong AppProvider");
+  return ctx;
+}

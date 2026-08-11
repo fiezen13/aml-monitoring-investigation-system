@@ -1,173 +1,99 @@
-import { useCallback, useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
-import {
-  type Case,
-  type CaseDetail,
-  type QueueStats,
-  getCase,
-  getQueueStats,
-  investigate,
-  listCases,
-} from "./api";
+import { AccessDenied } from "./components/common/AccessDenied";
+import { ToastRegion } from "./components/common/Toast";
+import { AppLayout } from "./components/layout/AppLayout";
+import { AppProvider } from "./context/AppContext";
+import { ConsoleProvider } from "./context/ConsoleContext";
+import { AgentRunPage, AgentsPage } from "./pages/AgentsPage";
+import { AlertDetailPage } from "./pages/AlertDetailPage";
+import { AlertsPage } from "./pages/AlertsPage";
+import { ApprovalDetailPage } from "./pages/ApprovalDetailPage";
+import { ApprovalsPage } from "./pages/ApprovalsPage";
+import { AuditPage } from "./pages/AuditPage";
+import { BenchmarksPage } from "./pages/BenchmarksPage";
+import { CaseDetailPage } from "./pages/CaseDetailPage";
+import { CasesPage } from "./pages/CasesPage";
+import { CryptoPage } from "./pages/CryptoPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { DataQualityPage } from "./pages/DataQualityPage";
+import { EntityNetworkPage } from "./pages/EntityNetworkPage";
+import { LoginPage } from "./pages/LoginPage";
+import { ModelsPage } from "./pages/ModelsPage";
+import { NetworkPage } from "./pages/NetworkPage";
+import { ProjectsPage } from "./pages/ProjectsPage";
+import { SarEditPage } from "./pages/SarEditPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { TransactionsPage } from "./pages/TransactionsPage";
+import { UsersPage } from "./pages/UsersPage";
+import { WorldPage } from "./pages/WorldPage";
 
-/**
- * Khung màn hình AML Console.
- *
- * Đây là bộ khung hạ tầng: đủ để chứng minh chuỗi web → API → PostgreSQL →
- * Redis → worker chạy thông. Thiết kế giao diện chi tiết nằm ở wireframe của
- * epic E09 và do Hưng hiện thực.
- *
- * Một điểm đã cố tình làm đúng ngay từ khung: điểm rủi ro không bao giờ hiển
- * thị một mình. Mọi chỗ hiện điểm đều hiện kèm các yếu tố đóng góp (NT7).
- */
 export default function App() {
-  const [cases, setCases] = useState<Case[]>([]);
-  const [selected, setSelected] = useState<CaseDetail | null>(null);
-  const [queue, setQueue] = useState<QueueStats | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      const [rows, stats] = await Promise.all([listCases(), getQueueStats()]);
-      setCases(rows);
-      setQueue(stats);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-    const timer = setInterval(() => void refresh(), 10_000);
-    return () => clearInterval(timer);
-  }, [refresh]);
-
-  const open = async (caseId: string) => {
-    try {
-      setSelected(await getCase(caseId));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const startInvestigation = async (caseId: string) => {
-    setBusy(true);
-    try {
-      await investigate(caseId);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
-    <div className="app">
-      <header>
-        <h1>FIN-07 · AML Console</h1>
-        <div className="status">
-          {queue && (
-            <>
-              <span className={queue.worker_alive ? "pill ok" : "pill bad"}>
-                worker {queue.worker_alive ? "đang chạy" : "không phản hồi"}
-              </span>
-              <span className="pill">hàng đợi: {queue.depth}</span>
-            </>
-          )}
-        </div>
-      </header>
+    <AppProvider>
+      <ConsoleProvider>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Routes>
+            <Route
+              path="/login"
+              element={
+                <>
+                  <LoginPage />
+                  <ToastRegion />
+                </>
+              }
+            />
+            <Route
+              path="/403"
+              element={
+                <>
+                  <AccessDenied />
+                  <ToastRegion />
+                </>
+              }
+            />
+            <Route element={<AppLayout />}>
+              {/* Giám sát */}
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/world" element={<WorldPage />} />
 
-      {error && <p className="error">Lỗi: {error}</p>}
+              {/* Điều tra */}
+              <Route path="/alerts" element={<AlertsPage />} />
+              <Route path="/alerts/:alertId" element={<AlertDetailPage />} />
+              <Route path="/cases" element={<CasesPage />} />
+              <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+              {/* Hai đồ thị khác nhau có chủ đích: `/network` là toàn bộ mạng
+                  lưới mô phỏng, `/network/:caseId` là đồ thị gọn của một vụ việc. */}
+              <Route path="/network" element={<EntityNetworkPage />} />
+              <Route path="/network/:caseId" element={<NetworkPage />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
 
-      <main>
-        <section className="queue">
-          <h2>Hàng đợi vụ việc ({cases.length})</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Mã</th>
-                <th>Chủ thể</th>
-                <th>Trạng thái</th>
-                <th>Điểm</th>
-                <th>Cảnh báo</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {cases.map((row) => (
-                <tr key={row.case_id} className={selected?.case_id === row.case_id ? "active" : ""}>
-                  <td>
-                    <button className="link" onClick={() => void open(row.case_id)}>
-                      {row.case_id}
-                    </button>
-                  </td>
-                  <td className="mono">{row.subject_account_key}</td>
-                  <td>{row.state}</td>
-                  <td className={`score ${row.priority}`}>{Number(row.risk_score).toFixed(1)}</td>
-                  <td>{row.alert_count}</td>
-                  <td>
-                    <button disabled={busy} onClick={() => void startInvestigation(row.case_id)}>
-                      Điều tra
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {cases.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="empty">
-                    Chưa có vụ việc nào. Chạy <code>make seed</code> để nạp dữ liệu mẫu.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </section>
+              {/* Tài sản mã hoá */}
+              <Route path="/crypto" element={<CryptoPage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
 
-        <section className="detail">
-          {selected ? (
-            <>
-              <h2>{selected.title}</h2>
-              <dl>
-                <dt>Trạng thái</dt>
-                <dd>{selected.state}</dd>
-                <dt>Chủ thể</dt>
-                <dd className="mono">{selected.subject_account_key}</dd>
-                <dt>Bằng chứng đã thu thập</dt>
-                <dd>{selected.evidence_count}</dd>
-              </dl>
+              {/* AI Agent */}
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/agents/:runId" element={<AgentRunPage />} />
 
-              <h3>Yếu tố đóng góp vào điểm rủi ro</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Yếu tố</th>
-                    <th>Nguồn</th>
-                    <th>Typology</th>
-                    <th>Đóng góp</th>
-                    <th>Trọng số</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selected.reasons.map((reason, index) => (
-                    <tr key={`${reason.detector}-${reason.factor_code}-${index}`}>
-                      <td>{reason.factor_label}</td>
-                      <td>{reason.detector}</td>
-                      <td>{reason.typology_code}</td>
-                      <td>{Number(reason.contribution).toFixed(2)}</td>
-                      <td>{Number(reason.weight).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          ) : (
-            <p className="empty">Chọn một vụ việc để xem chi tiết.</p>
-          )}
-        </section>
-      </main>
-    </div>
+              {/* Chất lượng và mô hình */}
+              <Route path="/benchmarks" element={<BenchmarksPage />} />
+              <Route path="/models" element={<ModelsPage />} />
+              <Route path="/data-quality" element={<DataQualityPage />} />
+
+              {/* Quản trị */}
+              <Route path="/sar/:sarId/edit" element={<SarEditPage />} />
+              <Route path="/approvals" element={<ApprovalsPage />} />
+              <Route path="/approvals/:sarId" element={<ApprovalDetailPage />} />
+              <Route path="/audit" element={<AuditPage />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
+            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ConsoleProvider>
+    </AppProvider>
   );
 }

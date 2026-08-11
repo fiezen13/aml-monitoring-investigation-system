@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/customer.v1.schema.json",
+  "title": "Canonical CUSTOMER v1",
+  "description": "Khách hàng ở vùng CANONICAL/GOLD (kiến trúc mục 6.2). Bản ghi bi-temporal: `valid_from`/`valid_to` mô tả hiệu lực nghiệp vụ, `known_from` mô tả thời điểm nền tảng biết. Truy vấn point-in-time phải dùng cả hai — hồ sơ khách hàng thay đổi, và đánh giá một giao dịch năm ngoái bằng hồ sơ hôm nay là sai.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "customer_id", "source_refs", "customer_type", "valid_from"],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "customer_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Canonical ID do nền tảng cấp, ổn định qua mọi hệ thống nguồn."
+    },
+
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/source_ref" },
+      "description": "Mọi định danh nguồn đã được gộp về customer_id này. Giữ nguyên trạng — mục 3.2 cấm ghi đè nguồn bằng kết quả entity resolution."
+    },
+
+    "customer_type": { "type": "string", "enum": ["INDIVIDUAL", "SME", "CORPORATE", "FI", "OTHER"] },
+
+    "status": { "type": "string", "enum": ["ACTIVE", "DORMANT", "SUSPENDED", "CLOSED"] },
+
+    "kyc_state": { "type": "string", "enum": ["NOT_STARTED", "PENDING", "VERIFIED", "EXPIRED", "REJECTED"] },
+
+    "is_pep": { "type": "boolean" },
+
+    "risk_rating": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "PROHIBITED"] },
+
+    "expected_activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Hành vi kỳ vọng theo hồ sơ. Đây là mẫu số của mọi phát hiện lệch hồ sơ — thiếu nó thì 'bất thường' không có nghĩa.",
+      "properties": {
+        "monthly_turnover": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/money" },
+        "monthly_transaction_count": { "type": "integer", "minimum": 0 },
+        "expected_channels": {
+          "type": "array",
+          "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/channel" }
+        },
+        "expected_counterparty_countries": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z]{2}$" }
+        }
+      }
+    },
+
+    "occupation_code": { "type": "string", "maxLength": 64 },
+    "industry_code": { "type": "string", "maxLength": 64 },
+    "residency_country": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "customer_since": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "segment": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "Phân khúc dùng để chọn nhóm so sánh (peer group). So sánh một hộ kinh doanh với một người làm công ăn lương cho ra bất thường giả."
+    },
+
+    "valid_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_to": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "provenance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" },
+
+    "data_class": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class" }
+  }
+}

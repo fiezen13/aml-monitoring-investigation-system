@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/merchant.v1.schema.json",
+  "title": "ABM-BANK canonical MERCHANT v1",
+  "description": "A merchant acceptance entity visible through acquiring or transaction data. It may point to a BUSINESS, but does not claim hidden ownership.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "merchant_id", "merchant_category_code", "status", "created_at", "valid_from"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "merchant_id": { "type": "string", "pattern": "^MER-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "source_refs": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/source_ref" }
+    },
+    "business_id": { "type": "string", "pattern": "^BUS-[A-Za-z0-9_-]+$", "maxLength": 128 },
+    "merchant_category_code": { "type": "string", "pattern": "^[0-9]{4}$" },
+    "acquiring_bank_code": { "type": "string", "maxLength": 32 },
+    "country": { "type": "string", "pattern": "^[A-Z]{2}$" },
+    "region_code": { "type": "string", "maxLength": 32 },
+    "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "CLOSED"] },
+    "created_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_to": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "provenance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" },
+    "data_class": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/data_class" }
+  }
+}
