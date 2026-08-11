@@ -42,10 +42,10 @@ FEATURE_COLS: list[str] = [
     "median_amount",
     "p90_amount",
     "amount_std",
-    "near_threshold_ratio",
+    "repeated_amount_ratio",
     # F — Temporal Timing
-    "off_hour_ratio",
     "median_inter_txn_gap",
+    "p10_inter_txn_gap",
 ]
 
 META_COLS = {"account_key", "as_of_ts", "window", "label_laundering", "Is Laundering"}

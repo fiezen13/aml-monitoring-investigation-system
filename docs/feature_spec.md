@@ -8,9 +8,11 @@ Mỗi mẫu là bộ ba:
 ({account_key}; {as_of_ts}; {window})
 \]
 
-- `as_of_ts`: mốc chốt sổ UTC (mặc định end-of-day `23:59:59Z` của ngày \(D\)).
+- `as_of_ts`: **cuối ngày lịch \(D\) UTC** (`23:59:59Z`) — handoff §3.3.
 - `window`: cửa sổ nhìn lùi — hỗ trợ `'1d'`, `'7d'` (mặc định), `'14d'`.
-- Chỉ dùng giao dịch có `occurred_at ≤ as_of_ts` và nằm trong `[as_of_ts − window, as_of_ts]`.
+- Feature chỉ dùng TX thỏa `as_of_ts − window < occurred_at ≤ as_of_ts`.
+- Baseline: mỗi ngày lịch trong split tạo mẫu cho mọi account có **≥ 1** giao dịch (gửi hoặc nhận) trong window đó.
+- **Nhãn evaluate:** `y=1` nếu account tham gia ≥ 1 TX `label_laundering=1` trong đúng scoring window `(as_of_ts − window, as_of_ts]`.
 
 **Nguồn dữ liệu:** bảng `transaction` trong DuckDB (`data/processed/aml.duckdb`):
 
@@ -56,14 +58,16 @@ Mỗi mẫu là bộ ba:
 15. `median_amount_{w}` — Trung vị số tiền giao dịch.
 16. `p90_amount_{w}` — Phân vị 90% (bắt đột biến lớn).
 17. `amount_std_{w}` — Độ lệch chuẩn (smurfing thường có std thấp).
-18. `near_threshold_ratio_{w}` — Tỷ lệ TX trong dải **$9,000–$10,000** (T01 né CTR).
+18. `repeated_amount_ratio_{w}` — Tỷ lệ TX dùng số tiền xuất hiện ≥ 2 lần trong window (dấu chia đều / smurfing).
 
 ### Nhóm F — Nhịp thời gian (Temporal Timing) — 2 đặc trưng
 
-19. `off_hour_ratio_{w}` — Tỷ lệ TX giờ **0h–5h**.
-20. `median_inter_txn_gap_{w}` — Khoảng cách thời gian trung vị giữa 2 TX liên tiếp (phút).
+19. `median_inter_txn_gap_{w}` — Khoảng cách thời gian trung vị giữa 2 TX liên tiếp (phút).
+20. `p10_inter_txn_gap_{w}` — Phân vị 10% khoảng cách liên tiếp (phút) — bắt burst / giao dịch dồn sát.
 
 > Ký hiệu `{w}` ∈ `{1d, 7d, 14d}`. Trong schema output có thể ghi tên không suffix khi `window` là cột riêng.
+>
+> **Lưu ý (khớp handoff + EDA ML-001/002):** không dùng đặc trưng theo giờ trong ngày (`off_hour_*`) — giờ 00 là artifact bộ sinh. `near_threshold_ratio` không nằm trong bộ 20 baseline handoff (có thể để nhánh rule riêng).
 
 ---
 
@@ -293,12 +297,12 @@ Mọi TX của \(a\) trong window (cả gửi và nhận) tạo tập \(\{amount
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key`, `amount` |
 | **Fallback** | 1 TX → không tính std → `.fillna(0.0)` |
 
-#### 18. `near_threshold_ratio`
+#### 18. `repeated_amount_ratio`
 
 | Mục | Nội dung |
 |---|---|
-| **Định nghĩa** | Tỷ lệ TX trong dải né CTR **$9,000 ≤ amount < $10,000** (T01) |
-| **Công thức** | $\frac{\sum \mathbf{1}\{9000 \le \text{amount} < 10000\}}{\text{txn\_count} + 10^{-6}}$ |
+| **Định nghĩa** | Tỷ lệ giao dịch trong window có `amount` xuất hiện **≥ 2 lần** (cùng account). Dấu chia đều / smurfing. |
+| **Công thức** | $\dfrac{\#\{tx : \mathrm{freq}(\mathrm{amount}(tx)) \ge 2\}}{\mathrm{txn\_count} + 10^{-6}}$ |
 | **Window** | `1d` / `7d` / `14d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key`, `amount` |
 | **Fallback** | \(\varepsilon\) mẫu số; `.fillna(0.0)` |
@@ -307,22 +311,22 @@ Mọi TX của \(a\) trong window (cả gửi và nhận) tạo tập \(\{amount
 
 ### Nhóm F — Nhịp thời gian (Temporal Timing)
 
-#### 19. `off_hour_ratio`
-
-| Mục | Nội dung |
-|---|---|
-| **Định nghĩa** | Tỷ lệ TX phát sinh giờ **0h–5h** UTC |
-| **Công thức** | $\frac{\sum \mathbf{1}\{\text{hour}(\text{occurred\_at}) \in \{0,1,2,3,4,5\}\}}{\text{txn\_count} + 10^{-6}}$ |
-| **Window** | `1d` / `7d` / `14d` |
-| **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
-| **Fallback** | \(\varepsilon\) mẫu số; `.fillna(0.0)` |
-
-#### 20. `median_inter_txn_gap`
+#### 19. `median_inter_txn_gap`
 
 | Mục | Nội dung |
 |---|---|
 | **Định nghĩa** | Trung vị khoảng cách giữa 2 TX liên tiếp (phút) |
-| **Công thức** | $\text{Median}(t_{i+1} - t_i)$ sau khi sort `occurred_at` tăng dần |
+| **Công thức** | $\mathrm{Median}(t_{i+1} - t_i)$ sau khi sort `occurred_at` tăng dần |
+| **Window** | `1d` / `7d` / `14d` |
+| **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
+| **Fallback** | Chỉ 1 TX → `.fillna(99999.0)` |
+
+#### 20. `p10_inter_txn_gap`
+
+| Mục | Nội dung |
+|---|---|
+| **Định nghĩa** | Phân vị 10% khoảng cách giữa 2 TX liên tiếp (phút) — bắt cụm giao dịch sát nhau |
+| **Công thức** | $Q_{0.10}(t_{i+1} - t_i)$ (cùng chuỗi gap như median) |
 | **Window** | `1d` / `7d` / `14d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
 | **Fallback** | Chỉ 1 TX → `.fillna(99999.0)` |
@@ -331,7 +335,7 @@ Mọi TX của \(a\) trong window (cả gửi và nhận) tạo tập \(\{amount
 
 ## 3. Schema output pipeline
 
-File kết quả: `data/processed/features_{train,val,test}.parquet`
+File kết quả: `data/processed/features_{train,val,test}_{window}.parquet`
 
 | Tên cột | Kiểu | Nhóm / ghi chú |
 |---|---|---|
@@ -355,9 +359,9 @@ File kết quả: `data/processed/features_{train,val,test}.parquet`
 | `median_amount` | DOUBLE | E (`log1p`) |
 | `p90_amount` | DOUBLE | E (`log1p`) |
 | `amount_std` | DOUBLE | E (`log1p`) |
-| `near_threshold_ratio` | DOUBLE | E |
-| `off_hour_ratio` | DOUBLE | F |
+| `repeated_amount_ratio` | DOUBLE | E |
 | `median_inter_txn_gap` | DOUBLE | F (phút) |
+| `p10_inter_txn_gap` | DOUBLE | F (phút) |
 
 **Vector đưa vào Isolation Forest:** 20 cột số ở trên (không gồm `account_key`, `as_of_ts`, `window`; không gồm nhãn).
 
@@ -367,16 +371,18 @@ File kết quả: `data/processed/features_{train,val,test}.parquet`
 
 | Feature | Tín hiệu nghiệp vụ gợi ý |
 |---|---|
-| `near_threshold_ratio` | T01 Structuring / né CTR |
+| `repeated_amount_ratio` cao | Smurfing / chia đều số tiền lặp lại |
+| `amount_std` rất thấp + `txn_count` cao | Smurfing nhiều khoản gần bằng nhau |
+| `p10_inter_txn_gap` rất thấp | Burst — giao dịch dồn sát (bot / layering nhanh) |
+| `median_inter_txn_gap` thấp | Nhịp giao dịch dày |
 | `outflow_inflow_ratio` ≈ 1 + `rapid_outflow_ratio` cao / `median_dwell_time` thấp | Mule / pass-through (T02/T05) |
 | `unique_in_*` / `unique_out_*` cao | Fan-in / fan-out (T04) |
-| `off_hour_ratio` cao | Hoạt động tự động / ngoài giờ |
-| `amount_std` rất thấp + `txn_count` cao | Smurfing nhiều khoản gần bằng nhau |
 | `new_counterparty_ratio` cao | Mạng đối tác mới bất thường |
 
 ---
 
 ## 5. Liên hệ triển khai
 
-- Đặc tả này là **hợp đồng feature** cho pipeline Behavioral ML (DuckDB → Parquet → Isolation Forest).
-- Pipeline CSV hiện tại (`scripts/extract_features.py` trên LI-Small) dùng bộ 11 feature rút gọn; khi nâng cấp lên 20 feature bắt buộc tuân thủ đúng schema và 4 fallback trong tài liệu này.
+- Đặc tả này khớp **isolation_forest_handoff.md** §3.3 (daily EOD) + §3.4 (nhóm E/F) + §4–6 (nhãn window / output / evidence).
+- Pipeline: DuckDB `transaction` → `scripts/extract_features.py` → Parquet → Isolation Forest → `scripts/generate_scores.py` → `scripts/evaluate_model.py` (Precision/Recall/PR-AUC/Precision@K).
+- Không dùng đặc trưng giờ trong ngày trên LI-Small (artifact giờ 00 — ML-001/002).

@@ -38,9 +38,9 @@ DEFAULT_FEATURE_COLS = [
     "median_amount",
     "p90_amount",
     "amount_std",
-    "near_threshold_ratio",
-    "off_hour_ratio",
+    "repeated_amount_ratio",
     "median_inter_txn_gap",
+    "p10_inter_txn_gap",
 ]
 
 
@@ -160,8 +160,8 @@ def generate_scores(window: str, model_path: Path, output_path: Path) -> Path:
     print("[3/5] Tinh p5/p95 tren TRAIN (dong bang cho val/test) ...")
     p5, p95, sorted_cols = _train_percentiles(train, feature_cols)
     print(
-        "       Vi du near_threshold_ratio: "
-        f"p5={p5['near_threshold_ratio']:.6f} p95={p95['near_threshold_ratio']:.6f}"
+        "       Vi du repeated_amount_ratio: "
+        f"p5={p5['repeated_amount_ratio']:.6f} p95={p95['repeated_amount_ratio']:.6f}"
     )
 
     print("[4/5] Cham anomaly_score [0,1] + top_anomalous_features ...")

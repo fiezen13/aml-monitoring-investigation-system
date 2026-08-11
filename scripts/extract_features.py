@@ -8,6 +8,7 @@ Ví dụ:
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import duckdb
@@ -38,9 +39,9 @@ FEATURE_COLS = [
     "median_amount",
     "p90_amount",
     "amount_std",
-    "near_threshold_ratio",
-    "off_hour_ratio",
+    "repeated_amount_ratio",
     "median_inter_txn_gap",
+    "p10_inter_txn_gap",
 ]
 
 RATIO_COLS = [
@@ -48,8 +49,7 @@ RATIO_COLS = [
     "outflow_inflow_ratio",
     "rapid_outflow_ratio",
     "new_counterparty_ratio",
-    "near_threshold_ratio",
-    "off_hour_ratio",
+    "repeated_amount_ratio",
 ]
 
 
@@ -195,66 +195,56 @@ def _new_counterparty_ratio(win_events: pl.DataFrame, hist_events: pl.DataFrame)
 
 
 def _inter_txn_gap(win_events: pl.DataFrame) -> pl.DataFrame:
+    """median + p10 khoang cach lien tiep (phut)."""
     return (
         win_events.sort(["account_key", "ts"])
         .with_columns(
             (pl.col("ts").diff().over("account_key").dt.total_seconds() / 60.0).alias("gap_min")
         )
         .group_by("account_key")
-        .agg(pl.col("gap_min").drop_nulls().median().alias("median_inter_txn_gap"))
-        .with_columns(pl.col("median_inter_txn_gap").fill_null(99999.0))
-    )
-
-
-def extract_split_features(tx: pl.DataFrame, window: str) -> pl.DataFrame:
-    """Snapshot / account: as_of = EOD UTC cua ngay giao dich cuoi trong split."""
-    days = WINDOW_DAYS[window]
-    events = _to_events(tx).sort(["account_key", "ts"])
-
-    # as_of_ts = end-of-day (UTC) cua ngay last-activity tung account
-    # window: (as_of - window, as_of]  — tuong duong lookback tu last activity
-    events = events.with_columns(pl.col("ts").max().over("account_key").alias("acc_max_ts"))
-
-    # Gan as_of = acc_max_ts (diem neo); EOD chi dung de ghi metadata
-    # Dung lookback truc tiep tu acc_max_ts de tranh lech timezone EOD
-    win_events = events.filter(
-        (pl.col("ts") > pl.col("acc_max_ts") - pl.duration(days=days))
-        & (pl.col("ts") <= pl.col("acc_max_ts"))
-    )
-    hist_events = events.filter(pl.col("ts") <= pl.col("acc_max_ts") - pl.duration(days=days))
-
-    # Fallback 1.1: chi account co >= 1 TX trong window (groupby tu win_events)
-    if win_events.is_empty():
-        return pl.DataFrame(
-            schema={
-                "account_key": pl.Utf8,
-                "as_of_ts": pl.Datetime(time_unit="us", time_zone="UTC"),
-                "window": pl.Utf8,
-                **{c: pl.Float64 for c in FEATURE_COLS},
-            }
+        .agg(
+            [
+                pl.col("gap_min").drop_nulls().median().alias("median_inter_txn_gap"),
+                pl.col("gap_min").drop_nulls().quantile(0.10).alias("p10_inter_txn_gap"),
+            ]
         )
-
-    # as_of_ts metadata: EOD UTC cua ngay acc_max
-    as_of_map = (
-        win_events.select("account_key", "acc_max_ts")
-        .unique(subset=["account_key"])
         .with_columns(
-            # ceil toi cuoi ngay UTC cua acc_max_ts
-            (
-                pl.col("acc_max_ts").dt.truncate("1d")
-                + pl.duration(days=1)
-                - pl.duration(seconds=1)
-            ).alias("as_of_ts")
+            [
+                pl.col("median_inter_txn_gap").fill_null(99999.0),
+                pl.col("p10_inter_txn_gap").fill_null(99999.0),
+            ]
         )
-        .select("account_key", "as_of_ts")
     )
 
+
+def _repeated_amount_ratio(win_events: pl.DataFrame) -> pl.DataFrame:
+    """Ty le TX co amount xuat hien >= 2 lan trong window (smurfing)."""
+    amt_freq = win_events.group_by(["account_key", "amount"]).agg(pl.len().alias("amt_n"))
+    tagged = win_events.join(amt_freq, on=["account_key", "amount"], how="left")
+    return tagged.group_by("account_key").agg(
+        ((pl.col("amt_n") >= 2).sum() / (pl.len() + EPS)).alias("repeated_amount_ratio")
+    )
+
+
+def _empty_feature_frame() -> pl.DataFrame:
+    return pl.DataFrame(
+        schema={
+            "account_key": pl.Utf8,
+            "as_of_ts": pl.Datetime(time_unit="us", time_zone="UTC"),
+            "window": pl.Utf8,
+            **{c: pl.Float64 for c in FEATURE_COLS},
+        }
+    )
+
+
+def _aggregate_account_features(
+    win_events: pl.DataFrame, hist_events: pl.DataFrame
+) -> pl.DataFrame:
+    """Tinh 20 feature cho moi account co >= 1 TX trong window (handoff §3.3.4)."""
     win_events = win_events.with_columns(
         [
             (pl.col("direction") == "in").alias("is_in"),
             (pl.col("direction") == "out").alias("is_out"),
-            ((pl.col("amount") >= 9000) & (pl.col("amount") < 10000)).alias("is_near"),
-            pl.col("ts").dt.hour().is_in([0, 1, 2, 3, 4, 5]).alias("is_off"),
             pl.col("ts").dt.date().alias("day"),
         ]
     )
@@ -278,8 +268,6 @@ def extract_split_features(tx: pl.DataFrame, window: str) -> pl.DataFrame:
             pl.col("amount").median().alias("median_amount_raw"),
             pl.col("amount").quantile(0.90).alias("p90_amount_raw"),
             pl.col("amount").std().alias("amount_std_raw"),
-            (pl.col("is_near").sum() / (pl.len() + EPS)).alias("near_threshold_ratio"),
-            (pl.col("is_off").sum() / (pl.len() + EPS)).alias("off_hour_ratio"),
         ]
     )
 
@@ -287,7 +275,6 @@ def extract_split_features(tx: pl.DataFrame, window: str) -> pl.DataFrame:
         [
             (pl.col("txn_count") / (pl.col("active_days") + EPS)).alias("txn_per_active_day"),
             (pl.col("sum_out") / (pl.col("sum_in") + EPS)).alias("outflow_inflow_ratio"),
-            # Fallback 1.3 heavy-tail: log1p
             (pl.col("sum_in") + 1.0).log().alias("total_inflow"),
             (pl.col("sum_out") + 1.0).log().alias("total_outflow"),
             (
@@ -302,24 +289,19 @@ def extract_split_features(tx: pl.DataFrame, window: str) -> pl.DataFrame:
         ]
     )
 
-    pt = _pass_through_features(win_events)
-    ncp = _new_counterparty_ratio(win_events, hist_events)
-    gaps = _inter_txn_gap(win_events)
-
     feats = (
-        base.join(pt, on="account_key", how="left")
-        .join(ncp, on="account_key", how="left")
-        .join(gaps, on="account_key", how="left")
-        .join(as_of_map, on="account_key", how="left")
-        .with_columns(pl.lit(window).alias("window"))
+        base.join(_pass_through_features(win_events), on="account_key", how="left")
+        .join(_new_counterparty_ratio(win_events, hist_events), on="account_key", how="left")
+        .join(_inter_txn_gap(win_events), on="account_key", how="left")
+        .join(_repeated_amount_ratio(win_events), on="account_key", how="left")
     )
 
-    # Fallback 1.2
-    feats = feats.with_columns(
+    return feats.with_columns(
         [pl.col(c).fill_null(0.0).fill_nan(0.0) for c in RATIO_COLS]
         + [
             pl.col("median_dwell_time").fill_null(999.0),
             pl.col("median_inter_txn_gap").fill_null(99999.0),
+            pl.col("p10_inter_txn_gap").fill_null(99999.0),
             pl.col("unique_in_counterparties").fill_null(0).cast(pl.Int64),
             pl.col("unique_out_counterparties").fill_null(0).cast(pl.Int64),
             pl.col("txn_count").cast(pl.Int64),
@@ -329,7 +311,66 @@ def extract_split_features(tx: pl.DataFrame, window: str) -> pl.DataFrame:
         ]
     )
 
-    return feats.select(["account_key", "as_of_ts", "window", *FEATURE_COLS]).sort("account_key")
+
+def extract_split_features(tx: pl.DataFrame, window: str) -> pl.DataFrame:
+    """Daily EOD UTC snapshots — handoff §3.3.
+
+    Moi ngay lich D: as_of_ts = 23:59:59Z; feature tu
+    (as_of_ts - window, as_of_ts]; chi account co >= 1 TX trong window.
+    """
+    days = WINDOW_DAYS[window]
+    events = _to_events(tx).sort(["account_key", "ts"])
+    if events.is_empty():
+        return _empty_feature_frame()
+
+    ts_min = events.select(pl.col("ts").min()).item()
+    ts_max = events.select(pl.col("ts").max()).item()
+    day_start = ts_min.date()
+    day_end = ts_max.date()
+    n_days = (day_end - day_start).days + 1
+    print(
+        f"       daily EOD: {day_start} -> {day_end} ({n_days} ngay, window={window})",
+        flush=True,
+    )
+
+    frames: list[pl.DataFrame] = []
+    d = day_start
+    day_i = 0
+    while d <= day_end:
+        day_i += 1
+        as_of = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+        win_start = as_of - timedelta(days=days)
+
+        win_events = events.filter(
+            (pl.col("ts") > pl.lit(win_start)) & (pl.col("ts") <= pl.lit(as_of))
+        )
+        if win_events.is_empty():
+            d += timedelta(days=1)
+            continue
+
+        hist_events = events.filter(pl.col("ts") <= pl.lit(win_start))
+        day_feats = _aggregate_account_features(win_events, hist_events)
+        day_feats = day_feats.with_columns(
+            [
+                pl.lit(as_of).cast(pl.Datetime(time_unit="us", time_zone="UTC")).alias("as_of_ts"),
+                pl.lit(window).alias("window"),
+            ]
+        )
+        frames.append(
+            day_feats.select(["account_key", "as_of_ts", "window", *FEATURE_COLS])
+        )
+
+        if day_i == 1 or day_i == n_days or day_i % 5 == 0:
+            print(
+                f"       [{day_i}/{n_days}] {d} accounts={day_feats.height:,}",
+                flush=True,
+            )
+        d += timedelta(days=1)
+
+    if not frames:
+        return _empty_feature_frame()
+
+    return pl.concat(frames, how="vertical").sort(["as_of_ts", "account_key"])
 
 
 def extract_features(window: str, db_path: Path) -> None:
@@ -350,7 +391,7 @@ def extract_features(window: str, db_path: Path) -> None:
             feats = extract_split_features(tx, window=window)
             out = PROCESSED_DIR / f"features_{split}_{window}.parquet"
             feats.write_parquet(out, compression="zstd")
-            print(f"[{split}] -> {out} | accounts={feats.height:,} | cols={feats.width}")
+            print(f"[{split}] -> {out} | samples={feats.height:,} | cols={feats.width}")
     finally:
         con.close()
 

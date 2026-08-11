@@ -2,6 +2,7 @@
 
 Ví dụ:
   python scripts/evaluate_model.py
+  python scripts/evaluate_model.py --precision-at-k 50,100,500,1000
 """
 
 from __future__ import annotations
@@ -25,47 +26,38 @@ DB_PATH = Path("data/processed/aml.duckdb")
 SCORES_PATH = PROCESSED_DIR / "if_scores_v1.parquet"
 REPORT_PATH = PROCESSED_DIR / "evaluation_report.txt"
 TARGET_RECALL = 0.80
+WINDOW_DAYS = {"1d": 1, "7d": 7, "14d": 14}
+DEFAULT_PRECISION_AT_K = (50, 100, 500, 1000)
 
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Evaluate IF scores vs label_laundering")
     p.add_argument("--scores", default=str(SCORES_PATH))
     p.add_argument("--db", default=str(DB_PATH))
-    p.add_argument("--window", default="7d")
+    p.add_argument("--window", default="7d", choices=tuple(WINDOW_DAYS))
     p.add_argument("--report", default=str(REPORT_PATH))
     p.add_argument("--target-recall", type=float, default=TARGET_RECALL)
+    p.add_argument(
+        "--precision-at-k",
+        default=",".join(str(k) for k in DEFAULT_PRECISION_AT_K),
+        help="Danh sach K cho Precision@K (vd 50,100,500,1000)",
+    )
     return p.parse_args()
 
 
-def _account_labels_from_duckdb(db_path: Path) -> pd.DataFrame:
-    """y_true cap account x split: 1 neu tham gia bat ky TX label_laundering=1."""
-    if not db_path.exists():
-        raise FileNotFoundError(f"Khong tim thay DuckDB: {db_path}")
-
-    con = duckdb.connect(str(db_path), read_only=True)
-    try:
-        df = con.execute(
-            """
-            WITH sides AS (
-                SELECT split, from_account_key AS account_key, label_laundering
-                FROM transaction
-                WHERE from_account_key IS NOT NULL
-                UNION ALL
-                SELECT split, to_account_key AS account_key, label_laundering
-                FROM transaction
-                WHERE to_account_key IS NOT NULL
-            )
-            SELECT
-                split,
-                account_key,
-                CAST(MAX(label_laundering) AS INTEGER) AS y_true
-            FROM sides
-            GROUP BY split, account_key
-            """
-        ).fetchdf()
-    finally:
-        con.close()
-    return df
+def _parse_ks(raw: str) -> tuple[int, ...]:
+    ks: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        k = int(part)
+        if k <= 0:
+            raise ValueError(f"K phai > 0, nhan duoc {k}")
+        ks.append(k)
+    if not ks:
+        raise ValueError("Can it nhat 1 gia tri K cho --precision-at-k")
+    return tuple(ks)
 
 
 def _attach_split(scores: pd.DataFrame, window: str) -> pd.DataFrame:
@@ -84,7 +76,6 @@ def _attach_split(scores: pd.DataFrame, window: str) -> pd.DataFrame:
             f"Khong tim thay features_*_{window}.parquet de gan split."
         )
     key_map = pd.concat(parts, ignore_index=True)
-    # Chuan hoa as_of_ts de join on dinh
     scores = scores.copy()
     scores["as_of_ts"] = pd.to_datetime(scores["as_of_ts"], utc=True)
     key_map["as_of_ts"] = pd.to_datetime(key_map["as_of_ts"], utc=True)
@@ -93,6 +84,63 @@ def _attach_split(scores: pd.DataFrame, window: str) -> pd.DataFrame:
     if missing:
         print(f"[warn] {missing:,} hang score khong map duoc split (bo qua khi evaluate).")
     return merged
+
+
+def _window_labels_from_duckdb(
+    samples: pd.DataFrame, db_path: Path, window_days: int
+) -> pd.DataFrame:
+    """y_true theo handoff §4: laundering TX trong (as_of - window, as_of]."""
+    if not db_path.exists():
+        raise FileNotFoundError(f"Khong tim thay DuckDB: {db_path}")
+
+    keys = samples[["account_key", "as_of_ts"]].drop_duplicates().copy()
+    keys["as_of_ts"] = pd.to_datetime(keys["as_of_ts"], utc=True)
+
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        con.register("eval_samples", keys)
+        df = con.execute(
+            f"""
+            WITH sides AS (
+                SELECT
+                    from_account_key AS account_key,
+                    occurred_at,
+                    label_laundering
+                FROM transaction
+                WHERE from_account_key IS NOT NULL
+                UNION ALL
+                SELECT
+                    to_account_key AS account_key,
+                    occurred_at,
+                    label_laundering
+                FROM transaction
+                WHERE to_account_key IS NOT NULL
+            )
+            SELECT
+                s.account_key,
+                s.as_of_ts,
+                CAST(
+                    MAX(
+                        CASE
+                            WHEN t.label_laundering = 1 THEN 1
+                            ELSE 0
+                        END
+                    ) AS INTEGER
+                ) AS y_true
+            FROM eval_samples s
+            LEFT JOIN sides t
+              ON t.account_key = s.account_key
+             AND t.occurred_at > s.as_of_ts - INTERVAL {int(window_days)} DAY
+             AND t.occurred_at <= s.as_of_ts
+            GROUP BY s.account_key, s.as_of_ts
+            """
+        ).fetchdf()
+    finally:
+        con.close()
+
+    df["as_of_ts"] = pd.to_datetime(df["as_of_ts"], utc=True)
+    df["y_true"] = df["y_true"].fillna(0).astype(int)
+    return df
 
 
 def _find_best_threshold(
@@ -137,13 +185,28 @@ def _find_best_threshold(
     return best_thresh
 
 
-def _metrics(y_true: np.ndarray, scores: np.ndarray, thr: float) -> dict:
+def _precision_at_k(y_true: np.ndarray, scores: np.ndarray, k: int) -> float:
+    """Ty le positive trong top-K theo anomaly_score giam dan."""
+    n = len(scores)
+    if n == 0 or k <= 0:
+        return float("nan")
+    kk = min(int(k), n)
+    order = np.argsort(-scores, kind="mergesort")[:kk]
+    return float(y_true[order].mean())
+
+
+def _metrics(
+    y_true: np.ndarray,
+    scores: np.ndarray,
+    thr: float,
+    ks: tuple[int, ...],
+) -> dict:
     y_pred = (scores >= thr).astype(int)
     tn = int(((y_true == 0) & (y_pred == 0)).sum())
     fp = int(((y_true == 0) & (y_pred == 1)).sum())
     fpr = fp / (fp + tn) if (fp + tn) else 0.0
 
-    out = {
+    out: dict = {
         "threshold": float(thr),
         "n_accounts": int(len(y_true)),
         "n_positive": int(y_true.sum()),
@@ -152,6 +215,7 @@ def _metrics(y_true: np.ndarray, scores: np.ndarray, thr: float) -> dict:
         "recall": float(recall_score(y_true, y_pred, zero_division=0)),
         "f1": float(f1_score(y_true, y_pred, zero_division=0)),
         "fpr": float(fpr),
+        "precision_at_k": {int(k): _precision_at_k(y_true, scores, int(k)) for k in ks},
     }
     if len(np.unique(y_true)) > 1:
         out["roc_auc"] = float(roc_auc_score(y_true, scores))
@@ -180,9 +244,10 @@ def _format_block(title: str, m: dict) -> str:
         f"{'ROC-AUC':<18} {m['roc_auc']:>14.4f}",
         f"{'PR-AUC':<18} {m['pr_auc']:>14.4f}",
         f"{'FPR':<18} {m['fpr']:>14.4f}",
-        "=" * 64,
-        "",
     ]
+    for k, v in m["precision_at_k"].items():
+        lines.append(f"{f'Precision@{k}':<18} {v:>14.4f}")
+    lines.extend(["=" * 64, ""])
     return "\n".join(lines)
 
 
@@ -192,9 +257,12 @@ def evaluate_model(
     window: str,
     report_path: Path,
     target_recall: float,
+    precision_at_k: tuple[int, ...],
 ) -> None:
     if not scores_path.exists():
         raise FileNotFoundError(f"Thieu {scores_path}. Chay generate_scores.py truoc.")
+
+    window_days = WINDOW_DAYS[window]
 
     print("[1/4] Doc if_scores_v1.parquet ...", flush=True)
     scores = pd.read_parquet(
@@ -202,9 +270,12 @@ def evaluate_model(
     )
     scores = _attach_split(scores, window)
 
-    print("[2/4] Join label_laundering tu DuckDB (account x split) ...", flush=True)
-    labels = _account_labels_from_duckdb(db_path)
-    scored = scores.merge(labels, on=["split", "account_key"], how="left")
+    print(
+        f"[2/4] Gan nhan window-strict (laundering trong (as_of-{window}, as_of]) ...",
+        flush=True,
+    )
+    labels = _window_labels_from_duckdb(scores, db_path, window_days)
+    scored = scores.merge(labels, on=["account_key", "as_of_ts"], how="left")
     scored["y_true"] = scored["y_true"].fillna(0).astype(int)
 
     val = scored[scored["split"] == "val"].copy()
@@ -222,13 +293,14 @@ def evaluate_model(
     y_val = val["y_true"].to_numpy()
     s_val = val["anomaly_score"].to_numpy(dtype=float)
     best_thresh = _find_best_threshold(y_val, s_val, target_recall)
-    val_m = _metrics(y_val, s_val, best_thresh)
+    val_m = _metrics(y_val, s_val, best_thresh, precision_at_k)
 
-    print("[4/4] Ap dung best_thresh len TEST ...", flush=True)
+    print("[4/4] Ap dung best_thresh len TEST + Precision@K ...", flush=True)
     test_m = _metrics(
         test["y_true"].to_numpy(),
         test["anomaly_score"].to_numpy(dtype=float),
         best_thresh,
+        precision_at_k,
     )
 
     val_text = _format_block(
@@ -239,6 +311,8 @@ def evaluate_model(
         f"best_thresh={best_thresh}\n"
         f"scores={scores_path}\n"
         f"model_window={window}\n"
+        f"label_def=window_strict (as_of - {window}, as_of]\n"
+        f"precision_at_k={list(precision_at_k)}\n"
         f"{val_text}\n{test_text}\n"
     )
     print(report, flush=True)
@@ -260,6 +334,7 @@ def main() -> None:
         window=args.window,
         report_path=Path(args.report),
         target_recall=args.target_recall,
+        precision_at_k=_parse_ks(args.precision_at_k),
     )
 
 
