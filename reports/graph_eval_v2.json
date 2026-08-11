@@ -1,0 +1,200 @@
+{
+  "eval_version": "graph_eval_v2",
+  "primary_split": "test",
+  "match_rule": "same detected_pattern + center_account_key == detection.account_key + IBM [t_min,t_max] overlaps detection 7d window",
+  "scope": {
+    "patterns": [
+      "FAN_IN",
+      "FAN_OUT",
+      "GATHER_SCATTER"
+    ],
+    "cycle_excluded": true,
+    "credit": "recall: GT hit if >=1 matching PI in split; precision: PI hit if >=1 matching GT (edges restricted to split)",
+    "gt_split_assignment": "sample_split from assign_snapshot_split(as_of) where as_of = date(t_max)+1 day 00:00 UTC"
+  },
+  "n_gt_enriched": 43,
+  "n_match_edges": 25,
+  "gt_by_split": {
+    "train": 16,
+    "val": 3,
+    "test": 24
+  },
+  "primary": {
+    "split": "test",
+    "overall": {
+      "n_gt": 24,
+      "n_pred": 9331,
+      "n_gt_hit": 6,
+      "n_pred_hit": 21,
+      "precision": 0.002250562640660165,
+      "recall": 0.25,
+      "f1": 0.0044609665427509295
+    },
+    "by_pattern": {
+      "FAN_IN": {
+        "ibm_pattern_type": "FAN-IN",
+        "n_gt": 6,
+        "n_pred": 6625,
+        "n_gt_hit": 0,
+        "n_pred_hit": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": null
+      },
+      "FAN_OUT": {
+        "ibm_pattern_type": "FAN-OUT",
+        "n_gt": 10,
+        "n_pred": 2549,
+        "n_gt_hit": 3,
+        "n_pred_hit": 13,
+        "precision": 0.0051000392310710085,
+        "recall": 0.3,
+        "f1": 0.01002957438601003
+      },
+      "GATHER_SCATTER": {
+        "ibm_pattern_type": "GATHER-SCATTER",
+        "n_gt": 8,
+        "n_pred": 157,
+        "n_gt_hit": 3,
+        "n_pred_hit": 8,
+        "precision": 0.050955414012738856,
+        "recall": 0.375,
+        "f1": 0.08971962616822432
+      }
+    }
+  },
+  "by_split": {
+    "train": {
+      "split": "train",
+      "overall": {
+        "n_gt": 16,
+        "n_pred": 4696,
+        "n_gt_hit": 1,
+        "n_pred_hit": 2,
+        "precision": 0.00042589437819420784,
+        "recall": 0.0625,
+        "f1": 0.0008460236886632825
+      },
+      "by_pattern": {
+        "FAN_IN": {
+          "ibm_pattern_type": "FAN-IN",
+          "n_gt": 6,
+          "n_pred": 2380,
+          "n_gt_hit": 0,
+          "n_pred_hit": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": null
+        },
+        "FAN_OUT": {
+          "ibm_pattern_type": "FAN-OUT",
+          "n_gt": 7,
+          "n_pred": 2168,
+          "n_gt_hit": 1,
+          "n_pred_hit": 2,
+          "precision": 0.0009225092250922509,
+          "recall": 0.14285714285714285,
+          "f1": 0.0018331805682859762
+        },
+        "GATHER_SCATTER": {
+          "ibm_pattern_type": "GATHER-SCATTER",
+          "n_gt": 3,
+          "n_pred": 148,
+          "n_gt_hit": 0,
+          "n_pred_hit": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": null
+        }
+      }
+    },
+    "val": {
+      "split": "val",
+      "overall": {
+        "n_gt": 3,
+        "n_pred": 3448,
+        "n_gt_hit": 0,
+        "n_pred_hit": 2,
+        "precision": 0.000580046403712297,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      "by_pattern": {
+        "FAN_IN": {
+          "ibm_pattern_type": "FAN-IN",
+          "n_gt": 0,
+          "n_pred": 2007,
+          "n_gt_hit": 0,
+          "n_pred_hit": 0,
+          "precision": 0.0,
+          "recall": null,
+          "f1": null
+        },
+        "FAN_OUT": {
+          "ibm_pattern_type": "FAN-OUT",
+          "n_gt": 2,
+          "n_pred": 1323,
+          "n_gt_hit": 0,
+          "n_pred_hit": 2,
+          "precision": 0.0015117157974300832,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "GATHER_SCATTER": {
+          "ibm_pattern_type": "GATHER-SCATTER",
+          "n_gt": 1,
+          "n_pred": 118,
+          "n_gt_hit": 0,
+          "n_pred_hit": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": null
+        }
+      }
+    },
+    "test": {
+      "split": "test",
+      "overall": {
+        "n_gt": 24,
+        "n_pred": 9331,
+        "n_gt_hit": 6,
+        "n_pred_hit": 21,
+        "precision": 0.002250562640660165,
+        "recall": 0.25,
+        "f1": 0.0044609665427509295
+      },
+      "by_pattern": {
+        "FAN_IN": {
+          "ibm_pattern_type": "FAN-IN",
+          "n_gt": 6,
+          "n_pred": 6625,
+          "n_gt_hit": 0,
+          "n_pred_hit": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": null
+        },
+        "FAN_OUT": {
+          "ibm_pattern_type": "FAN-OUT",
+          "n_gt": 10,
+          "n_pred": 2549,
+          "n_gt_hit": 3,
+          "n_pred_hit": 13,
+          "precision": 0.0051000392310710085,
+          "recall": 0.3,
+          "f1": 0.01002957438601003
+        },
+        "GATHER_SCATTER": {
+          "ibm_pattern_type": "GATHER-SCATTER",
+          "n_gt": 8,
+          "n_pred": 157,
+          "n_gt_hit": 3,
+          "n_pred_hit": 8,
+          "precision": 0.050955414012738856,
+          "recall": 0.375,
+          "f1": 0.08971962616822432
+        }
+      }
+    }
+  }
+}
