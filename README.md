@@ -196,6 +196,35 @@ bất kỳ markdown viewer/editor nào (VS Code, Obsidian, GitHub UI, …).
 - 🏫 **AI20K Program:** VinUni AI20K Build Phase
 - 👨‍🏫 **Mentor:** Đặng Hải Lộc
 
+## 📊 FIN-07 Data (Task 1–2)
+
+Transaction + pattern data: **IBM Transactions for AML — LI-Small** from Kaggle
+[`ealtman2019/ibm-transactions-for-anti-money-laundering-aml`](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml)
+(CDLA-Sharing-1.0). Place files under `data/raw/ibm_li_small/`:
+
+- `LI-Small_Trans.csv`
+- `LI-Small_Patterns.txt`
+
+```bash
+pip install -r requirements.txt
+
+# Task 1 — ETL transactions + accounts → DuckDB
+python3 scripts/run_task1_etl.py \
+  --raw data/raw/ibm_li_small/LI-Small_Trans.csv \
+  --db data/processed/aml.duckdb \
+  --seed 42
+
+# Task 2 — pattern inventory + typology coverage (T01–T10)
+python3 scripts/run_task2_typology.py \
+  --patterns data/raw/ibm_li_small/LI-Small_Patterns.txt \
+  --catalog docs/reference/typology_mapping_catalog_v1.json \
+  --out-dir data/processed
+```
+
+Task 1 outputs: DuckDB `transaction` + `account`, `dq_report.json`, `split_cutoffs.json`.
+Task 2 outputs: `ibm_pattern_instances.json`, `typology_mapping_catalog.json`, `typology_coverage.json` / `.md`.
+Schema notes: `docs/task2_schema.md`.
+
 ## 📄 License
 
-MIT — Sử dụng tự do cho mục đích giáo dục.
+MIT — Sử dụng tự do cho mục đích giáo dục. IBM AML sample data remains under CDLA-Sharing-1.0.

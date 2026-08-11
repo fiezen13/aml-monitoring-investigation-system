@@ -104,7 +104,11 @@ def normalize_channel(value: object) -> str:
 
 
 def make_account_key(bank: object, account: object) -> str:
-    return f"{bank}:{account}"
+    """Build account_key; numeric bank IDs drop leading zeros (match pandas Int bank from Trans CSV)."""
+    b = str(bank).strip()
+    if b.isdigit():
+        b = str(int(b))
+    return f"{b}:{account}"
 
 
 def feature_columns(columns: list[str] | tuple[str, ...]) -> list[str]:
