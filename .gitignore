@@ -111,3 +111,17 @@ pytest-report.xml
 # được gì từ chúng.
 docs/design/prototype/uploads/
 docs/design/prototype/.thumbnail
+
+# Terraform — state CHỨA MẬT KHẨU CƠ SỞ DỮ LIỆU dạng chữ thường.
+#
+# Bỏ qua state không phải để repo gọn, mà vì commit nó là công bố mật khẩu cho
+# mọi người có quyền đọc repo, vĩnh viễn — git không quên. Cũng bỏ qua .tfvars
+# vì nó chứa định danh dự án, và thư mục .terraform vì nó nặng và dựng lại được
+# bằng `terraform init`.
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfvars
+!infra/terraform/*.tfvars.example
+infra/terraform/crash.log

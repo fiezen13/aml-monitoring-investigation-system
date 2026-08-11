@@ -3,7 +3,8 @@
         build run worker test test-unit contracts-check lint format typecheck check clean \
         aml-up aml-down aml-status aml-topics aml-fixture aml-producer-sample aml-producer-run \
         aml-producer-eventtime aml-producer-resume aml-flink-build aml-flink-test aml-submit \
-        aml-cancel aml-inspect-kafka aml-inspect-hdfs aml-patterns aml-smoke aml-logs
+        aml-cancel aml-inspect-kafka aml-inspect-hdfs aml-patterns aml-smoke aml-logs \
+        obs-up obs-down obs-status obs-logs obs-reload
 
 COMPOSE ?= docker compose
 
@@ -105,19 +106,20 @@ check: lint test  ## Cổng chất lượng chạy trước khi mở pull reques
 AML := $(COMPOSE) --profile aml
 
 aml-up:  ## Dựng Kafka, HDFS, Flink và chờ xanh
-	$(AML) up -d --build --wait kafka namenode datanode flink-jobmanager flink-taskmanager
+	$(AML) up -d --build --wait kafka kafka-ui namenode datanode flink-jobmanager flink-taskmanager
 	$(AML) up hdfs-init
 	@$(MAKE) --no-print-directory aml-topics
 	@echo ""
 	@echo "  Flink UI     http://localhost:$${AML_FLINK_UI_PORT:-8081}"
 	@echo "  HDFS UI      http://localhost:$${AML_HDFS_UI_PORT:-9870}"
+	@echo "  Kafka UI     http://localhost:$${AML_KAFKA_UI_PORT:-8082}"
 	@echo "  Kafka        localhost:$${AML_KAFKA_PORT:-29092}"
 
 aml-down:  ## Dừng luồng AML, giữ dữ liệu
 	$(AML) down
 
 aml-status:  ## Trạng thái các dịch vụ AML
-	@for s in kafka namenode datanode flink-jobmanager flink-taskmanager; do \
+	@for s in kafka kafka-ui namenode datanode flink-jobmanager flink-taskmanager; do \
 		cid=$$($(AML) ps -q $$s 2>/dev/null); \
 		if [ -z "$$cid" ]; then printf "  %-20s %s\n" "$$s" "chưa chạy"; \
 		else printf "  %-20s %s\n" "$$s" "$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $$cid)"; fi; \
@@ -167,6 +169,33 @@ aml-patterns:  ## Chép *_Patterns.txt lên HDFS, nguyên trạng
 
 aml-smoke:  ## Kiểm tra khói đầu–cuối bằng file mẫu
 	./scripts/aml/smoke_test.sh
+
+# --- Giám sát (Prometheus + Grafana) ---------------------------------
+#
+# Profile `obs`, không chạy cùng `make up`. Cổng bind vào 127.0.0.1 nên
+# không ra Internet. Hướng dẫn đầy đủ: docs/operations/MONITORING.md
+
+OBS := $(COMPOSE) --profile obs
+
+obs-up:  ## Dựng Prometheus, Grafana và các exporter
+	$(OBS) up -d --wait prometheus grafana node-exporter redis-exporter postgres-exporter
+	@echo ""
+	@echo "  Grafana     http://localhost:$${GRAFANA_PORT:-3000}   (admin / $${GRAFANA_ADMIN_PASSWORD:-admin})"
+	@echo "  Prometheus  http://localhost:$${PROMETHEUS_PORT:-9090}"
+
+obs-down:  ## Dừng cụm giám sát, giữ dữ liệu đã thu
+	$(OBS) stop prometheus grafana node-exporter redis-exporter postgres-exporter
+
+obs-status:  ## Mục tiêu nào Prometheus đang scrape được
+	@curl -s http://localhost:$${PROMETHEUS_PORT:-9090}/api/v1/targets \
+		| python3 -c "import json,sys; [print('  %-18s %-28s %s' % (t['labels']['job'], t['labels']['instance'], t['health'])) for t in json.load(sys.stdin)['data']['activeTargets']]" \
+		2>/dev/null || echo "  Prometheus chưa chạy — make obs-up"
+
+obs-logs:  ## Log của Prometheus và Grafana
+	$(OBS) logs -f --tail=100 prometheus grafana
+
+obs-reload:  ## Nạp lại cấu hình Prometheus, không khởi động lại container
+	@curl -fsS -X POST http://localhost:$${PROMETHEUS_PORT:-9090}/-/reload && echo "  Đã nạp lại cấu hình"
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +

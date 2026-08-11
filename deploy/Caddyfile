@@ -7,6 +7,28 @@
 
 {
 	email {$ACME_EMAIL}
+
+	# Caddy TẮT số liệu HTTP theo mặc định vì chúng tốn chi phí trên đường
+	# phục vụ request. Không có dòng này thì endpoint /metrics vẫn trả lời,
+	# nhưng không có `caddy_http_requests_total` hay
+	# `caddy_http_request_duration_seconds` nào cả — nghĩa là dashboard trống
+	# đúng ở hai ô quan trọng nhất, mà không có lỗi nào chỉ ra vì sao.
+	servers {
+		metrics
+	}
+}
+
+# Số liệu cho Prometheus, trên một cổng riêng.
+#
+# Caddy có sẵn metrics ở admin API (cổng 2019) — nhưng admin API còn cho phép
+# ĐỔI cấu hình đang chạy. Mở nó ra mạng compose để Prometheus scrape nghĩa là
+# bất cứ container nào cũng định tuyến lại được cả site. Ở đây chỉ dựng một
+# listener làm đúng một việc.
+#
+# Cổng 2020 không publish ra máy chủ (xem docker-compose.yml), nên chỉ với
+# tới được từ bên trong mạng compose.
+:2020 {
+	metrics /metrics
 }
 
 {$SITE_DOMAIN}, www.{$SITE_DOMAIN} {

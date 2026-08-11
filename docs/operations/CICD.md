@@ -234,9 +234,12 @@ Mọi script trong `ci/` chạy độc lập được — đây cũng là cách 
 
 - **Chưa bật branch protection** — mục 4. Chưa bật thì CI đỏ vẫn merge được.
 - **Chưa có quét bảo mật image** (Trivy/Grype).
-- **Không có hạ tầng dưới dạng mã.** VPS thuê ngoài, dựng bằng tay. Pipeline triển khai lên máy chủ
-  *đã tồn tại* qua `docker context`, không tự tạo ra máy chủ. Đây là quyết định, không phải chỗ bị
-  bỏ sót — nhưng hệ quả là dựng lại máy chủ từ đầu không tái lập được từ repo.
+- **Hạ tầng dưới dạng mã: mới một phần.** [`infra/terraform/`](../../infra/terraform/) quản lý IP
+  tĩnh, tường lửa và Cloud SQL. **VM thì không** — nó vẫn dựng bằng tay và Terraform chỉ tra cứu,
+  cố ý: VM giữ dữ liệu trong volume Docker, để Terraform nắm vòng đời của nó nghĩa là một lần
+  `destroy` lỡ tay xoá cả cơ sở dữ liệu. Pipeline triển khai lên máy chủ *đã tồn tại* qua
+  `docker context`, không tự tạo ra máy chủ. Hệ quả còn lại: dựng lại **máy** từ đầu vẫn chưa tái
+  lập được từ repo.
 - **Chưa có kênh thông báo khi build hỏng.** Khối `post { failure { } }` trong `Jenkinsfile` để
   trống có chủ ý: một webhook giả cắm sẵn mà không tới nơi còn tệ hơn không có thông báo.
 - **Chưa có kiểm tra tải** và **chưa có sao lưu/diễn tập khôi phục**.

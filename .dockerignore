@@ -18,8 +18,14 @@ htmlcov
 # Giao diện có Dockerfile riêng với context riêng là ./web
 web/
 
-# Lược đồ cơ sở dữ liệu do container postgres nạp, không nằm trong image ứng dụng
-db/
+# db/ KHÔNG bị loại: `scripts/migrate.py` đọc db/init/*.sql và luôn chạy bên
+# trong container. Câu chú thích cũ ở đây — "lược đồ do container postgres nạp,
+# không nằm trong image ứng dụng" — chỉ đúng với đường dựng bằng compose ở máy
+# cá nhân, nơi lược đồ vào qua bind mount. Trên Cloud SQL không có container
+# postgres nào, migrate.py là đường duy nhất, và nó dừng với "Không tìm thấy
+# file .sql nào trong /app/db/init".
+#
+# Thư mục nhỏ, toàn file .sql và một .sh — không đáng để loại khỏi image.
 
 # Tài liệu và dữ liệu
 docs/

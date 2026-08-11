@@ -14,7 +14,7 @@
 | Bảo | Script sinh dữ liệu mẫu tái lập được | ✅ Done | `scripts/seed_data.py`, cài sẵn T01–T05 và T10 | — |
 | Bảo | CI chặn merge trên mọi pull request | ✅ Done | `.github/workflows/ci.yml`, ~4–5 phút | 2h |
 | Bảo | Pipeline CD đầy đủ bằng Jenkins | ✅ Done | `Jenkinsfile`, `ci/`, `deploy/`, `jenkins/` | 3h |
-| Bảo | Tài liệu vận hành và bàn giao | ✅ Done | `docs/operations/RUNBOOK.md`, `ENVIRONMENT.md`, `CI.md`, `CICD.md` | — |
+| Bảo | Tài liệu vận hành và bàn giao | ✅ Done | `docs/operations/RUNBOOK.md`, `docs/operations/CICD.md` | — |
 
 **Tổng kết ngày:** Hạ tầng đã sẵn sàng để Hưng và Tin Tin bắt đầu viết mã mà
 không phải dựng gì thêm. Máy mới chỉ cần Docker; clone repo, chạy một lệnh, có
@@ -162,8 +162,9 @@ chúng thì **hỏi trước**, đừng gỡ ràng buộc:
 |---|---|
 | [docs/operations/RUNBOOK.md](docs/operations/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
 | [.env.example](.env.example) | Mọi biến môi trường |
-| [docs/operations/CICD.md](docs/operations/CICD.md) | Cổng chặn merge chạy gì |
-| [docs/operations/CICD.md](docs/operations/CICD.md) | Luồng giao hàng đầy đủ, ba môi trường, quay lui |
+| [docs/operations/CICD.md](docs/operations/CICD.md) | Cổng chặn merge, luồng giao hàng, ba môi trường, quay lui |
+| [contracts/ingestion/README.md](contracts/ingestion/README.md) | Đường ống nạp dữ liệu: contract, lệnh, ba giao diện, bẫy khi chạy local |
+| [docs/architecture/PRODUCTION_ARCHITECTURE.md](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Từ máy cá nhân tới production: hiện trạng, kiến trúc đích, khoảng cách |
 | FIN-07-ARC-001 | Kiến trúc, quyết định thiết kế |
 | FIN-07-DAT-001 | Nguồn dữ liệu, danh mục nhãn |
 | FIN-07-BUS-001 | Nghiệp vụ AML, danh mục typology T01–T10 |
