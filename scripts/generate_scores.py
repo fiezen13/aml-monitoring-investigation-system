@@ -82,49 +82,40 @@ def _load_features(window: str, splits: tuple[str, ...] = SPLITS) -> pd.DataFram
 
 def _train_percentiles(train: pd.DataFrame, feature_cols: list[str]) -> tuple[pd.Series, pd.Series, dict[str, np.ndarray]]:
     """p5/p95 + mang sorted de tinh percentile rank (chi fit tren TRAIN)."""
-    X = train[feature_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
-    p5 = X.quantile(0.05)
-    p95 = X.quantile(0.95)
-    sorted_cols = {c: np.sort(X[c].to_numpy(dtype=np.float64)) for c in feature_cols}
+    feat_df = train[feature_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    p5 = feat_df.quantile(0.05)
+    p95 = feat_df.quantile(0.95)
+    sorted_cols = {c: np.sort(feat_df[c].to_numpy(dtype=np.float64)) for c in feature_cols}
     return p5, p95, sorted_cols
 
 
-def _percentile_rank(sorted_vals: np.ndarray, value: float) -> float:
-    """Empirical percentile in [0, 100]: % train samples <= value."""
-    n = len(sorted_vals)
-    if n == 0:
-        return 50.0
-    idx = int(np.searchsorted(sorted_vals, value, side="right"))
-    return float(100.0 * idx / n)
-
-
-def _anomaly_scores(model, scaler, X: np.ndarray) -> np.ndarray:
-    raw = model.decision_function(X)
+def _anomaly_scores(model, scaler, feature_matrix: np.ndarray) -> np.ndarray:
+    raw = model.decision_function(feature_matrix)
     risk_raw = (-raw).reshape(-1, 1)
     scores = scaler.transform(risk_raw).ravel()
     return np.clip(scores, 0.0, 1.0)
 
 
 def _build_top_anomalous_features(
-    X: np.ndarray,
+    feature_matrix: np.ndarray,
     feature_cols: list[str],
     p5: pd.Series,
     p95: pd.Series,
     sorted_cols: dict[str, np.ndarray],
 ) -> list[str]:
     """Numpy vectorized: moi hang -> JSON list cac feature <p5 hoac >p95."""
-    n_rows, n_feats = X.shape
+    n_rows = feature_matrix.shape[0]
     lo = p5[feature_cols].to_numpy(dtype=np.float64)
     hi = p95[feature_cols].to_numpy(dtype=np.float64)
 
     # percentile rank cho toan bo cot (searchsorted theo cot)
-    pct = np.empty_like(X)
+    pct = np.empty_like(feature_matrix)
     for j, col in enumerate(feature_cols):
         sorted_v = sorted_cols[col]
-        idx = np.searchsorted(sorted_v, X[:, j], side="right")
+        idx = np.searchsorted(sorted_v, feature_matrix[:, j], side="right")
         pct[:, j] = 100.0 * idx / max(len(sorted_v), 1)
 
-    mask = (X < lo) | (X > hi)
+    mask = (feature_matrix < lo) | (feature_matrix > hi)
     out: list[str] = []
     for i in range(n_rows):
         cols_i = np.flatnonzero(mask[i])
@@ -134,7 +125,7 @@ def _build_top_anomalous_features(
         items = [
             {
                 "feature": feature_cols[j],
-                "value": round(float(X[i, j]), 6),
+                "value": round(float(feature_matrix[i, j]), 6),
                 "percentile": int(round(float(pct[i, j]))),
             }
             for j in cols_i
@@ -174,11 +165,11 @@ def generate_scores(window: str, model_path: Path, output_path: Path) -> Path:
     )
 
     print("[4/5] Cham anomaly_score [0,1] + top_anomalous_features ...")
-    X = df[feature_cols].to_numpy(dtype=np.float64)
-    df["anomaly_score"] = _anomaly_scores(model, scaler, X)
+    feature_matrix = df[feature_cols].to_numpy(dtype=np.float64)
+    df["anomaly_score"] = _anomaly_scores(model, scaler, feature_matrix)
     df["model_version"] = MODEL_VERSION
     df["top_anomalous_features"] = _build_top_anomalous_features(
-        X, feature_cols, p5, p95, sorted_cols
+        feature_matrix, feature_cols, p5, p95, sorted_cols
     )
 
     out_cols = (

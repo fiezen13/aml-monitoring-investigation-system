@@ -70,8 +70,9 @@ def _load_train_features(window: str) -> pd.DataFrame:
         )
     df = pd.read_parquet(path)
     # Anti-leakage: drop moi cot nhan neu lo lot vao file
-    drop_labels = [c for c in df.columns if c in META_COLS or "laundering" in c.lower()]
-    # Giữ account_key chỉ để log; không đưa vào X
+    label_cols = [c for c in df.columns if c in META_COLS or "laundering" in c.lower()]
+    if label_cols:
+        df = df.drop(columns=label_cols, errors="ignore")
     missing = [c for c in FEATURE_COLS if c not in df.columns]
     if missing:
         raise ValueError(
@@ -82,18 +83,21 @@ def _load_train_features(window: str) -> pd.DataFrame:
 
 
 def _feature_matrix(df: pd.DataFrame) -> np.ndarray:
-    X = df[FEATURE_COLS].apply(pd.to_numeric, errors="coerce").fillna(0.0)
-    return X.to_numpy(dtype=np.float64)
+    feat_df = df[FEATURE_COLS].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    return feat_df.to_numpy(dtype=np.float64)
 
 
 def train(window: str) -> Path:
     print(f"[1/4] Doc features_train_{window}.parquet ...")
     df = _load_train_features(window)
-    X = _feature_matrix(df)
-    print(f"       n_samples={X.shape[0]:,}  n_features={X.shape[1]} (expect 20)")
+    feature_matrix = _feature_matrix(df)
+    print(
+        f"       n_samples={feature_matrix.shape[0]:,}  "
+        f"n_features={feature_matrix.shape[1]} (expect 20)"
+    )
 
-    if X.shape[1] != 20:
-        raise RuntimeError(f"Ky vong 20 cot so, nhan duoc {X.shape[1]}")
+    if feature_matrix.shape[1] != 20:
+        raise RuntimeError(f"Ky vong 20 cot so, nhan duoc {feature_matrix.shape[1]}")
 
     print("[2/4] Fit IsolationForest(n_estimators=100, contamination=0.0005, ...)...")
     model = IsolationForest(
@@ -102,11 +106,11 @@ def train(window: str) -> Path:
         random_state=42,
         n_jobs=-1,
     )
-    model.fit(X)
+    model.fit(feature_matrix)
 
     print("[3/4] Dao chieu decision_function + Min-Max -> [0, 1] (1=rui ro nhat)...")
     # sklearn: decision_function cao = binh thuong; dao dau de cao = bat thuong
-    raw = model.decision_function(X)
+    raw = model.decision_function(feature_matrix)
     risk_raw = (-raw).reshape(-1, 1)
     scaler = MinMaxScaler(feature_range=(0.0, 1.0))
     risk_01 = scaler.fit_transform(risk_raw).ravel()
