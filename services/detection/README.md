@@ -61,3 +61,17 @@ behavioral/graph có thêm được gì.
 Điều kiện qua cổng giai đoạn 2: point-in-time test đạt, false-link review đã làm, và benchmark trên
 bộ hidden case cho kết quả tốt hơn baseline **ở cùng một alert budget** — so sánh ở alert budget
 khác nhau là so sánh vô nghĩa.
+
+---
+
+## Isolation Forest offline → contract (tạm thời)
+
+Trong lúc `services/detection/` chưa có runtime stream, nhánh IF offline emit theo contract:
+
+| Path | Vai trò |
+|---|---|
+| `src/services/if_detection_result.py` | Map score row → `aml.detection.result.v1` |
+| `scripts/emit_if_detection_results.py` | JSONL outbox (+ optional Kafka) |
+| `contracts/events/aml.detection.result.v1.schema.json` | Schema bắt buộc |
+
+`detector_type=ML_UNSUPERVISED`. **Không** tạo `aml.alert.created.v1` từ đây — việc đó thuộc `fusion/`.

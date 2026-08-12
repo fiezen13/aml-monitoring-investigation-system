@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "result_id": "DR-IF-0123456789abcdef",
+  "entity": {
+    "entity_type": "ACCOUNT",
+    "entity_id": "70:10042B660"
+  },
+  "detector": {
+    "detector_id": "isolation_forest_account_behavior",
+    "detector_type": "ML_UNSUPERVISED",
+    "version": "if_baseline_7d_v1"
+  },
+  "evaluated_at": "2026-08-12T03:00:00.000Z",
+  "as_of_time": "2022-09-06T23:59:59.000Z",
+  "score": 0.812345,
+  "confidence": 0.8062,
+  "triggered": true,
+  "threshold": 0.7,
+  "reason_codes": [
+    {
+      "code": "TXN_PER_ACTIVE_DAY",
+      "description": "Mat do giao dich tren ngay hoat dong",
+      "contribution": 0.42,
+      "feature_refs": ["txn_per_active_day"]
+    },
+    {
+      "code": "RAPID_OUTFLOW_RATIO",
+      "description": "Ty le rut nhanh sau khi nhan (<=2h)",
+      "contribution": 0.35,
+      "feature_refs": ["rapid_outflow_ratio"]
+    },
+    {
+      "code": "NEW_COUNTERPARTY_RATIO",
+      "description": "Ty le doi tac moi",
+      "contribution": 0.23,
+      "feature_refs": ["new_counterparty_ratio"]
+    }
+  ],
+  "typology_candidates": [
+    {
+      "typology_id": "T02",
+      "typology_version": "v1",
+      "confidence": 0.8123
+    }
+  ],
+  "feature_refs": [
+    {
+      "feature_set_id": "account_behavior_if_20",
+      "as_of_time": "2022-09-06T23:59:59.000Z",
+      "definition_version": "feature_spec_v1"
+    }
+  ]
+}
