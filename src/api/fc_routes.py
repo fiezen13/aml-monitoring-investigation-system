@@ -319,6 +319,64 @@ async def entity_graph(
             .all()
         )
 
+        # Chặng crypto nằm ở bảng riêng vì nó đến từ dữ liệu on-chain, không
+        # phải từ hệ thống ngân hàng. Không gộp vào đây thì mọi ví trong đồ thị
+        # đứng rời rạc và toàn bộ đoạn cuối của dòng tiền biến mất.
+        #
+        # Nối bằng `attributes->>'address'`: `fc.entity` lưu địa chỉ đầy đủ
+        # trong attributes, còn `label` chỉ là bản rút gọn để hiển thị.
+        crypto = (
+            session.execute(
+                text(
+                    """SELECT src.entity_id AS source_id,
+                              dst.entity_id AS target_id,
+                              ct.transfer_kind,
+                              ct.chain,
+                              ct.asset,
+                              SUM(ct.amount_usd) AS amount_usd,
+                              AVG(ct.link_confidence) AS confidence,
+                              COUNT(*) AS n_tx,
+                              MIN(ct.block_time) AS known_from
+                         FROM fc.crypto_transfer ct
+                         JOIN fc.entity src
+                           ON src.attributes ->> 'address' = ct.from_address
+                          AND src.simulation_id = ct.simulation_id
+                         JOIN fc.entity dst
+                           ON dst.attributes ->> 'address' = ct.to_address
+                          AND dst.simulation_id = ct.simulation_id
+                        WHERE ct.simulation_id = :sid
+                        GROUP BY src.entity_id, dst.entity_id, ct.transfer_kind,
+                                 ct.chain, ct.asset"""
+                ),
+                {"sid": sim["simulation_id"]},
+            )
+            .mappings()
+            .all()
+        )
+
+    crypto_edges = [
+        GraphEdgeOut(
+            s=c["source_id"],
+            t=c["target_id"],
+            kind="bridge" if c["transfer_kind"] == "bridge" else "crypto",
+            label=f"{c['n_tx']} giao dịch {c['asset']}",
+            amt=_f(c["amount_usd"]) if c["amount_usd"] is not None else None,
+            # Gán ví với chủ thể ngoài đời là suy luận, không phải quan sát —
+            # `link_confidence` chính là mức tin cậy của phép gán đó.
+            inferred=c["confidence"] is not None,
+            conf=_f(c["confidence"]) if c["confidence"] is not None else None,
+            logic=(
+                f"Gộp {c['n_tx']} giao dịch {c['asset']} trên {c['chain']} giữa hai địa chỉ ví. "
+                "Việc quy địa chỉ về chủ thể dựa trên phân cụm heuristic, chưa có xác nhận từ VASP."
+            )
+            if c["confidence"] is not None
+            else None,
+            known_from=c["known_from"],
+        )
+        for c in crypto
+        if c["source_id"] in ids and c["target_id"] in ids
+    ]
+
     return GraphOut(
         nodes=[
             GraphNodeOut(
@@ -350,7 +408,8 @@ async def entity_graph(
             )
             for e in edges
             if e["source_id"] in ids and e["target_id"] in ids
-        ],
+        ]
+        + crypto_edges,
     )
 
 
