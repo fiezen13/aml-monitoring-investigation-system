@@ -1,6 +1,9 @@
 """Publish Isolation Forest (ml) alerts into Postgres for Alert Center.
 
 Dùng chung bởi ``scripts/publish_if_alerts.py`` và ``POST /api/v1/internal/alerts``.
+
+Mọi ghi DB đi qua ``get_session()`` (commit khi thành công, rollback khi lỗi) —
+alert + alert_reason nằm trong cùng một transaction, tránh alert thiếu reasons (NT7).
 """
 
 from __future__ import annotations
@@ -39,7 +42,10 @@ def customer_id_for(account_key: str) -> str:
 
 
 def ensure_subject(session: Session, account_key: str, as_of_ts: Any) -> bool:
-    """Tao customer + account toi thieu. True neu vua tao account."""
+    """Tao customer + account toi thieu. True neu vua tao account.
+
+    Moi gia tri dong deu qua bind parameters (khong noi chuoi SQL).
+    """
     exists = session.execute(
         text("SELECT 1 FROM account WHERE account_key = :k"),
         {"k": account_key},
@@ -69,12 +75,22 @@ def ensure_subject(session: Session, account_key: str, as_of_ts: Any) -> bool:
                     customer_id, customer_type, prototype, occupation, declared_income_band,
                     expected_monthly_volume, registered_country, onboarding_date, risk_rating
                 ) VALUES (
-                    :customer_id, 'individual', 'salaried', 'IF subject (synthetic)', 'unknown',
-                    0, 'XX', :onboarding_date, 'medium'
+                    :customer_id, :customer_type, :prototype, :occupation, :declared_income_band,
+                    :expected_monthly_volume, :registered_country, :onboarding_date, :risk_rating
                 )
                 """
             ),
-            {"customer_id": customer_id, "onboarding_date": opened},
+            {
+                "customer_id": customer_id,
+                "customer_type": "individual",
+                "prototype": "salaried",
+                "occupation": "IF subject (synthetic)",
+                "declared_income_band": "unknown",
+                "expected_monthly_volume": 0,
+                "registered_country": "XX",
+                "onboarding_date": opened,
+                "risk_rating": "medium",
+            },
         )
 
     session.execute(
@@ -83,7 +99,7 @@ def ensure_subject(session: Session, account_key: str, as_of_ts: Any) -> bool:
             INSERT INTO account (
                 account_key, customer_id, bank_code, account_number, opened_at, status
             ) VALUES (
-                :account_key, :customer_id, :bank_code, :account_number, :opened_at, 'active'
+                :account_key, :customer_id, :bank_code, :account_number, :opened_at, :status
             )
             """
         ),
@@ -93,6 +109,7 @@ def ensure_subject(session: Session, account_key: str, as_of_ts: Any) -> bool:
             "bank_code": bank_code,
             "account_number": account_number,
             "opened_at": opened,
+            "status": "active",
         },
     )
     return True
@@ -103,41 +120,11 @@ def validate_typology(typology_code: str) -> None:
         raise ValueError(f"typology_code khong hop le: {typology_code}")
 
 
-def insert_ml_alert(
-    session: Session,
-    *,
-    alert_id: str,
-    account_key: str,
-    risk_score: float,
-    typology_code: str,
-    reasons: list[dict[str, Any]],
-    as_of_ts: Any | None = None,
-) -> dict[str, Any]:
-    """Insert alert detector=ml + alert_reason. Idempotent theo alert_id.
-
-    ``reasons`` moi phan tu can: factor_code, factor_label, contribution, weight.
-    """
-    validate_typology(typology_code)
+def _clean_reasons(reasons: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Chuan hoa + khu trung factor_code; raise neu < MIN_REASONS (truoc khi INSERT)."""
     if len(reasons) < MIN_REASONS:
         raise ValueError(f"NT7: can >= {MIN_REASONS} reasons, nhan {len(reasons)}")
 
-    risk = round(min(max(float(risk_score), 0.0), 100.0), 2)
-    subjects_created = ensure_subject(
-        session, account_key, as_of_ts or datetime.now(tz=UTC)
-    )
-
-    existing = session.execute(
-        text("SELECT 1 FROM alert WHERE alert_id = :a"),
-        {"a": alert_id},
-    ).scalar_one_or_none()
-    if existing:
-        return {
-            "alert_id": alert_id,
-            "created": False,
-            "subjects_created": subjects_created,
-        }
-
-    # factor_code unique per alert
     seen_codes: set[str] = set()
     cleaned: list[dict[str, Any]] = []
     for reason in reasons:
@@ -155,6 +142,44 @@ def insert_ml_alert(
         )
     if len(cleaned) < MIN_REASONS:
         raise ValueError(f"NT7: sau khi khu trung factor_code con {len(cleaned)} reasons")
+    return cleaned
+
+
+def insert_ml_alert(
+    session: Session,
+    *,
+    alert_id: str,
+    account_key: str,
+    risk_score: float,
+    typology_code: str,
+    reasons: list[dict[str, Any]],
+    as_of_ts: Any | None = None,
+) -> dict[str, Any]:
+    """Insert alert detector=ml + alert_reason. Idempotent theo alert_id.
+
+    ``reasons`` moi phan tu can: factor_code, factor_label, contribution, weight.
+
+    Goi trong ``with get_session()``: neu bat ky INSERT nao fail, ca transaction
+    bi rollback (khong de alert ton tai ma thieu alert_reason).
+    """
+    validate_typology(typology_code)
+    cleaned = _clean_reasons(reasons)
+    risk = round(min(max(float(risk_score), 0.0), 100.0), 2)
+
+    subjects_created = ensure_subject(
+        session, account_key, as_of_ts or datetime.now(tz=UTC)
+    )
+
+    existing = session.execute(
+        text("SELECT 1 FROM alert WHERE alert_id = :a"),
+        {"a": alert_id},
+    ).scalar_one_or_none()
+    if existing:
+        return {
+            "alert_id": alert_id,
+            "created": False,
+            "subjects_created": subjects_created,
+        }
 
     created_at = datetime.now(tz=UTC)
     session.execute(

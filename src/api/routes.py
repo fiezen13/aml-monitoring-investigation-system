@@ -486,6 +486,7 @@ def create_internal_ml_alert(body: InternalAlertCreate) -> InternalAlertCreateOu
     )
     reasons = [r.model_dump() for r in body.reasons]
     try:
+        # get_session: commit neu OK, rollback neu exception — alert + reasons cung 1 TX.
         with get_session() as session:
             result = insert_ml_alert(
                 session,

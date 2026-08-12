@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,11 @@ from src.services.if_detection_result import (  # noqa: E402
     kafka_key,
     validate_detection_result,
 )
+
+
+def _typology_ok(code: str) -> bool:
+    return bool(re.fullmatch(r"T(0[1-9]|10)", code))
+
 
 logger = logging.getLogger("fin07.emit_if_detection_results")
 
@@ -223,8 +229,9 @@ def main() -> None:
 
     if not (0.0 <= args.threshold <= 1.0):
         raise SystemExit("--threshold phai trong [0,1]")
-    if not re_fullmatch_typology(args.typology):
+    if not _typology_ok(args.typology):
         raise SystemExit(f"--typology khong hop le: {args.typology}")
+
 
     limit: int | None = None if args.all else max(1, args.limit)
     if args.all:
@@ -314,11 +321,6 @@ def main() -> None:
         raise SystemExit("Khong emit duoc event nao.")
 
 
-def re_fullmatch_typology(code: str) -> bool:
-    import re
-
-    return bool(re.fullmatch(r"T(0[1-9]|10)", code))
-
-
 if __name__ == "__main__":
     main()
+
