@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Canonical graph production runner: features → detectors → validate → manifest."""
+"""Canonical graph runner with process-isolated detector phases."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import resource
+import shutil
+import subprocess
+import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-import sys
 
 import pandas as pd
 
@@ -17,11 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.data.cycle_detector import write_cycle_artifacts  # noqa: E402
-from src.data.fan_detector import run_fan_detector  # noqa: E402
-from src.data.gather_scatter_detector import detect_gather_scatter, load_gather_config  # noqa: E402
 from src.data.graph_artifact_validator import validate_graph_artifacts  # noqa: E402
-from src.data.snapshot_split import load_split_cutoffs  # noqa: E402
 
 
 def sha256(path: Path) -> str:
@@ -32,49 +31,85 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def run_phase(phase: str, *, db: Path, features: Path, cutoffs: Path, config: Path, out_dir: Path) -> dict:
+    det = out_dir / f"{phase}_detection.parquet"
+    ev = out_dir / f"{phase}_evidence.jsonl"
+    cmd = [sys.executable, str(ROOT / "scripts/run_graph_phase.py"), phase,
+           "--db", str(db), "--features", str(features), "--cutoffs", str(cutoffs),
+           "--config", str(config), "--detection-out", str(det), "--evidence-out", str(ev)]
+    started = time.perf_counter()
+    proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True)
+    if proc.returncode:
+        raise RuntimeError(f"{phase} phase failed:\n{proc.stdout}\n{proc.stderr}")
+    result = json.loads(proc.stdout.strip().splitlines()[-1])
+    result["orchestration_runtime_s"] = round(time.perf_counter() - started, 3)
+    result["detection_path"] = str(det)
+    result["evidence_path"] = str(ev)
+    return result
+
+
+def merge_artifacts(phase_results: list[dict], detection_path: Path, evidence_path: Path) -> tuple[int, int, dict[str, int], dict[str, list[str]]]:
+    frames = []
+    pattern_counts: dict[str, int] = {}
+    detector_versions: dict[str, set[str]] = {}
+    for item in phase_results:
+        frame = pd.read_parquet(item["detection_path"])
+        frames.append(frame)
+        for pattern, count in frame["detected_pattern"].value_counts().to_dict().items():
+            pattern_counts[str(pattern)] = pattern_counts.get(str(pattern), 0) + int(count)
+        for pattern, versions in frame.groupby("detected_pattern")["detector_version"]:
+            detector_versions.setdefault(str(pattern), set()).update(str(v) for v in versions.dropna().unique())
+    detections = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if not detections.empty:
+        detections = detections.sort_values(["as_of_ts", "detected_pattern", "account_key"], kind="mergesort")
+    detection_path.parent.mkdir(parents=True, exist_ok=True)
+    detections.to_parquet(detection_path, index=False)
+    evidence_rows = 0
+    with evidence_path.open("w", encoding="utf-8") as dst:
+        for item in phase_results:
+            with Path(item["evidence_path"]).open(encoding="utf-8") as src:
+                for line in src:
+                    if line.strip():
+                        dst.write(line)
+                        evidence_rows += 1
+    return len(detections), evidence_rows, pattern_counts, {k: sorted(v) for k, v in detector_versions.items()}
+
+
 def main() -> int:
     db = ROOT / "data/processed/aml.duckdb"
-    features_path = ROOT / "data/processed/graph_features_v1.parquet"
-    cutoffs_path = ROOT / "data/processed/split_cutoffs.json"
-    fan_cfg = ROOT / "configs/graph/graph_fan_config_v3.json"
-    gather_cfg = ROOT / "configs/graph/graph_gather_config_v1.json"
+    features = ROOT / "data/processed/graph_features_v1.parquet"
+    cutoffs = ROOT / "data/processed/split_cutoffs.json"
+    configs = {"fan": ROOT / "configs/graph/graph_fan_config_v3.json",
+               "gather": ROOT / "configs/graph/graph_gather_config_v1.json",
+               "cycle": ROOT / "configs/graph/graph_cycle_config_v1.json"}
+    # CYCLE has no separate config; record the detector source/version instead.
+    configs["cycle"] = ROOT / "src/data/cycle_detector.py"
     detection_path = ROOT / "data/processed/graph_detection_v1.parquet"
     evidence_path = ROOT / "data/processed/graph_evidence_v1.jsonl"
     manifest_path = ROOT / "reports/graph_pipeline_manifest_v1.json"
     t0 = time.perf_counter()
-    features = pd.read_parquet(features_path)
-    splits = ["train", "val", "test"]
-    fan_det, fan_ev = run_fan_detector(
-        features_path=features_path, config_path=fan_cfg, duckdb_path=db,
-        splits=splits, merge_non_fan=False,
-    )
-    gather_det, gather_ev = detect_gather_scatter(
-        features, duckdb_path=db, config=load_gather_config(gather_cfg), splits=splits
-    )
-    # CYCLE reads the canonical DB directly; use its existing runner path.
-    from src.data.cycle_detector import run_cycle_detector
-    cycle_det, cycle_ev = run_cycle_detector(db_path=db, cutoffs_path=cutoffs_path)
-    all_det = pd.concat([fan_det, gather_det, cycle_det], ignore_index=True)
-    all_det = all_det.sort_values(["as_of_ts", "detected_pattern", "account_key"], kind="mergesort").reset_index(drop=True)
-    all_ev = fan_ev + gather_ev + cycle_ev
-    write_cycle_artifacts(all_det, all_ev, detection_path=detection_path, evidence_path=evidence_path)
+    with tempfile.TemporaryDirectory(prefix="graph_phases_", dir="/tmp") as temp:
+        out_dir = Path(temp)
+        phase_results = [run_phase(p, db=db, features=features, cutoffs=cutoffs, config=configs[p], out_dir=out_dir) for p in ("fan", "gather", "cycle")]
+        merge_t0 = time.perf_counter()
+        det_rows, ev_rows, counts, detector_versions = merge_artifacts(phase_results, detection_path, evidence_path)
+        merge_runtime = round(time.perf_counter() - merge_t0, 3)
+    validation_t0 = time.perf_counter()
     validation = validate_graph_artifacts(detection_path, evidence_path, db_path=db)
-    configs = {str(p.relative_to(ROOT)): sha256(p) for p in (fan_cfg, gather_cfg)}
+    validation_runtime = round(time.perf_counter() - validation_t0, 3)
     manifest = {
-        "manifest_version": "graph_pipeline_manifest_v1",
-        "input_db_checksum": sha256(db),
-        "feature_artifact_checksum": sha256(features_path),
+        "manifest_version": "graph_pipeline_manifest_v2",
+        "input_db_checksum": sha256(db), "feature_artifact_checksum": sha256(features),
         "feature_schema_version": "graph_features_v1",
-        "detector_versions": {p: sorted(set(all_det.loc[all_det.detected_pattern == p, "detector_version"].astype(str))) for p in all_det.detected_pattern.unique()},
-        "config_hashes": configs,
-        "snapshot_range": {
-            "min": str(pd.to_datetime(all_det.snapshot_date).min().date()),
-            "max": str(pd.to_datetime(all_det.snapshot_date).max().date()),
-        },
-        "row_counts": {"detections": len(all_det), "evidence": len(all_ev), "by_pattern": all_det.detected_pattern.value_counts().to_dict()},
+        "detector_versions": detector_versions,
+        "config_hashes": {str(p.relative_to(ROOT)): sha256(p) for p in configs.values()},
+        "snapshot_range": {"min": str(pd.to_datetime(pd.read_parquet(detection_path).snapshot_date).min().date()), "max": str(pd.to_datetime(pd.read_parquet(detection_path).snapshot_date).max().date())},
+        "row_counts": {"detections": det_rows, "evidence": ev_rows, "by_pattern": counts},
         "validation": validation,
+        "telemetry": {"phases": phase_results, "merge_runtime_s": merge_runtime, "validation_runtime_s": validation_runtime,
+                       "parent_peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1),
+                       "peak_phase_rss_mb": max(r["peak_rss_mb"] for r in phase_results)},
         "runtime_s": round(time.perf_counter() - t0, 3),
-        "peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "test_status": "PASS" if validation["status"] == "PASS" else "FAIL",
     }
