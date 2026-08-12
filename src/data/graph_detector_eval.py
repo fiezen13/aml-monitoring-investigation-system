@@ -14,7 +14,12 @@ from typing import Any
 
 import pandas as pd
 
-from src.data.graph_gt_enrich import GRAPH_TO_IBM, IBM_TO_GRAPH, enrich_ibm_gt_for_graph_eval
+from src.data.graph_gt_enrich import (
+    GRAPH_TO_IBM,
+    IBM_TO_GRAPH,
+    enrich_cycle_gt_for_graph_eval,
+    enrich_ibm_gt_for_graph_eval,
+)
 from src.data.snapshot_split import load_split_cutoffs, parse_utc, snapshot_window_bounds
 
 EVAL_PATTERNS = tuple(IBM_TO_GRAPH.values())
@@ -135,12 +140,77 @@ def compute_split_metrics(
     }
 
 
+def match_cycle_detections_to_gt(
+    evidence: list[dict[str, Any]],
+    gt_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Match CYCLE evidence by exact directed accounts + window overlap."""
+    matches: list[dict[str, Any]] = []
+    for gt in gt_rows:
+        t_min = parse_utc(gt["t_min"])
+        t_max = parse_utc(gt["t_max"])
+        signature = tuple(gt["cycle_signature"])
+        for ev in evidence:
+            if ev.get("detected_pattern") != "CYCLE":
+                continue
+            if tuple(ev.get("accounts", ())) != signature:
+                continue
+            if not window_overlaps_gt(
+                snapshot_date=ev["snapshot_date"], t_min=t_min, t_max=t_max
+            ):
+                continue
+            matches.append(
+                {
+                    "instance_id": gt["instance_id"],
+                    "pattern_instance_id": ev["pattern_instance_id"],
+                    "sample_split": str(ev.get("sample_split", "")),
+                }
+            )
+    return matches
+
+
+def compute_cycle_metrics(
+    evidence: list[dict[str, Any]],
+    gt_rows: list[dict[str, Any]],
+    matches: list[dict[str, Any]],
+    *,
+    split: str,
+) -> dict[str, Any]:
+    """Compute CYCLE metrics; return NOT_EVALUATED when test GT is absent."""
+    gt_split = [g for g in gt_rows if g.get("sample_split") == split]
+    pred_split = [e for e in evidence if e.get("sample_split") == split and e.get("detected_pattern") == "CYCLE"]
+    pred_ids = {e["pattern_instance_id"] for e in pred_split}
+    gt_ids = {g["instance_id"] for g in gt_split}
+    m_split = [m for m in matches if m.get("sample_split") == split]
+    gt_hit = {m["instance_id"] for m in m_split if m["instance_id"] in gt_ids}
+    pred_hit = {m["pattern_instance_id"] for m in m_split if m["pattern_instance_id"] in pred_ids}
+    if not gt_ids:
+        return {
+            "status": "NOT_EVALUATED",
+            "reason": f"no eligible CYCLE GT instances in {split} split",
+            "split": split,
+            "n_gt": 0,
+            "n_pred": len(pred_ids),
+            "n_gt_hit": 0,
+            "n_pred_hit": 0,
+            "precision": None,
+            "recall": None,
+            "f1": None,
+        }
+    return {
+        "status": "EVALUATED",
+        "split": split,
+        **_prf(len(pred_hit), len(pred_ids), len(gt_hit), len(gt_ids)),
+    }
+
+
 def run_graph_detector_eval(
     *,
     patterns_path: str | Path,
     detection_path: str | Path,
     split_cutoffs_path: str | Path,
     primary_split: str = "test",
+    evidence_path: str | Path | None = None,
 ) -> dict[str, Any]:
     cutoffs = load_split_cutoffs(split_cutoffs_path)
     gt_rows = enrich_ibm_gt_for_graph_eval(patterns_path, split_cutoffs=cutoffs)
@@ -155,6 +225,22 @@ def run_graph_detector_eval(
         for s in ("train", "val", "test")
     }
 
+    cycle_gt = enrich_cycle_gt_for_graph_eval(
+        patterns_path, split_cutoffs=cutoffs
+    )
+    cycle_evidence: list[dict[str, Any]] = []
+    if evidence_path is not None:
+        evidence_file = Path(evidence_path)
+        if evidence_file.exists():
+            cycle_evidence = [
+                json.loads(line)
+                for line in evidence_file.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+    cycle_matches = match_cycle_detections_to_gt(cycle_evidence, cycle_gt["rows"])
+    cycle_primary = compute_cycle_metrics(
+        cycle_evidence, cycle_gt["rows"], cycle_matches, split=primary_split
+    )
     return {
         "eval_version": "graph_eval_v1",
         "primary_split": primary_split,
@@ -182,6 +268,22 @@ def run_graph_detector_eval(
         },
         "primary": primary,
         "by_split": all_splits,
+        "cycle_evaluation": {
+            **cycle_gt,
+            "matching_rule": (
+                "exact directed canonical account-cycle signature + IBM timestamp interval "
+                "overlaps prediction 7d snapshot window; GT blocks outside CYCLE length/window "
+                "are excluded, not counted as misses"
+            ),
+            "n_match_edges": len(cycle_matches),
+            "primary": cycle_primary,
+            "by_split": {
+                s: compute_cycle_metrics(
+                    cycle_evidence, cycle_gt["rows"], cycle_matches, split=s
+                )
+                for s in ("train", "val", "test")
+            },
+        },
         "gt_rows": gt_rows,
         "matches": matches,
     }

@@ -8,11 +8,18 @@ from pathlib import Path
 import pandas as pd
 
 from src.data.graph_detector_eval import (
+    compute_cycle_metrics,
     compute_split_metrics,
+    match_cycle_detections_to_gt,
     match_detections_to_gt,
     window_overlaps_gt,
 )
-from src.data.graph_gt_enrich import derive_center, enrich_ibm_gt_for_graph_eval
+from src.data.graph_gt_enrich import (
+    canonicalize_directed_cycle,
+    derive_center,
+    enrich_cycle_gt_for_graph_eval,
+    enrich_ibm_gt_for_graph_eval,
+)
 from src.data.schemas import make_account_key
 
 
@@ -114,3 +121,34 @@ def test_enrich_real_patterns_smoke() -> None:
     fan = next(r for r in rows if r["pattern_type"] == "FAN-IN")
     assert fan["center_account_key"] == "110:8000A94C0"
     assert "T" in fan["t_min"] or "+" in fan["t_min"]
+
+
+def test_cycle_gt_enrich_excludes_unsupported_lengths() -> None:
+    path = Path("data/raw/ibm_li_small/LI-Small_Patterns.txt")
+    if not path.exists():
+        return
+    result = enrich_cycle_gt_for_graph_eval(path)
+    assert result["total_cycle_blocks"] == 12
+    assert result["eligible_count"] == 6
+    assert len(result["excluded"]) == 6
+    assert all(item["reason"] == "cycle_length_exceeds_detector" for item in result["excluded"])
+
+
+def test_cycle_matching_uses_directed_signature_and_window() -> None:
+    assert canonicalize_directed_cycle(["B", "C", "A", "B"]) == ("A", "B", "C")
+    gt = [{
+        "instance_id": "g1", "cycle_signature": ["A", "B", "C"],
+        "t_min": "2022-09-01T00:00:00Z", "t_max": "2022-09-02T00:00:00Z",
+        "sample_split": "test",
+    }]
+    evidence = [{
+        "pattern_instance_id": "p1", "detected_pattern": "CYCLE",
+        "accounts": ["A", "B", "C"], "snapshot_date": date(2022, 9, 5),
+        "sample_split": "test",
+    }]
+    matches = match_cycle_detections_to_gt(evidence, gt)
+    assert len(matches) == 1
+    metrics = compute_cycle_metrics(evidence, gt, matches, split="test")
+    assert metrics["status"] == "EVALUATED"
+    assert metrics["precision"] == 1.0
+    assert metrics["recall"] == 1.0

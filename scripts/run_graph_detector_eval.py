@@ -39,6 +39,12 @@ def main() -> int:
         default=ROOT / "data/processed/split_cutoffs.json",
     )
     parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=ROOT / "data/processed/graph_evidence_v1.jsonl",
+        help="Evidence JSONL used for optional CYCLE evaluation",
+    )
+    parser.add_argument(
         "--report-out",
         type=Path,
         default=ROOT / "reports/graph_eval_v2.json",
@@ -61,6 +67,7 @@ def main() -> int:
         detection_path=args.detections,
         split_cutoffs_path=args.split_cutoffs,
         primary_split=args.primary_split,
+        evidence_path=args.evidence,
     )
     report["eval_version"] = args.eval_version
     write_eval_report(report, report_path=args.report_out, gt_out_path=args.gt_out)
@@ -80,6 +87,13 @@ def main() -> int:
             f"  {pat}: P={_fmt(m['precision'])} R={_fmt(m['recall'])} "
             f"F1={_fmt(m['f1'])} gt={m['n_gt']} pred={m['n_pred']}"
         )
+    cycle = report["cycle_evaluation"]["primary"]
+    print(
+        f"  CYCLE: status={cycle['status']} P={_fmt(cycle['precision'])} "
+        f"R={_fmt(cycle['recall'])} F1={_fmt(cycle['f1'])} "
+        f"gt={cycle['n_gt']} pred={cycle['n_pred']} "
+        f"gt_hit={cycle['n_gt_hit']} pred_hit={cycle['n_pred_hit']}"
+    )
     return 0
 
 
