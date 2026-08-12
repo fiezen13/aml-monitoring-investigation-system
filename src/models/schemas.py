@@ -225,7 +225,7 @@ class InternalAlertReasonIn(BaseModel):
 
 class InternalAlertCreate(BaseModel):
     """Body POST /api/v1/internal/alerts — ingest alert detector=ml."""
-
+ 
     account_key: str = Field(..., min_length=3, max_length=128)
     risk_score: float = Field(..., ge=0, le=100, description="Thang 0-100 (UI/DB)")
     typology_code: str = Field(default="T02", pattern=r"^T(0[1-9]|10)$")
