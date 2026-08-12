@@ -4,6 +4,8 @@
 Ví dụ:
   python scripts/publish_if_alerts.py --top-k 100 --window 7d
   python scripts/publish_if_alerts.py --top-k 50 --dry-run
+  python scripts/publish_if_alerts.py --verify-subjects
+  python scripts/publish_if_alerts.py --repair-subjects
 
 Không ghi đè aml.duckdb. Không tạo nút upload UI.
 """
@@ -72,6 +74,16 @@ def _parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Chi in ke hoach, khong ghi Postgres",
+    )
+    p.add_argument(
+        "--verify-subjects",
+        action="store_true",
+        help="Chi kiem tra alert IF da co customer/account (STEP 2)",
+    )
+    p.add_argument(
+        "--repair-subjects",
+        action="store_true",
+        help="Tao customer/account thieu cho alert IF da publish (STEP 2)",
     )
     return p.parse_args()
 
@@ -200,14 +212,18 @@ def load_top_k(scores_path: Path, window: str, top_k: int) -> pd.DataFrame:
     return subset.head(top_k).reset_index(drop=True)
 
 
-def ensure_subject(session: Session, account_key: str, as_of_ts: Any) -> None:
-    """Tao customer + account toi thieu neu chua co (FK bat buoc cho alert)."""
+def ensure_subject(session: Session, account_key: str, as_of_ts: Any) -> bool:
+    """Tao customer + account toi thieu neu chua co (FK bat buoc cho alert).
+
+    Returns:
+        True neu vua tao account moi; False neu da ton tai.
+    """
     exists = session.execute(
         text("SELECT 1 FROM account WHERE account_key = :k"),
         {"k": account_key},
     ).scalar_one_or_none()
     if exists:
-        return
+        return False
 
     bank_code, account_number = _split_account_key(account_key)
     customer_id = _customer_id_for(account_key)
@@ -257,6 +273,75 @@ def ensure_subject(session: Session, account_key: str, as_of_ts: Any) -> None:
             "opened_at": opened,
         },
     )
+    return True
+
+
+def list_if_alert_subjects(session: Session) -> list[dict[str, Any]]:
+    """Tat ca account_key tu alert IF + trang thai co/khong co customer (API detail)."""
+    rows = session.execute(
+        text(
+            """
+            SELECT al.alert_id,
+                   al.account_key,
+                   al.created_at,
+                   ac.account_key IS NOT NULL AS has_account,
+                   c.customer_id IS NOT NULL AS has_customer
+              FROM alert al
+              LEFT JOIN account ac ON ac.account_key = al.account_key
+              LEFT JOIN customer c ON c.customer_id = ac.customer_id
+             WHERE al.detector = 'ml'
+               AND al.alert_id LIKE 'ALT-IF-%'
+             ORDER BY al.risk_score DESC
+            """
+        )
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def verify_subjects(session: Session) -> dict[str, Any]:
+    """Bao cao alert IF thieu account/customer (se gay 500 tren GET /alerts/{id})."""
+    rows = list_if_alert_subjects(session)
+    missing = [r for r in rows if not r["has_account"] or not r["has_customer"]]
+    return {
+        "n_if_alerts": len(rows),
+        "n_ok": len(rows) - len(missing),
+        "n_missing_subject": len(missing),
+        "missing_account_keys": sorted({r["account_key"] for r in missing}),
+    }
+
+
+def repair_subjects(session: Session, *, dry_run: bool = False) -> dict[str, Any]:
+    """Dam bao moi alert IF deu co customer+account de UI detail mo duoc."""
+    report = verify_subjects(session)
+    created = 0
+    for account_key in report["missing_account_keys"]:
+        if dry_run:
+            logger.info("DRY-RUN would ensure_subject %s", account_key)
+            created += 1
+            continue
+        # as_of khong co tren alert — dung ngay tao alert neu co, else today
+        as_of = session.execute(
+            text(
+                """
+                SELECT created_at FROM alert
+                 WHERE account_key = :k AND alert_id LIKE 'ALT-IF-%'
+                 ORDER BY created_at DESC
+                 LIMIT 1
+                """
+            ),
+            {"k": account_key},
+        ).scalar_one_or_none()
+        if ensure_subject(session, account_key, as_of or datetime.now(tz=UTC)):
+            created += 1
+
+    after = verify_subjects(session) if not dry_run else report
+    return {
+        "before_missing": report["n_missing_subject"],
+        "subjects_created_or_planned": created,
+        "after_missing": after["n_missing_subject"],
+        "n_if_alerts": report["n_if_alerts"],
+        "missing_account_keys": report["missing_account_keys"],
+    }
 
 
 def publish_rows(
@@ -296,12 +381,7 @@ def publish_rows(
         if session is None:
             raise RuntimeError("Can Session Postgres khi khong --dry-run")
 
-        before = session.execute(
-            text("SELECT 1 FROM account WHERE account_key = :k"),
-            {"k": account_key},
-        ).scalar_one_or_none()
-        ensure_subject(session, account_key, as_of_ts)
-        if before is None:
+        if ensure_subject(session, account_key, as_of_ts):
             subjects_created += 1
 
         existing = session.execute(
@@ -359,6 +439,35 @@ def main() -> None:
     if not re.fullmatch(r"T(0[1-9]|10)", args.typology):
         raise SystemExit(f"--typology khong hop le: {args.typology}")
 
+    if args.verify_subjects and args.repair_subjects:
+        raise SystemExit("Chi dung mot trong --verify-subjects / --repair-subjects")
+
+    if args.verify_subjects:
+        print("Verify customer/account cho alert IF ...", flush=True)
+        with get_session() as session:
+            report = verify_subjects(session)
+        print(json.dumps(report, ensure_ascii=False, indent=2), flush=True)
+        if report["n_missing_subject"]:
+            raise SystemExit(
+                f"Thieu subject cho {report['n_missing_subject']} alert. "
+                "Chay: python scripts/publish_if_alerts.py --repair-subjects"
+            )
+        print("OK: moi alert IF deu join duoc customer (UI detail an toan).", flush=True)
+        return
+
+    if args.repair_subjects:
+        print("[STEP 2] Repair customer/account cho alert IF ...", flush=True)
+        with get_session() as session:
+            stats = repair_subjects(session, dry_run=args.dry_run)
+        print(json.dumps(stats, ensure_ascii=False, indent=2), flush=True)
+        if args.dry_run:
+            print("DRY-RUN: khong ghi Postgres.", flush=True)
+        elif stats["after_missing"]:
+            raise SystemExit(f"Van con {stats['after_missing']} alert thieu subject.")
+        else:
+            print("OK: da dam bao subject cho moi alert IF.", flush=True)
+        return
+
     print(f"[1/3] Doc {args.scores} | window={args.window} | top_k={args.top_k}", flush=True)
     top = load_top_k(args.scores, args.window, args.top_k)
     print(
@@ -381,6 +490,7 @@ def main() -> None:
         print("DRY-RUN: khong ghi Postgres.", flush=True)
     else:
         print("Kiem tra UI: GET /api/v1/alerts  va  /alerts tren console.", flush=True)
+        print("STEP 2: python scripts/publish_if_alerts.py --verify-subjects", flush=True)
 
 
 if __name__ == "__main__":
