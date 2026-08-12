@@ -28,6 +28,8 @@ from src.models.schemas import (
     ChatResponse,
     CustomerOut,
     DashboardOut,
+    InternalAlertCreate,
+    InternalAlertCreateOut,
     InvestigateOut,
     LoginOut,
     LoginRequest,
@@ -40,6 +42,7 @@ from src.models.schemas import (
     UserUpdateRequest,
 )
 from src.services import queue
+from src.services.if_alert_publish import insert_ml_alert, stable_alert_id
 
 router = APIRouter()
 
@@ -465,6 +468,44 @@ async def get_alert(alert_id: str) -> AlertDetailOut:
         reasons=[AlertReasonOut(**r) for r in reasons],
         transactions=[TransactionOut(**t) for t in transactions],
         case_state=case_state,
+    )
+
+
+@router.post("/internal/alerts", response_model=InternalAlertCreateOut)
+def create_internal_ml_alert(body: InternalAlertCreate) -> InternalAlertCreateOut:
+    """Ingest một alert Isolation Forest (detector=ml) — ops/internal, không phải UI upload.
+
+    Body cần >= 3 ``reasons`` (NT7). ``risk_score`` thang 0–100.
+    Idempotent theo ``alert_id`` (tự sinh từ account/as_of/window/model nếu bỏ trống).
+    """
+    alert_id = body.alert_id or stable_alert_id(
+        body.account_key,
+        body.as_of_ts or datetime.now(tz=UTC),
+        body.window,
+        body.model_version,
+    )
+    reasons = [r.model_dump() for r in body.reasons]
+    try:
+        # get_session: commit neu OK, rollback neu exception — alert + reasons cung 1 TX.
+        with get_session() as session:
+            result = insert_ml_alert(
+                session,
+                alert_id=alert_id,
+                account_key=body.account_key,
+                risk_score=body.risk_score,
+                typology_code=body.typology_code,
+                reasons=reasons,
+                as_of_ts=body.as_of_ts,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return InternalAlertCreateOut(
+        alert_id=result["alert_id"],
+        created=bool(result["created"]),
+        subjects_created=bool(result.get("subjects_created")),
+        risk_score=result.get("risk_score"),
+        factor_count=result.get("factor_count"),
     )
 
 
