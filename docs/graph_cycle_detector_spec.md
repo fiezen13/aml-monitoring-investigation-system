@@ -1,10 +1,10 @@
 # Graph CYCLE Detector Spec — FIN-07
 
-**Status:** v1.0 — code + unit tests done; **real-data milestone BLOCKED**  
+**Status:** v1.1 — Phase 3 topology/witness materialization optimization implemented and profiled on a real train snapshot; no caps/sharding added.
 **Scope:** `CYCLE` detector only (length 2–6, temporal witness, canonicalize, evidence).  
 **Does not invent:** FAN/GATHER thresholds, GT matching, sample-volume policy, CYCLE perf hard caps (OPEN #3–#5).
 
-**Blocker (2026-08-10 smoke `D=2022-09-05`):** load ~3.0M txs / ~552k nodes OK; `enumerate_simple_cycles` DFS did not finish (>3 min) with hub `out_degree` ~19k and heavy multi-edges. Full snapshot run / artifact validate deferred until **OPEN #4** (perf bounds) is closed — **do not** add recall-reducing heuristics before that.
+The real-data smoke uses the Phase 1 SCC/core enumeration and Phase 2 temporal witness search. Phase 3 keeps topology construction separate from transaction-edge materialization: transactions are materialized only for directed pairs belonging to enumerated candidate cycles. No degree pruning, motif cap, or sharding is used, so detector semantics are unchanged.
 
 ---
 
@@ -73,9 +73,10 @@ Rotating nodes for canonicalize must **not** reorder `hops`.
 
 ## 5. Algorithm
 
-1. Build directed multi-graph on window `W` (each TX = one edge instance).
+1. Build the unique directed topology on window `W` (without allocating per-transaction edge objects).
 2. Enumerate simple directed cycles length `L ∈ [2, 6]`; dedupe by canonical account tuple.
-3. For each cycle, search one TX per hop such that some cyclic shift is time-non-decreasing; pick min lex `(t1..tk, id1..idk)` in that shifted order → `hops`.
+3. Materialize the multi-edge transaction lists only for directed pairs used by candidate cycles.
+4. For each cycle, search one TX per hop such that some cyclic shift is time-non-decreasing; pick min lex `(t1..tk, id1..idk)` in that shifted order → `hops`.
 4. Independently set `accounts` = lex-smallest node rotation.
 5. Emit 1 evidence line + `L` detection rows.
 

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from bisect import bisect_left
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from itertools import product
 from pathlib import Path
 from typing import Any
 
@@ -111,16 +111,41 @@ def _ensure_tx_frame(transactions: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _build_adjacency(
-    w: pd.DataFrame,
-) -> tuple[dict[str, set[str]], dict[tuple[str, str], list[TxEdge]]]:
+def _build_topology(w: pd.DataFrame) -> dict[str, set[str]]:
+    """Build unique directed topology without materializing transaction edges."""
+    pairs = w.loc[
+        w["from_account_key"] != w["to_account_key"],
+        ["from_account_key", "to_account_key"],
+    ].drop_duplicates()
     adj: dict[str, set[str]] = {}
+    for frm, to in pairs.itertuples(index=False, name=None):
+        frm = str(frm)
+        to = str(to)
+        adj.setdefault(frm, set()).add(to)
+        adj.setdefault(to, set())
+    return adj
+
+
+def _build_multi_for_pairs(
+    w: pd.DataFrame,
+    pairs: set[tuple[str, str]],
+) -> dict[tuple[str, str], list[TxEdge]]:
+    """Materialize TxEdge objects only for topology pairs in candidate cycles."""
     multi: dict[tuple[str, str], list[TxEdge]] = {}
-    for row in w.itertuples(index=False):
+    if not pairs:
+        return multi
+    pair_frame = pd.DataFrame(
+        sorted(pairs), columns=["from_account_key", "to_account_key"]
+    )
+    selected = w.merge(
+        pair_frame,
+        on=["from_account_key", "to_account_key"],
+        how="inner",
+        sort=False,
+    )
+    for row in selected.itertuples(index=False):
         frm = str(row.from_account_key)
         to = str(row.to_account_key)
-        if frm == to:
-            continue
         amt = float(row.amount) if hasattr(row, "amount") and pd.notna(row.amount) else None
         edge = TxEdge(
             transaction_id=str(row.transaction_id),
@@ -129,11 +154,91 @@ def _build_adjacency(
             from_account_key=frm,
             to_account_key=to,
         )
-        adj.setdefault(frm, set()).add(to)
-        # Ensure sink nodes appear as keys for enumeration starts that need them
-        adj.setdefault(to, set())
         multi.setdefault((frm, to), []).append(edge)
-    return adj, multi
+    return multi
+
+
+def _build_adjacency(
+    w: pd.DataFrame,
+) -> tuple[dict[str, set[str]], dict[tuple[str, str], list[TxEdge]]]:
+    """Compatibility helper returning full topology and all transaction edges."""
+    adj = _build_topology(w)
+    pairs = set(zip(w["from_account_key"].astype(str), w["to_account_key"].astype(str)))
+    pairs = {(frm, to) for frm, to in pairs if frm != to}
+    return adj, _build_multi_for_pairs(w, pairs)
+
+
+def _iterative_cycle_core(adj: Mapping[str, set[str]]) -> dict[str, set[str]]:
+    """Remove only nodes that provably cannot belong to a directed cycle."""
+    core = {node: set(neighbors) for node, neighbors in adj.items()}
+    changed = True
+    while changed:
+        changed = False
+        incoming: dict[str, int] = {node: 0 for node in core}
+        for node, neighbors in core.items():
+            for neighbor in neighbors:
+                if neighbor in incoming:
+                    incoming[neighbor] += 1
+        remove = {
+            node
+            for node, neighbors in core.items()
+            if not neighbors or incoming[node] == 0
+        }
+        if remove:
+            changed = True
+            for node in remove:
+                core.pop(node, None)
+            for neighbors in core.values():
+                neighbors.difference_update(remove)
+    return core
+
+
+def _strongly_connected_components(
+    adj: Mapping[str, set[str]],
+) -> list[set[str]]:
+    """Deterministic iterative Kosaraju SCC decomposition."""
+    nodes = sorted(adj)
+    reverse: dict[str, set[str]] = {node: set() for node in nodes}
+    for node in nodes:
+        for neighbor in adj.get(node, ()):
+            reverse.setdefault(neighbor, set()).add(node)
+
+    visited: set[str] = set()
+    order: list[str] = []
+    for root in nodes:
+        if root in visited:
+            continue
+        stack: list[tuple[str, bool]] = [(root, False)]
+        while stack:
+            node, expanded = stack.pop()
+            if expanded:
+                order.append(node)
+                continue
+            if node in visited:
+                continue
+            visited.add(node)
+            stack.append((node, True))
+            for neighbor in sorted(adj.get(node, ()), reverse=True):
+                if neighbor not in visited:
+                    stack.append((neighbor, False))
+
+    components: list[set[str]] = []
+    visited.clear()
+    for root in reversed(order):
+        if root in visited:
+            continue
+        component: set[str] = set()
+        stack = [root]
+        visited.add(root)
+        while stack:
+            node = stack.pop()
+            component.add(node)
+            for neighbor in sorted(reverse.get(node, ()), reverse=True):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    stack.append(neighbor)
+        components.append(component)
+    return sorted(components, key=lambda component: min(component))
 
 
 def enumerate_simple_cycles(
@@ -142,30 +247,48 @@ def enumerate_simple_cycles(
     min_len: int = MIN_CYCLE_LEN,
     max_len: int = MAX_CYCLE_LEN,
 ) -> list[list[str]]:
-    """Directed simple cycles; each returned once (canonical account key dedupe)."""
+    """Directed simple cycles; exact SCC/canonical-start enumeration.
+
+    The pruning here is structural only: every removed node is proven unable to
+    participate in a directed cycle. Hubs are retained; no degree threshold is
+    used. Each cycle is searched from its lexicographically smallest node, so
+    rotations are never enumerated repeatedly.
+    """
+    core = _iterative_cycle_core(adj)
+    if not core:
+        return []
+    components = _strongly_connected_components(core)
     seen: set[tuple[str, ...]] = set()
     out: list[list[str]] = []
-    nodes = sorted(adj.keys())
 
-    def dfs(start: str, path: list[str], visited: set[str]) -> None:
-        if len(path) > max_len:
-            return
-        u = path[-1]
-        for v in sorted(adj.get(u, ())):
-            if v == start and min_len <= len(path) <= max_len:
-                can = tuple(canonicalize_accounts(path))
-                if can not in seen:
-                    seen.add(can)
-                    out.append(path[:])
-            elif v not in visited and len(path) < max_len:
-                visited.add(v)
-                path.append(v)
-                dfs(start, path, visited)
-                path.pop()
-                visited.remove(v)
+    for component in components:
+        if len(component) < min_len:
+            continue
+        component_nodes = set(component)
+        for start in sorted(component):
+            def dfs(path: list[str], visited: set[str]) -> None:
+                if len(path) > max_len:
+                    return
+                node = path[-1]
+                for neighbor in sorted(adj.get(node, ())):
+                    if neighbor not in component_nodes:
+                        continue
+                    # The minimum node is the sole legal start for a motif.
+                    if neighbor < start:
+                        continue
+                    if neighbor == start and min_len <= len(path) <= max_len:
+                        canonical = tuple(path)
+                        if canonical not in seen:
+                            seen.add(canonical)
+                            out.append(path[:])
+                    elif neighbor not in visited and len(path) < max_len:
+                        visited.add(neighbor)
+                        path.append(neighbor)
+                        dfs(path, visited)
+                        path.pop()
+                        visited.remove(neighbor)
 
-    for start in nodes:
-        dfs(start, [start], {start})
+            dfs([start], {start})
     return out
 
 
@@ -184,21 +307,38 @@ def select_temporal_witness(
         edges = multi.get((a, b), [])
         if not edges:
             return None
-        hop_lists.append(edges)
+        # The search below assumes timestamp/id order; callers may provide
+        # unsorted multi-edge lists, so normalize them here deterministically.
+        hop_lists.append(sorted(edges, key=lambda edge: (edge.occurred_at, edge.transaction_id)))
 
     best_key: tuple[Any, ...] | None = None
     best_hops: list[TxEdge] | None = None
 
-    for combo in product(*hop_lists):
-        for shift in range(k):
-            shifted = list(combo[shift:] + combo[:shift])
-            times = [e.occurred_at for e in shifted]
-            if all(times[i] <= times[i + 1] for i in range(k - 1)):
-                ids = [e.transaction_id for e in shifted]
-                key = tuple(times) + tuple(ids)
-                if best_key is None or key < best_key:
-                    best_key = key
-                    best_hops = shifted
+    # For a fixed rotation, choosing the earliest valid edge at every hop is
+    # exact: a later choice can never make a non-decreasing suffix possible
+    # when an earlier valid choice already exists. Evaluate every rotation and
+    # retain the same global lexicographic tie-break as the product oracle.
+    for shift in range(k):
+        rotated = hop_lists[shift:] + hop_lists[:shift]
+        chosen: list[TxEdge] = []
+        previous: pd.Timestamp | None = None
+        for edges in rotated:
+            timestamps = [edge.occurred_at for edge in edges]
+            index = 0 if previous is None else bisect_left(timestamps, previous)
+            if index >= len(edges):
+                chosen = []
+                break
+            edge = edges[index]
+            chosen.append(edge)
+            previous = edge.occurred_at
+        if len(chosen) != k:
+            continue
+        times = [edge.occurred_at for edge in chosen]
+        ids = [edge.transaction_id for edge in chosen]
+        key = tuple(times) + tuple(ids)
+        if best_key is None or key < best_key:
+            best_key = key
+            best_hops = chosen
     return best_hops
 
 
@@ -229,8 +369,14 @@ def detect_cycles_for_snapshot(
     if w.empty:
         return pd.DataFrame(columns=list(DETECTION_COLUMNS)), []
 
-    adj, multi = _build_adjacency(w)
+    adj = _build_topology(w)
     cycles = enumerate_simple_cycles(adj)
+    candidate_pairs = {
+        (path[i], path[(i + 1) % len(path)])
+        for path in cycles
+        for i in range(len(path))
+    }
+    multi = _build_multi_for_pairs(w, candidate_pairs)
 
     det_rows: list[dict[str, Any]] = []
     evidence: list[dict[str, Any]] = []
