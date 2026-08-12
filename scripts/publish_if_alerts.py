@@ -13,12 +13,11 @@ Không ghi đè aml.duckdb. Không tạo nút upload UI.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import logging
 import re
 import sys
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,14 +28,19 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.db.session import get_session  # noqa: E402
+from src.services.if_alert_publish import (  # noqa: E402
+    DEFAULT_TYPOLOGY,
+    MIN_REASONS,
+    ML_WEIGHT,
+    ensure_subject,
+    insert_ml_alert,
+    stable_alert_id,
+)
 
 logger = logging.getLogger("fin07.publish_if_alerts")
 
 PROCESSED_DIR = Path("data/processed")
 DEFAULT_SCORES = PROCESSED_DIR / "if_scores_v1.parquet"
-ML_WEIGHT = 0.35
-DEFAULT_TYPOLOGY = "T02"
-MIN_REASONS = 3
 
 FEATURE_LABELS: dict[str, str] = {
     "txn_count": "Tổng số giao dịch trong cửa sổ",
@@ -89,23 +93,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _stable_alert_id(account_key: str, as_of_ts: Any, window: str, model_version: str) -> str:
-    raw = f"{account_key}|{as_of_ts}|{window}|{model_version}|ml"
-    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
-    return f"ALT-IF-{digest}"
-
-
-def _split_account_key(account_key: str) -> tuple[str, str]:
-    if ":" not in account_key:
-        raise ValueError(f"account_key khong dung format bank:account — {account_key!r}")
-    bank_code, account_number = account_key.split(":", 1)
-    if not bank_code or not account_number:
-        raise ValueError(f"account_key rong sau khi tach — {account_key!r}")
-    return bank_code, account_number
-
-
-def _customer_id_for(account_key: str) -> str:
-    digest = hashlib.sha1(account_key.encode("utf-8")).hexdigest()[:12]
-    return f"CUST-IF-{digest}"
+    return stable_alert_id(account_key, as_of_ts, window, model_version)
 
 
 def _parse_top_features(raw: Any) -> list[dict[str, Any]]:
@@ -210,70 +198,6 @@ def load_top_k(scores_path: Path, window: str, top_k: int) -> pd.DataFrame:
     # Mot account chi lay dong diem cao nhat (tranh spam UI)
     subset = subset.drop_duplicates(subset=["account_key"], keep="first")
     return subset.head(top_k).reset_index(drop=True)
-
-
-def ensure_subject(session: Session, account_key: str, as_of_ts: Any) -> bool:
-    """Tao customer + account toi thieu neu chua co (FK bat buoc cho alert).
-
-    Returns:
-        True neu vua tao account moi; False neu da ton tai.
-    """
-    exists = session.execute(
-        text("SELECT 1 FROM account WHERE account_key = :k"),
-        {"k": account_key},
-    ).scalar_one_or_none()
-    if exists:
-        return False
-
-    bank_code, account_number = _split_account_key(account_key)
-    customer_id = _customer_id_for(account_key)
-
-    if isinstance(as_of_ts, datetime):
-        opened = as_of_ts.date()
-    elif isinstance(as_of_ts, date):
-        opened = as_of_ts
-    else:
-        opened = pd.Timestamp(as_of_ts).date()
-
-    cust_exists = session.execute(
-        text("SELECT 1 FROM customer WHERE customer_id = :c"),
-        {"c": customer_id},
-    ).scalar_one_or_none()
-    if not cust_exists:
-        session.execute(
-            text(
-                """
-                INSERT INTO customer (
-                    customer_id, customer_type, prototype, occupation, declared_income_band,
-                    expected_monthly_volume, registered_country, onboarding_date, risk_rating
-                ) VALUES (
-                    :customer_id, 'individual', 'salaried', 'IF subject (synthetic)', 'unknown',
-                    0, 'XX', :onboarding_date, 'medium'
-                )
-                """
-            ),
-            {"customer_id": customer_id, "onboarding_date": opened},
-        )
-
-    session.execute(
-        text(
-            """
-            INSERT INTO account (
-                account_key, customer_id, bank_code, account_number, opened_at, status
-            ) VALUES (
-                :account_key, :customer_id, :bank_code, :account_number, :opened_at, 'active'
-            )
-            """
-        ),
-        {
-            "account_key": account_key,
-            "customer_id": customer_id,
-            "bank_code": bank_code,
-            "account_number": account_number,
-            "opened_at": opened,
-        },
-    )
-    return True
 
 
 def list_if_alert_subjects(session: Session) -> list[dict[str, Any]]:
@@ -381,49 +305,21 @@ def publish_rows(
         if session is None:
             raise RuntimeError("Can Session Postgres khi khong --dry-run")
 
-        if ensure_subject(session, account_key, as_of_ts):
-            subjects_created += 1
-
-        existing = session.execute(
-            text("SELECT 1 FROM alert WHERE alert_id = :a"),
-            {"a": alert_id},
-        ).scalar_one_or_none()
-        if existing:
-            skipped += 1
-            continue
-
-        created_at = datetime.now(tz=UTC)
-        session.execute(
-            text(
-                """
-                INSERT INTO alert (
-                    alert_id, account_key, transaction_id, typology_code, detector,
-                    risk_score, status, case_id, created_at
-                ) VALUES (
-                    :alert_id, :account_key, NULL, :typology_code, 'ml',
-                    :risk_score, 'open', NULL, :created_at
-                )
-                """
-            ),
-            {
-                "alert_id": alert_id,
-                "account_key": account_key,
-                "typology_code": typology,
-                "risk_score": risk_score,
-                "created_at": created_at,
-            },
+        result = insert_ml_alert(
+            session,
+            alert_id=alert_id,
+            account_key=account_key,
+            risk_score=risk_score,
+            typology_code=typology,
+            reasons=reasons,
+            as_of_ts=as_of_ts,
         )
-        for reason in reasons:
-            session.execute(
-                text(
-                    """
-                    INSERT INTO alert_reason (alert_id, factor_code, factor_label, contribution, weight)
-                    VALUES (:alert_id, :factor_code, :factor_label, :contribution, :weight)
-                    """
-                ),
-                {"alert_id": alert_id, **reason},
-            )
-        inserted += 1
+        if result.get("subjects_created"):
+            subjects_created += 1
+        if result["created"]:
+            inserted += 1
+        else:
+            skipped += 1
 
     return {
         "inserted": inserted,

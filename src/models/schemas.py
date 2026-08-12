@@ -212,3 +212,35 @@ class SettingUpdateRequest(BaseModel):
 class UserUpdateRequest(BaseModel):
     active: bool
     reason: str = Field(..., min_length=10, max_length=2000)
+
+
+class InternalAlertReasonIn(BaseModel):
+    """Mot factor cho alert IF (NT7 can >= 3)."""
+
+    factor_code: str = Field(..., min_length=1, max_length=64)
+    factor_label: str = Field(..., min_length=1, max_length=500)
+    contribution: float = Field(..., ge=0, le=100)
+    weight: float = Field(default=0.35, ge=0, le=1)
+
+
+class InternalAlertCreate(BaseModel):
+    """Body POST /api/v1/internal/alerts — ingest alert detector=ml."""
+
+    account_key: str = Field(..., min_length=3, max_length=128)
+    risk_score: float = Field(..., ge=0, le=100, description="Thang 0-100 (UI/DB)")
+    typology_code: str = Field(default="T02", pattern=r"^T(0[1-9]|10)$")
+    reasons: list[InternalAlertReasonIn] = Field(..., min_length=3)
+    alert_id: str | None = Field(default=None, max_length=64)
+    as_of_ts: datetime | None = None
+    window: str = Field(default="7d", pattern=r"^(1d|7d|14d)$")
+    model_version: str = Field(default="if_baseline_7d_v1", max_length=64)
+
+
+class InternalAlertCreateOut(BaseModel):
+    alert_id: str
+    created: bool
+    subjects_created: bool
+    risk_score: float | None = None
+    factor_count: int | None = None
+    detector: str = "ml"
+
