@@ -1,4 +1,5 @@
 import { CesiumGlobe } from "../../features/world-globe/components/CesiumGlobe";
+import { MapLibre2D } from "../../features/world-globe/components/MapLibre2D";
 
 export interface MapHub {
   id: string;
@@ -79,21 +80,20 @@ export function WorldMap({
   onPickFlow,
   onPickHub,
 }: Props) {
-  // Một Viewer Cesium duy nhất phục vụ cả 2D lẫn 3D: đổi chế độ gọi morphTo2D/
-  // morphTo3D chứ không dựng lại, nên giữ nguyên camera, lựa chọn và bộ lọc.
-  return (
-    <CesiumGlobe
-      data={data}
-      mode={mode}
-      layers={layers}
-      sev={sev}
-      typ={typ}
-      topN={topN}
-      hideNormal={hideNormal}
-      selectedFlow={selectedFlow}
-      selectedHub={selectedHub}
-      onPickFlow={onPickFlow}
-      onPickHub={onPickHub}
-    />
-  );
+  // Hai renderer, một bộ dữ liệu và một bộ state. 3D là Cesium cho nhận thức
+  // toàn cảnh; 2D là MapLibre cho điều tra — nền tối tối giản, không ảnh vệ tinh.
+  // Cả hai đọc cùng adapter nên luật rủi ro và luật lọc không bị nhân đôi.
+  const shared = {
+    data,
+    layers,
+    sev,
+    typ,
+    topN,
+    hideNormal,
+    selectedFlow,
+    selectedHub,
+    onPickFlow,
+    onPickHub,
+  };
+  return mode === "globe" ? <CesiumGlobe mode="globe" {...shared} /> : <MapLibre2D {...shared} />;
 }
