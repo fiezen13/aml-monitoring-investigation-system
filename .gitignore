@@ -57,6 +57,12 @@ data/raw/ibm-aml/*
 !data/raw/ibm-aml/.gitkeep
 !data/raw/ibm-aml/README.md
 
+# Bảng tra cứu do dự án soạn, không phải dữ liệu tải về: ánh xạ tên ngân hàng
+# sang mã quốc gia và toạ độ vẽ bản đồ. Thiếu nó thì
+# scripts/load_bank_geography.py không chạy được trên bản clone mới.
+!data/reference/
+!data/reference/*.csv
+
 # Sổ đăng ký nguồn dữ liệu công khai. Đây là bằng chứng xuất xứ của mọi tham số
 # sinh dữ liệu, không phải dữ liệu sinh ra — phải nằm trong Git.
 !data/source_registry/

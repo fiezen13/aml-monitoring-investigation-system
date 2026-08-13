@@ -10,6 +10,7 @@ tầng truy vấn, chứ không để Decimal rơi ra ngoài.
 """
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -60,6 +61,12 @@ class WorldOut(BaseModel):
     flows: list[FlowOut]
     simulation_id: str | None
     scenario_package: str | None
+    data_mode: Literal["operational", "simulation"]
+    source_id: str | None
+    source_name: str | None
+    transaction_count: int = 0
+    geography_available: bool
+    limitation: str | None
 
 
 # ---------------------------------------------------------------------

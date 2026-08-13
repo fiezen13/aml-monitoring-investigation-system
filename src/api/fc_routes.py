@@ -12,7 +12,7 @@ ngoại tuyến rồi ghi vào `fc.benchmark_result`, nên endpoint benchmark c�
 phải trả về khoảng thời gian đã tính sẵn chứ không phải các mốc thời gian gốc.
 """
 
-from typing import Any
+from typing import Any, Literal, NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
@@ -79,11 +79,28 @@ async def nav_counts() -> NavCountsOut:
         row = (
             session.execute(
                 text(
-                    """SELECT
-                         (SELECT count(*) FROM alert WHERE status <> 'closed')      AS alerts,
-                         (SELECT count(*) FROM approval WHERE decision = 'pending') AS approvals,
-                         (SELECT count(*) FROM alert
-                           WHERE status <> 'closed' AND risk_score >= 80)           AS critical"""
+                    """WITH latest AS (
+                           SELECT batch_id FROM behavior_batch
+                            WHERE status = 'completed'
+                            ORDER BY completed_at DESC NULLS LAST LIMIT 1
+                       )
+                       SELECT
+                         (SELECT count(*) FROM alert al
+                           WHERE status <> 'closed' AND EXISTS (
+                               SELECT 1 FROM detection_result d
+                                WHERE d.alert_id = al.alert_id
+                                  AND d.batch_id = (SELECT batch_id FROM latest)))  AS alerts,
+                         (SELECT count(*) FROM approval ap
+                           JOIN sar_draft sd USING (sar_draft_id)
+                           WHERE ap.decision = 'pending' AND EXISTS (
+                               SELECT 1 FROM alert al JOIN detection_result d USING (alert_id)
+                                WHERE al.case_id = sd.case_id
+                                  AND d.batch_id = (SELECT batch_id FROM latest)))  AS approvals,
+                         (SELECT count(*) FROM alert al
+                           WHERE status <> 'closed' AND risk_score >= 80 AND EXISTS (
+                               SELECT 1 FROM detection_result d
+                                WHERE d.alert_id = al.alert_id
+                                  AND d.batch_id = (SELECT batch_id FROM latest)))  AS critical"""
                 )
             )
             .mappings()
@@ -106,6 +123,15 @@ async def search(q: str = Query(min_length=2, max_length=64)) -> list[SearchHitO
             text(
                 """SELECT alert_id, typology_code FROM alert
                     WHERE lower(alert_id) LIKE :like
+                      AND EXISTS (
+                          SELECT 1 FROM detection_result d
+                           WHERE d.alert_id = alert.alert_id
+                             AND d.batch_id = (
+                                 SELECT batch_id FROM behavior_batch
+                                  WHERE status = 'completed'
+                                  ORDER BY completed_at DESC NULLS LAST LIMIT 1
+                             )
+                      )
                     ORDER BY risk_score DESC LIMIT 5"""
             ),
             {"like": like},
@@ -122,7 +148,16 @@ async def search(q: str = Query(min_length=2, max_length=64)) -> list[SearchHitO
         for row in session.execute(
             text(
                 """SELECT case_id, title FROM aml_case
-                    WHERE lower(case_id) LIKE :like OR lower(title) LIKE :like
+                    WHERE (lower(case_id) LIKE :like OR lower(title) LIKE :like)
+                      AND EXISTS (
+                          SELECT 1 FROM alert al JOIN detection_result d USING (alert_id)
+                           WHERE al.case_id = aml_case.case_id
+                             AND d.batch_id = (
+                                 SELECT batch_id FROM behavior_batch
+                                  WHERE status = 'completed'
+                                  ORDER BY completed_at DESC NULLS LAST LIMIT 1
+                             )
+                      )
                     ORDER BY risk_score DESC LIMIT 5"""
             ),
             {"like": like},
@@ -136,28 +171,6 @@ async def search(q: str = Query(min_length=2, max_length=64)) -> list[SearchHitO
                 )
             )
 
-        # Thực thể mô phỏng chỉ tồn tại khi đã chạy generator; bọc để console
-        # vẫn hoạt động trên cơ sở dữ liệu chưa có schema fc.
-        try:
-            for row in session.execute(
-                text(
-                    """SELECT entity_id, label, entity_type FROM fc.entity
-                        WHERE lower(label) LIKE :like OR lower(entity_id) LIKE :like
-                        ORDER BY risk_score DESC LIMIT 5"""
-                ),
-                {"like": like},
-            ).mappings():
-                hits.append(
-                    SearchHitOut(
-                        id=row["entity_id"],
-                        label=row["label"],
-                        kind=row["entity_type"],
-                        href=f"/network?focus={row['entity_id']}",
-                    )
-                )
-        except Exception:  # noqa: BLE001 — chưa áp migration 005 thì bỏ qua nhóm này
-            pass
-
     return hits
 
 
@@ -166,17 +179,257 @@ async def search(q: str = Query(min_length=2, max_length=64)) -> list[SearchHitO
 # ---------------------------------------------------------------------
 
 
+class _Geography(NamedTuple):
+    hubs: list[HubOut]
+    flows: list[FlowOut]
+    limitation: str | None
+
+
+# Tài khoản kèm quốc gia, dùng lại ở cả hai truy vấn bên dưới. Không có khoá
+# ngoại giữa `account` và `bank`, nên đây là INNER JOIN có chủ đích: tài khoản
+# chưa biết ngân hàng thì không lên bản đồ, và phần thiếu được nêu ở `limitation`.
+_ACCOUNT_COUNTRY = """
+    SELECT a.account_key, b.country_code, b.is_vasp
+      FROM account a JOIN bank b ON b.bank_code = a.bank_code
+     WHERE b.country_code IS NOT NULL
+"""
+
+_MAX_FLOWS = 300
+
+
+def _operational_geography(session: Any) -> _Geography:
+    """Hub và hành lang dòng tiền dựng từ dữ liệu vận hành thật.
+
+    Trả về bản đồ rỗng nếu chưa chạy `scripts/load_bank_geography.py` — không
+    dựng bản đồ nửa vời từ dữ liệu chưa nạp.
+    """
+    if not session.execute(text("SELECT EXISTS (SELECT 1 FROM bank)")).scalar_one():
+        return _Geography(
+            hubs=[],
+            flows=[],
+            limitation=(
+                "Chưa nạp địa lý ngân hàng. Chạy scripts/load_bank_geography.py để "
+                "suy quốc gia từ tên ngân hàng trong *_accounts.csv."
+            ),
+        )
+
+    hub_rows = (
+        session.execute(
+            text(
+                f"""
+                WITH acct AS ({_ACCOUNT_COUNTRY}),
+                edge AS (
+                    SELECT af.country_code AS src, ad.country_code AS dst, t.amount
+                      FROM transaction t
+                      JOIN acct af ON af.account_key = t.from_account_key
+                      JOIN acct ad ON ad.account_key = t.to_account_key
+                ),
+                outb AS (SELECT src AS cc, count(*) AS n, sum(amount) AS v FROM edge GROUP BY 1),
+                inb  AS (SELECT dst AS cc, count(*) AS n, sum(amount) AS v FROM edge GROUP BY 1),
+                ent  AS (SELECT country_code AS cc, count(*) AS n FROM acct GROUP BY 1),
+                alr  AS (
+                    SELECT ac.country_code AS cc, count(*) AS n, avg(al.risk_score) AS r
+                      FROM alert al JOIN acct ac ON ac.account_key = al.account_key
+                     GROUP BY 1
+                )
+                SELECT g.country_code, g.name, g.lat, g.lon,
+                       ent.n AS entities,
+                       coalesce(inb.n, 0) AS inbound,
+                       coalesce(outb.n, 0) AS outbound,
+                       coalesce(inb.v, 0) + coalesce(outb.v, 0) AS volume_usd,
+                       coalesce(alr.n, 0) AS alerts,
+                       coalesce(round(alr.r), 0) AS risk_score
+                  FROM country_geo g
+                  JOIN ent  ON ent.cc  = g.country_code
+                  LEFT JOIN inb  ON inb.cc  = g.country_code
+                  LEFT JOIN outb ON outb.cc = g.country_code
+                  LEFT JOIN alr  ON alr.cc  = g.country_code
+                 ORDER BY volume_usd DESC
+                """
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    flow_rows = (
+        session.execute(
+            text(
+                f"""
+                WITH acct AS ({_ACCOUNT_COUNTRY}),
+                edge AS (
+                    -- `channel` của giao diện là loại kênh dòng tiền
+                    -- (bank/p2p/vasp/chain/gamb/proj), không phải hình thức
+                    -- thanh toán. Bộ IBM chỉ có ACH/Cash/Cheque/Credit Card/Wire
+                    -- — đều là kênh ngân hàng; trả nguyên giá trị đó ra thì bản
+                    -- đồ 3D tra bảng màu không thấy và ném lỗi.
+                    SELECT af.country_code AS src, ad.country_code AS dst,
+                           CASE WHEN af.is_vasp OR ad.is_vasp THEN 'vasp' ELSE 'bank' END AS channel,
+                           t.from_account_key, t.amount, t.currency, t.occurred_at
+                      FROM transaction t
+                      JOIN acct af ON af.account_key = t.from_account_key
+                      JOIN acct ad ON ad.account_key = t.to_account_key
+                     WHERE af.country_code <> ad.country_code
+                ),
+                alr AS (
+                    SELECT e.src, e.dst, e.currency,
+                           count(DISTINCT al.alert_id) AS n,
+                           coalesce(round(avg(al.risk_score)), 0) AS r
+                      FROM edge e JOIN alert al ON al.account_key = e.from_account_key
+                     GROUP BY 1, 2, 3
+                )
+                SELECT e.src, e.dst, e.currency,
+                       mode() WITHIN GROUP (ORDER BY e.channel) AS channel,
+                       count(*) AS txn_count,
+                       sum(e.amount) AS volume_usd,
+                       min(e.occurred_at) AS first_seen,
+                       max(e.occurred_at) AS last_seen,
+                       coalesce(max(alr.n), 0) AS alert_count,
+                       coalesce(max(alr.r), 0) AS risk_score
+                  FROM edge e
+                  LEFT JOIN alr ON alr.src = e.src AND alr.dst = e.dst AND alr.currency = e.currency
+                 GROUP BY e.src, e.dst, e.currency
+                 ORDER BY txn_count DESC
+                 LIMIT :limit
+                """
+            ),
+            {"limit": _MAX_FLOWS},
+        )
+        .mappings()
+        .all()
+    )
+
+    coverage = (
+        session.execute(
+            text(
+                """SELECT count(*) AS total,
+                          count(b.country_code) AS located,
+                          count(*) FILTER (WHERE b.country_source = 'assigned') AS assigned
+                     FROM account a LEFT JOIN bank b ON b.bank_code = a.bank_code"""
+            )
+        )
+        .mappings()
+        .one()
+    )
+
+    names = {row["country_code"]: row["name"] for row in hub_rows}
+    coords = {row["country_code"]: (float(row["lat"]), float(row["lon"])) for row in hub_rows}
+
+    hubs = [
+        HubOut(
+            id=row["country_code"],
+            name=row["name"],
+            country=row["country_code"],
+            lat=float(row["lat"]),
+            lon=float(row["lon"]),
+            # Chủ ý để "unknown": gán quốc gia là mô tả dữ liệu, còn gán mức rủi
+            # ro pháp vực là phán đoán chính sách và phải có ngày hiệu lực.
+            jurisdiction_risk="unknown",
+            inbound=int(row["inbound"]),
+            outbound=int(row["outbound"]),
+            volume_usd=float(row["volume_usd"]),
+            alerts=int(row["alerts"]),
+            entities=int(row["entities"]),
+            risk_score=int(row["risk_score"]),
+        )
+        for row in hub_rows
+    ]
+
+    flows = [
+        FlowOut(
+            id=f"{row['src']}-{row['dst']}-{row['currency']}",
+            source_hub=row["src"],
+            target_hub=row["dst"],
+            source_name=names.get(row["src"], row["src"]),
+            target_name=names.get(row["dst"], row["dst"]),
+            slat=coords[row["src"]][0],
+            slon=coords[row["src"]][1],
+            tlat=coords[row["dst"]][0],
+            tlon=coords[row["dst"]][1],
+            channel=row["channel"],
+            currency=row["currency"],
+            volume_usd=float(row["volume_usd"]),
+            txn_count=int(row["txn_count"]),
+            risk_score=int(row["risk_score"]),
+            typology_hint=None,
+            alert_count=int(row["alert_count"]),
+            first_seen=row["first_seen"],
+            last_seen=row["last_seen"],
+        )
+        for row in flow_rows
+        if row["src"] in coords and row["dst"] in coords
+    ]
+
+    total = int(coverage["total"]) or 1
+    located = int(coverage["located"])
+    assigned = int(coverage["assigned"])
+    limitation = (
+        f"Quốc gia suy ra từ tên ngân hàng: {located:,}/{total:,} tài khoản có quốc gia "
+        f"({located / total:.1%}), trong đó {assigned / total:.1%} là quốc gia do dự án gán "
+        "cho ngân hàng hư cấu chứ không đọc được từ dữ liệu. Chưa gán mức rủi ro pháp vực."
+    )
+    return _Geography(hubs=hubs, flows=flows, limitation=limitation)
+
+
 @router.get("/world", response_model=WorldOut)
-async def world() -> WorldOut:
+async def world(mode: Literal["operational", "simulation"] = "operational") -> WorldOut:
     """Trung tâm tài chính và hành lang dòng tiền.
 
-    Số liệu của mỗi trung tâm được tổng hợp *từ* các hành lang chứ không lưu
-    sẵn: nếu lưu sẵn thì hai nơi sẽ lệch nhau ngay lần sinh dữ liệu tiếp theo.
+    Mặc định chỉ trả dữ liệu vận hành. Batch Behaviour hiện có bank/account ID
+    nhưng không có country code hay toạ độ, vì vậy API công bố giới hạn và trả
+    bản đồ rỗng thay vì ghép nhầm dữ liệu mô phỏng Việt Nam. Chế độ simulation
+    phải được yêu cầu tường minh.
     """
     with get_session() as session:
+        if mode == "operational":
+            batch = (
+                session.execute(
+                    text(
+                        """SELECT b.batch_id, b.source_name,
+                                  count(t.transaction_id) AS transaction_count
+                             FROM behavior_batch b
+                             LEFT JOIN transaction t ON t.behavior_batch_id = b.batch_id
+                            WHERE b.status = 'completed'
+                            GROUP BY b.batch_id, b.source_name, b.completed_at
+                            ORDER BY b.completed_at DESC NULLS LAST
+                            LIMIT 1"""
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            geography = _operational_geography(session)
+            return WorldOut(
+                hubs=geography.hubs,
+                flows=geography.flows,
+                simulation_id=None,
+                scenario_package=None,
+                data_mode="operational",
+                source_id=batch["batch_id"] if batch else None,
+                source_name=batch["source_name"] if batch else None,
+                transaction_count=int(batch["transaction_count"]) if batch else 0,
+                geography_available=bool(geography.hubs),
+                limitation=(
+                    geography.limitation
+                    if batch
+                    else "Chưa có batch giao dịch vận hành hoàn tất."
+                ),
+            )
+
         sim = _current_simulation(session)
         if not sim:
-            return WorldOut(hubs=[], flows=[], simulation_id=None, scenario_package=None)
+            return WorldOut(
+                hubs=[],
+                flows=[],
+                simulation_id=None,
+                scenario_package=None,
+                data_mode="simulation",
+                source_id=None,
+                source_name=None,
+                transaction_count=0,
+                geography_available=False,
+                limitation="Chưa có lần chạy mô phỏng ABM.",
+            )
 
         flows = (
             session.execute(
@@ -230,6 +483,12 @@ async def world() -> WorldOut:
     return WorldOut(
         simulation_id=sim["simulation_id"],
         scenario_package=sim["scenario_package"],
+        data_mode="simulation",
+        source_id=sim["simulation_id"],
+        source_name=sim["scenario_package"],
+        transaction_count=sum(int(f["txn_count"]) for f in flows),
+        geography_available=True,
+        limitation="Dữ liệu địa lý do mô phỏng ABM sinh, không phải giao dịch của batch vận hành.",
         hubs=[
             HubOut(
                 id=h["hub_id"],
@@ -808,6 +1067,7 @@ async def transactions(
     q: str = Query(default="", max_length=64),
     channel: str = Query(default="all", max_length=32),
     min_amount: float = Query(default=0, ge=0),
+    source: Literal["operational", "all"] = Query(default="operational"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> TxPageOut:
@@ -828,6 +1088,14 @@ async def transactions(
     if min_amount > 0:
         where.append("t.amount >= :min_amount")
         params["min_amount"] = min_amount
+    if source == "operational":
+        where.append(
+            """t.behavior_batch_id = (
+                   SELECT batch_id FROM behavior_batch
+                    WHERE status = 'completed'
+                    ORDER BY completed_at DESC NULLS LAST LIMIT 1
+               )"""
+        )
 
     clause = " AND ".join(where)
 
