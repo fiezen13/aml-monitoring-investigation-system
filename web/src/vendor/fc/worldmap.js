@@ -1,7 +1,10 @@
 /* fc-worldmap: flat dark intelligence world map (canvas) — countries, financial hubs, corridor flows */
+// Ranh giới quốc gia đi kèm bundle. Trước đây tải từ jsdelivr lúc chạy —
+// một console tuân thủ ngân hàng thường nằm sau mạng chặn Internet ra ngoài,
+// và khi CDN không tới được thì bản đồ mất luôn đường biên.
+import TOPO from 'world-atlas/countries-110m.json';
 (() => {
 if (customElements.get('fc-worldmap')) return;
-const TOPO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json';
 const CH = {
   bank:{c:'#3185FF',n:'BANK_TRANSFER'}, p2p:{c:'#12D6C5',n:'P2P_SETTLEMENT'}, vasp:{c:'#A78BFA',n:'VASP_FLOW'},
   chain:{c:'#2DD4A7',n:'CRYPTO_BRIDGE'}, gamb:{c:'#F5A524',n:'GAMBLING_SETTLEMENT'}, proj:{c:'#FF8A5C',n:'TOKEN_FLOW'}
@@ -47,9 +50,10 @@ class FCWorldMap extends HTMLElement {
     this.ro=new ResizeObserver(()=>{ if(this._roQ) return; this._roQ=requestAnimationFrame(()=>{ this._roQ=null; this._resize(); }); });
     this.ro.observe(this); this._resize(); this._events();
     document.addEventListener('visibilitychange',()=>{ this._hidden=document.hidden; });
-    fetch(TOPO_URL).then(r=>r.json()).then(j=>{ this.polys=decode(j); this.state.remove(); this._start(); })
-      .catch(()=>{ this.state.innerHTML='<div style="max-width:280px;line-height:1.6"><div style="color:#F5A524;margin-bottom:6px">Không tải được ranh giới quốc gia</div><span style="font-size:11px">Bản đồ chạy ở chế độ tối giản — corridor và hub vẫn hoạt động bình thường.</span></div>';
-        setTimeout(()=>this.state.remove(),2600); this.polys=[]; this._start(); });
+    try{ this.polys=decode(TOPO); this.state.remove(); }
+    catch(e){ this.state.innerHTML='<div style="max-width:280px;line-height:1.6"><div style="color:#F5A524;margin-bottom:6px">Không đọc được ranh giới quốc gia</div><span style="font-size:11px">Bản đồ chạy ở chế độ tối giản — corridor và hub vẫn hoạt động bình thường.</span></div>';
+      setTimeout(()=>this.state.remove(),2600); this.polys=[]; }
+    this._start();
   }
   disconnectedCallback(){ if(this._raf){ cancelAnimationFrame(this._raf); this._raf=null; } }
   _start(){ if(this._raf) return;

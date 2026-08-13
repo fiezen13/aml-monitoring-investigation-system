@@ -1,7 +1,4 @@
-import { useEffect, useRef } from "react";
-
-import "../../vendor/fc/worldmap.js";
-import "../../vendor/fc/globe3d.js";
+import { CesiumGlobe } from "../../features/world-globe/components/CesiumGlobe";
 
 export interface MapHub {
   id: string;
@@ -49,9 +46,6 @@ export interface MapData {
   flows: MapFlow[];
 }
 
-/** Phủ kín khung cha. Xem ghi chú ở cuối file về việc không dùng className. */
-const FILL = { position: "absolute", inset: 0 } as const;
-
 interface Props {
   data: MapData | null;
   mode: "map" | "globe";
@@ -60,9 +54,6 @@ interface Props {
   typ: string;
   topN: number;
   hideNormal: boolean;
-  paused: boolean;
-  speed: number;
-  replay: { on: boolean; t: number };
   selectedFlow: string | null;
   selectedHub: string | null;
   onPickFlow: (id: string | null) => void;
@@ -72,8 +63,8 @@ interface Props {
 /**
  * Bản đồ dòng tiền toàn cầu — 2D hoặc quả cầu 3D, cùng một bộ dữ liệu.
  *
- * Cả hai engine nhận trạng thái qua property setter (mỗi setter tự vẽ lại khi
- * giá trị đổi), nên ở đây chỉ đồng bộ props xuống element sau mỗi lần render.
+ * Lớp mỏng giữ nguyên hợp đồng props cũ để WorldPage không phải đổi, còn phần
+ * dựng hình do Cesium đảm nhiệm.
  */
 export function WorldMap({
   data,
@@ -83,68 +74,26 @@ export function WorldMap({
   typ,
   topN,
   hideNormal,
-  paused,
-  speed,
-  replay,
   selectedFlow,
   selectedHub,
   onPickFlow,
   onPickHub,
 }: Props) {
-  const ref = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const el = ref.current as (HTMLElement & Record<string, unknown>) | null;
-    if (!el || !data) return;
-    el.data = data;
-    el.layers = layers;
-    el.sev = sev;
-    el.typ = typ;
-    el.topN = topN;
-    el.hideNormal = hideNormal;
-    el.paused = paused;
-    el.speed = speed;
-    el.replay = replay;
-    el.selection = selectedFlow;
-    el.hubSelection = selectedHub;
-  }, [data, layers, sev, typ, topN, hideNormal, paused, speed, replay, selectedFlow, selectedHub, mode]);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    // Cả `fc-worldmap` và `fc-globe3d` phát cùng bộ sự kiện này, nên đổi 2D ↔ 3D
-    // không cần thay đổi phía React.
-    const onFlow = (e: Event) => {
-      onPickFlow(((e as CustomEvent).detail?.id as string) ?? null);
-      onPickHub(null);
-    };
-    const onHub = (e: Event) => {
-      onPickHub(((e as CustomEvent).detail?.id as string) ?? null);
-      onPickFlow(null);
-    };
-    const onClear = () => {
-      onPickFlow(null);
-      onPickHub(null);
-    };
-    el.addEventListener("flowselect", onFlow);
-    el.addEventListener("hubselect", onHub);
-    el.addEventListener("clearselect", onClear);
-    return () => {
-      el.removeEventListener("flowselect", onFlow);
-      el.removeEventListener("hubselect", onHub);
-      el.removeEventListener("clearselect", onClear);
-    };
-  }, [onPickFlow, onPickHub, mode]);
-
-  // `key` theo mode buộc React huỷ element cũ và tạo mới khi đổi 2D ↔ 3D —
-  // hai engine giữ trạng thái camera riêng, tái dùng node sẽ lẫn trạng thái.
-  //
-  // Định vị bằng `style` chứ không bằng `className`: với custom element, React
-  // 18 đặt prop `className` thành một attribute tên `classname`, và CSS không
-  // nhìn thấy nó — element sẽ có chiều cao 0 và canvas không vẽ được gì.
-  return mode === "globe" ? (
-    <fc-globe3d key="globe" ref={ref} style={FILL} />
-  ) : (
-    <fc-worldmap key="map" ref={ref} style={FILL} />
+  // Một Viewer Cesium duy nhất phục vụ cả 2D lẫn 3D: đổi chế độ gọi morphTo2D/
+  // morphTo3D chứ không dựng lại, nên giữ nguyên camera, lựa chọn và bộ lọc.
+  return (
+    <CesiumGlobe
+      data={data}
+      mode={mode}
+      layers={layers}
+      sev={sev}
+      typ={typ}
+      topN={topN}
+      hideNormal={hideNormal}
+      selectedFlow={selectedFlow}
+      selectedHub={selectedHub}
+      onPickFlow={onPickFlow}
+      onPickHub={onPickHub}
+    />
   );
 }

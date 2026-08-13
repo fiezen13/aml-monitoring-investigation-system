@@ -1,7 +1,10 @@
 /* fc-globe3d: WebGL financial-flow globe (three.js, lazy-loaded) with 2D canvas fallback */
 (() => {
 if (customElements.get('fc-globe3d')) return;
-const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
+// three.js đi kèm bundle, tách thành chunk riêng nên vẫn tải lười — chỉ khi
+// người dùng bấm 3D. Trước đây import thẳng từ jsdelivr: mạng chặn Internet
+// ra ngoài là mất hẳn chế độ 3D.
+const loadThree = () => import('three');
 // 5° landmask built from per-latitude longitude ranges (row r → lat center 87.5-5r)
 const LAND_RANGES = [
   [], [[-60,-20],[80,105]], [[-120,-18],[50,115]], [[-130,-18],[8,180]],
@@ -30,7 +33,24 @@ class FCGlobe3D extends HTMLElement {
   connectedCallback(){
     ['data','layers','sev','typ','speed','paused','replay','selection'].forEach(p=>{
       if(Object.prototype.hasOwnProperty.call(this,p)){ const v=this[p]; delete this[p]; this[p]=v; } });
-    if(this._init){ this._startLoop && this._startLoop(); return; }
+    if(this._init){
+      // `_pendingSetup` được gán khi three.js tải xong lúc element đã rời DOM,
+      // nhưng trước đây không chỗ nào đọc lại — gắn lại vào DOM thì quả cầu
+      // không bao giờ dựng, im lặng.
+      // Cần dựng lại renderer khi: (a) three.js tải xong lúc element đã rời DOM,
+      // hoặc (b) disconnectedCallback vừa trả context về cho trình duyệt.
+      const needsSetup = this.T && !this._isFallback && (this._pendingSetup || !this.renderer);
+      if(needsSetup){
+        this._pendingSetup=false;
+        try{ this._setup(); if(this._data) this._build(); }
+        catch(err){
+          console.error('[fc-globe3d] khởi tạo WebGL thất bại:', err);
+          this._fallback('Không khởi tạo được WebGL — hiển thị bản 2D');
+        }
+        return;
+      }
+      this._startLoop && this._startLoop(); return;
+    }
     this._init = true;
     this.style.display='block'; this.style.overflow='hidden'; this.style.cursor='grab';
     if(getComputedStyle(this).position==='static') this.style.position='relative';
@@ -43,30 +63,79 @@ class FCGlobe3D extends HTMLElement {
     this.loading.style.cssText='position:absolute;inset:0;display:grid;place-items:center;color:#607487;font:12px Geist,sans-serif;z-index:1';
     this.loading.innerHTML='<div style="text-align:center"><div style="width:34px;height:34px;margin:0 auto 10px;border-radius:50%;border:2px solid rgba(18,214,197,0.15);border-top-color:#12D6C5;animation:fcSpin 0.9s linear infinite"></div>Đang khởi tạo globe 3D…</div><style>@keyframes fcSpin{to{transform:rotate(360deg)}}</style>';
     this.appendChild(this.labelsEl); this.appendChild(this.tip); this.appendChild(this.loading);
-    let okGL=false; try{ const c=document.createElement('canvas'); okGL=!!(c.getContext('webgl2')||c.getContext('webgl')); }catch(e){}
+    // Chốt kiểm tra phải TRẢ LẠI context ngay. Chrome chỉ cho khoảng 16 context
+    // WebGL sống cùng lúc mỗi tiến trình; chốt này chạy mỗi lần element mount và
+    // trước đây giữ context lại vĩnh viễn, nên bấm 2D↔3D vài lần là hết quota.
+    let okGL=false;
+    try{
+      const c=document.createElement('canvas');
+      const gl=c.getContext('webgl2')||c.getContext('webgl');
+      okGL=!!gl;
+      if(gl){ const lose=gl.getExtension('WEBGL_lose_context'); if(lose) lose.loseContext(); }
+    }catch(e){}
     if(!okGL){ this._fallback('WebGL không khả dụng — hiển thị bản 2D'); return; }
-    import(THREE_URL).then(T=>{ this.T=T; if(this.isConnected) this._setup(); else this._pendingSetup=true; })
-      .catch(()=>this._fallback('Không tải được engine 3D — hiển thị bản 2D'));
+    // Hai khâu, hai thông báo. Trước đây `.catch` nối sau `.then` nên nó nuốt
+    // luôn lỗi của `_setup()` và đổ tội cho khâu tải engine — three.js tải xong
+    // nhưng người dùng vẫn đọc "không tải được engine", tìm sai chỗ hàng giờ.
+    loadThree().then(
+      T=>{
+        this.T=T;
+        if(!this.isConnected){ this._pendingSetup=true; return; }
+        try{ this._setup(); }
+        catch(err){
+          console.error('[fc-globe3d] khởi tạo WebGL thất bại:', err);
+          this._fallback('Không khởi tạo được WebGL — hiển thị bản 2D');
+        }
+      },
+      err=>{
+        console.error('[fc-globe3d] không tải được three.js:', err);
+        this._fallback('Không tải được engine 3D — hiển thị bản 2D');
+      }
+    );
   }
-  disconnectedCallback(){ if(this._raf){ cancelAnimationFrame(this._raf); this._raf=null; } }
+  disconnectedCallback(){
+    if(this._raf){ cancelAnimationFrame(this._raf); this._raf=null; }
+    // WorldMap.tsx đặt `key` theo mode, nên React HUỶ element này mỗi lần đổi
+    // 2D↔3D. Không trả context ở đây là rò rỉ một context mỗi lần bấm, và tới
+    // lần vượt giới hạn thì `new WebGLRenderer()` ném lỗi — đúng triệu chứng
+    // "không dựng được 3D" sau khi đã bấm qua lại nhiều lần.
+    if(this.renderer){
+      try{ this.renderer.forceContextLoss(); }catch(e){}
+      try{ this.renderer.dispose(); }catch(e){}
+      const el=this.renderer.domElement;
+      if(el && el.parentNode) el.parentNode.removeChild(el);
+      this.renderer=null; this.scene=null;
+    }
+  }
   _fallback(msg){
     this._isFallback=true; this.loading.remove();
-    this._fb=document.createElement('fc-globe'); this._fb.style.cssText='position:absolute;inset:0';
+    // `fc-worldmap`, không phải `fc-globe`: thẻ sau chưa từng được định nghĩa ở
+    // đâu, nên trình duyệt dựng ra một hộp rỗng và người dùng nhận panel trắng
+    // thay vì bản đồ phẳng — im lặng, không lỗi console.
+    this._fb=document.createElement('fc-worldmap'); this._fb.style.cssText='position:absolute;inset:0';
     this.insertBefore(this._fb, this.labelsEl);
     if(this._data) this._fb.data=this._data;
-    this._fb.addEventListener('hubselect',e=>this.dispatchEvent(new CustomEvent('hubselect',{detail:e.detail})));
+    ['hubselect','flowselect','clearselect'].forEach(name=>{
+      this._fb.addEventListener(name,e=>this.dispatchEvent(new CustomEvent(name,{detail:e.detail})));
+    });
     const badge=document.createElement('div');
-    badge.style.cssText='position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(245,165,36,0.1);border:1px solid rgba(245,165,36,0.35);color:#F5C97A;font:10.5px Geist,sans-serif;border-radius:20px;padding:3px 12px;z-index:3';
+    badge.style.cssText='position:absolute;top:46px;left:50%;transform:translateX(-50%);background:rgba(245,165,36,0.1);border:1px solid rgba(245,165,36,0.35);color:#F5C97A;font:10.5px Geist,sans-serif;border-radius:20px;padding:3px 12px;z-index:3';
     badge.textContent=msg; this.appendChild(badge);
   }
+  // Ở chế độ dự phòng mọi prop phải chảy tiếp xuống bản đồ phẳng, nếu không
+  // người dùng được một bản đồ bỏ qua toàn bộ bộ lọc ở thanh bên.
+  _fwd(name, v){ if(this._fb) this._fb[name]=v; }
   set data(v){ this._data=v; if(this._fb){ this._fb.data=v; return; } if(this.scene) this._build(); }
-  set layers(v){ this._layers=v; if(this._fb) this._fb.layers=v; this._applyFilters(); }
-  set sev(v){ this._sev=v; this._applyFilters(); }
-  set typ(v){ this._typ=v; this._applyFilters(); }
-  set speed(v){ this._speed=v; if(this._fb) this._fb.speed=v; }
-  set paused(v){ this._paused=v; if(this._fb) this._fb.paused=v; }
-  set replay(v){ this._replay=v||{on:false,t:1}; this._applyFilters(); }
-  set selection(id){ if(this._selId===id) return; this._selId=id; this._applyFilters(); if(!id&&this._camT) this.resetView(false); }
+  set layers(v){ this._layers=v; this._fwd('layers',v); this._applyFilters(); }
+  set sev(v){ this._sev=v; this._fwd('sev',v); this._applyFilters(); }
+  set typ(v){ this._typ=v; this._fwd('typ',v); this._applyFilters(); }
+  set topN(v){ this._topN=v; this._fwd('topN',v); }
+  set hideNormal(v){ this._hideNormal=v; this._fwd('hideNormal',v); }
+  set speed(v){ this._speed=v; this._fwd('speed',v); }
+  set paused(v){ this._paused=v; this._fwd('paused',v); }
+  set replay(v){ this._replay=v||{on:false,t:1}; this._fwd('replay',v); this._applyFilters(); }
+  set hubSelection(id){ this._fwd('hubSelection',id); }
+  set selection(id){ this._fwd('selection',id); if(this._selId===id) return; this._selId=id; this._applyFilters(); if(!id&&this._camT) this.resetView(false); }
   _setup(){
     const T=this.T;
     this.renderer=new T.WebGLRenderer({antialias:true,alpha:true});
@@ -171,7 +240,11 @@ class FCGlobe3D extends HTMLElement {
       for(let i=0;i<=N;i++){ const t=i/N; const v=slerpA(a,b,t); const k=1+alt*Math.sin(t*Math.PI);
         pts.push(new T.Vector3(v[0]*k,v[1]*k,v[2]*k)); }
       const geo=new T.BufferGeometry().setFromPoints(pts);
-      const colHex=f.risk==='crit'?0xFF4D61:f.risk==='warn'?0xF5A524:parseInt(CH_CSS[f.ch].slice(1),16);
+      // Kênh lạ chỉ được phép sai màu, không được phép ném lỗi: trước đây
+      // CH_CSS[f.ch] undefined làm `.slice` nổ giữa forEach, và cả chế độ 3D
+      // chết kèm thông báo đổ tội cho khâu tải engine.
+      const chHex=CH_CSS[f.ch]||CH_CSS.bank;
+      const colHex=f.risk==='crit'?0xFF4D61:f.risk==='warn'?0xF5A524:parseInt(chHex.slice(1),16);
       const baseOp=f.risk==='crit'?0.85:f.risk==='warn'?0.6:0.22;
       const line=new T.Line(geo,new T.LineBasicMaterial({color:colHex,transparent:true,opacity:baseOp,blending:T.AdditiveBlending,depthWrite:false}));
       line.userData={flow:f,baseOp,pts};
@@ -259,7 +332,7 @@ class FCGlobe3D extends HTMLElement {
       if(hit.hub){ const hb=hit.hub;
         this.tip.innerHTML='<b style="font-size:12px">'+hb.name+'</b><br><span style="color:#91A4B5">Entities:</span> <b style="font-family:JetBrains Mono,monospace">'+hb.entities.toLocaleString('vi-VN')+'</b><br><span style="color:#91A4B5">Alerts mở:</span> <b style="font-family:JetBrains Mono,monospace;color:'+(hb.alerts>20?'#FF4D61':'#E6F0F8')+'">'+hb.alerts+'</b><br><span style="color:#607487;font-size:10px">Click mở hub inspector</span>'; }
       else { const f=hit.flow;
-        this.tip.innerHTML='<b style="font-size:12px">'+f.sn+' → '+f.tn+'</b> <span style="font-family:JetBrains Mono,monospace;font-size:9.5px;color:#607487">'+f.id+'</span><br><span style="color:#91A4B5">Kênh:</span> '+CH_NAME[f.ch]+'<br><span style="color:#91A4B5">Volume 24h:</span> <b style="font-family:JetBrains Mono,monospace">$'+f.vol+'</b> · '+f.txn+' txn<br><span style="color:#91A4B5">Risk:</span> <b style="font-family:JetBrains Mono,monospace;color:'+(f.risk==='crit'?'#FF4D61':f.risk==='warn'?'#F5A524':'#2DD4A7')+'">'+(f.riskN||'—')+'</b>'+(f.typ?'<br><span style="color:#91A4B5">'+f.typ+'</span>':''); }
+        this.tip.innerHTML='<b style="font-size:12px">'+f.sn+' → '+f.tn+'</b> <span style="font-family:JetBrains Mono,monospace;font-size:9.5px;color:#607487">'+f.id+'</span><br><span style="color:#91A4B5">Kênh:</span> '+(CH_NAME[f.ch]||f.ch)+'<br><span style="color:#91A4B5">Volume 24h:</span> <b style="font-family:JetBrains Mono,monospace">$'+f.vol+'</b> · '+f.txn+' txn<br><span style="color:#91A4B5">Risk:</span> <b style="font-family:JetBrains Mono,monospace;color:'+(f.risk==='crit'?'#FF4D61':f.risk==='warn'?'#F5A524':'#2DD4A7')+'">'+(f.riskN||'—')+'</b>'+(f.typ?'<br><span style="color:#91A4B5">'+f.typ+'</span>':''); }
       this.tip.style.display='block'; const tw=this.tip.offsetWidth;
       let lx=mx+14; if(lx+tw>r.width-4) lx=mx-tw-14;
       this.tip.style.left=lx+'px'; this.tip.style.top=Math.max(4,my-16)+'px';

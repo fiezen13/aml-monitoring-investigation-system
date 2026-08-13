@@ -1,10 +1,15 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
+import cesium from "vite-plugin-cesium";
 
 // Khi chạy `npm run dev` ngoài Docker, proxy về API ở localhost:8000.
 // Trong Docker, nginx đảm nhiệm việc này (xem web/nginx.conf).
 export default defineConfig({
-  plugins: [react()],
+  // `cesium()` sao chép Workers/Assets/ThirdParty/Widgets của Cesium vào thư mục
+  // build và đặt CESIUM_BASE_URL. Cesium nạp mấy thứ đó lúc chạy bằng đường dẫn
+  // tương đối, nên không có bước này thì viewer dựng lên rồi chết khi đi tìm
+  // worker giải mã ảnh.
+  plugins: [react(), cesium()],
   server: {
     port: 5173,
     proxy: {
@@ -17,5 +22,12 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    // Cesium là bundle khổng lồ đòi WebGL; test dùng mock ở src/test/cesiumMock.ts.
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
 });
