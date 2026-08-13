@@ -2,6 +2,15 @@
   "manifest_version": "graph_pipeline_manifest_v2",
   "input_db_checksum": "80b3e9e384bdc71a57c9882d89e049c7993d642b4c54f205fd234c38774ebbf6",
   "feature_artifact_checksum": "a2dcd7f1f7eccf5ccd4123c52d0ff08466622ead1ac3621c23134e311c77c9fe",
+  "features_prebuilt": true,
+  "artifact_checksums": {
+    "data/processed/graph_features_v1.parquet": "a2dcd7f1f7eccf5ccd4123c52d0ff08466622ead1ac3621c23134e311c77c9fe",
+    "data/processed/graph_detection_v1.parquet": "33e951696fbfe019d37c09e528b4f9d1cee40b1333f03f44108b480d3fdda841",
+    "data/processed/graph_evidence_v1.jsonl": "3a64a17d954f0b1b9ccfbd340a44dd095cdfa290196dac0be7e7c7d30db87223",
+    "data/processed/graph_account_modeling_v1.parquet": "441308cf54c767cf98178aea7ee5e5b3104a522d78d596e8dbd095c60a803fc3",
+    "graph_handoff/graph_histgb_v1.joblib": "746fe2de6c192c1d02e15273c6f7eca36077d23b6ff4d0cac59ac64d3b90c799",
+    "graph_handoff/graph_scores_v1.parquet": "e7698c5083ff6b943da1a63338fe5b6f8e9eb5dd613f13fcf598196c88361e96"
+  },
   "feature_schema_version": "graph_features_v1",
   "detector_versions": {
     "FAN_IN": [
