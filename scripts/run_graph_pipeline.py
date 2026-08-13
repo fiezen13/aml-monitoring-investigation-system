@@ -13,6 +13,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +21,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.data.graph_artifact_validator import validate_graph_artifacts  # noqa: E402
+from src.data.graph_features import OUTPUT_COLUMNS  # noqa: E402
+from src.data.snapshot_split import FEATURE_SCHEMA_VERSION  # noqa: E402
+
+MANIFEST_VERSION = "graph_pipeline_manifest_v2"
+DEFAULT_MANIFEST_PATH = ROOT / "reports/graph_pipeline_manifest_v2.json"
 
 
 def sha256(path: Path) -> str:
@@ -28,6 +34,56 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _sql_path(path: Path) -> str:
+    return path.resolve().as_posix().replace("'", "''")
+
+
+def validate_prebuilt_features(
+    features: Path,
+    *,
+    expected_checksum: str | None,
+    expected_schema: str = FEATURE_SCHEMA_VERSION,
+) -> dict[str, object]:
+    """Validate a pinned prebuilt feature artifact before detector phases run."""
+    if not features.exists():
+        raise FileNotFoundError(f"prebuilt feature artifact not found: {features}")
+    actual_checksum = sha256(features)
+    if not expected_checksum:
+        raise ValueError(
+            "prebuilt features require a pinned checksum; pass --feature-checksum "
+            "or provide it in the previous manifest"
+        )
+    if actual_checksum != expected_checksum:
+        raise ValueError(f"prebuilt feature checksum mismatch: expected={expected_checksum} actual={actual_checksum}")
+
+    con = duckdb.connect()
+    try:
+        describe = con.execute(f"DESCRIBE SELECT * FROM read_parquet('{_sql_path(features)}')").fetchall()
+        columns = {str(row[0]) for row in describe}
+        missing = sorted(set(OUTPUT_COLUMNS) - columns)
+        if missing:
+            raise ValueError(f"prebuilt feature schema missing columns: {missing}")
+        schema_values = [
+            str(row[0])
+            for row in con.execute(
+                f"SELECT DISTINCT feature_schema_version FROM read_parquet('{_sql_path(features)}')"
+            ).fetchall()
+        ]
+        if schema_values != [expected_schema]:
+            raise ValueError(
+                f"prebuilt feature_schema_version mismatch: expected={expected_schema} actual={schema_values}"
+            )
+    finally:
+        con.close()
+    return {
+        "features_prebuilt": True,
+        "path": str(features),
+        "checksum": actual_checksum,
+        "checksum_validated_against": "explicit_argument_or_previous_manifest",
+        "schema_version": expected_schema,
+    }
 
 
 def run_phase(phase: str, *, db: Path, features: Path, cutoffs: Path, config: Path, out_dir: Path) -> dict:
@@ -91,8 +147,30 @@ def merge_artifacts(
 
 
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run the graph detector pipeline")
+    parser.add_argument(
+        "--features",
+        type=Path,
+        default=ROOT / "data/processed/graph_features_v1.parquet",
+        help="Pinned prebuilt graph feature artifact",
+    )
+    parser.add_argument(
+        "--feature-checksum",
+        default=None,
+        help="Expected SHA-256 for --features; defaults to previous manifest",
+    )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_MANIFEST_PATH,
+        help="Output manifest path (must use graph_pipeline_manifest_v2 naming)",
+    )
+    args = parser.parse_args()
+
     db = ROOT / "data/processed/aml.duckdb"
-    features = ROOT / "data/processed/graph_features_v1.parquet"
+    features = args.features if args.features.is_absolute() else ROOT / args.features
     cutoffs = ROOT / "data/processed/split_cutoffs.json"
     configs = {
         "fan": ROOT / "configs/graph/graph_fan_config_v3.json",
@@ -103,7 +181,17 @@ def main() -> int:
     configs["cycle"] = ROOT / "src/data/cycle_detector.py"
     detection_path = ROOT / "data/processed/graph_detection_v1.parquet"
     evidence_path = ROOT / "data/processed/graph_evidence_v1.jsonl"
-    manifest_path = ROOT / "reports/graph_pipeline_manifest_v1.json"
+    manifest_path = args.manifest if args.manifest.is_absolute() else ROOT / args.manifest
+    if manifest_path.name != "graph_pipeline_manifest_v2.json":
+        raise ValueError("manifest path must be graph_pipeline_manifest_v2.json")
+    expected_feature_checksum = args.feature_checksum
+    if expected_feature_checksum is None and manifest_path.exists():
+        previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected_feature_checksum = previous.get("feature_artifact_checksum")
+    feature_metadata = validate_prebuilt_features(
+        features,
+        expected_checksum=expected_feature_checksum,
+    )
     t0 = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="graph_phases_", dir="/tmp") as temp:
         out_dir = Path(temp)
@@ -115,15 +203,35 @@ def main() -> int:
         det_rows, ev_rows, counts, detector_versions = merge_artifacts(phase_results, detection_path, evidence_path)
         merge_runtime = round(time.perf_counter() - merge_t0, 3)
     validation_t0 = time.perf_counter()
-    validation = validate_graph_artifacts(detection_path, evidence_path, db_path=db)
+    config_hashes = {str(p.relative_to(ROOT)): sha256(p) for p in configs.values()}
+    validation = validate_graph_artifacts(
+        detection_path,
+        evidence_path,
+        db_path=db,
+        feature_path=features,
+        split_cutoffs_path=cutoffs,
+        expected_detector_versions={
+            "FAN_IN": "graph_fan_v3_min",
+            "FAN_OUT": "graph_fan_v3_min",
+            "GATHER_SCATTER": "graph_gather_v1",
+            "CYCLE": "graph_cycle_v1",
+        },
+        config_hashes=config_hashes,
+        config_paths={str(p.relative_to(ROOT)): p for p in configs.values()},
+    )
     validation_runtime = round(time.perf_counter() - validation_t0, 3)
     manifest = {
-        "manifest_version": "graph_pipeline_manifest_v2",
+        "manifest_version": MANIFEST_VERSION,
+        "manifest_path": str(manifest_path.relative_to(ROOT)),
         "input_db_checksum": sha256(db),
         "feature_artifact_checksum": sha256(features),
+        "detection_artifact_checksum": sha256(detection_path),
+        "evidence_artifact_checksum": sha256(evidence_path),
+        "features_prebuilt": True,
+        "feature_prebuilt_validation": feature_metadata,
         "feature_schema_version": "graph_features_v1",
         "detector_versions": detector_versions,
-        "config_hashes": {str(p.relative_to(ROOT)): sha256(p) for p in configs.values()},
+        "config_hashes": config_hashes,
         "snapshot_range": {
             "min": str(pd.to_datetime(pd.read_parquet(detection_path).snapshot_date).min().date()),
             "max": str(pd.to_datetime(pd.read_parquet(detection_path).snapshot_date).max().date()),

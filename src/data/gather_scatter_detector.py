@@ -230,8 +230,8 @@ def evaluate_gather_duckdb(
                as_of_ts,
                sample_split,
                "window",
-               (CAST(snapshot_date AS TIMESTAMP) + INTERVAL 1 DAY - INTERVAL 7 DAY) AS start_ts,
-               (CAST(snapshot_date AS TIMESTAMP) + INTERVAL 1 DAY) AS end_ts
+               (as_of_ts - INTERVAL 7 DAY) AS start_ts,
+               as_of_ts AS end_ts
         FROM cands_df
         """
     )

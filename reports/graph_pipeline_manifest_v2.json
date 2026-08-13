@@ -1,0 +1,305 @@
+{
+  "manifest_version": "graph_pipeline_manifest_v2",
+  "input_db_checksum": "80b3e9e384bdc71a57c9882d89e049c7993d642b4c54f205fd234c38774ebbf6",
+  "feature_artifact_checksum": "a2dcd7f1f7eccf5ccd4123c52d0ff08466622ead1ac3621c23134e311c77c9fe",
+  "features_prebuilt": true,
+  "artifact_checksums": {
+    "data/processed/graph_features_v1.parquet": "a2dcd7f1f7eccf5ccd4123c52d0ff08466622ead1ac3621c23134e311c77c9fe",
+    "data/processed/graph_detection_v1.parquet": "33e951696fbfe019d37c09e528b4f9d1cee40b1333f03f44108b480d3fdda841",
+    "data/processed/graph_evidence_v1.jsonl": "3a64a17d954f0b1b9ccfbd340a44dd095cdfa290196dac0be7e7c7d30db87223",
+    "data/processed/graph_account_modeling_v1.parquet": "441308cf54c767cf98178aea7ee5e5b3104a522d78d596e8dbd095c60a803fc3",
+    "graph_handoff/graph_histgb_v1.joblib": "746fe2de6c192c1d02e15273c6f7eca36077d23b6ff4d0cac59ac64d3b90c799",
+    "graph_handoff/graph_scores_v1.parquet": "e7698c5083ff6b943da1a63338fe5b6f8e9eb5dd613f13fcf598196c88361e96"
+  },
+  "feature_schema_version": "graph_features_v1",
+  "detector_versions": {
+    "FAN_IN": [
+      "graph_fan_v3_min"
+    ],
+    "FAN_OUT": [
+      "graph_fan_v3_min"
+    ],
+    "GATHER_SCATTER": [
+      "graph_gather_v1"
+    ],
+    "CYCLE": [
+      "graph_cycle_v1"
+    ]
+  },
+  "config_hashes": {
+    "configs/graph/graph_fan_config_v3.json": "abb634585f54a6b1176dc61f960af7a43d70ea90be5b290076bb29aa3f609fcb",
+    "configs/graph/graph_gather_config_v1.json": "ed9abffa2eab59b1da87954b62984229939a99077b1460e2b7369d11fe70fc2f",
+    "src/data/cycle_detector.py": "ac3e99e56fb9b492b992bcba3a305e3ce665027e79da397d4b81960938ed8413"
+  },
+  "snapshot_range": {
+    "min": "2022-09-01",
+    "max": "2022-09-17"
+  },
+  "row_counts": {
+    "detections": 138939,
+    "evidence": 117288,
+    "by_pattern": {
+      "FAN_IN": 54427,
+      "FAN_OUT": 41666,
+      "GATHER_SCATTER": 447,
+      "CYCLE": 42399
+    }
+  },
+  "validation": {
+    "status": "PASS",
+    "errors": [],
+    "detection_rows": 138939,
+    "evidence_rows": 117288,
+    "unique_detection_ids": 138939,
+    "unique_evidence_ids": 117288,
+    "witness_rows": 1838411,
+    "unique_transaction_ids": 561643,
+    "transaction_ids_found": 561643,
+    "feature_join_checked": true,
+    "sample_split_checked": true,
+    "detector_versions_checked": true,
+    "config_hashes_checked": true
+  },
+  "telemetry": {
+    "phases": [
+      {
+        "runtime_s": 36.395,
+        "peak_rss_mb": 2409.1,
+        "detection_rows": 96093,
+        "evidence_rows": 96093,
+        "snapshot_count": 17,
+        "snapshots": [
+          {
+            "snapshot_date": "2022-09-01",
+            "auxiliary_rows": 188788,
+            "detection_rows": 1356,
+            "evidence_rows": 1356,
+            "auxiliary_runtime_s": 0.292,
+            "selection_runtime_s": 0.07,
+            "hydration_runtime_s": 0.477,
+            "runtime_s": 1.007,
+            "current_rss_mb": 447.1
+          },
+          {
+            "snapshot_date": "2022-09-02",
+            "auxiliary_rows": 347665,
+            "detection_rows": 2987,
+            "evidence_rows": 2987,
+            "auxiliary_runtime_s": 0.496,
+            "selection_runtime_s": 0.132,
+            "hydration_runtime_s": 0.722,
+            "runtime_s": 1.587,
+            "current_rss_mb": 648.2
+          },
+          {
+            "snapshot_date": "2022-09-03",
+            "auxiliary_rows": 355381,
+            "detection_rows": 3838,
+            "evidence_rows": 3838,
+            "auxiliary_runtime_s": 0.578,
+            "selection_runtime_s": 0.163,
+            "hydration_runtime_s": 0.851,
+            "runtime_s": 1.87,
+            "current_rss_mb": 720.7
+          },
+          {
+            "snapshot_date": "2022-09-04",
+            "auxiliary_rows": 362578,
+            "detection_rows": 4786,
+            "evidence_rows": 4786,
+            "auxiliary_runtime_s": 0.608,
+            "selection_runtime_s": 0.195,
+            "hydration_runtime_s": 1.011,
+            "runtime_s": 2.147,
+            "current_rss_mb": 755.3
+          },
+          {
+            "snapshot_date": "2022-09-05",
+            "auxiliary_rows": 370067,
+            "detection_rows": 6770,
+            "evidence_rows": 6770,
+            "auxiliary_runtime_s": 0.719,
+            "selection_runtime_s": 0.202,
+            "hydration_runtime_s": 1.338,
+            "runtime_s": 2.674,
+            "current_rss_mb": 777.8
+          },
+          {
+            "snapshot_date": "2022-09-06",
+            "auxiliary_rows": 377177,
+            "detection_rows": 9158,
+            "evidence_rows": 9158,
+            "auxiliary_runtime_s": 0.83,
+            "selection_runtime_s": 0.297,
+            "hydration_runtime_s": 1.364,
+            "runtime_s": 2.952,
+            "current_rss_mb": 843.0
+          },
+          {
+            "snapshot_date": "2022-09-07",
+            "auxiliary_rows": 384623,
+            "detection_rows": 11659,
+            "evidence_rows": 11659,
+            "auxiliary_runtime_s": 0.948,
+            "selection_runtime_s": 0.32,
+            "hydration_runtime_s": 1.6,
+            "runtime_s": 3.489,
+            "current_rss_mb": 988.5
+          },
+          {
+            "snapshot_date": "2022-09-08",
+            "auxiliary_rows": 318620,
+            "detection_rows": 11080,
+            "evidence_rows": 11080,
+            "auxiliary_runtime_s": 0.892,
+            "selection_runtime_s": 0.312,
+            "hydration_runtime_s": 1.57,
+            "runtime_s": 3.308,
+            "current_rss_mb": 1011.8
+          },
+          {
+            "snapshot_date": "2022-09-09",
+            "auxiliary_rows": 275240,
+            "detection_rows": 10416,
+            "evidence_rows": 10416,
+            "auxiliary_runtime_s": 0.844,
+            "selection_runtime_s": 0.294,
+            "hydration_runtime_s": 1.404,
+            "runtime_s": 3.015,
+            "current_rss_mb": 1010.8
+          },
+          {
+            "snapshot_date": "2022-09-10",
+            "auxiliary_rows": 275087,
+            "detection_rows": 10258,
+            "evidence_rows": 10258,
+            "auxiliary_runtime_s": 0.818,
+            "selection_runtime_s": 0.296,
+            "hydration_runtime_s": 1.371,
+            "runtime_s": 2.952,
+            "current_rss_mb": 1065.0
+          },
+          {
+            "snapshot_date": "2022-09-11",
+            "auxiliary_rows": 266043,
+            "detection_rows": 8095,
+            "evidence_rows": 8095,
+            "auxiliary_runtime_s": 0.791,
+            "selection_runtime_s": 0.227,
+            "hydration_runtime_s": 1.189,
+            "runtime_s": 2.606,
+            "current_rss_mb": 1001.0
+          },
+          {
+            "snapshot_date": "2022-09-12",
+            "auxiliary_rows": 256571,
+            "detection_rows": 5860,
+            "evidence_rows": 5860,
+            "auxiliary_runtime_s": 0.661,
+            "selection_runtime_s": 0.188,
+            "hydration_runtime_s": 0.977,
+            "runtime_s": 2.196,
+            "current_rss_mb": 963.5
+          },
+          {
+            "snapshot_date": "2022-09-13",
+            "auxiliary_rows": 247095,
+            "detection_rows": 3930,
+            "evidence_rows": 3930,
+            "auxiliary_runtime_s": 0.558,
+            "selection_runtime_s": 0.133,
+            "hydration_runtime_s": 0.801,
+            "runtime_s": 1.756,
+            "current_rss_mb": 896.9
+          },
+          {
+            "snapshot_date": "2022-09-14",
+            "auxiliary_rows": 236603,
+            "detection_rows": 3068,
+            "evidence_rows": 3068,
+            "auxiliary_runtime_s": 0.447,
+            "selection_runtime_s": 0.127,
+            "hydration_runtime_s": 0.731,
+            "runtime_s": 1.542,
+            "current_rss_mb": 868.7
+          },
+          {
+            "snapshot_date": "2022-09-15",
+            "auxiliary_rows": 225362,
+            "detection_rows": 2284,
+            "evidence_rows": 2284,
+            "auxiliary_runtime_s": 0.366,
+            "selection_runtime_s": 0.105,
+            "hydration_runtime_s": 0.644,
+            "runtime_s": 1.332,
+            "current_rss_mb": 859.0
+          },
+          {
+            "snapshot_date": "2022-09-16",
+            "auxiliary_rows": 33087,
+            "detection_rows": 541,
+            "evidence_rows": 541,
+            "auxiliary_runtime_s": 0.089,
+            "selection_runtime_s": 0.022,
+            "hydration_runtime_s": 0.196,
+            "runtime_s": 0.365,
+            "current_rss_mb": 971.1
+          },
+          {
+            "snapshot_date": "2022-09-17",
+            "auxiliary_rows": 15,
+            "detection_rows": 7,
+            "evidence_rows": 7,
+            "auxiliary_runtime_s": 0.015,
+            "selection_runtime_s": 0.005,
+            "hydration_runtime_s": 0.009,
+            "runtime_s": 0.031,
+            "current_rss_mb": 927.4
+          }
+        ],
+        "phase": "fan",
+        "orchestration_runtime_s": 36.723,
+        "detection_path": "/tmp/graph_phases_ayd2l3aj/fan_detection.parquet",
+        "evidence_path": "/tmp/graph_phases_ayd2l3aj/fan_evidence.jsonl"
+      },
+      {
+        "phase": "gather",
+        "runtime_s": 3.378,
+        "peak_rss_mb": 5523.6,
+        "detection_rows": 447,
+        "evidence_rows": 447,
+        "orchestration_runtime_s": 3.81,
+        "detection_path": "/tmp/graph_phases_ayd2l3aj/gather_detection.parquet",
+        "evidence_path": "/tmp/graph_phases_ayd2l3aj/gather_evidence.jsonl"
+      },
+      {
+        "phase": "cycle",
+        "runtime_s": 117.235,
+        "peak_rss_mb": 2976.2,
+        "detection_rows": 42399,
+        "evidence_rows": 20748,
+        "orchestration_runtime_s": 117.774,
+        "detection_path": "/tmp/graph_phases_ayd2l3aj/cycle_detection.parquet",
+        "evidence_path": "/tmp/graph_phases_ayd2l3aj/cycle_evidence.jsonl"
+      }
+    ],
+    "merge_runtime_s": 1.539,
+    "validation_runtime_s": 15.575,
+    "parent_peak_rss_mb": 3183.6,
+    "peak_phase_rss_mb": 5523.6
+  },
+  "runtime_s": 176.933,
+  "created_at": "2026-08-13T04:19:24.967565+00:00",
+  "test_status": "PASS",
+  "manifest_path": "reports/graph_pipeline_manifest_v2.json",
+  "detection_artifact_checksum": "33e951696fbfe019d37c09e528b4f9d1cee40b1333f03f44108b480d3fdda841",
+  "evidence_artifact_checksum": "3a64a17d954f0b1b9ccfbd340a44dd095cdfa290196dac0be7e7c7d30db87223",
+  "features_prebuilt": true,
+  "feature_prebuilt_validation": {
+    "features_prebuilt": true,
+    "path": "data/processed/graph_features_v1.parquet",
+    "checksum": "a2dcd7f1f7eccf5ccd4123c52d0ff08466622ead1ac3621c23134e311c77c9fe",
+    "checksum_validated_against": "explicit_feature_checksum",
+    "schema_version": "graph_features_v1"
+  }
+}

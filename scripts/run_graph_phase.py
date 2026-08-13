@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.data.cycle_detector import run_cycle_detector  # noqa: E402
-from src.data.fan_detector import run_fan_detector  # noqa: E402
+from src.data.fan_detector import run_fan_detector_batched  # noqa: E402
 from src.data.gather_scatter_detector import run_gather_scatter_detector  # noqa: E402
 
 
@@ -32,15 +32,17 @@ def main() -> int:
     args.detection_out.parent.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     if args.phase == "fan":
-        det, ev = run_fan_detector(
+        result = run_fan_detector_batched(
             features_path=args.features,
             config_path=args.config,
             detection_path=args.detection_out,
             evidence_path=args.evidence_out,
             duckdb_path=args.db,
             splits=["train", "val", "test"],
-            merge_non_fan=False,
         )
+        result["phase"] = args.phase
+        print(json.dumps(result), flush=True)
+        return 0
     elif args.phase == "gather":
         det, ev = run_gather_scatter_detector(
             features_path=args.features,

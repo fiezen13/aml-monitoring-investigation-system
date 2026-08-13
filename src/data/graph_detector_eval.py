@@ -1,8 +1,9 @@
-"""Graph detector eval vs IBM GT — FAN_IN / FAN_OUT / GATHER_SCATTER.
+"""Graph detector eval vs IBM GT — FAN, GATHER_SCATTER and CYCLE.
 
-Match (simple): same detected_pattern, same center account_key,
-IBM [t_min, t_max] overlaps detection 7d window.
-CYCLE excluded. Primary metrics: Precision / Recall / F1 on test.
+FAN/GATHER match: same detected_pattern, same center account_key,
+IBM [t_min, t_max] overlaps detection 7d window. CYCLE uses exact directed
+canonical account-cycle signature plus the same window-overlap rule.
+Primary metrics: Precision / Recall / F1 on test.
 """
 
 from __future__ import annotations

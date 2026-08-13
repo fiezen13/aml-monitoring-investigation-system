@@ -1,6 +1,6 @@
 {
   "report_version": "graph_evaluation_summary_v1",
-  "created_at": "2026-08-12T04:55:07.041530+00:00",
+  "created_at": "2026-08-13T03:28:45.535044+00:00",
   "protocol_note": "Metrics remain per-detector; no precision/recall is pooled across detector versions or matching rules.",
   "detectors": {
     "FAN": {
@@ -121,43 +121,43 @@
         "split": "test",
         "overall": {
           "n_gt": 24,
-          "n_pred": 9331,
-          "n_gt_hit": 6,
-          "n_pred_hit": 21,
-          "precision": 0.002250562640660165,
-          "recall": 0.25,
-          "f1": 0.0044609665427509295
+          "n_pred": 55702,
+          "n_gt_hit": 14,
+          "n_pred_hit": 76,
+          "precision": 0.0013644034325517936,
+          "recall": 0.5833333333333334,
+          "f1": 0.0027224391417152386
         },
         "by_pattern": {
           "FAN_IN": {
             "ibm_pattern_type": "FAN-IN",
             "n_gt": 6,
-            "n_pred": 6625,
-            "n_gt_hit": 0,
-            "n_pred_hit": 0,
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1": null
+            "n_pred": 32176,
+            "n_gt_hit": 3,
+            "n_pred_hit": 22,
+            "precision": 0.0006837394331178519,
+            "recall": 0.5,
+            "f1": 0.0013656114214773433
           },
           "FAN_OUT": {
             "ibm_pattern_type": "FAN-OUT",
             "n_gt": 10,
-            "n_pred": 2549,
-            "n_gt_hit": 3,
-            "n_pred_hit": 13,
-            "precision": 0.0051000392310710085,
-            "recall": 0.3,
-            "f1": 0.01002957438601003
+            "n_pred": 23363,
+            "n_gt_hit": 8,
+            "n_pred_hit": 47,
+            "precision": 0.002011727945897359,
+            "recall": 0.8,
+            "f1": 0.004013363647037476
           },
           "GATHER_SCATTER": {
             "ibm_pattern_type": "GATHER-SCATTER",
             "n_gt": 8,
-            "n_pred": 157,
+            "n_pred": 163,
             "n_gt_hit": 3,
-            "n_pred_hit": 8,
-            "precision": 0.050955414012738856,
+            "n_pred_hit": 7,
+            "precision": 0.04294478527607362,
             "recall": 0.375,
-            "f1": 0.08971962616822432
+            "f1": 0.07706422018348624
           }
         }
       }
