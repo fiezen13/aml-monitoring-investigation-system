@@ -44,6 +44,12 @@ simulation_output/
 *.db
 *.sqlite3
 
+# Graph handoff payloads distributed through Drive (checksums in manifest).
+# Chỉ bỏ qua payload lớn; manifest/checksum nhỏ vẫn phải được commit.
+/graph_handoff/graph_features_v1.parquet
+/graph_handoff/graph_account_modeling_v1.parquet
+/graph_handoff/graph_evidence_v1.jsonl
+
 # Bộ dữ liệu IBM AML nặng từ hàng trăm megabyte tới hàng chục gigabyte và
 # tải về từ Kaggle, không commit. Nhưng thư mục và hướng dẫn đặt file thì
 # phải có sẵn, nếu không người mới sẽ không biết đặt file vào đâu.
@@ -100,6 +106,7 @@ out/
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
+.ai-log/local-backup/
 
 # Jenkins — bí mật của controller
 jenkins/.env

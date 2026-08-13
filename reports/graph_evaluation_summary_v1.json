@@ -1,0 +1,372 @@
+{
+  "report_version": "graph_evaluation_summary_v1",
+  "created_at": "2026-08-12T04:55:07.041530+00:00",
+  "protocol_note": "Metrics remain per-detector; no precision/recall is pooled across detector versions or matching rules.",
+  "detectors": {
+    "FAN": {
+      "status": "EVALUATED",
+      "source": "fan_final_test_comparison_v1.json",
+      "report": {
+        "eval_version": "fan_final_test_comparison_v1",
+        "status": "FINAL_TEST_RUN_COMPLETE_DO_NOT_RETUNE",
+        "test_run_count_for_v3_min": 1,
+        "protocol": "same pattern + center account + GT time span overlaps 7d detection window; one motif per center/snapshot/pattern",
+        "test_account_snapshot_denominator": 4278901,
+        "config_sha256": {
+          "v1": "a4aaa729dc25206bf614883f3e8a0ccabe6ea73d7358129ad93d65b35173495f",
+          "v2B": "cbeacc33a94fe9d58f9b08953b2ddef739a185a28c0f1641af51e9d4c905762a",
+          "v3_min": "abb634585f54a6b1176dc61f960af7a43d70ea90be5b290076bb29aa3f609fcb"
+        },
+        "versions": {
+          "v1": {
+            "detector_version": [
+              "graph_fan_v1"
+            ],
+            "patterns": {
+              "FAN_IN": {
+                "ibm_pattern_type": "FAN-IN",
+                "n_gt": 6,
+                "n_pred": 11275,
+                "n_gt_hit": 2,
+                "n_pred_hit": 4,
+                "precision": 0.0003547671840354767,
+                "recall": 0.3333333333333333,
+                "f1": 0.0007087800124036503,
+                "prediction_count": 11275,
+                "alert_rate": 0.002635022404117319
+              },
+              "FAN_OUT": {
+                "ibm_pattern_type": "FAN-OUT",
+                "n_gt": 10,
+                "n_pred": 7075,
+                "n_gt_hit": 5,
+                "n_pred_hit": 23,
+                "precision": 0.0032508833922261482,
+                "recall": 0.5,
+                "f1": 0.00645976688667322,
+                "prediction_count": 7075,
+                "alert_rate": 0.0016534619520292711
+              }
+            }
+          },
+          "v2B": {
+            "detector_version": [
+              "graph_fan_v2"
+            ],
+            "patterns": {
+              "FAN_IN": {
+                "ibm_pattern_type": "FAN-IN",
+                "n_gt": 6,
+                "n_pred": 6625,
+                "n_gt_hit": 0,
+                "n_pred_hit": 0,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": null,
+                "prediction_count": 6625,
+                "alert_rate": 0.001548294760734123
+              },
+              "FAN_OUT": {
+                "ibm_pattern_type": "FAN-OUT",
+                "n_gt": 10,
+                "n_pred": 2549,
+                "n_gt_hit": 3,
+                "n_pred_hit": 13,
+                "precision": 0.0051000392310710085,
+                "recall": 0.3,
+                "f1": 0.01002957438601003,
+                "prediction_count": 2549,
+                "alert_rate": 0.0005957137124696271
+              }
+            }
+          },
+          "v3_min": {
+            "detector_version": [
+              "graph_fan_v3_min"
+            ],
+            "patterns": {
+              "FAN_IN": {
+                "ibm_pattern_type": "FAN-IN",
+                "n_gt": 6,
+                "n_pred": 32176,
+                "n_gt_hit": 3,
+                "n_pred_hit": 22,
+                "precision": 0.0006837394331178519,
+                "recall": 0.5,
+                "f1": 0.0013656114214773433,
+                "prediction_count": 32176,
+                "alert_rate": 0.007519687882472626
+              },
+              "FAN_OUT": {
+                "ibm_pattern_type": "FAN-OUT",
+                "n_gt": 10,
+                "n_pred": 23363,
+                "n_gt_hit": 8,
+                "n_pred_hit": 47,
+                "precision": 0.002011727945897359,
+                "recall": 0.8,
+                "f1": 0.004013363647037476,
+                "prediction_count": 23363,
+                "alert_rate": 0.005460046867174538
+              }
+            }
+          }
+        }
+      }
+    },
+    "GATHER_SCATTER": {
+      "status": "EVALUATED",
+      "source": "graph_eval_v2.json",
+      "report": {
+        "split": "test",
+        "overall": {
+          "n_gt": 24,
+          "n_pred": 9331,
+          "n_gt_hit": 6,
+          "n_pred_hit": 21,
+          "precision": 0.002250562640660165,
+          "recall": 0.25,
+          "f1": 0.0044609665427509295
+        },
+        "by_pattern": {
+          "FAN_IN": {
+            "ibm_pattern_type": "FAN-IN",
+            "n_gt": 6,
+            "n_pred": 6625,
+            "n_gt_hit": 0,
+            "n_pred_hit": 0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": null
+          },
+          "FAN_OUT": {
+            "ibm_pattern_type": "FAN-OUT",
+            "n_gt": 10,
+            "n_pred": 2549,
+            "n_gt_hit": 3,
+            "n_pred_hit": 13,
+            "precision": 0.0051000392310710085,
+            "recall": 0.3,
+            "f1": 0.01002957438601003
+          },
+          "GATHER_SCATTER": {
+            "ibm_pattern_type": "GATHER-SCATTER",
+            "n_gt": 8,
+            "n_pred": 157,
+            "n_gt_hit": 3,
+            "n_pred_hit": 8,
+            "precision": 0.050955414012738856,
+            "recall": 0.375,
+            "f1": 0.08971962616822432
+          }
+        }
+      }
+    },
+    "CYCLE": {
+      "status": "EVALUATED",
+      "source": "graph_eval_cycle_full_v2.json",
+      "report": {
+        "status": "OK",
+        "rows": [
+          {
+            "instance_id": "b12cd3836e6725bc971978e0",
+            "pattern_type": "CYCLE",
+            "detected_pattern": "CYCLE",
+            "cycle_signature": [
+              "11:802BC3160",
+              "224:8023BE570",
+              "1277:80220D0A0"
+            ],
+            "t_min": "2022-09-03T18:38:00+00:00",
+            "t_max": "2022-09-05T20:43:00+00:00",
+            "n_tx": 3,
+            "span_days": 2.0868055555555554,
+            "source_start_line": 447,
+            "source_end_line": 451,
+            "sample_split": "train",
+            "as_of_ts": "2022-09-06T00:00:00+00:00"
+          },
+          {
+            "instance_id": "f1ad31afbf73c68655448050",
+            "pattern_type": "CYCLE",
+            "detected_pattern": "CYCLE",
+            "cycle_signature": [
+              "24643:8026B9C00",
+              "3:8026B9BB0"
+            ],
+            "t_min": "2022-09-04T15:41:00+00:00",
+            "t_max": "2022-09-08T08:16:00+00:00",
+            "n_tx": 2,
+            "span_days": 3.6909722222222223,
+            "source_start_line": 537,
+            "source_end_line": 540,
+            "sample_split": "test",
+            "as_of_ts": "2022-09-09T00:00:00+00:00"
+          },
+          {
+            "instance_id": "0d9b928ec48c38daf83d4e4b",
+            "pattern_type": "CYCLE",
+            "detected_pattern": "CYCLE",
+            "cycle_signature": [
+              "25634:80273DE60",
+              "425:80195DD20"
+            ],
+            "t_min": "2022-09-07T19:08:00+00:00",
+            "t_max": "2022-09-09T05:29:00+00:00",
+            "n_tx": 2,
+            "span_days": 1.43125,
+            "source_start_line": 1052,
+            "source_end_line": 1055,
+            "sample_split": "test",
+            "as_of_ts": "2022-09-10T00:00:00+00:00"
+          },
+          {
+            "instance_id": "ac3e72a99698a0cd0fd23e29",
+            "pattern_type": "CYCLE",
+            "detected_pattern": "CYCLE",
+            "cycle_signature": [
+              "3597:8018CF810",
+              "3:800AF7050",
+              "600:8016EA8A0"
+            ],
+            "t_min": "2022-09-08T08:25:00+00:00",
+            "t_max": "2022-09-12T02:38:00+00:00",
+            "n_tx": 3,
+            "span_days": 3.759027777777778,
+            "source_start_line": 1125,
+            "source_end_line": 1129,
+            "sample_split": "test",
+            "as_of_ts": "2022-09-13T00:00:00+00:00"
+          },
+          {
+            "instance_id": "ffa3a89dbd514e8b5f87a4bb",
+            "pattern_type": "CYCLE",
+            "detected_pattern": "CYCLE",
+            "cycle_signature": [
+              "12055:80110E7E0",
+              "21876:80158BDC0",
+              "22129:8011B4510",
+              "1291:8001E4BD0"
+            ],
+            "t_min": "2022-09-08T14:26:00+00:00",
+            "t_max": "2022-09-10T21:04:00+00:00",
+            "n_tx": 4,
+            "span_days": 2.276388888888889,
+            "source_start_line": 1131,
+            "source_end_line": 1136,
+            "sample_split": "test",
+            "as_of_ts": "2022-09-11T00:00:00+00:00"
+          },
+          {
+            "instance_id": "4a2bd1d1dcb3d4e66bd7f822",
+            "pattern_type": "CYCLE",
+            "detected_pattern": "CYCLE",
+            "cycle_signature": [
+              "130803:8102A4BA0",
+              "142342:80FB392A0",
+              "19419:80EEC43A0",
+              "21393:80FECC930"
+            ],
+            "t_min": "2022-09-10T01:14:00+00:00",
+            "t_max": "2022-09-11T06:13:00+00:00",
+            "n_tx": 4,
+            "span_days": 1.207638888888889,
+            "source_start_line": 1264,
+            "source_end_line": 1269,
+            "sample_split": "test",
+            "as_of_ts": "2022-09-12T00:00:00+00:00"
+          }
+        ],
+        "excluded": [
+          {
+            "instance_id": "376b7474c73ee02f6594c0a5",
+            "reason": "cycle_length_exceeds_detector",
+            "n_tx": 11,
+            "cycle_length": 11
+          },
+          {
+            "instance_id": "47c592e66fe2dc649c33cb2b",
+            "reason": "cycle_length_exceeds_detector",
+            "n_tx": 10,
+            "cycle_length": 10
+          },
+          {
+            "instance_id": "181506815b67e1ad13e4db37",
+            "reason": "cycle_length_exceeds_detector",
+            "n_tx": 11,
+            "cycle_length": 11
+          },
+          {
+            "instance_id": "2329f2c345682633d53b6e45",
+            "reason": "cycle_length_exceeds_detector",
+            "n_tx": 7,
+            "cycle_length": 7
+          },
+          {
+            "instance_id": "6f77b8ea3d82df808758ebd7",
+            "reason": "cycle_length_exceeds_detector",
+            "n_tx": 13,
+            "cycle_length": 13
+          },
+          {
+            "instance_id": "059c8ca54a0c20a97e480820",
+            "reason": "cycle_length_exceeds_detector",
+            "n_tx": 13,
+            "cycle_length": 13
+          }
+        ],
+        "total_cycle_blocks": 12,
+        "eligible_count": 6,
+        "matching_rule": "exact directed canonical account-cycle signature + IBM timestamp interval overlaps prediction 7d snapshot window; GT blocks outside CYCLE length/window are excluded, not counted as misses",
+        "n_match_edges": 28,
+        "primary": {
+          "status": "EVALUATED",
+          "split": "test",
+          "n_gt": 5,
+          "n_pred": 13169,
+          "n_gt_hit": 5,
+          "n_pred_hit": 25,
+          "precision": 0.0018983977522970613,
+          "recall": 1.0,
+          "f1": 0.0037896013339396694
+        },
+        "by_split": {
+          "train": {
+            "status": "EVALUATED",
+            "split": "train",
+            "n_gt": 1,
+            "n_pred": 3008,
+            "n_gt_hit": 1,
+            "n_pred_hit": 1,
+            "precision": 0.0003324468085106383,
+            "recall": 1.0,
+            "f1": 0.0006646726487205051
+          },
+          "val": {
+            "status": "NOT_EVALUATED",
+            "reason": "no eligible CYCLE GT instances in val split",
+            "split": "val",
+            "n_gt": 0,
+            "n_pred": 4571,
+            "n_gt_hit": 0,
+            "n_pred_hit": 0,
+            "precision": null,
+            "recall": null,
+            "f1": null
+          },
+          "test": {
+            "status": "EVALUATED",
+            "split": "test",
+            "n_gt": 5,
+            "n_pred": 13169,
+            "n_gt_hit": 5,
+            "n_pred_hit": 25,
+            "precision": 0.0018983977522970613,
+            "recall": 1.0,
+            "f1": 0.0037896013339396694
+          }
+        }
+      }
+    }
+  }
+}

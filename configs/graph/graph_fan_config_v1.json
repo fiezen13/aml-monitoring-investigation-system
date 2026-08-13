@@ -1,0 +1,21 @@
+{
+  "detector_version": "graph_fan_v1",
+  "window": "7d",
+  "tuned_on": "val",
+  "train_eda_note": "new_* ignored (cold-start on train); history_available not used as gate",
+  "selection_rule": "grid search train/val hit-rate band ~0.2%-1.5% each; minimize train-val gap; no GT/test",
+  "fan_in": {
+    "detected_pattern": "FAN_IN",
+    "min_in_degree_7d": 10,
+    "max_inflow_concentration_7d": 0.3
+  },
+  "fan_out": {
+    "detected_pattern": "FAN_OUT",
+    "min_out_degree_7d": 10,
+    "min_outflow_dispersion_7d": 0.5
+  },
+  "val_hit_rates_at_freeze": {
+    "fan_in": 0.003069,
+    "fan_out": 0.003175
+  }
+}

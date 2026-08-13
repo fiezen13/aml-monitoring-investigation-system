@@ -53,6 +53,16 @@ def detect_tool(data: dict) -> str:
 def normalize(data: dict, tool: str) -> dict | None:
     """Normalize tool-specific payload to common log entry."""
     event = data.get("hook_event_name") or data.get("event", "")
+    # Only retain explicit user-prompt hook events. Tool-use and lifecycle
+    # callbacks are intentionally ignored even if they contain payload data.
+    allowed_events = {
+        "claude": {"UserPromptSubmit"},
+        "cursor": {"beforeSubmitPrompt"},
+        "gemini": {"BeforeAgent"},
+        "copilot": {"beforeSubmitPrompt", "UserPromptSubmit"},
+    }
+    if tool in allowed_events and event not in allowed_events[tool]:
+        return None
     ts = datetime.now(VN_TZ).isoformat()
 
     # Resolve repo from git origin. When cwd is not a git working tree (or
@@ -149,6 +159,8 @@ def normalize(data: dict, tool: str) -> dict | None:
                      "tool_response", "tool_args", "files_context")
     _LIFECYCLE_EVENTS = ("Stop", "stop", "SessionEnd", "sessionEnd", "AfterModel")
     has_payload = any(base.get(k) for k in _PAYLOAD_KEYS)
+    if event in allowed_events.get(tool, set()) and not base.get("prompt", "").strip():
+        return None
     if not has_payload and event not in _LIFECYCLE_EVENTS:
         return None
 

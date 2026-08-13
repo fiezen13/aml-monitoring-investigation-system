@@ -201,7 +201,39 @@ Quy trình làm việc: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
 
-## 9. Tài liệu
+## 9. Dữ liệu và Graph pipeline
+
+Transaction và pattern data sử dụng **IBM Transactions for AML — LI-Small** từ Kaggle:
+[`ealtman2019/ibm-transactions-for-anti-money-laundering-aml`](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml),
+theo giấy phép CDLA-Sharing-1.0. Đặt các file tại `data/raw/ibm-aml/`:
+
+- `LI-Small_Trans.csv`
+- `LI-Small_Patterns.txt`
+
+```bash
+pip install -r requirements.txt
+
+# Task 1 — ETL transactions + accounts → DuckDB
+python3 scripts/run_task1_etl.py \
+  --raw data/raw/ibm-aml/LI-Small_Trans.csv \
+  --db data/processed/aml.duckdb \
+  --seed 42
+
+# Task 2 — pattern inventory + typology coverage (T01–T10)
+python3 scripts/run_task2_typology.py \
+  --patterns data/raw/ibm-aml/LI-Small_Patterns.txt \
+  --catalog docs/reference/typology_mapping_catalog_v1.json \
+  --out-dir data/processed
+```
+
+Task 1 tạo DuckDB với bảng `transaction`, `account`, cùng `dq_report.json` và
+`split_cutoffs.json`. Task 2 tạo `ibm_pattern_instances.json`,
+`typology_mapping_catalog.json`, `typology_coverage.json` và
+`typology_coverage.md`. Chi tiết schema: [`docs/task2_schema.md`](docs/task2_schema.md).
+
+---
+
+## 10. Tài liệu
 
 | Tài liệu | Nội dung |
 |---|---|
@@ -216,3 +248,10 @@ Quy trình làm việc: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 | [`.env.example`](.env.example) | Toàn bộ biến môi trường, kèm giải thích |
 | [`docs/ml/`](docs/ml/) | Đặc tả huấn luyện, đặc trưng và kiến trúc ML/Agent |
 | [`docs/adr/`](docs/adr/) | Quyết định kiến trúc |
+
+---
+
+## 11. Giấy phép
+
+Mã nguồn sử dụng giấy phép MIT. Dữ liệu mẫu IBM AML tiếp tục tuân theo
+CDLA-Sharing-1.0.

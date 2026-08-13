@@ -1,0 +1,18 @@
+{
+  "detector_version": "graph_gather_v1",
+  "window": "7d",
+  "tuned_on": "val",
+  "detected_pattern": "GATHER_SCATTER",
+  "temporal_rule": "median_inbound_le_median_outbound_plus_tolerance",
+  "temporal_rule_note": "Closes plan OPEN vs literal p75_in<=p25_out (near-zero hits on LI-Small train/val EDA). Not last_in/first_out.",
+  "s_min": 5,
+  "d_min": 5,
+  "tolerance_hours": 0.0,
+  "amount_ratio_lo": 0.2,
+  "amount_ratio_hi": 5.0,
+  "val_hits_at_freeze": 118,
+  "val_rate_at_freeze": 0.00010530627616481682,
+  "train_hits_at_freeze": 148,
+  "train_rate_at_freeze": 5.812437359205487e-05,
+  "selection_note": "Prefer val rate in [1e-5, 5e-4]; break ties by smaller |train-val| rate gap then fewer val hits. Grid: tolerance_hours in {0,12}, amount_ratio in {[0.2,5],[0.1,10]}; s_min=d_min=5 fixed. No test/GT used."
+}

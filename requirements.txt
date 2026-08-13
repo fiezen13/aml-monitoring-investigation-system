@@ -36,11 +36,12 @@ PyYAML>=6.0.2
 
 # Offline ML / feature platform (Isolation Forest + DuckDB features)
 pandas>=2.2.0
+numpy>=2.0.0
 polars>=1.0.0
-scikit-learn>=1.5.0
+scikit-learn>=1.6.0
 joblib>=1.4.0
 networkx>=3.0
-duckdb>=1.0.0
+duckdb>=1.1.0
 pytz>=2024.1
 
 # Vector Store (mở khi cần)
