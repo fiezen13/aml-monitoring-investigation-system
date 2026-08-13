@@ -39,7 +39,12 @@ group_end
 
 # --- 3. NT7: điểm rủi ro không bao giờ đứng một mình ---------------------
 group_start "Yếu tố đóng góp"
-case_id=$(echo "$cases" | jq -r '.[0].case_id')
+# Chọn một case mà state machine vẫn còn bước tự động. Một volume được giữ
+# lại qua nhiều lần deploy có thể đã đưa case đầu tiên tới ChoNguoiPheDuyet;
+# phụ thuộc vào thứ tự lúc đó khiến smoke test trả 409 dù hệ thống vẫn tốt.
+case_id=$(echo "$cases" | jq -r \
+    '[.[] | select(.state != "ChoNguoiPheDuyet" and .state != "XuatHoSo")][0].case_id // empty')
+[ -n "$case_id" ] || die "Không còn vụ việc nào đủ điều kiện chạy bước điều tra tự động"
 reasons=$(curl -fsS "${API_URL}/api/v1/cases/${case_id}" | jq '.reasons | length')
 [ "$reasons" -ge 3 ] \
     || die "Vụ việc ${case_id} chỉ có ${reasons} yếu tố đóng góp, tối thiểu phải có ba (NT7)"

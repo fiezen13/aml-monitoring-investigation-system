@@ -255,7 +255,7 @@ export function NetworkPage() {
                 </div>
               </div>
               <div className="rounded-control border border-line bg-elev p-2.5">
-                <div className="text-2xs uppercase tracking-wide text-ink-low">Tổng GD (30D)</div>
+                <div className="text-2xs uppercase tracking-wide text-ink-low">Tổng giao dịch (30 ngày)</div>
                 <div className="tabular mt-0.5 text-[18px] font-bold text-ink-hi">{totalAmount.toLocaleString("vi-VN")}</div>
               </div>
             </div>
@@ -276,7 +276,7 @@ export function NetworkPage() {
                 </li>
               </ul>
               <p className="mt-2 text-2xs text-ink-low">
-                Nguồn: transaction + account + customer
+                Nguồn: giao dịch + tài khoản + khách hàng
               </p>
             </div>
 

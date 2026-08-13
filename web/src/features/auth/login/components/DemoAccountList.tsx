@@ -26,7 +26,7 @@ function initials(name: string): string {
 export function DemoAccountList({ users, loading, selectedEmail, onPick }: Props) {
   return (
     <section className="mt-5 border-t border-line pt-4">
-      <h3 className="mb-2.5 text-3xs font-semibold uppercase tracking-[0.14em] text-ink-dim">Tài khoản demo</h3>
+      <h3 className="mb-2.5 text-3xs font-semibold uppercase tracking-[0.14em] text-ink-dim">Tài khoản minh hoạ</h3>
 
       {loading && (
         <div className="flex flex-col gap-1.5">
@@ -37,7 +37,7 @@ export function DemoAccountList({ users, loading, selectedEmail, onPick }: Props
       )}
 
       {!loading && !users.length && (
-        <p className="text-2xs text-ink-low">Không tải được danh sách tài khoản demo.</p>
+        <p className="text-2xs text-ink-low">Không tải được danh sách tài khoản minh hoạ.</p>
       )}
 
       <ul className="flex max-h-[212px] flex-col gap-1.5 overflow-y-auto pr-0.5 [@media(max-height:830px)]:max-h-[104px]">

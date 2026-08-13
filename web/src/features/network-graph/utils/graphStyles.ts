@@ -38,7 +38,7 @@ export const TYPE_STYLE: Record<string, TypeStyle> = {
   vasp: { color: C.agent, shape: "octagon", name: "VASP", glyph: "V" },
   platform: { color: C.inkSoft, shape: "octagon", name: "Nền tảng", glyph: "X" },
   contract: { color: C.warn, shape: "diamond2", name: "Hợp đồng thông minh", glyph: "C" },
-  token: { color: C.token, shape: "pill", name: "Token", glyph: "$" },
+  token: { color: C.token, shape: "pill", name: "Tài sản số", glyph: "$" },
   project: { color: C.token, shape: "rrect", name: "Dự án", glyph: "T" },
   alert: { color: C.risk, shape: "warning", name: "Cảnh báo", glyph: "!" },
   case: { color: C.riskSoft, shape: "container", name: "Vụ việc", glyph: "K" },
@@ -140,15 +140,15 @@ export interface PresetDef {
 export const PRESETS: PresetDef[] = [
   {
     key: "overview",
-    label: "Case Overview",
-    hint: "Topology tóm tắt — cụm thu gọn, chỉ dòng tiền chính",
+    label: "Tổng quan vụ việc",
+    hint: "Cấu trúc mạng tóm tắt — cụm thu gọn, chỉ dòng tiền chính",
     layers: ["money", "entity", "alert", "case", "negative"],
     emphasis: ["money"],
     collapseClusters: true,
   },
   {
     key: "money",
-    label: "Money Flow",
+    label: "Dòng tiền",
     hint: "Chỉ đường đi của tiền; sở hữu và thiết bị lùi về nền",
     layers: ["money", "alert", "case", "negative"],
     emphasis: ["money"],
@@ -156,7 +156,7 @@ export const PRESETS: PresetDef[] = [
   },
   {
     key: "entity",
-    label: "Entity Links",
+    label: "Liên kết thực thể",
     hint: "Sở hữu, điều phối, đứng tên — dòng tiền làm nền",
     layers: ["entity", "money", "case", "negative"],
     emphasis: ["entity"],
@@ -164,7 +164,7 @@ export const PRESETS: PresetDef[] = [
   },
   {
     key: "device",
-    label: "Device / IP",
+    label: "Thiết bị / IP",
     hint: "Thiết bị và IP dùng chung giữa các tài khoản",
     // Không bật lớp dòng tiền: câu hỏi ở đây là "ai dùng chung thiết bị với
     // ai", và 35 cạnh chuyển tiền chỉ làm nhiễu câu trả lời đó.
@@ -174,8 +174,8 @@ export const PRESETS: PresetDef[] = [
   },
   {
     key: "crypto",
-    label: "Crypto Trail",
-    hint: "VASP, ví, swap, bridge và ví đích",
+    label: "Dấu vết tài sản mã hoá",
+    hint: "VASP, ví, hoán đổi, cầu nối chuỗi và ví đích",
     layers: ["money", "entity", "negative"],
     emphasis: ["money"],
     collapseClusters: false,

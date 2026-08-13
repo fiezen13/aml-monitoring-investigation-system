@@ -107,6 +107,15 @@ def _schema_for_example(path: Path) -> Path:
             if candidate.exists():
                 return candidate
 
+    # Hai ví dụ ingestion đời đầu dùng hậu tố `-valid/-invalid` thay vì
+    # quy ước `.valid/.invalid`. Khi ingestion có schema thứ hai, fallback
+    # "thư mục chỉ có một schema" không còn xác định được nữa.
+    for marker in ("-valid", "-invalid"):
+        if stem.endswith(marker):
+            candidate = path.parent.parent / f"{stem[: -len(marker)]}-v1.schema.json"
+            if candidate.exists():
+                return candidate
+
     schemas_in_area = sorted(path.parent.parent.glob("*.schema.json"))
     assert len(schemas_in_area) == 1, (
         f"Không xác định được schema cho ví dụ {path.name}: thư mục cha có {len(schemas_in_area)} schema. "

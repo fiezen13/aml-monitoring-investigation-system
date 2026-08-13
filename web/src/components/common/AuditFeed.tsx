@@ -1,5 +1,5 @@
 import type { ApiAuditEvent } from "../../api/client";
-import { auditEventLabel, caseStateLabel, formatDateTime } from "../../api/format";
+import { auditEventLabel, caseStateLabel, formatDateTime, roleLabel } from "../../api/format";
 import { EmptyState } from "./States";
 
 const ACTOR_DOT: Record<string, string> = {
@@ -40,7 +40,7 @@ export function AuditFeed({ events }: { events: ApiAuditEvent[] }) {
           <div className="mt-0.5 text-2xs text-ink-mid">
             <span className="font-medium text-ink-hi">{event.actor}</span>
             {" · "}
-            {event.actor_role}
+            {roleLabel(event.actor_role)}
             {event.case_id && (
               <>
                 {" → "}

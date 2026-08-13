@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 
 import { api, num } from "../api/client";
-import { alertStatusLabel, detectorLabel, formatRelative, initials } from "../api/format";
+import { alertStatusLabel, detectorLabel, formatRelative, initials, profileValueLabel } from "../api/format";
 import { useApi } from "../api/useApi";
 import { RiskBadge, StatusBadge } from "../components/common/Badges";
 import { KPIStatCard } from "../components/common/KPIStatCard";
@@ -36,9 +36,13 @@ export function AlertsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [typology, setTypology] = useState("");
+  const [source, setSource] = useState<"operational" | "all">("operational");
 
-  const alerts = useApi(() => api.alerts({ typology_code: typology || undefined, limit: 200 }), [typology]);
-  const dashboard = useApi(() => api.dashboard(), []);
+  const alerts = useApi(
+    () => api.alerts({ typology_code: typology || undefined, source, limit: 200 }),
+    [typology, source],
+  );
+  const dashboard = useApi(() => api.dashboard(source), [source]);
 
   const rows = alerts.data ?? [];
 
@@ -82,7 +86,7 @@ export function AlertsPage() {
           </span>
           <span>
             <span className="tabular block text-[13px] text-ink-hi">{a.customer_id}</span>
-            <span className="block text-2xs text-ink-mid">{a.occupation}</span>
+            <span className="block text-2xs text-ink-mid">{profileValueLabel(a.occupation)}</span>
           </span>
         </span>
       ),
@@ -104,7 +108,7 @@ export function AlertsPage() {
     },
     {
       key: "typology",
-      header: "Typology",
+      header: "Nhóm hành vi",
       render: (a) => (
         <span className="text-ink-mid" title={`${a.typology_code} — gợi ý của hệ thống, cần con người rà soát`}>
           {a.typology_label}
@@ -148,7 +152,7 @@ export function AlertsPage() {
           label="Cảnh báo chưa đóng"
           value={d ? String(d.open_alerts) : "—"}
           icon={<BellPlus size={14} aria-hidden />}
-          note="Đếm trực tiếp từ bảng alert"
+          note="Đếm trực tiếp từ bảng cảnh báo"
         />
         <KPIStatCard
           label="Rủi ro cao (≥80)"
@@ -178,27 +182,43 @@ export function AlertsPage() {
             <SearchInput
               value={search}
               onChange={setSearch}
-              placeholder="Tìm mã cảnh báo, chủ thể, tài khoản, typology..."
+              placeholder="Tìm mã cảnh báo, chủ thể, tài khoản, nhóm hành vi..."
               className="w-72 font-normal"
             />
           </div>
         }
         action={
-          <label className="flex items-center gap-1.5 text-2xs text-ink-low">
-            Typology
-            <select
-              value={typology}
-              onChange={(e) => setTypology(e.target.value)}
-              className="rounded-control border border-line bg-elev px-1.5 py-1 text-2xs text-ink-hi focus:outline-none"
-            >
-              <option value="">Tất cả</option>
-              {(d?.typology_distribution ?? []).map((t) => (
-                <option key={t.typology_code} value={t.typology_code}>
-                  {t.typology_code} — {t.typology_label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-2xs text-ink-low">
+              Nguồn
+              <select
+                value={source}
+                onChange={(e) => {
+                  setSource(e.target.value as "operational" | "all");
+                  setTypology("");
+                }}
+                className="rounded-control border border-line bg-elev px-1.5 py-1 text-2xs text-ink-hi focus:outline-none"
+              >
+                <option value="operational">Lô dữ liệu hiện tại</option>
+                <option value="all">Tất cả nguồn (gồm dữ liệu mẫu)</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 text-2xs text-ink-low">
+              Nhóm hành vi
+              <select
+                value={typology}
+                onChange={(e) => setTypology(e.target.value)}
+                className="rounded-control border border-line bg-elev px-1.5 py-1 text-2xs text-ink-hi focus:outline-none"
+              >
+                <option value="">Tất cả</option>
+                {(d?.typology_distribution ?? []).map((t) => (
+                  <option key={t.typology_code} value={t.typology_code}>
+                    {t.typology_code} — {t.typology_label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         }
       >
         {alerts.loading && <LoadingSkeleton rows={6} />}
@@ -267,7 +287,7 @@ export function AlertsPage() {
           )}
         </Panel>
 
-        <Panel title="Phân bổ theo typology">
+        <Panel title="Phân bổ theo nhóm hành vi">
           {!d ? (
             <LoadingSkeleton rows={4} />
           ) : (

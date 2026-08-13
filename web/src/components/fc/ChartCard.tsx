@@ -232,7 +232,7 @@ export function ChartCard({
                 <div className="mb-1 text-lg text-[#33465A]">◌</div>
                 Không có dữ liệu trong khoảng đã chọn
                 <br />
-                <span className="text-2xs text-ink-dim">Thử mở rộng cửa sổ thời gian hoặc bỏ bớt filter</span>
+                <span className="text-2xs text-ink-dim">Thử mở rộng cửa sổ thời gian hoặc bỏ bớt bộ lọc</span>
               </div>
             )}
             {state === "error" && (
@@ -240,7 +240,7 @@ export function ChartCard({
                 <div className="mb-1 text-lg">⚠</div>
                 Không tải được dữ liệu chart
                 <br />
-                <span className="text-2xs text-ink-soft">Pipeline nguồn đang trễ — thử lại sau</span>
+                <span className="text-2xs text-ink-soft">Đường ống dữ liệu nguồn đang trễ — thử lại sau</span>
               </div>
             )}
           </div>

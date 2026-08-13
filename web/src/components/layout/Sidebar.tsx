@@ -29,8 +29,8 @@ export function Sidebar({ counts = {} }: Props) {
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <div className="truncate-1 text-lg font-semibold tracking-[0.02em]">FIN-07 · Financial City</div>
-            <div className="text-3xs uppercase tracking-[0.14em] text-ink-low">AML Command Center</div>
+            <div className="truncate-1 text-lg font-semibold tracking-[0.02em]">FIN-07 · Thành phố tài chính</div>
+            <div className="text-3xs uppercase tracking-[0.14em] text-ink-low">Trung tâm điều hành AML</div>
           </div>
         )}
       </div>

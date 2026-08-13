@@ -24,7 +24,7 @@ export function ValidationPanel({ status, issues, onFix }: ValidationPanelProps)
     >
       <header className="flex items-center justify-between border-b border-line px-4 py-3">
         <div>
-          <div className="text-[13px] font-semibold text-ink-hi">Validation Status</div>
+          <div className="text-[13px] font-semibold text-ink-hi">Trạng thái kiểm chứng</div>
           <div className="mt-0.5 text-2xs text-ink-mid">
             {status === "DRAFT" && "Trạng thái: Chưa chạy kiểm chứng"}
             {status === "VALIDATION_FAILED" &&

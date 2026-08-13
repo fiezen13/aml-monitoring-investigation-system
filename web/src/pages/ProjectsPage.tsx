@@ -38,7 +38,7 @@ export function ProjectsPage() {
   return (
     <div className="flex animate-up flex-col gap-3.5 p-4">
       <ScreenTitle
-        title="Project Risk"
+        title="Rủi ro dự án"
         meta="Đặc trưng quan sát công khai của dự án token — dùng để xếp thứ tự rà soát, không phải để kết luận"
       />
 
@@ -101,7 +101,7 @@ export function ProjectsPage() {
                   label="Kênh quảng bá"
                   value={String(p.kol_channels)}
                   bar={Math.min(100, p.kol_channels * 10)}
-                  hint="Số kênh KOL/affiliate quan sát được"
+                  hint="Số kênh người có sức ảnh hưởng/tiếp thị liên kết quan sát được"
                   color={p.kol_channels >= 5 ? C.warn : C.info}
                 />
               </div>
@@ -140,7 +140,7 @@ export function ProjectsPage() {
           </p>
           <p className="mt-2 text-xs leading-relaxed text-ink-low">
             Kết luận về hành vi cần bằng chứng ở tầng điều tra — thiết bị, mã nguồn, tài khoản quản trị, phản hồi của
-            sàn — và thẩm quyền tương ứng. Xem nhật ký mở quyền ở màn hình Data Quality.
+            sàn — và thẩm quyền tương ứng. Xem nhật ký mở quyền ở màn hình Chất lượng dữ liệu.
           </p>
         </Panel>
       )}

@@ -80,7 +80,7 @@ export function LoginForm() {
               value={email}
               disabled={busy}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@bank-name.com"
+              placeholder="ten.nguoidung@nganhang.vn"
               className="h-[52px] w-full rounded-[11px] border border-line bg-sunken pl-11 pr-3.5 text-[13.5px] text-ink-hi outline-none transition-[border-color,box-shadow] placeholder:text-ink-dim focus:border-primary-line focus:shadow-[0_0_0_3px_rgba(18,214,197,0.10)] disabled:opacity-60"
             />
           </div>

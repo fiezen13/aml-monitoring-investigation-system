@@ -10,12 +10,12 @@ import { Chip, Empty, KpiCard, Panel, ProgressBar, ScreenTitle, Skeleton } from 
 import { C } from "../design/palette";
 
 /**
- * Data Quality — kiểm tra chất lượng dữ liệu và nhật ký mở quyền bằng chứng.
+ * Chất lượng dữ liệu — kiểm tra chất lượng dữ liệu và nhật ký mở quyền bằng chứng.
  *
  * Hai tab tưởng như không liên quan nhưng cùng trả lời một câu hỏi: dữ liệu mà
  * mô hình đang học có đáng tin không. Tab đầu hỏi "có sạch không", tab sau hỏi
  * "có được phép nhìn thấy tại thời điểm đó không" — vế thứ hai mới là thứ làm
- * hỏng benchmark một cách âm thầm.
+ * làm sai kết quả đánh giá chuẩn một cách âm thầm.
  */
 
 const DIMENSION_LABEL: Record<string, string> = {
@@ -52,6 +52,37 @@ const ACQUISITION_LABEL: Record<string, string> = {
   seizure: "thu giữ",
   cooperation: "hợp tác",
   public: "công khai",
+};
+
+const SOURCE_TYPE_LABEL: Record<string, string> = {
+  bank_internal: "Nội bộ ngân hàng",
+  regulatory_filing: "Hồ sơ quản lý",
+  public_registry: "Cơ sở dữ liệu công khai",
+  law_enforcement: "Cơ quan điều tra",
+  commercial_provider: "Nhà cung cấp thương mại",
+  synthetic: "Dữ liệu tổng hợp",
+  legal_text: "Văn bản pháp luật",
+  official_case: "Vụ án chính thức",
+  public_blockchain: "Chuỗi khối công khai",
+  expert_assumption: "Giả định chuyên gia",
+};
+
+function sourceTextVi(value: string): string {
+  return value
+    .replace(/\bhop\b/g, "chặng")
+    .replace(/\bdataset\b/gi, "tập dữ liệu")
+    .replace(/\bconfidence\b/gi, "độ tin cậy")
+    .replace(/\bsubtitle\b/gi, "tiêu đề phụ")
+    .replace(/\bblock_time\b/g, "thời điểm khối")
+    .replace(/\bavailable_from\b/g, "thời điểm mở quyền")
+    .replace(/\bknown_from\b/g, "thời điểm biết")
+    .replace(/\bamount\b/g, "số tiền");
+}
+
+const ACCESS_LEVEL_LABEL: Record<string, string> = {
+  public: "Công khai",
+  restricted: "Hạn chế",
+  internal: "Nội bộ",
 };
 
 const DQ_COLS = "1fr 200px 110px 110px 130px 100px";
@@ -113,7 +144,7 @@ export function DataQualityPage() {
   return (
     <div className="flex animate-up flex-col gap-3.5 p-4">
       <ScreenTitle
-        title="Data Quality"
+        title="Chất lượng dữ liệu"
         meta="Dữ liệu có sạch không, và mô hình có được phép nhìn thấy nó tại thời điểm ra quyết định không"
       />
 
@@ -146,7 +177,7 @@ export function DataQualityPage() {
           [
             ["checks", `Kiểm tra chất lượng (${rows.length})`],
             ["observations", `Nhật ký mở quyền (${obs.length})`],
-            ["sources", `Source registry (${sources.data?.length ?? 0})`],
+            ["sources", `Danh mục nguồn (${sources.data?.length ?? 0})`],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -187,7 +218,7 @@ export function DataQualityPage() {
                 style={{ gridTemplateColumns: DQ_COLS }}
               >
                 <div className="min-w-0">
-                  <div className="truncate-1 text-xs text-ink-mid">{r.check_name}</div>
+                  <div className="truncate-1 text-xs text-ink-mid">{sourceTextVi(r.check_name)}</div>
                   <ProgressBar value={r.pass_rate} color={STATUS_COLOR[r.status] ?? C.inkSoft} />
                 </div>
                 <span className="truncate-1 font-mono text-2xs text-ink-low">{r.dataset}</span>
@@ -256,7 +287,7 @@ export function DataQualityPage() {
             </p>
             <p className="mt-2 text-xs leading-relaxed text-ink-low">
               Nếu mô hình được huấn luyện trên bằng chứng có mốc mở quyền <b className="text-ink-mid">muộn hơn</b> thời
-              điểm ra quyết định, kết quả benchmark sẽ đẹp một cách giả tạo và sẽ sụp khi triển khai thật. Đây là loại
+              điểm ra quyết định, kết quả đánh giá chuẩn sẽ đẹp một cách giả tạo và sẽ sụp khi triển khai thật. Đây là loại
               lỗi không báo lỗi — nó chỉ hiện ra khi hệ thống đã chạy trong môi trường thực.
             </p>
           </Panel>
@@ -272,10 +303,10 @@ export function DataQualityPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-base text-primary">{s.source_id}</span>
-                    <Chip color={C.agent}>{s.source_type}</Chip>
-                    <Chip color={s.access_level === "public" ? C.ok : C.warn}>{s.access_level}</Chip>
+                    <Chip color={C.agent}>{SOURCE_TYPE_LABEL[s.source_type] ?? s.source_type}</Chip>
+                    <Chip color={s.access_level === "public" ? C.ok : C.warn}>{ACCESS_LEVEL_LABEL[s.access_level] ?? s.access_level}</Chip>
                   </div>
-                  <p className="mt-1 text-xs leading-relaxed text-ink-mid">{s.scope}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-mid">{sourceTextVi(s.scope)}</p>
                   <p className="mt-0.5 text-2xs text-ink-low">
                     {s.jurisdiction} · {s.period}
                   </p>
@@ -294,7 +325,7 @@ export function DataQualityPage() {
                 <div className="fc-eyebrow mb-1" style={{ color: C.riskSoft }}>
                   Không được dùng để
                 </div>
-                <p className="text-xs leading-relaxed text-ink-soft">{s.prohibited_uses}</p>
+                <p className="text-xs leading-relaxed text-ink-soft">{sourceTextVi(s.prohibited_uses)}</p>
               </div>
             </Panel>
           ))}

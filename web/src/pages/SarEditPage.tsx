@@ -60,7 +60,7 @@ export function SarEditPage() {
       <Breadcrumb
         items={[
           { label: "Phê duyệt SAR", to: "/approvals" },
-          { label: `Draft ${SAR_DRAFT.sar_id}` },
+          { label: `Bản nháp ${SAR_DRAFT.sar_id}` },
         ]}
       />
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -154,7 +154,7 @@ export function SarEditPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-panel border border-line bg-elev p-3.5">
                     <div className="text-2xs uppercase tracking-wide text-ink-low">
-                      Nguồn tiền (Inflow)
+                      Nguồn tiền vào
                     </div>
                     <div className="tabular mt-1 text-[22px] font-bold text-ink-hi">
                       {formatCompactVnd(SAR_DRAFT.inflow)} ₫
@@ -163,7 +163,7 @@ export function SarEditPage() {
                   </div>
                   <div className="rounded-panel border border-line bg-elev p-3.5">
                     <div className="text-2xs uppercase tracking-wide text-ink-low">
-                      Đích đến (Outflow)
+                      Đích tiền ra
                     </div>
                     <div className="tabular mt-1 text-[22px] font-bold text-ink-hi">
                       {formatCompactVnd(SAR_DRAFT.outflow)} ₫
@@ -215,7 +215,7 @@ export function SarEditPage() {
                     <dd className="mt-0.5 font-medium text-ink-hi">{SAR_DRAFT.subjectName}</dd>
                   </div>
                   <div>
-                    <dt className="text-2xs uppercase tracking-wide text-ink-low">Customer ID</dt>
+                    <dt className="text-2xs uppercase tracking-wide text-ink-low">Mã khách hàng</dt>
                     <dd className="tabular mt-0.5 font-medium text-ink-hi">{SAR_DRAFT.subject.customerId}</dd>
                   </div>
                   <div>
@@ -232,7 +232,7 @@ export function SarEditPage() {
           </Panel>
         </div>
 
-        {/* Cột phải: Validation + Evidence Inspector */}
+        {/* Cột phải: Kiểm chứng + Thanh tra bằng chứng */}
         <div className="space-y-3">
           <ValidationPanel
             status={sarStatus}
@@ -249,8 +249,8 @@ export function SarEditPage() {
           />
 
           <Panel
-            title="Evidence Inspector"
-            action={<StatusBadge tone="primary" label="AI ENHANCED" />}
+            title="Thanh tra bằng chứng"
+            action={<StatusBadge tone="primary" label="AI HỖ TRỢ" />}
             padded={false}
           >
             <div className="space-y-2 p-3">
@@ -308,7 +308,7 @@ export function SarEditPage() {
             await api.submitSar(SAR_DRAFT.sar_id, reason);
             await sarQuery.reload();
             setSubmitOpen(false);
-            pushToast({ tone: "success", title: `Đã gửi ${SAR_DRAFT.sar_id} tới hàng đợi phê duyệt`, detail: "approval và audit_log đã được ghi trong DB." });
+            pushToast({ tone: "success", title: `Đã gửi ${SAR_DRAFT.sar_id} tới hàng đợi phê duyệt`, detail: "Bản ghi phê duyệt và nhật ký kiểm toán đã được lưu trong cơ sở dữ liệu." });
             navigate("/approvals");
           } catch (cause) {
             pushToast({ tone: "error", title: "Không gửi được SAR", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });

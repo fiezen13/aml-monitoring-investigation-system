@@ -20,10 +20,10 @@ export function LoginPanel() {
         </span>
         <div>
           <div className="text-base font-bold tracking-tight text-ink-hi">
-            FIN-07 <span className="text-primary">AML Console</span>
+            FIN-07 <span className="text-primary">Bảng điều khiển AML</span>
           </div>
           <div className="text-3xs font-semibold uppercase tracking-[0.18em] text-ink-low">
-            Financial Intelligence Network
+            Mạng lưới tình báo tài chính
           </div>
         </div>
       </div>

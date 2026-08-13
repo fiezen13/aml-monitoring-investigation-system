@@ -9,6 +9,7 @@ Phần điều phối agent LangGraph do Hiển hiện thực ở Sprint 3. Ở 
 kiểm toán, và giữ nhịp tim cho healthcheck của container.
 """
 
+import asyncio
 import json
 import logging
 import signal
@@ -22,6 +23,7 @@ from sqlalchemy import text
 from src.config import get_settings
 from src.db.session import get_session
 from src.domain import next_state, state_label
+from src.investigation.workflow import InvestigationWorkflow
 from src.services.queue import get_redis
 
 logger = logging.getLogger("fin07.worker")
@@ -95,8 +97,17 @@ def handle_ping(payload: dict[str, Any]) -> None:
     logger.info("ping %s", payload)
 
 
+def handle_investigate_alert(payload: dict[str, Any]) -> None:
+    """Run the complete bounded explainable workflow for one alert."""
+    investigation_id = payload["investigation_id"]
+    with get_session() as session:
+        asyncio.run(InvestigationWorkflow(session).run(investigation_id))
+    logger.info("Explainable investigation %s finished", investigation_id)
+
+
 HANDLERS = {
     "investigate_case": handle_investigate_case,
+    "investigate_alert": handle_investigate_alert,
     "ping": handle_ping,
 }
 

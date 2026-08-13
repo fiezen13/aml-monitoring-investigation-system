@@ -38,7 +38,7 @@ export function GraphTopologySummary({ model, graph, paths, cycles, health, onOp
 
   return (
     <div className="animate-up">
-      <Eyebrow className="mb-2">Tóm tắt topology</Eyebrow>
+      <Eyebrow className="mb-2">Tóm tắt cấu trúc mạng</Eyebrow>
       <div className="grid grid-cols-2 gap-[7px]">
         {tiles.map((t) => (
           <StatTile key={t.label} label={t.label} value={t.value} valueColor={t.color ?? C.inkHi} />
@@ -95,7 +95,7 @@ export function GraphTopologySummary({ model, graph, paths, cycles, health, onOp
         </div>
         {mule && (
           <div className="flex gap-2">
-            <dt className="w-32 flex-none text-ink-low">Tài khoản mule</dt>
+            <dt className="w-32 flex-none text-ink-low">Tài khoản trung chuyển</dt>
             <dd className="text-ink-mid">{mule.memberIds.length}</dd>
           </div>
         )}

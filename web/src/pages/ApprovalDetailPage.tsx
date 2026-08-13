@@ -71,11 +71,11 @@ export function ApprovalDetailPage() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="tabular text-[20px] font-bold text-ink-hi">{detail.sar_id}</h1>
         {isApproved ? (
-          <StatusBadge tone="ok" label="APPROVED" />
+          <StatusBadge tone="ok" label="ĐÃ PHÊ DUYỆT" />
         ) : status === "REJECTED" ? (
-          <StatusBadge tone="risk" label="REJECTED" />
+          <StatusBadge tone="risk" label="ĐÃ TỪ CHỐI" />
         ) : (
-          <StatusBadge tone="warn" label="PENDING REVIEW" />
+          <StatusBadge tone="warn" label="ĐANG CHỜ RÀ SOÁT" />
         )}
         <div className="ml-auto flex items-center gap-2">
           {isPending && (
@@ -104,7 +104,7 @@ export function ApprovalDetailPage() {
             content={
               isApproved
                 ? "Xuất hồ sơ SAR đã phê duyệt và ghi audit"
-                : "Chỉ xuất được hồ sơ khi SAR ở trạng thái APPROVED — không có đường tắt nào bỏ qua người phê duyệt"
+                : "Chỉ xuất được hồ sơ khi SAR ở trạng thái đã phê duyệt — không có đường tắt nào bỏ qua người phê duyệt"
             }
           >
             <button
@@ -141,7 +141,7 @@ export function ApprovalDetailPage() {
         <div className="space-y-3">
           <Panel
             title="Nội dung Báo cáo SAR"
-            action={<StatusBadge tone="ok" label="VALIDATION PASSED" />}
+            action={<StatusBadge tone="ok" label="KIỂM CHỨNG ĐẠT" />}
           >
             <div className="grid grid-cols-[1fr_auto] gap-4">
               <div>
@@ -252,7 +252,7 @@ export function ApprovalDetailPage() {
               </span>
             </div>
             <p className="mt-2.5 text-2xs leading-relaxed text-ink-mid">{detail.networkNote}</p>
-            <p className="mt-1.5 text-2xs text-ink-low">Nguồn: Network Analysis Tool · GRAPH-008</p>
+            <p className="mt-1.5 text-2xs text-ink-low">Nguồn: Công cụ phân tích mạng lưới · GRAPH-008</p>
           </Panel>
 
           <Panel title="Lịch sử xử lý">

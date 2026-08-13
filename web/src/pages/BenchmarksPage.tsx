@@ -9,19 +9,19 @@ import { Chip, Empty, KpiCard, Panel, ProgressBar, ScreenTitle, Skeleton } from 
 import { C } from "../design/palette";
 
 /**
- * Benchmarks — kết quả kiểm định mức độ phát hiện.
+ * Đánh giá chuẩn — kết quả kiểm định mức độ phát hiện.
  *
- * Không có accuracy ở đây, và đó là chủ ý. Với tỷ lệ dương thật cỡ phần nghìn,
+ * Không có độ chính xác tổng thể ở đây, và đó là chủ ý. Với tỷ lệ dương thật cỡ phần nghìn,
  * một mô hình trả lời "không có gì bất thường" cho mọi giao dịch vẫn đạt
- * accuracy 99,9%. Các chỉ số dưới đây đo thứ có ý nghĩa vận hành: xếp đúng thứ
+ * độ chính xác tổng thể 99,9%. Các chỉ số dưới đây đo thứ có ý nghĩa vận hành: xếp đúng thứ
  * tự ưu tiên, phát hiện sớm được bao lâu, và gắn cờ nhầm bao nhiêu trên nhóm
  * hợp pháp trông giống đối tượng nghi vấn.
  */
 
 const METRIC_LABEL: Record<string, string> = {
-  precision_at_50: "Precision@50",
-  recall_at_50: "Recall@50",
-  false_positive_rate_hard_negative: "Dương tính giả trên hard negative",
+  precision_at_50: "Độ chính xác trong 50 cảnh báo đầu",
+  recall_at_50: "Độ bao phủ trong 50 cảnh báo đầu",
+  false_positive_rate_hard_negative: "Dương tính giả trên mẫu âm khó",
   detection_lead_time_days: "Thời gian phát hiện sớm (ngày)",
   alert_to_case_conversion: "Tỷ lệ cảnh báo thành vụ việc",
   evidence_coverage: "Độ phủ bằng chứng",
@@ -29,7 +29,7 @@ const METRIC_LABEL: Record<string, string> = {
 
 const METRIC_HINT: Record<string, string> = {
   precision_at_50:
-    "Trong 50 cảnh báo xếp đầu, bao nhiêu phần là đáng điều tra. Đây là thứ analyst thực sự cảm nhận được.",
+    "Trong 50 cảnh báo xếp đầu, bao nhiêu phần là đáng điều tra. Đây là chỉ số chuyên viên trực tiếp cảm nhận được.",
   recall_at_50: "Trong toàn bộ trường hợp đáng chú ý, bao nhiêu phần lọt vào 50 vị trí đầu.",
   false_positive_rate_hard_negative:
     "Tỷ lệ gắn cờ nhầm trên nhóm hợp pháp cố ý trông giống đối tượng nghi vấn. Thấp mới là tốt.",
@@ -65,7 +65,7 @@ export function BenchmarksPage() {
   return (
     <div className="flex animate-up flex-col gap-3.5 p-4">
       <ScreenTitle
-        title="Benchmarks"
+        title="Đánh giá chuẩn"
         meta="Kiểm định mức độ phát hiện — ngưỡng được đặt trước khi có kết quả, không chỉnh sau"
       />
 
@@ -86,7 +86,7 @@ export function BenchmarksPage() {
 
       <ChartCard
         title="Đạt được so với ngưỡng"
-        subtitle="Chỉ các chỉ số theo thang 0–1; lead time tính bằng ngày nên tách riêng bên dưới"
+        subtitle="Chỉ các chỉ số theo thang 0–1; thời gian phát hiện sớm tính bằng ngày nên tách riêng bên dưới"
         height={186}
         spec={spec}
         tools={["data", "dl", "full"]}
@@ -154,16 +154,16 @@ export function BenchmarksPage() {
         })}
       </div>
 
-      <Panel title="Vì sao không có accuracy" subtitle="Chương 15.1 của tài liệu thiết kế">
+      <Panel title="Vì sao không có độ chính xác tổng thể" subtitle="Chương 15.1 của tài liệu thiết kế">
         <p className="text-xs leading-relaxed text-ink-soft">
           Với tỷ lệ dương thật cỡ phần nghìn, một mô hình trả lời{" "}
-          <b className="text-ink-mid">"không có gì bất thường"</b> cho mọi giao dịch vẫn đạt accuracy trên 99%. Con số
+          <b className="text-ink-mid">"không có gì bất thường"</b> cho mọi giao dịch vẫn đạt độ chính xác tổng thể trên 99%. Con số
           đó không nói gì về việc hệ thống có dùng được hay không.
         </p>
         <p className="mt-2 text-xs leading-relaxed text-ink-low">
           Ba chỉ số quyết định giá trị vận hành: thứ tự ưu tiên có đúng không (precision@k), phát hiện sớm được bao lâu
-          trước khi đủ bằng chứng (lead time), và gắn cờ nhầm bao nhiêu trên nhóm hợp pháp trông giống đối tượng nghi
-          vấn (dương tính giả trên hard negative). Thiếu nhóm hard negative thì cả ba chỉ số đều mất ý nghĩa.
+          trước khi đủ bằng chứng (thời gian phát hiện sớm), và gắn cờ nhầm bao nhiêu trên nhóm hợp pháp trông giống đối tượng nghi
+          vấn (dương tính giả trên mẫu âm khó). Thiếu nhóm mẫu âm khó thì cả ba chỉ số đều mất ý nghĩa.
         </p>
       </Panel>
     </div>

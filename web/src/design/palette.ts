@@ -50,12 +50,12 @@ export const CHANNEL: Record<string, string> = {
 };
 
 export const CHANNEL_LABEL: Record<string, string> = {
-  bank: "Bank",
+  bank: "Ngân hàng",
   p2p: "P2P",
   vasp: "VASP",
-  chain: "Bridge",
-  gamb: "Gambling",
-  proj: "Token",
+  chain: "Cầu nối chuỗi",
+  gamb: "Cá cược",
+  proj: "Tài sản số",
 };
 
 /**
@@ -72,10 +72,10 @@ export function riskColor(score: number): string {
 }
 
 /** Nhãn mức độ tương ứng với `riskColor`. */
-export function riskLabel(score: number): "CRITICAL" | "HIGH" | "MEDIUM" {
-  if (score >= 80) return "CRITICAL";
-  if (score >= 60) return "HIGH";
-  return "MEDIUM";
+export function riskLabel(score: number): "NGHIÊM TRỌNG" | "CAO" | "TRUNG BÌNH" {
+  if (score >= 80) return "NGHIÊM TRỌNG";
+  if (score >= 60) return "CAO";
+  return "TRUNG BÌNH";
 }
 
 /** Màu cho biến động: tăng chưa chắc là tốt trong AML, nên tách riêng hai hàm. */

@@ -16,6 +16,12 @@ const TABS: [InspectorTab, string][] = [
   ["model", "Mô hình"],
 ];
 
+const BAND_LABEL: Record<string, string> = {
+  primary: "chính",
+  support: "hỗ trợ",
+  control: "đối chứng",
+};
+
 interface Props {
   node: GNode;
   model: GraphModel;
@@ -50,7 +56,7 @@ export function NodeInspector({ node, model, tab, onTab, onClose, onExpand, onFi
         <button
           type="button"
           onClick={onClose}
-          aria-label="Đóng inspector"
+          aria-label="Đóng bảng thanh tra"
           className="flex-none text-ink-low hover:text-ink-hi"
         >
           ✕
@@ -119,7 +125,7 @@ export function NodeInspector({ node, model, tab, onTab, onClose, onExpand, onFi
           <dl className="flex flex-col gap-1.5 text-xs">
             <Row label="Vai trò" value={node.role} />
             <Row label="Chặng" value={STAGE_LABEL[node.stage]} />
-            <Row label="Mức ưu tiên" value={`Tier ${node.tier}`} />
+            <Row label="Mức ưu tiên" value={`Tầng ${node.tier}`} />
             <Row label="Trung tâm" value={node.hub ?? "—"} />
             <Row label="Bậc đỉnh" value={String(node.degree)} />
             <Row label="Xuất hiện" value={node.first} />
@@ -192,12 +198,12 @@ export function NodeInspector({ node, model, tab, onTab, onClose, onExpand, onFi
         {tab === "model" && (
           <div className="flex flex-col gap-2 text-xs">
             <dl className="flex flex-col gap-1.5">
-              <Row label="Tier thị giác" value={`Tier ${node.tier} · ${node.band}`} />
+              <Row label="Tầng hiển thị" value={`Tầng ${node.tier} · ${BAND_LABEL[node.band] ?? node.band}`} />
               <Row label="Cụm" value={node.clusterId ?? "đứng riêng"} />
               <Row label="Mốc chuẩn hoá" value={node.t.toFixed(3)} />
             </dl>
             <p className="rounded-control border border-line bg-sunken px-2.5 py-2 text-3xs leading-relaxed text-ink-low">
-              Điểm rủi ro do lớp Risk Fusion chấm trên bằng chứng quan sát được. Vai trò và chặng ở đây là suy luận của
+              Điểm rủi ro do lớp hợp nhất rủi ro chấm trên bằng chứng quan sát được. Vai trò và chặng ở đây là suy luận của
               giao diện để xếp bố cục — chúng không phải kết luận điều tra và không được trích vào hồ sơ.
             </p>
           </div>

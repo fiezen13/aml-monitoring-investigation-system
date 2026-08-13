@@ -9,6 +9,7 @@ from src.api.fc_routes import router as fc_router
 from src.api.routes import router
 from src.config import get_settings
 from src.db import session as db
+from src.investigation.llm import gemini_is_configured
 from src.models.schemas import HealthOut, ReadyOut
 from src.services import queue
 
@@ -51,7 +52,7 @@ app.include_router(fc_router, prefix="/api/v1")
 @app.get("/health", response_model=HealthOut)
 async def health() -> HealthOut:
     """Liveness — tiến trình còn sống. Không chạm phụ thuộc ngoài."""
-    return HealthOut(status="ok", env=settings.app_env)
+    return HealthOut(status="ok", env=settings.app_env, gemini_configured=gemini_is_configured(settings))
 
 
 @app.get("/health/ready", response_model=ReadyOut)
@@ -73,5 +74,9 @@ async def ready() -> JSONResponse:
         logger.warning("Readiness: Redis chưa sẵn sàng: %s", exc)
 
     healthy = all(checks.values())
-    body = ReadyOut(status="ready" if healthy else "not_ready", **checks)
+    body = ReadyOut(
+        status="ready" if healthy else "not_ready",
+        gemini_configured=gemini_is_configured(settings),
+        **checks,
+    )
     return JSONResponse(status_code=200 if healthy else 503, content=body.model_dump())

@@ -55,10 +55,19 @@ export function CommandPalette({ entities = [], onQueryChange }: Props) {
       group: "Màn hình",
       go: () => navigate(it.to),
     }));
+    const kindLabel: Record<string, string> = {
+      alert: "Cảnh báo",
+      case: "Vụ việc",
+      account: "Tài khoản",
+      customer: "Khách hàng",
+      entity: "Thực thể",
+      wallet: "Ví",
+      transaction: "Giao dịch",
+    };
     const ents: Entry[] = entities.map((e) => ({
       id: `ent:${e.id}`,
       label: e.label,
-      hint: e.kind,
+      hint: kindLabel[e.kind.toLowerCase()] ?? e.kind,
       group: "Thực thể",
       go: () => navigate(e.href),
     }));
@@ -110,7 +119,7 @@ export function CommandPalette({ entities = [], onQueryChange }: Props) {
                 setPaletteOpen(false);
               }
             }}
-            placeholder="Tìm màn hình, entity, case, alert…"
+            placeholder="Tìm màn hình, thực thể, vụ việc, cảnh báo…"
             aria-label="Tìm kiếm"
             className="flex-1 bg-transparent text-lg text-ink-hi outline-none placeholder:text-ink-dim"
           />
@@ -148,7 +157,7 @@ export function CommandPalette({ entities = [], onQueryChange }: Props) {
         <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-2xs text-ink-dim">
           <span>↑↓ chọn</span>
           <span>⏎ mở</span>
-          <span>esc đóng</span>
+          <span>Esc để đóng</span>
         </div>
       </div>
     </div>

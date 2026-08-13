@@ -144,6 +144,13 @@ class DashboardOut(BaseModel):
     cases_investigating: int
     sar_pending: int
     avg_risk_score: float
+    latest_batch_id: str | None
+    latest_source_name: str | None
+    transactions_analyzed: int
+    subjects_analyzed: int
+    subjects_below_threshold: int
+    subjects_triggered: int
+    batch_alerts_created: int
     typology_distribution: list[TypologyShareOut]
     top_alerts: list[AlertOut]
     queue_depth: int
@@ -165,12 +172,14 @@ class QueueStatsOut(BaseModel):
 class HealthOut(BaseModel):
     status: str
     env: str
+    gemini_configured: bool
 
 
 class ReadyOut(BaseModel):
     status: str
     database: bool
     redis: bool
+    gemini_configured: bool
 
 
 class LoginRequest(BaseModel):
@@ -225,7 +234,7 @@ class InternalAlertReasonIn(BaseModel):
 
 class InternalAlertCreate(BaseModel):
     """Body POST /api/v1/internal/alerts — ingest alert detector=ml."""
- 
+
     account_key: str = Field(..., min_length=3, max_length=128)
     risk_score: float = Field(..., ge=0, le=100, description="Thang 0-100 (UI/DB)")
     typology_code: str = Field(default="T02", pattern=r"^T(0[1-9]|10)$")
@@ -243,4 +252,3 @@ class InternalAlertCreateOut(BaseModel):
     risk_score: float | None = None
     factor_count: int | None = None
     detector: str = "ml"
-

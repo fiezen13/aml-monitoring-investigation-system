@@ -12,7 +12,7 @@ interface Props {
   criticalCount?: number;
 }
 
-const WORLDS = ["FIN-07 Primary", "FIN-07 Stress Sim"];
+const WORLDS = ["FIN-07 Chính", "FIN-07 Mô phỏng sức chịu đựng"];
 const WINDOWS: TimeWindow[] = ["1h", "24h", "7d", "30d"];
 
 export function Header({ crumb, criticalCount = 0 }: Props) {
@@ -36,7 +36,7 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
         className="flex min-w-[110px] flex-[0_1_270px] items-center gap-2 overflow-hidden rounded-control border border-line bg-sunken px-2.5 py-[5px] text-ink-low transition-colors hover:border-primary/40"
       >
         <Search size={13} className="flex-none" aria-hidden />
-        <span className="truncate-1 flex-1 text-left text-base">Tìm entity, case, alert…</span>
+        <span className="truncate-1 flex-1 text-left text-base">Tìm thực thể, vụ việc, cảnh báo…</span>
         <span className="flex-none rounded-[5px] border border-line-strong/80 px-1.5 font-mono text-2xs">⌘K</span>
       </button>
 
@@ -50,7 +50,7 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
       >
         {WORLDS.map((w) => (
           <option key={w} value={w}>
-            World: {w}
+            Môi trường: {w}
           </option>
         ))}
       </select>
@@ -71,7 +71,7 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
       {/* Nhãn này không phải trang trí: toàn bộ dữ liệu trong console là tổng
           hợp, và người xem phải biết điều đó ở mọi màn hình. */}
       <span className="whitespace-nowrap rounded-[6px] border border-warn/40 bg-warn/10 px-2 py-[3px] font-mono text-2xs tracking-[0.08em] text-warn">
-        SYNTHETIC
+        POC
       </span>
 
       <div
@@ -79,7 +79,7 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
         className="flex items-center gap-1.5 whitespace-nowrap text-xs text-ink-soft"
       >
         <PulseDot />
-        LIVE
+        ĐANG HOẠT ĐỘNG
       </div>
 
       <div className="relative">
@@ -99,7 +99,7 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
           <div className="absolute right-0 top-full z-40 mt-1.5 w-72 rounded-panel border border-line bg-elev p-3 shadow-2xl">
             <div className="fc-eyebrow mb-2">Thông báo nội bộ</div>
             <p className="text-xs leading-relaxed text-ink-mid">
-              {criticalCount} cảnh báo đang ở mức critical trong cửa sổ {WINDOW_LABEL[win]}. Thông báo chỉ phát trong
+              {criticalCount} cảnh báo đang ở mức nghiêm trọng trong cửa sổ {WINDOW_LABEL[win]}. Thông báo chỉ phát trong
               nội bộ — hệ thống không có kênh nào gửi tới chủ thể đang bị rà soát.
             </p>
           </div>

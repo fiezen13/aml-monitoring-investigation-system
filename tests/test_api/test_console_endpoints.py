@@ -31,7 +31,7 @@ def seeded():
 
 @pytest.mark.asyncio
 async def test_dashboard_counts_come_from_the_database(client, seeded):
-    response = await client.get("/api/v1/dashboard")
+    response = await client.get("/api/v1/dashboard?source=all")
     assert response.status_code == 200
     body = response.json()
 
@@ -44,7 +44,7 @@ async def test_dashboard_counts_come_from_the_database(client, seeded):
 
 @pytest.mark.asyncio
 async def test_dashboard_typology_shares_add_up(client, seeded):
-    body = (await client.get("/api/v1/dashboard")).json()
+    body = (await client.get("/api/v1/dashboard?source=all")).json()
     total = sum(item["share_pct"] for item in body["typology_distribution"])
     # Mỗi phần trăm làm tròn tới một chữ số nên tổng lệch được vài phần mười.
     assert 99 <= total <= 101
@@ -52,30 +52,30 @@ async def test_dashboard_typology_shares_add_up(client, seeded):
 
 @pytest.mark.asyncio
 async def test_alerts_are_sorted_by_risk_descending(client, seeded):
-    body = (await client.get("/api/v1/alerts?limit=50")).json()
+    body = (await client.get("/api/v1/alerts?source=all&limit=50")).json()
     scores = [float(a["risk_score"]) for a in body]
     assert scores == sorted(scores, reverse=True)
 
 
 @pytest.mark.asyncio
 async def test_alert_list_filters_by_typology(client, seeded):
-    everything = (await client.get("/api/v1/alerts?limit=200")).json()
+    everything = (await client.get("/api/v1/alerts?source=all&limit=200")).json()
     code = everything[0]["typology_code"]
-    filtered = (await client.get(f"/api/v1/alerts?typology_code={code}")).json()
+    filtered = (await client.get(f"/api/v1/alerts?source=all&typology_code={code}")).json()
     assert filtered
     assert {a["typology_code"] for a in filtered} == {code}
 
 
 @pytest.mark.asyncio
 async def test_alert_list_filters_by_minimum_risk(client, seeded):
-    filtered = (await client.get("/api/v1/alerts?min_risk=80&limit=200")).json()
+    filtered = (await client.get("/api/v1/alerts?source=all&min_risk=80&limit=200")).json()
     assert all(float(a["risk_score"]) >= 80 for a in filtered)
 
 
 @pytest.mark.asyncio
 async def test_alert_detail_always_carries_three_factors(client, seeded):
     """NT7 — mỗi điểm rủi ro kèm tối thiểu ba yếu tố đóng góp có giá trị số."""
-    listing = (await client.get("/api/v1/alerts?limit=200")).json()
+    listing = (await client.get("/api/v1/alerts?source=all&limit=200")).json()
     for alert in listing:
         detail = (await client.get(f"/api/v1/alerts/{alert['alert_id']}")).json()
         assert len(detail["reasons"]) >= 3, alert["alert_id"]
@@ -86,7 +86,7 @@ async def test_alert_detail_always_carries_three_factors(client, seeded):
 
 @pytest.mark.asyncio
 async def test_alert_detail_includes_subject_and_transactions(client, seeded):
-    alert = (await client.get("/api/v1/alerts?limit=1")).json()[0]
+    alert = (await client.get("/api/v1/alerts?source=all&limit=1")).json()[0]
     detail = (await client.get(f"/api/v1/alerts/{alert['alert_id']}")).json()
 
     assert detail["customer"]["account_key"] == detail["account_key"]

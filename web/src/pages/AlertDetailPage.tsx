@@ -13,11 +13,13 @@ import { api, num } from "../api/client";
 import {
   alertStatusLabel,
   caseStateLabel,
+  countryLabel,
   detectorLabel,
   formatAmount,
   formatDate,
   formatDateTime,
   initials,
+  profileValueLabel,
   prototypeLabel,
   riskRatingLabel,
 } from "../api/format";
@@ -27,6 +29,7 @@ import { AuditFeed } from "../components/common/AuditFeed";
 import { Panel } from "../components/common/Panel";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
 import { Tabs } from "../components/common/Tabs";
+import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
 import { DataTable, type Column } from "../components/tables/DataTable";
 import type { ApiTransaction } from "../api/client";
 
@@ -34,6 +37,7 @@ const TABS = [
   { id: "overview", label: "Tổng quan" },
   { id: "transactions", label: "Giao dịch" },
   { id: "audit", label: "Nhật ký" },
+  { id: "investigation", label: "Điều tra bằng AI" },
 ];
 
 const DETECTOR_TONE: Record<string, "info" | "primary" | "muted"> = {
@@ -235,7 +239,7 @@ export function AlertDetailPage() {
                 </span>
                 <div>
                   <div className="tabular text-[14px] font-semibold text-ink-hi">{c.customer_id}</div>
-                  <div className="text-2xs text-ink-mid">{c.occupation}</div>
+                  <div className="text-2xs text-ink-mid">{profileValueLabel(c.occupation)}</div>
                 </div>
               </div>
               <dl className="space-y-2 text-2xs">
@@ -246,11 +250,11 @@ export function AlertDetailPage() {
                   value={c.customer_type === "organisation" ? "Tổ chức" : "Cá nhân"}
                 />
                 <Field label="Nguyên mẫu" value={prototypeLabel(c.prototype)} />
-                <Field label="Thu nhập khai báo" value={c.declared_income_band} />
+                <Field label="Thu nhập khai báo" value={profileValueLabel(c.declared_income_band)} />
                 <Field label="Doanh số kỳ vọng/tháng" value={formatAmount(c.expected_monthly_volume)} mono />
-                <Field label="Quốc gia đăng ký" value={c.registered_country} />
+                <Field label="Quốc gia đăng ký" value={countryLabel(c.registered_country)} />
                 <Field label="Ngày mở hồ sơ" value={formatDate(c.onboarding_date)} />
-                <Field label="Trạng thái tài khoản" value={c.account_status} />
+                <Field label="Trạng thái tài khoản" value={profileValueLabel(c.account_status)} />
                 <div className="flex items-center justify-between pt-1">
                   <dt className="text-ink-mid">Mức rủi ro hồ sơ</dt>
                   <dd>
@@ -315,6 +319,8 @@ export function AlertDetailPage() {
           )}
         </Panel>
       )}
+
+      {tab === "investigation" && <InvestigationPanel alertId={a.alert_id} />}
     </div>
   );
 }

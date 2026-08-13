@@ -3,10 +3,10 @@ import { useState } from "react";
 import type { LayoutKey } from "../types/graph.types";
 
 const LAYOUTS: [LayoutKey, string][] = [
-  ["flow", "Investigation Flow"],
-  ["force", "Force"],
-  ["hierarchy", "Hierarchical"],
-  ["community", "Community"],
+  ["flow", "Luồng điều tra"],
+  ["force", "Lực mô phỏng"],
+  ["hierarchy", "Phân cấp"],
+  ["community", "Cộng đồng"],
 ];
 
 interface Props {
@@ -97,8 +97,8 @@ export function GraphToolbar({
       <input
         value={search}
         onChange={(e) => onSearch(e.target.value)}
-        placeholder="Tìm node (tên, mã, tài khoản…)"
-        aria-label="Tìm node trong đồ thị"
+        placeholder="Tìm đỉnh (tên, mã, tài khoản…)"
+        aria-label="Tìm đỉnh trong đồ thị"
         className="w-52 rounded-control border border-line bg-sunken px-2.5 py-1 text-2xs text-ink-mid outline-none placeholder:text-ink-dim focus:border-primary-line"
       />
 
@@ -116,23 +116,23 @@ export function GraphToolbar({
       </select>
 
       <Btn onClick={onFit} title="Đưa toàn bộ đồ thị vào khung nhìn">
-        Fit
+        Vừa khung
       </Btn>
 
-      <Btn onClick={() => onExpandHop(hops >= 3 ? 1 : hops + 1)} title="Mở rộng vùng lân cận quanh node đang chọn">
-        Expand {hops} hop
+      <Btn onClick={() => onExpandHop(hops >= 3 ? 1 : hops + 1)} title="Mở rộng vùng lân cận quanh đỉnh đang chọn">
+        Mở rộng {hops} chặng
       </Btn>
 
       <Btn onClick={onMoneyPath} title="Xếp hạng các đường đi của tiền">
-        Money path
+        Đường tiền
       </Btn>
 
       <Btn onClick={onDetectCycle} title="Tìm chu trình tiền quay lại chủ thể ban đầu">
-        Detect cycle
+        Tìm chu trình
       </Btn>
 
       <Btn onClick={() => onIsolate(!isolated)} active={isolated} title="Chỉ giữ mạng lưới đáng ngờ">
-        ⚡ Isolate suspicious
+        ⚡ Cô lập mạng đáng ngờ
       </Btn>
 
       <Btn
@@ -145,13 +145,13 @@ export function GraphToolbar({
 
       {hasFocus && (
         <Btn onClick={onClearFocus} title="Bỏ chọn (ESC)">
-          Clear focus
+          Bỏ vùng tập trung
         </Btn>
       )}
 
       <div className="ml-auto flex items-center gap-2">
         <span className="whitespace-nowrap font-mono text-3xs text-ink-dim">
-          {nodeCount} node · {edgeCount} edge
+          {nodeCount} đỉnh · {edgeCount} cạnh
         </span>
         <div className="relative">
           <Btn onClick={() => setOverflow((v) => !v)} active={overflow} title="Thêm">
@@ -167,14 +167,14 @@ export function GraphToolbar({
                 }}
                 className="w-full rounded-control px-2 py-1.5 text-left text-2xs text-ink-mid hover:bg-elev"
               >
-                Community view
+                Chế độ xem cộng đồng
               </button>
               <button
                 type="button"
                 onClick={() => onPerf(!perf)}
                 className="flex w-full items-center justify-between rounded-control px-2 py-1.5 text-left text-2xs text-ink-mid hover:bg-elev"
               >
-                Performance mode
+                Chế độ hiệu năng
                 <span className={perf ? "text-primary" : "text-ink-dim"}>{perf ? "BẬT" : "TẮT"}</span>
               </button>
               <button
@@ -185,7 +185,7 @@ export function GraphToolbar({
                 }}
                 className="w-full rounded-control px-2 py-1.5 text-left text-2xs text-ink-mid hover:bg-elev"
               >
-                Export JSON
+                Xuất JSON
               </button>
             </div>
           )}

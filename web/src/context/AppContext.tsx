@@ -2,12 +2,13 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 
-import { api, SESSION_TOKEN_KEY } from "../api/client";
+import { api, AUTH_EXPIRED_EVENT, SESSION_TOKEN_KEY } from "../api/client";
 import type { User } from "../types";
 
 export interface ToastItem {
@@ -54,6 +55,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
+  const clearLocalSession = useCallback(() => {
+    window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
+    window.sessionStorage.removeItem(SESSION_USER_KEY);
+    setCurrentUser(null);
+  }, []);
+
+  useEffect(() => {
+    const expired = () => clearLocalSession();
+    window.addEventListener(AUTH_EXPIRED_EVENT, expired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, expired);
+  }, [clearLocalSession]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    void api.me().then(setCurrentUser).catch(() => clearLocalSession());
+    // Chỉ xác minh token đã lưu khi provider mount; không gọi lại sau mỗi render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     const result = await api.login(email, password);
     window.sessionStorage.setItem(SESSION_TOKEN_KEY, result.token);
@@ -66,11 +86,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       await api.logout();
     } finally {
-      window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
-      window.sessionStorage.removeItem(SESSION_USER_KEY);
-      setCurrentUser(null);
+      clearLocalSession();
     }
-  }, []);
+  }, [clearLocalSession]);
 
   const value = useMemo<AppState>(
     () => ({ currentUser, login, logout, toasts, pushToast, dismissToast }),

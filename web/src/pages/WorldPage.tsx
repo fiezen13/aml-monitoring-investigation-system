@@ -1,9 +1,10 @@
-import { Maximize2, Pause, Play } from "lucide-react";
+import { Database, MapPinOff, Maximize2, Pause, Play } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { int, usd } from "../api/fcFormat";
+import { riskRatingLabel } from "../api/format";
 import { useApi } from "../api/useApi";
 import { Chart, type ChartSpec } from "../components/fc/Chart";
 import { Eyebrow, PulseDot, StatTile } from "../components/fc/primitives";
@@ -22,10 +23,19 @@ const CHANNELS = ["bank", "p2p", "vasp", "chain", "gamb", "proj"] as const;
 const SEVERITIES = [
   { key: "all", label: "Tất cả" },
   { key: "warn", label: "Đáng ngờ" },
-  { key: "crit", label: "Critical" },
+  { key: "crit", label: "Nghiêm trọng" },
 ];
 const SPEEDS = [0.5, 1, 2];
 const TOP_N = [10, 25, 50];
+
+function hubNameVi(name: string): string {
+  const labels: Record<string, string> = {
+    Bangkok: "Băng Cốc",
+    "Hong Kong": "Hồng Kông",
+    "Phnom Penh": "Phnôm Pênh",
+  };
+  return labels[name] ?? name;
+}
 
 /** Engine bản đồ phân loại mức độ theo ba bậc, suy từ điểm rủi ro của hành lang. */
 function severityOf(risk: number): "crit" | "warn" | "ok" {
@@ -33,7 +43,8 @@ function severityOf(risk: number): "crit" | "warn" | "ok" {
 }
 
 export function WorldPage() {
-  const world = useApi(() => api.world(), []);
+  const [dataMode, setDataMode] = useState<"operational" | "simulation">("operational");
+  const world = useApi(() => api.world(dataMode), [dataMode]);
 
   const [mode, setMode] = useState<"map" | "globe">("map");
   const [layers, setLayers] = useState<Record<string, boolean>>(
@@ -57,7 +68,7 @@ export function WorldPage() {
     return {
       hubs: world.data.hubs.map((h) => ({
         id: h.id,
-        name: h.name,
+        name: hubNameVi(h.name),
         lat: h.lat,
         lon: h.lon,
         // Kích thước chấm theo khối lượng, thang log: chênh lệch giữa các
@@ -73,8 +84,8 @@ export function WorldPage() {
       })),
       flows: world.data.flows.map((f, i) => ({
         id: f.id,
-        sn: f.source_name,
-        tn: f.target_name,
+        sn: hubNameVi(f.source_name),
+        tn: hubNameVi(f.target_name),
         slat: f.slat,
         slon: f.slon,
         tlat: f.tlat,
@@ -112,7 +123,7 @@ export function WorldPage() {
     return [
       { l: "Tổng khối lượng", v: usd(total), c: C.inkHi, d: `${flows.length} hành lang` },
       { l: "Đáng ngờ", v: usd(susp.reduce((s, f) => s + f.volume_usd, 0)), c: C.warn, d: `${susp.length} hành lang` },
-      { l: "Critical", v: String(crit.length), c: C.risk, d: "cần xử lý ngay" },
+      { l: "Nghiêm trọng", v: String(crit.length), c: C.risk, d: "cần xử lý ngay" },
       { l: "Giao dịch", v: int(flows.reduce((s, f) => s + f.txn_count, 0)), c: C.inkHi, d: "trong cửa sổ" },
       { l: "Cảnh báo", v: String(flows.reduce((s, f) => s + f.alert_count, 0)), c: C.risk, d: "trên hành lang" },
       { l: "Trung tâm", v: String(world.data?.hubs.length ?? 0), c: C.info, d: "đang theo dõi" },
@@ -146,7 +157,7 @@ export function WorldPage() {
     return {
       type: "hbars",
       items: top.map((f) => ({
-        label: `${f.source_name.slice(0, 12)} → ${f.target_name.slice(0, 12)}`,
+        label: `${hubNameVi(f.source_name).slice(0, 12)} → ${hubNameVi(f.target_name).slice(0, 12)}`,
         value: Math.round(f.volume_usd / 1e6),
         color: f.risk_score >= 80 ? C.risk : f.risk_score >= 60 ? C.warn : C.info,
       })),
@@ -170,13 +181,117 @@ export function WorldPage() {
     };
   }, [world.data]);
 
+  if (!world.loading && world.data?.data_mode === "operational" && !world.data.geography_available) {
+    return (
+      <div className="flex h-full min-w-0 flex-col overflow-y-auto bg-app p-5">
+        <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
+            <div>
+              <Eyebrow className="mb-2">Giám sát địa lý · dữ liệu vận hành</Eyebrow>
+              <h1 className="text-2xl font-semibold text-ink-hi">Không đủ dữ liệu để dựng bản đồ địa lý</h1>
+              <p className="mt-2 max-w-[760px] text-sm leading-relaxed text-ink-soft">
+                Hệ thống không suy diễn quốc gia hoặc toạ độ từ mã ngân hàng. Vì vậy bản đồ được chủ động tắt thay vì
+                ghép lô dữ liệu IBM với kịch bản Việt Nam không liên quan.
+              </p>
+            </div>
+            <span className="flex items-center gap-2 rounded-chip border border-warn/35 bg-warn/10 px-3 py-1.5 text-xs text-warn-soft">
+              <MapPinOff size={14} /> Chưa có dữ liệu địa lý đã kiểm chứng
+            </span>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-[12px] border border-line bg-panel p-4 md:col-span-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-ink-hi">
+                <Database size={15} className="text-primary" /> Nguồn đang hoạt động
+              </div>
+              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-ink-low">Tệp nguồn</dt>
+                  <dd className="mt-1 font-mono text-ink-mid">{world.data.source_name ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-ink-low">Mã lô dữ liệu</dt>
+                  <dd className="mt-1 font-mono text-ink-mid">{world.data.source_id ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-ink-low">Giao dịch đã nạp</dt>
+                  <dd className="mt-1 font-mono text-xl font-semibold text-ink-hi">
+                    {int(world.data.transaction_count)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-ink-low">Phạm vi địa lý</dt>
+                  <dd className="mt-1 font-medium text-warn-soft">Không được cung cấp</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="rounded-[12px] border border-line bg-side p-4">
+              <div className="text-sm font-semibold text-ink-hi">Giới hạn dữ liệu</div>
+              <p className="mt-3 text-xs leading-relaxed text-ink-soft">{world.data.limitation}</p>
+              <p className="mt-3 text-xs leading-relaxed text-ink-low">
+                Mã ngân hàng trong IBM AML là mã định danh của tập dữ liệu, không phải mã quốc gia và không đủ để đặt một
+                điểm lên bản đồ.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-line bg-side p-4">
+            <div>
+              <div className="text-sm font-semibold text-ink-hi">Dữ liệu giao dịch vẫn xem được đầy đủ</div>
+              <p className="mt-1 text-xs text-ink-soft">
+                Tra cứu giao dịch đọc trực tiếp bảng giao dịch và gồm cả giao dịch dưới ngưỡng ML hành vi.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Link to="/transactions" className="fc-btn border-primary-line bg-primary-soft text-primary">
+                Mở Tra cứu giao dịch
+              </Link>
+              <button type="button" onClick={() => setDataMode("simulation")} className="fc-btn">
+                Xem riêng mô phỏng ABM
+              </button>
+            </div>
+          </div>
+
+          <p className="text-2xs leading-relaxed text-ink-low">
+            Chế độ mô phỏng ABM là dữ liệu tổng hợp phục vụ minh hoạ/đánh giá chuẩn. Nó được tách khỏi nguồn vận hành và không
+            đại diện cho địa lý của tệp IBM.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 overflow-x-auto">
         {/* --- Cột trái: bộ lọc --- */}
         <aside className="flex min-w-[216px] flex-[0_3_300px] flex-col gap-3.5 overflow-y-auto border-r border-line bg-side p-3.5">
+          {/* Hai nguồn dữ liệu, hai cảnh báo khác nhau. Trước khi địa lý vận hành
+              chạy được, thân trang này chỉ hiện ở chế độ mô phỏng nên nhãn ABM
+              gắn cứng cũng không sai; giờ thì sai, vì bản đồ vận hành dùng chung
+              thân trang. */}
+          {dataMode === "simulation" ? (
+            <div className="rounded-[9px] border border-warn/30 bg-warn/10 p-2.5">
+              <div className="text-3xs font-semibold uppercase tracking-[0.09em] text-warn-soft">Mô phỏng ABM</div>
+              <p className="mt-1 text-2xs leading-relaxed text-ink-soft">
+                Kịch bản tổng hợp Việt Nam, tách biệt với lô giao dịch vận hành.
+              </p>
+              <button type="button" onClick={() => setDataMode("operational")} className="fc-btn mt-2 w-full">
+                Quay lại dữ liệu vận hành
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-[9px] border border-line bg-panel p-2.5">
+              <div className="text-3xs font-semibold uppercase tracking-[0.09em] text-ink-dim">Dữ liệu vận hành</div>
+              <p className="mt-1 text-2xs leading-relaxed text-ink-soft">{world.data?.limitation}</p>
+              <button type="button" onClick={() => setDataMode("simulation")} className="fc-btn mt-2 w-full">
+                Xem riêng mô phỏng ABM
+              </button>
+            </div>
+          )}
           <div>
-            <Eyebrow className="mb-2">Chỉ số toàn cầu</Eyebrow>
+            <Eyebrow className="mb-2">Chỉ số mô phỏng toàn cầu</Eyebrow>
             <div className="grid grid-cols-2 gap-[7px]">
               {stats.map((s) => (
                 <StatTile key={s.l} label={s.l} value={s.v} sub={s.d} valueColor={s.c} />
@@ -185,7 +300,7 @@ export function WorldPage() {
           </div>
 
           <div>
-            <Eyebrow className="mb-2">Layers dòng tiền</Eyebrow>
+            <Eyebrow className="mb-2">Các lớp dòng tiền</Eyebrow>
             <div className="flex flex-col gap-1">
               {CHANNELS.map((ch) => (
                 <button
@@ -233,7 +348,7 @@ export function WorldPage() {
 
           {typologies.length > 0 && (
             <div>
-              <Eyebrow className="mb-2">Typology</Eyebrow>
+              <Eyebrow className="mb-2">Nhóm hành vi</Eyebrow>
               <div className="flex flex-col gap-[3px]">
                 <button
                   type="button"
@@ -242,7 +357,7 @@ export function WorldPage() {
                     typ === "all" ? "bg-primary-soft text-primary" : "text-ink-soft"
                   }`}
                 >
-                  <span className="flex-1 text-left">Tất cả typology</span>
+                  <span className="flex-1 text-left">Tất cả nhóm hành vi</span>
                 </button>
                 {typologies.map(([t, n]) => (
                   <button
@@ -264,7 +379,7 @@ export function WorldPage() {
 
           <p className="border-t border-line-soft pt-2.5 text-2xs leading-relaxed text-ink-low">
             Kéo để xoay · cuộn để phóng · rê chuột lên cung để xem chi tiết · nhấp vào cung hoặc trung tâm để mở
-            inspector · nháy đúp nền để đặt lại. Dữ liệu synthetic từ mô phỏng ABM.
+            bảng thanh tra · nháy đúp nền để đặt lại. Đây là dữ liệu tổng hợp từ mô phỏng ABM, không phải lô dữ liệu IBM.
           </p>
         </aside>
 
@@ -281,9 +396,6 @@ export function WorldPage() {
             typ={typ}
             topN={topN}
             hideNormal={hideNormal}
-            paused={paused}
-            speed={speed}
-            replay={{ on: replayT < 100, t: replayT / 100 }}
             selectedFlow={selFlow}
             selectedHub={selHub}
             onPickFlow={setSelFlow}
@@ -293,7 +405,13 @@ export function WorldPage() {
           <div className="absolute left-3.5 top-3 z-[4] flex items-center gap-2 rounded-chip border border-line bg-side/85 px-3 py-1 text-2xs backdrop-blur">
             <PulseDot color={world.error ? C.risk : C.ok} />
             <span className="font-mono tracking-[0.08em]" style={{ color: world.error ? C.risk : C.ok }}>
-              {world.error ? "MẤT KẾT NỐI" : world.loading ? "ĐANG TẢI" : "ĐANG THEO DÕI"}
+              {world.error
+                ? "MẤT KẾT NỐI"
+                : world.loading
+                  ? "ĐANG TẢI"
+                  : dataMode === "simulation"
+                    ? "MÔ PHỎNG ABM"
+                    : "DỮ LIỆU VẬN HÀNH"}
             </span>
           </div>
 
@@ -343,7 +461,7 @@ export function WorldPage() {
           {selected && (
             <div className="absolute left-1/2 top-3 z-[4] flex -translate-x-1/2 animate-up items-center gap-2.5 rounded-[10px] border border-risk/30 bg-side/90 px-3 py-1.5 text-sm backdrop-blur">
               <b>
-                {selected.source_name} → {selected.target_name}
+                {hubNameVi(selected.source_name)} → {hubNameVi(selected.target_name)}
               </b>
               <span
                 className="font-mono"
@@ -391,7 +509,7 @@ export function WorldPage() {
                   {selected ? "HÀNH LANG" : "TRUNG TÂM"}
                 </span>
                 <div className="truncate-1 flex-1 text-xl font-semibold">
-                  {selected ? `${selected.source_name} → ${selected.target_name}` : selectedHub!.name}
+                  {selected ? `${hubNameVi(selected.source_name)} → ${hubNameVi(selected.target_name)}` : hubNameVi(selectedHub!.name)}
                 </div>
                 <button
                   type="button"
@@ -399,7 +517,7 @@ export function WorldPage() {
                     setSelFlow(null);
                     setSelHub(null);
                   }}
-                  aria-label="Đóng inspector"
+                  aria-label="Đóng bảng thanh tra"
                   className="flex-none text-ink-low hover:text-ink-hi"
                 >
                   ✕
@@ -421,7 +539,7 @@ export function WorldPage() {
                       },
                       { l: "Cảnh báo", v: String(selected.alert_count), c: C.risk },
                       { l: "Kênh", v: CHANNEL_LABEL[selected.channel], c: CHANNEL[selected.channel] },
-                      { l: "Typology", v: selected.typology_hint ?? "—", c: C.inkSoft },
+                      { l: "Nhóm hành vi", v: selected.typology_hint ?? "—", c: C.inkSoft },
                     ]
                   : [
                       { l: "Khối lượng", v: usd(selectedHub!.volume_usd), c: C.inkHi },
@@ -429,7 +547,7 @@ export function WorldPage() {
                       { l: "Vào / Ra", v: `${selectedHub!.inbound} / ${selectedHub!.outbound}`, c: C.info },
                       { l: "Cảnh báo", v: String(selectedHub!.alerts), c: C.risk },
                       { l: "Rủi ro cao nhất", v: String(selectedHub!.risk_score), c: C.warn },
-                      { l: "Rủi ro pháp lý", v: selectedHub!.jurisdiction_risk, c: C.agent },
+                      { l: "Rủi ro pháp lý", v: riskRatingLabel(selectedHub!.jurisdiction_risk), c: C.agent },
                     ]
                 ).map((r) => (
                   <div key={r.l} className="min-w-0 rounded-[9px] bg-panel px-2.5 py-1.5">
@@ -478,7 +596,7 @@ export function WorldPage() {
                 >
                   <span className="h-[7px] w-[7px] flex-none rounded-sm" style={{ background: CHANNEL[f.channel] }} />
                   <span className="truncate-1 flex-1 text-ink-mid">
-                    {f.source_name} → {f.target_name}
+                    {hubNameVi(f.source_name)} → {hubNameVi(f.target_name)}
                   </span>
                   <b
                     className="tabular flex-none font-mono text-xs"
@@ -506,7 +624,7 @@ export function WorldPage() {
                   }}
                   className="flex items-center gap-2 rounded-[7px] px-1.5 py-1.5 text-left text-sm transition-colors hover:bg-elev"
                 >
-                  <span className="truncate-1 flex-1 text-ink-mid">{h.name}</span>
+                  <span className="truncate-1 flex-1 text-ink-mid">{hubNameVi(h.name)}</span>
                   <span className="tabular flex-none font-mono text-2xs text-ink-low">{usd(h.volume_usd)}</span>
                 </button>
               ))}

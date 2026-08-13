@@ -43,6 +43,45 @@ const STEP_COLOR: Record<string, string> = {
   blocked: C.warn,
 };
 
+const STEP_LABEL: Record<string, string> = {
+  ok: "Hoàn tất",
+  error: "Lỗi",
+  skipped: "Đã bỏ qua",
+  blocked: "Bị chặn",
+};
+
+const TOOL_LABEL: Record<string, string> = {
+  query_transactions: "Truy vấn giao dịch",
+  retrieve_evidence: "Truy hồi bằng chứng",
+  screen_watchlists: "Đối chiếu danh sách theo dõi",
+  analyze_network: "Phân tích mạng lưới",
+  calculate_risk: "Tính điểm rủi ro",
+  draft_case_summary: "Soạn tóm tắt vụ việc",
+  fetch_alert_context: "Lấy bối cảnh cảnh báo",
+  expand_entity_graph: "Mở rộng đồ thị thực thể",
+  device_correlation: "Đối chiếu thiết bị",
+  screen_watchlist: "Đối chiếu danh sách theo dõi",
+  trace_crypto_exposure: "Truy vết phơi nhiễm tài sản mã hoá",
+  request_vasp_records: "Yêu cầu hồ sơ từ VASP",
+  draft_str_narrative: "Soạn nội dung báo cáo STR",
+  request_human_review: "Yêu cầu chuyên viên rà soát",
+};
+
+function summaryVi(value: string): string {
+  return value
+    .replace(/^alert_id=/, "mã cảnh báo=")
+    .replace(/^seed=/, "đỉnh gốc=")
+    .replace(/, depth=/, ", độ sâu=")
+    .replace(/^accounts=/, "số tài khoản=")
+    .replace(/^entities=/, "số thực thể=")
+    .replace(/^addresses=/, "số địa chỉ=")
+    .replace(/^vasp=/, "VASP=")
+    .replace(/^case=/, "vụ việc=")
+    .replace(/^priority=/, "mức ưu tiên=")
+    .replace(/\bhop\b/g, "chặng")
+    .replace(/\btypology\b/gi, "nhóm hành vi");
+}
+
 const LIST_COLS = "170px 200px 130px 150px 90px 100px 90px";
 
 export function AgentsPage() {
@@ -55,14 +94,14 @@ export function AgentsPage() {
 
   return (
     <div className="flex animate-up flex-col gap-3.5 p-4">
-      <ScreenTitle title="AI Agent Runs" meta="Mọi kết luận của agent đều phải qua người có thẩm quyền" />
+      <ScreenTitle title="Các lượt chạy tác tử AI" meta="Mọi kết luận của tác tử đều phải qua người có thẩm quyền" />
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
         <KpiCard label="Tổng lần chạy" value={rows.length} delta="trong hệ thống" />
-        <KpiCard label="Chờ người duyệt" value={needsHuman} valueColor={C.warn} delta="human-in-the-loop" />
+        <KpiCard label="Chờ người duyệt" value={needsHuman} valueColor={C.warn} delta="con người tham gia quyết định" />
         <KpiCard label="Thất bại" value={blockedTotal} valueColor={C.risk} delta="cần xem lại" />
         <KpiCard
-          label="Tổng token"
+          label="Tổng đơn vị từ"
           value={int(rows.reduce((s, r) => s + r.token_cost, 0))}
           valueColor={C.agent}
           delta="chi phí suy luận"
@@ -75,7 +114,7 @@ export function AgentsPage() {
             className="grid gap-2 border-b border-line px-3 py-2 text-3xs uppercase tracking-[0.07em] text-ink-low"
             style={{ gridTemplateColumns: LIST_COLS }}
           >
-            <span>Run ID</span>
+            <span>Mã lượt chạy</span>
             <span>Tầng năng lực</span>
             <span>Vụ việc</span>
             <span>Bắt đầu</span>
@@ -85,7 +124,7 @@ export function AgentsPage() {
           </div>
           {runs.loading && <Skeleton rows={4} />}
           {!runs.loading && !rows.length && (
-            <Empty text="Chưa có lần chạy agent nào" hint="Chạy scripts/abm_generate.py để sinh dữ liệu" />
+            <Empty text="Chưa có lượt chạy tác tử nào" hint="Chạy scripts/abm_generate.py để sinh dữ liệu" />
           )}
           {rows.map((r) => (
             <div
@@ -122,7 +161,7 @@ export function AgentRunPage() {
     <div className="flex animate-up flex-col gap-3.5 p-4">
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => navigate("/agents")} className="text-base text-ink-soft hover:text-ink-hi">
-          ← Agent Runs
+          ← Các lượt chạy tác tử
         </button>
         <span className="font-mono text-base text-primary">{runId}</span>
         {r && <Chip color={STATUS_COLOR[r.status] ?? C.inkSoft}>{STATUS_LABEL[r.status] ?? r.status}</Chip>}
@@ -136,9 +175,9 @@ export function AgentRunPage() {
         <>
           <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
             <KpiCard label="Phiên bản mô hình" value={<span className="text-2xl">{r.model_version}</span>} />
-            <KpiCard label="Độ tin cậy" value={conf(r.confidence)} valueColor={C.agent} delta="agent tự khai báo" />
+            <KpiCard label="Độ tin cậy" value={conf(r.confidence)} valueColor={C.agent} delta="tác tử tự khai báo" />
             <KpiCard label="Số bước" value={r.step_count} />
-            <KpiCard label="Token" value={int(r.token_cost)} valueColor={C.agent} />
+            <KpiCard label="Đơn vị từ" value={int(r.token_cost)} valueColor={C.agent} />
             <KpiCard
               label="Thời lượng"
               value={
@@ -149,12 +188,12 @@ export function AgentRunPage() {
             />
           </div>
 
-          <Panel title="Kết luận của agent" subtitle="Chưa có hiệu lực cho tới khi người có thẩm quyền duyệt">
-            <p className="text-base leading-relaxed text-ink-mid">{r.conclusion || "—"}</p>
+          <Panel title="Kết luận của tác tử" subtitle="Chưa có hiệu lực cho tới khi người có thẩm quyền duyệt">
+            <p className="text-base leading-relaxed text-ink-mid">{summaryVi(r.conclusion) || "—"}</p>
             {r.status === "needs_human" && (
               <div className="mt-3 rounded-control border border-warn/35 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn-soft">
-                Agent dừng lại và chuyển cho người duyệt. Đây là hành vi đúng thiết kế: agent đề xuất, con người quyết
-                định. Không có đường nào để agent tự kết luận một vụ việc.
+                Tác tử dừng lại và chuyển cho người duyệt. Đây là hành vi đúng thiết kế: tác tử đề xuất, con người quyết
+                định. Không có đường nào để tác tử tự kết luận một vụ việc.
               </div>
             )}
           </Panel>
@@ -173,12 +212,12 @@ export function AgentRunPage() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-base text-ink-hi">{s.tool}</span>
-                      <Chip color={STEP_COLOR[s.status] ?? C.inkSoft}>{s.status}</Chip>
+                      <span className="font-mono text-base text-ink-hi">{TOOL_LABEL[s.tool] ?? s.tool}</span>
+                      <Chip color={STEP_COLOR[s.status] ?? C.inkSoft}>{STEP_LABEL[s.status] ?? s.status}</Chip>
                       <span className="tabular font-mono text-2xs text-ink-low">{duration(s.duration_ms)}</span>
                     </div>
-                    <div className="mt-1 font-mono text-2xs text-ink-low">→ {s.input_summary}</div>
-                    <div className="mt-0.5 text-xs leading-relaxed text-ink-mid">{s.output_summary}</div>
+                    <div className="mt-1 font-mono text-2xs text-ink-low">→ {summaryVi(s.input_summary)}</div>
+                    <div className="mt-0.5 text-xs leading-relaxed text-ink-mid">{summaryVi(s.output_summary)}</div>
                     {s.evidence_refs.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
                         {s.evidence_refs.map((ref) => (

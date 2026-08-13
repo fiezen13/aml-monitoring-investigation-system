@@ -1,4 +1,4 @@
-import { auditEventLabel } from "../../api/format";
+import { auditEventLabel, roleLabel } from "../../api/format";
 import type { AuditEvent } from "../../types";
 import { StatusBadge } from "./Badges";
 
@@ -31,7 +31,7 @@ export function AuditTimeline({ events }: { events: AuditEvent[] }) {
           <div className="mt-0.5 text-2xs text-ink-mid">
             <span className="font-medium text-ink-hi">{event.actor}</span>
             {" · "}
-            {event.actorRole}
+            {roleLabel(event.actorRole)}
             {" → "}
             <span className="tabular">{event.target}</span>
           </div>

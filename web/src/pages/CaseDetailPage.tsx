@@ -5,11 +5,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ApiError, api, num } from "../api/client";
 import {
   caseStateLabel,
+  countryLabel,
   formatAmount,
   formatDate,
   formatDateTime,
   initials,
   priorityLabel,
+  profileValueLabel,
   prototypeLabel,
   riskRatingLabel,
 } from "../api/format";
@@ -313,14 +315,14 @@ export function CaseDetailPage() {
                 </span>
                 <div>
                   <div className="tabular text-[14px] font-semibold text-ink-hi">{c.customer_id}</div>
-                  <div className="text-2xs text-ink-mid">{c.occupation}</div>
+                  <div className="text-2xs text-ink-mid">{profileValueLabel(c.occupation)}</div>
                 </div>
               </div>
               <dl className="space-y-2 text-2xs">
                 <Field label="Nguyên mẫu" value={prototypeLabel(c.prototype)} />
-                <Field label="Thu nhập khai báo" value={c.declared_income_band} />
+                <Field label="Thu nhập khai báo" value={profileValueLabel(c.declared_income_band)} />
                 <Field label="Doanh số kỳ vọng/tháng" value={formatAmount(c.expected_monthly_volume)} mono />
-                <Field label="Quốc gia đăng ký" value={c.registered_country} />
+                <Field label="Quốc gia đăng ký" value={countryLabel(c.registered_country)} />
                 <Field label="Ngày mở hồ sơ" value={formatDate(c.onboarding_date)} />
                 <div className="flex items-center justify-between pt-1">
                   <dt className="text-ink-mid">Mức rủi ro hồ sơ</dt>

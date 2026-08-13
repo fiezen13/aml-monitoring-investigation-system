@@ -31,12 +31,26 @@ hơn không có tài liệu.
 | Đường ống CSV → Kafka → Flink → HDFS | **ĐANG CHẠY** — profile `aml`, không chạy mặc định | `src/aml/`, `flink/` |
 | Bộ dữ liệu huấn luyện và đánh giá | **IBM AML công khai** — nguồn duy nhất của mọi con số hiệu năng | `data/raw/ibm-aml/` |
 | Hợp đồng dữ liệu, sự kiện, tool | **ĐÃ ĐỊNH NGHĨA**, phần lớn chưa có bên hiện thực | `contracts/` |
-| Detection Engine (rules, behavioral, graph, ML) | **CHƯA CÓ** | `services/detection/` |
+| Detection Engine | **BEHAVIOUR ML BATCH PoC ĐÃ CHẠY**; graph/fusion runtime chưa có | `src/behavior/`, `scripts/run_behavior_batch.py` |
 | Feature platform, entity resolution | **CHƯA CÓ** | `services/feature-platform/` |
-| AI Investigation Agent | **KHUNG MẪU** — `src/agents/` không gọi LLM, không gọi tool, không chạm DB | `services/agent-runtime/` |
+| Explainable AI Investigation | **ĐANG CHẠY** — 3 agent có giới hạn, 7 tool tất định, evidence/trace bền vững, human review | `src/investigation/` |
 
-**Điểm rủi ro hiện tại đến từ luật và heuristic trong `scripts/seed_data.py`, chưa phải mô hình đã
-huấn luyện.** Toàn bộ dữ liệu là tổng hợp: không khách hàng thật, không danh sách trừng phạt thật.
+Ba agent AML dùng Google Gemini qua official `google-genai` SDK. Không dùng OpenAI, Anthropic hoặc
+local LLM. CI/dev dùng `LLM_MODE=mock`; runtime thật cần cấu hình server-side:
+
+```env
+LLM_MODE=gemini
+GOOGLE_API_KEY=<server-side secret>
+GEMINI_MODEL=gemini-3.1-flash-lite
+```
+
+Cả Supervisor, Explanation và Critic bị khóa vào `gemini-3.1-flash-lite`; cấu hình model khác bị
+từ chối ngay khi nạp settings. API key không được gửi tới React.
+
+Stack mặc định vẫn hiển thị điểm seed từ luật/heuristic trong `scripts/seed_data.py`. Đường Behaviour
+batch có thể nhận CSV canonical không nhãn, chạy Isolation Forest và lưu detection/alert thật vào
+PostgreSQL; xem [`contracts/ingestion/README.md`](contracts/ingestion/README.md).
+Không có dữ liệu khách hàng thật nào được commit trong repo.
 
 ---
 

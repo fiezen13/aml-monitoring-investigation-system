@@ -21,6 +21,7 @@ export function TransactionsPage() {
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState("all");
   const [minAmount, setMinAmount] = useState("");
+  const [source, setSource] = useState<"operational" | "all">("operational");
   const [page, setPage] = useState(1);
 
   // `q` và `minAmount` đi thẳng vào deps: mỗi ký tự là một lượt gọi. Với bảng
@@ -32,10 +33,11 @@ export function TransactionsPage() {
         q: q.trim() || undefined,
         channel: channel === "all" ? undefined : channel,
         min_amount: minAmount ? Number(minAmount) : undefined,
+        source,
         page,
         page_size: PAGE_SIZE,
       }),
-    [q, channel, minAmount, page],
+    [q, channel, minAmount, source, page],
   );
 
   const total = data.data?.total ?? 0;
@@ -44,11 +46,23 @@ export function TransactionsPage() {
   return (
     <div className="flex animate-up flex-col gap-3 p-4">
       <ScreenTitle
-        title="Transaction Explorer"
+        title="Tra cứu giao dịch"
         meta={`${int(total)} giao dịch khớp bộ lọc · trang ${page}/${pageCount}`}
       />
 
       <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={source}
+          onChange={(e) => {
+            setSource(e.target.value as "operational" | "all");
+            setPage(1);
+          }}
+          aria-label="Nguồn dữ liệu"
+          className="fc-input"
+        >
+          <option value="operational">Nguồn: lô dữ liệu hiện tại</option>
+          <option value="all">Nguồn: tất cả (gồm dữ liệu mẫu)</option>
+        </select>
         <input
           value={q}
           onChange={(e) => {
@@ -107,7 +121,7 @@ export function TransactionsPage() {
             className="sticky top-0 grid gap-2 border-b border-line bg-panel px-3 py-2 text-3xs uppercase tracking-[0.07em] text-ink-low"
             style={{ gridTemplateColumns: COLS }}
           >
-            <span>ID</span>
+            <span>Mã giao dịch</span>
             <span>Thời điểm</span>
             <span>Từ tài khoản</span>
             <span>Đến tài khoản</span>

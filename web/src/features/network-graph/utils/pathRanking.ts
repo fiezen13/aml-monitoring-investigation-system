@@ -217,7 +217,7 @@ export function buildLeads(model: GraphModel, paths: MoneyPath[], gapStages: Set
       nodeId: destination.id,
       pathId: paths.find((p) => p.nodeIds[p.nodeIds.length - 1] === destination.id)?.id ?? null,
       severity: "high",
-      evidence: gapStages.has(destination.stage) ? "Thiếu liên kết quan sát" : "Suy luận on-chain",
+      evidence: gapStages.has(destination.stage) ? "Thiếu liên kết quan sát" : "Suy luận trên chuỗi",
     });
   }
 

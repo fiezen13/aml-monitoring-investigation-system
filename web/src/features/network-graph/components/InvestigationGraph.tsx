@@ -425,12 +425,12 @@ export function InvestigationGraph() {
             <div className="pointer-events-none absolute right-3 top-3 z-[5] flex items-center gap-2 rounded-chip border border-line bg-side/85 px-3 py-1 text-2xs backdrop-blur">
               <PulseDot color={state.perf ? C.warn : C.primary} />
               <span className="font-mono tracking-[0.08em] text-primary">
-                {graph.nodes.length} node · {graph.edges.length} edge
+                {graph.nodes.length} đỉnh · {graph.edges.length} cạnh
               </span>
               <span className="font-mono text-ink-dim">
-                zoom {zoomLevel === "far" ? "xa" : zoomLevel === "close" ? "gần" : "vừa"}
+                thu phóng {zoomLevel === "far" ? "xa" : zoomLevel === "close" ? "gần" : "vừa"}
               </span>
-              {state.perf && <span className="font-mono text-warn">PERF</span>}
+              {state.perf && <span className="font-mono text-warn">HIỆU NĂNG</span>}
             </div>
 
             {!state.perf && <GraphLegend />}
@@ -482,7 +482,7 @@ export function InvestigationGraph() {
 
           {!model && !loading && (
             <div className="text-sm leading-relaxed text-ink-low">
-              <Eyebrow className="mb-2">Inspector</Eyebrow>
+              <Eyebrow className="mb-2">Thanh tra</Eyebrow>
               Chưa có dữ liệu để kiểm tra.
             </div>
           )}

@@ -107,6 +107,44 @@ def _check_agent_role(session) -> bool:
     return False
 
 
+def _adopt_existing_optional_migrations(session, applied: set[str]) -> None:
+    """Record migrations whose distinctive objects already exist.
+
+    Older deployments applied 005 through docker-entrypoint before
+    ``schema_migration`` tracked it. Replaying that non-idempotent file would
+    fail at ``CREATE SCHEMA fc`` and block every later migration.
+    """
+    probes = {
+        "005_financial_city.sql": "SELECT to_regclass('fc.agent_run') IS NOT NULL",
+        "006_explainable_investigations.sql": "SELECT to_regclass('public.investigation') IS NOT NULL",
+        "007_gemini_agent_runtime.sql": (
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='investigation_agent_run' "
+            "AND column_name='prompt_version')"
+        ),
+        "008_behavior_batch_poc.sql": "SELECT to_regclass('public.detection_result') IS NOT NULL",
+        "009_behavior_model_provenance.sql": (
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema='public' AND table_name='behavior_batch' "
+            "AND column_name='model_sha256')"
+        ),
+    }
+    for filename, probe in probes.items():
+        path = INIT_DIR / filename
+        if filename in applied or not path.exists():
+            continue
+        if session.execute(text(probe)).scalar():
+            session.execute(
+                text(
+                    """INSERT INTO schema_migration (filename, checksum, applied_by)
+                       VALUES (:f, :c, 'adopted-existing') ON CONFLICT DO NOTHING"""
+                ),
+                {"f": filename, "c": _checksum(path)},
+            )
+            applied.add(filename)
+            log.info("Nhận %s là đã áp từ object hiện hữu", filename)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--status", action="store_true", help="Chỉ liệt kê trạng thái, không ghi")
@@ -142,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     applied.add(name)
                 log.info("Nhận %d file lược đồ gốc là đã áp từ trước", len(applied))
+
+        _adopt_existing_optional_migrations(session, applied)
 
         pending = [p for p in files if p.name not in applied]
 

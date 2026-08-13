@@ -12,7 +12,7 @@ interface EvidenceDrawerProps {
 }
 
 /**
- * Evidence Drawer — panel phải hiển thị bằng chứng kỹ thuật số,
+ * Ngăn bằng chứng — bảng bên phải hiển thị bằng chứng kỹ thuật số,
  * bám bố cục screenshot "Hồ sơ Vụ việc CASE-2026-014".
  */
 export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onSelect }: EvidenceDrawerProps) {
@@ -29,18 +29,18 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
         className="flex h-full w-[380px] flex-col border-l border-line bg-panel"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
-        aria-label="Evidence Drawer"
+        aria-label="Ngăn bằng chứng"
       >
         <header className="flex items-start justify-between border-b border-line px-4 py-3">
           <div>
-            <h2 className="text-[15px] font-bold text-ink-hi">Evidence Drawer</h2>
+            <h2 className="text-[15px] font-bold text-ink-hi">Ngăn bằng chứng</h2>
             <p className="text-2xs text-ink-mid">Bằng chứng kỹ thuật số</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="tabular text-2xs text-ink-low">ID: {evidence.id}</span>
             <button
               type="button"
-              aria-label="Đóng drawer"
+              aria-label="Đóng ngăn bằng chứng"
               onClick={onClose}
               className="rounded p-1 text-ink-mid hover:bg-elev hover:text-ink-hi"
             >
@@ -93,7 +93,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
 
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-control border border-line bg-elev p-2.5">
-              <div className="text-2xs uppercase tracking-wide text-ink-low">Loại file</div>
+              <div className="text-2xs uppercase tracking-wide text-ink-low">Loại tệp</div>
               <div className="mt-1 flex items-center gap-1.5 text-2xs font-semibold text-ink-hi">
                 <FileText size={12} className="text-risk" aria-hidden />
                 {evidence.fileType}
@@ -109,7 +109,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
 
           <div>
             <div className="mb-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">
-              Bằng chứng khác trong case
+              Bằng chứng khác trong vụ việc
             </div>
             <div className="space-y-1.5">
               {others.map((other) => (

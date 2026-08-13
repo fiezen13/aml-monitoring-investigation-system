@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api, num } from "../api/client";
-import { usd } from "../api/fcFormat";
-import { formatRelative } from "../api/format";
+import { int, usd } from "../api/fcFormat";
+import { alertStatusLabel, detectorLabel, formatRelative } from "../api/format";
 import { useApi } from "../api/useApi";
 import { Chart, type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
@@ -21,6 +21,15 @@ import { C, SERIES } from "../design/palette";
 
 const QUEUE_COLS = "112px minmax(140px,1fr) 150px 92px 84px 100px 110px";
 
+const BENCHMARK_LABEL: Record<string, string> = {
+  precision_at_50: "Chính xác trong 50 cảnh báo đầu",
+  recall_at_50: "Bao phủ trong 50 cảnh báo đầu",
+  false_positive_rate_hard_negative: "Dương tính giả trên mẫu âm khó",
+  detection_lead_time_days: "Thời gian phát hiện sớm",
+  alert_to_case_conversion: "Cảnh báo thành vụ việc",
+  evidence_coverage: "Độ phủ bằng chứng",
+};
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const { window: win } = useConsole();
@@ -32,17 +41,19 @@ export function DashboardPage() {
 
   const kpis = useMemo(() => {
     if (!d) return [];
+    const normalPct = Math.round((d.subjects_below_threshold / Math.max(1, d.subjects_analyzed)) * 1000) / 10;
+    const triggeredPct = Math.round((d.subjects_triggered / Math.max(1, d.subjects_analyzed)) * 1000) / 10;
     return [
-      { label: "Cảnh báo đang mở", value: d.open_alerts, color: C.inkHi, delta: "trong hàng đợi" },
       {
-        label: "Rủi ro cao (≥80)",
-        value: d.high_risk_alerts,
-        color: C.risk,
-        delta: `${Math.round((d.high_risk_alerts / Math.max(1, d.open_alerts)) * 100)}% hàng đợi`,
+        label: "Giao dịch đã nạp",
+        value: d.transactions_analyzed,
+        color: C.inkHi,
+        delta: d.latest_source_name ?? "chưa có lô dữ liệu",
       },
-      { label: "Vụ việc đang xử lý", value: d.cases_investigating, color: C.warn, delta: "chưa kết luận" },
-      { label: "SAR chờ duyệt", value: d.sar_pending, color: C.agent, delta: "cần người có thẩm quyền" },
-      { label: "Điểm rủi ro trung bình", value: d.avg_risk_score, color: C.info, delta: "trên toàn hàng đợi" },
+      { label: "Dưới ngưỡng", value: d.subjects_below_threshold, color: C.ok, delta: `${normalPct}% ảnh chụp tài khoản` },
+      { label: "Vượt ngưỡng", value: d.subjects_triggered, color: C.warn, delta: `${triggeredPct}% ảnh chụp tài khoản` },
+      { label: "Cảnh báo từ lô dữ liệu", value: d.batch_alerts_created, color: C.risk, delta: "nhóm ưu tiên cần xem xét" },
+      { label: "Vụ việc đang xử lý", value: d.cases_investigating, color: C.agent, delta: "chưa kết luận" },
       {
         label: "Hàng lệnh worker",
         value: d.queue_depth,
@@ -97,7 +108,7 @@ export function DashboardPage() {
         label: `${f.source_name} → ${f.target_name}`,
         value: Math.round(f.volume_usd / 1e6),
         color: f.risk_score >= 80 ? C.risk : f.risk_score >= 60 ? C.warn : C.ok,
-        sub: `${f.channel} · risk ${f.risk_score}`,
+        sub: `${f.channel} · rủi ro ${f.risk_score}`,
       })),
     };
   }, [world.data]);
@@ -111,7 +122,7 @@ export function DashboardPage() {
     if (!ratio.length) return null;
     return {
       type: "bars",
-      labels: ratio.map((r) => r.metric_name.replace(/_/g, " ").slice(0, 18)),
+      labels: ratio.map((r) => (BENCHMARK_LABEL[r.metric_name] ?? r.metric_name).slice(0, 24)),
       series: [
         { name: "Đạt được", data: ratio.map((r) => r.metric_value), color: C.primary },
         { name: "Ngưỡng yêu cầu", data: ratio.map((r) => r.target_value!), color: C.inkDim },
@@ -125,8 +136,7 @@ export function DashboardPage() {
         title="Tổng quan giám sát"
         meta={
           <>
-            Cửa sổ {WINDOW_LABEL[win]} · dữ liệu synthetic
-            {world.data?.scenario_package ? ` · kịch bản ${world.data.scenario_package}` : ""}
+            Cửa sổ {WINDOW_LABEL[win]} · lô dữ liệu hành vi {d?.latest_source_name ?? "chưa có nguồn"} · không dùng đồ thị/hợp nhất điểm
           </>
         }
       />
@@ -151,15 +161,15 @@ export function DashboardPage() {
         <div className="flex min-w-0 flex-[2.4_1_520px] flex-col gap-3.5">
           <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
             <ChartCard
-              title="Cảnh báo theo ngày"
-              subtitle="Tổng · rủi ro cao · kéo để phóng to, nháy đúp để đặt lại"
+              title="5 cảnh báo ưu tiên theo ngày"
+              subtitle="Chỉ gồm nhóm cảnh báo ưu tiên, không phải phân phối của toàn bộ giao dịch"
               spec={trendSpec}
               state={dashboard.loading ? "loading" : trendSpec ? "ok" : "empty"}
-              note="Nguồn: bảng alert · điểm số do Risk Fusion chấm"
+              note="Nguồn: bảng cảnh báo · điểm hiện tại là điểm bất thường của ML hành vi, không phải xác suất rửa tiền."
             />
             <ChartCard
-              title="Hành lang rủi ro nhất"
-              subtitle="Khối lượng (triệu USD), tô màu theo mức rủi ro"
+              title="Hành lang địa lý"
+              subtitle="Chỉ hiển thị khi nguồn có quốc gia/toạ độ đã kiểm chứng"
               spec={corridorSpec}
               tools={["data", "dl", "full"]}
               state={world.loading ? "loading" : corridorSpec ? "ok" : "empty"}
@@ -168,15 +178,15 @@ export function DashboardPage() {
 
           <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
             <ChartCard
-              title="Kiểm định mô hình"
-              subtitle="Chỉ số đạt được so với ngưỡng đặt trước"
+              title="Đánh giá chuẩn mô phỏng ABM"
+              subtitle="Bộ đánh giá tổng hợp riêng; không phải kết quả của lô dữ liệu IBM"
               height={176}
               spec={benchSpec}
               tools={["data", "dl", "full"]}
               state={benchmarks.loading ? "loading" : benchSpec ? "ok" : "empty"}
-              note="Không dùng accuracy làm chỉ số chính — xem màn hình Benchmarks."
+              note="Không dùng để khẳng định hiệu năng ML hành vi trên dữ liệu vận hành."
             />
-            <Panel title="Phân bố typology" subtitle="Theo số cảnh báo đang mở">
+            <Panel title="Nhóm hành vi gợi ý" subtitle="Gợi ý trên tập cảnh báo, chưa phải kết luận điều tra">
               <div className="flex items-center gap-3">
                 <div className="w-[118px] flex-none">
                   <Chart spec={typologySpec} height={118} />
@@ -203,7 +213,7 @@ export function DashboardPage() {
             title="Hàng đợi ưu tiên — cần xử lý trước"
             actions={
               <Link to="/alerts" className="text-sm text-primary hover:text-primary-hover">
-                Mở Alert Center →
+                Mở Trung tâm cảnh báo →
               </Link>
             }
             bodyClassName="overflow-x-auto"
@@ -215,9 +225,9 @@ export function DashboardPage() {
               >
                 <span>Cảnh báo</span>
                 <span>Tài khoản</span>
-                <span>Typology</span>
-                <span>Risk</span>
-                <span>Detector</span>
+                <span>Nhóm hành vi</span>
+                <span>Rủi ro</span>
+                <span>Bộ phát hiện</span>
                 <span>Tạo lúc</span>
                 <span>Trạng thái</span>
               </div>
@@ -239,9 +249,9 @@ export function DashboardPage() {
                     {a.typology_label}
                   </span>
                   <RiskScore score={Math.round(num(a.risk_score))} />
-                  <span className="text-xs text-ink-soft">{a.detector}</span>
+                  <span className="text-xs text-ink-soft">{detectorLabel(a.detector)}</span>
                   <span className="text-xs text-ink-soft">{formatRelative(a.created_at)}</span>
-                  <span className="text-2xs text-ink-soft">{a.status}</span>
+                  <span className="text-2xs text-ink-soft">{alertStatusLabel(a.status)}</span>
                 </div>
               ))}
             </div>
@@ -249,9 +259,9 @@ export function DashboardPage() {
         </div>
 
         <div className="flex min-w-0 max-w-[420px] flex-[1_1_320px] flex-col gap-3.5">
-          <Panel title="Tình hình dòng tiền" subtitle="Tổng hợp từ World Monitor">
+          <Panel title="Tình hình dòng tiền" subtitle="Tổng hợp từ Giám sát địa lý">
             {world.loading && <Skeleton rows={4} />}
-            {world.data && (
+            {world.data?.geography_available && (
               <div className="flex flex-col gap-2">
                 {[...world.data.hubs]
                   .sort((a, b) => b.volume_usd - a.volume_usd)
@@ -266,8 +276,22 @@ export function DashboardPage() {
                     </div>
                   ))}
                 <Link to="/world" className="mt-1 text-center text-sm text-primary hover:text-primary-hover">
-                  Mở World Monitor →
+                  Mở Giám sát địa lý →
                 </Link>
+              </div>
+            )}
+            {world.data && !world.data.geography_available && (
+              <div className="rounded-[9px] border border-warn/25 bg-warn/10 p-3">
+                <div className="text-sm font-semibold text-warn-soft">Chưa có dữ liệu địa lý đã kiểm chứng</div>
+                <p className="mt-1.5 text-xs leading-relaxed text-ink-soft">{world.data.limitation}</p>
+                <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                  <span className="font-mono text-ink-mid">
+                    {int(world.data.transaction_count)} giao dịch · {world.data.source_name ?? "chưa có nguồn"}
+                  </span>
+                  <Link to="/world" className="text-primary hover:text-primary-hover">
+                    Xem nguồn →
+                  </Link>
+                </div>
               </div>
             )}
           </Panel>
@@ -282,10 +306,10 @@ export function DashboardPage() {
           >
             <dl className="flex flex-col gap-2 text-xs">
               {[
-                ["Lần chạy mô phỏng", world.data?.simulation_id ?? "—"],
-                ["Gói kịch bản", world.data?.scenario_package ?? "—"],
-                ["Trung tâm tài chính", world.data ? String(world.data.hubs.length) : "—"],
-                ["Hành lang theo dõi", world.data ? String(world.data.flows.length) : "—"],
+                ["Chế độ dữ liệu", world.data?.data_mode === "operational" ? "vận hành" : "mô phỏng"],
+                ["Nguồn giao dịch", world.data?.source_name ?? "—"],
+                ["Giao dịch đã nạp", world.data ? int(world.data.transaction_count) : "—"],
+                ["Dữ liệu địa lý", world.data?.geography_available ? "có" : "chưa có"],
                 ["Worker nền", d?.worker_alive ? "đang chạy" : "không phản hồi"],
                 ["Chiều sâu hàng lệnh", d ? String(d.queue_depth) : "—"],
               ].map(([k, v]) => (
@@ -299,13 +323,14 @@ export function DashboardPage() {
 
           <Panel title="Giới hạn cần biết" subtitle="Công bố kèm mọi kết quả">
             <p className="text-xs leading-relaxed text-ink-soft">
-              Toàn bộ dữ liệu ở đây là tổng hợp từ mô phỏng ABM. Nó đủ để dựng PoC và benchmark có căn cứ, nhưng{" "}
-              <b className="text-ink-mid">chưa đủ để khẳng định mô hình sẵn sàng triển khai</b> — việc đó cần hiệu
-              chỉnh và kiểm định trên dữ liệu thật đã được bảo vệ tại một tổ chức có thẩm quyền.
+              ML hành vi đang chạy trên lô giao dịch đã nạp. Tuy nhiên nguồn IBM không cung cấp quốc gia hoặc
+              toạ độ ngân hàng đã kiểm chứng, nên Giám sát địa lý không dựng hành lang địa lý từ nguồn này. Các màn có
+              nhãn <b className="text-ink-mid">mô phỏng ABM</b> là dữ liệu tổng hợp riêng, không được trộn vào kết
+              quả vận hành.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-ink-low">
               Không có thiết kế dataset nào bảo đảm phát hiện đầy đủ giao dịch tiền mặt hoặc tài sản ẩn danh không đi
-              qua điểm on/off-ramp quan sát được.
+              qua điểm chuyển đổi vào/ra tài sản quan sát được.
             </p>
           </Panel>
         </div>

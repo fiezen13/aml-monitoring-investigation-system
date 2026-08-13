@@ -42,11 +42,11 @@ export function MoneyPathPanel({ paths, activeId, model, onPick, onStep, missing
             {active.nodeIds.map((id) => model.byId[id]?.shortLabel ?? id).join(" → ")}
           </span>
           <span className="tabular font-mono text-2xs text-primary">{usd(active.amountUsd)}</span>
-          <span className="font-mono text-3xs text-ink-low">{active.hops} hop</span>
+          <span className="font-mono text-3xs text-ink-low">{active.hops} chặng</span>
           <span className="font-mono text-3xs text-ink-low">
             {active.durationMin > 0 ? `${active.durationMin} phút` : "cùng thời điểm"}
           </span>
-          <span className="font-mono text-3xs text-ink-low">conf {active.confidence.toFixed(2)}</span>
+          <span className="font-mono text-3xs text-ink-low">tin cậy {active.confidence.toFixed(2)}</span>
           {missingLinks > 0 && (
             <span className="rounded bg-warn/10 px-1.5 py-px font-mono text-3xs text-warn-soft">
               {missingLinks} thiếu liên kết
@@ -107,7 +107,7 @@ export function MoneyPathPanel({ paths, activeId, model, onPick, onStep, missing
                     {from?.shortLabel ?? "?"} <span className="text-ink-dim">→</span> {to?.shortLabel ?? "?"}
                   </span>
                   <span className="mt-0.5 block font-mono text-3xs text-ink-low">
-                    {p.hops} hop · {p.channels} kênh · {p.durationMin > 0 ? `${p.durationMin} phút` : "cùng thời điểm"}
+                    {p.hops} chặng · {p.channels} kênh · {p.durationMin > 0 ? `${p.durationMin} phút` : "cùng thời điểm"}
                   </span>
                 </span>
                 <span className="tabular flex-none text-right">
@@ -116,7 +116,7 @@ export function MoneyPathPanel({ paths, activeId, model, onPick, onStep, missing
                     className="block font-mono text-3xs"
                     style={{ color: p.confidence >= 0.8 ? C.ok : p.confidence >= 0.6 ? C.warn : C.risk }}
                   >
-                    conf {p.confidence.toFixed(2)}
+                    tin cậy {p.confidence.toFixed(2)}
                   </span>
                 </span>
               </button>

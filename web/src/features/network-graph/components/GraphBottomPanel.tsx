@@ -92,7 +92,7 @@ export function GraphBottomPanel({
         <button
           type="button"
           onClick={() => onOpen(!open)}
-          aria-label={open ? "Thu gọn panel dưới" : "Mở panel dưới"}
+          aria-label={open ? "Thu gọn bảng dưới" : "Mở bảng dưới"}
           className="ml-auto px-2 py-1 text-2xs text-ink-low hover:text-ink-hi"
         >
           {open ? "▾" : "▴"}
@@ -125,7 +125,7 @@ export function GraphBottomPanel({
                       <span className="min-w-0 flex-1 truncate text-ink-mid">
                         {cyc.map((id) => model.byId[id]?.shortLabel ?? id).join(" → ")}
                       </span>
-                      <span className="font-mono text-ink-dim">{cyc.length - 1} hop</span>
+                      <span className="font-mono text-ink-dim">{cyc.length - 1} chặng</span>
                     </li>
                   ))}
                 </ol>
@@ -218,7 +218,7 @@ export function GraphBottomPanel({
                             {model.byId[e.s]?.shortLabel ?? e.s} → {model.byId[e.t]?.shortLabel ?? e.t}
                           </span>
                           <span className="ml-auto font-mono text-agent-soft">
-                            conf {e.conf != null ? e.conf.toFixed(2) : "—"}
+                            tin cậy {e.conf != null ? e.conf.toFixed(2) : "—"}
                           </span>
                         </div>
                         <p className="mt-0.5 text-3xs leading-relaxed text-ink-low">{e.logic}</p>

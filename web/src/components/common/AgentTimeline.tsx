@@ -2,7 +2,7 @@ import { Check, CircleDashed, Loader2 } from "lucide-react";
 
 import type { CaseTimelineStep } from "../../types";
 
-/** Luồng xử lý hồ sơ của agent — 9 bước điều tra rút gọn theo Hình 4. */
+/** Luồng xử lý hồ sơ của tác tử — 9 bước điều tra rút gọn theo Hình 4. */
 export function AgentTimeline({ steps }: { steps: CaseTimelineStep[] }) {
   return (
     <ol className="relative ml-2 space-y-4 border-l border-line pl-5">

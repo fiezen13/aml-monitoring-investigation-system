@@ -28,7 +28,7 @@ const EVENT_TYPES = [
   "validation_run",
 ];
 
-/** Audit trail — chỉ đọc (NT4). Bảng chặn UPDATE/DELETE bằng trigger ở tầng
+/** Nhật ký kiểm toán — chỉ đọc (NT4). Bảng chặn UPDATE/DELETE bằng trigger ở tầng
  *  dữ liệu, nên ở đây không có nút sửa hay xoá nào để mà bỏ sót. */
 export function AuditPage() {
   const [search, setSearch] = useState("");
@@ -57,7 +57,7 @@ export function AuditPage() {
   return (
     <div className="mx-auto max-w-[980px]">
       <PageHeader
-        title="Audit trail"
+        title="Nhật ký kiểm toán"
         subtitle="Nhật ký bất biến của mọi hành động trong hệ thống — vụ việc phải tái dựng được khi thanh tra hỏi."
         actions={
           <div className="flex items-center gap-2">

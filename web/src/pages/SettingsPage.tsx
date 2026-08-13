@@ -51,13 +51,13 @@ export function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-[980px] space-y-3">
-      <PageHeader title="Cấu hình hệ thống" subtitle="Tham số Risk Engine, ngưỡng cảnh báo và kênh thông báo nội bộ." />
+      <PageHeader title="Cấu hình hệ thống" subtitle="Tham số bộ máy rủi ro, ngưỡng cảnh báo và kênh thông báo nội bộ." />
 
       {settingsQuery.loading && <Panel><LoadingSkeleton rows={5} /></Panel>}
       {settingsQuery.error && <Panel><ErrorState detail={settingsQuery.error} onRetry={settingsQuery.reload} /></Panel>}
       {!settingsQuery.loading && !settingsQuery.error && (
         <>
-          <Panel title="Ngưỡng Risk Engine" padded={false}>
+          <Panel title="Ngưỡng bộ máy rủi ro" padded={false}>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-left">
                 <thead><tr className="border-b border-line">{["Mã", "Tham số", "Giá trị", "Nguồn", "Cập nhật", ""].map((heading) => <th key={heading} className="px-4 py-2.5 text-2xs font-semibold uppercase tracking-wider text-ink-mid">{heading}</th>)}</tr></thead>
@@ -68,7 +68,7 @@ export function SettingsPage() {
                     <td className="tabular px-4 py-2.5 text-[13px] font-semibold text-ink-hi">{displayValue(setting)} <span className="text-2xs font-normal text-ink-low">{setting.unit}</span></td>
                     <td className="px-4 py-2.5 text-2xs text-ink-mid">{setting.source}</td>
                     <td className="tabular px-4 py-2.5 text-2xs text-ink-low">{formatDateTime(setting.updated_at)}</td>
-                    <td className="px-4 py-2.5"><Tooltip content={canEdit ? "Thay đổi cần lý do và ghi vào audit trail" : "Chỉ Admin hoặc MLRO được chỉnh Risk Engine"}><button type="button" disabled={!canEdit || saving === setting.code} onClick={() => edit(setting)} className="rounded-control border border-line px-2.5 py-1 text-2xs font-medium text-ink-hi hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-40">{saving === setting.code ? "Đang lưu" : "Chỉnh"}</button></Tooltip></td>
+                    <td className="px-4 py-2.5"><Tooltip content={canEdit ? "Thay đổi cần lý do và ghi vào nhật ký kiểm toán" : "Chỉ Quản trị viên hoặc MLRO được chỉnh bộ máy rủi ro"}><button type="button" disabled={!canEdit || saving === setting.code} onClick={() => edit(setting)} className="rounded-control border border-line px-2.5 py-1 text-2xs font-medium text-ink-hi hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-40">{saving === setting.code ? "Đang lưu" : "Chỉnh"}</button></Tooltip></td>
                   </tr>
                 ))}</tbody>
               </table>

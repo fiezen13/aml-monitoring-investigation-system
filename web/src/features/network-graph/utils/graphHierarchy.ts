@@ -67,7 +67,7 @@ const RULES: RoleRule[] = [
     band: "primary",
     tier: 2,
     role: "Tài khoản trung chuyển",
-    cluster: { id: "CL-MULE", label: "Tài khoản mule" },
+    cluster: { id: "CL-MULE", label: "Tài khoản trung chuyển" },
     short: (n) => stripIndex(n.label),
   },
   {
@@ -121,9 +121,9 @@ const RULES: RoleRule[] = [
     stage: "destination",
     band: "primary",
     tier: 1,
-    role: "Ví operator",
+    role: "Ví vận hành",
     cluster: null,
-    short: () => "Ví operator",
+    short: () => "Ví vận hành",
   },
   {
     test: (id) => /^WAL/.test(id),
@@ -199,11 +199,25 @@ function resolve(node: FcGraphNode): Resolved {
   }
 
   if (!rule) {
+    const fallbackRole: Record<string, string> = {
+      person: "Cá nhân",
+      account: "Tài khoản",
+      organisation: "Tổ chức",
+      org: "Tổ chức",
+      platform: "Nền tảng",
+      vasp: "VASP",
+      wallet: "Ví",
+      contract: "Hợp đồng thông minh",
+      token: "Tài sản số",
+      device: "Thiết bị",
+      alert: "Cảnh báo",
+      case: "Vụ việc",
+    };
     return {
       stage: TYPE_STAGE[node.type] ?? "collection",
       band: "primary",
       tier: node.risk >= 85 ? 1 : node.risk >= 60 ? 2 : 3,
-      role: node.type,
+      role: fallbackRole[node.type] ?? node.type,
       clusterId: null,
       clusterLabel: null,
       shortLabel: node.label,
@@ -241,6 +255,18 @@ const EDGE_LAYER: Record<string, LayerKey> = {
 };
 
 const MONEY_KINDS = new Set(["transfer", "p2p", "deposit", "withdrawal", "crypto", "swap", "bridge"]);
+
+function graphTextVi(value: string): string {
+  return value
+    .replace(/^Mule\s+/i, "Trung chuyển ")
+    .replace(/^OTC Desk\s+/i, "Đầu mối OTC ")
+    .replace(/^P2P Vendor\s+/i, "Đối tác P2P ")
+    .replace(/^VASP Exchange\s+/i, "Sàn VASP ")
+    .replace(/\bmerchant\b/gi, "đơn vị chấp nhận thanh toán")
+    .replace(/\boperator\b/gi, "vận hành")
+    .replace(/\bstablecoin\b/gi, "đồng tiền ổn định")
+    .replace(/\bfingerprint trình duyệt\b/gi, "dấu vân tay trình duyệt");
+}
 
 export function edgeLayerOf(kind: string): LayerKey {
   return EDGE_LAYER[kind] ?? "entity";
@@ -309,13 +335,14 @@ export function buildModel(raw: FcGraph): GraphModel {
   const span = Math.max(1, (all.length ? Math.max(...all) : 1) - min);
 
   const nodes: GNode[] = raw.nodes.map((n) => {
-    const r = resolve(n);
+    const localized = { ...n, label: graphTextVi(n.label), sub: graphTextVi(n.sub ?? "") };
+    const r = resolve(localized);
     return {
       id: n.id,
       type: n.type,
-      label: n.label,
+      label: localized.label,
       shortLabel: r.shortLabel,
-      sub: n.sub ?? "",
+      sub: localized.sub,
       role: r.role,
       risk: n.risk,
       negative: n.negative,
@@ -347,7 +374,7 @@ export function buildModel(raw: FcGraph): GraphModel {
       amt: e.amt,
       inferred: e.inferred,
       conf: e.conf,
-      logic: e.logic,
+      logic: e.logic ? graphTextVi(e.logic) : null,
       knownFrom: e.known_from,
       time: (new Date(e.known_from).getTime() - min) / span,
       layer: edgeLayerOf(e.kind),

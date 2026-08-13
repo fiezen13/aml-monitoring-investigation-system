@@ -32,7 +32,7 @@ export const STAGE_LABEL: Record<Stage, string> = {
   aggregation: "Tài khoản gom",
   conversion: "Chuyển đổi",
   gateway: "Cổng VASP",
-  crypto: "Ví crypto",
+  crypto: "Ví tài sản mã hoá",
   destination: "Đích đến",
   case: "Cảnh báo",
 };

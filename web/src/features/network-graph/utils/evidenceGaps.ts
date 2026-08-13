@@ -28,8 +28,8 @@ function describeKnown(from: GNode, to: GNode): string {
 function suggestSource(from: Stage, to: Stage): string {
   if (to === "gateway") return "Sao kê nạp tiền của sàn, hoặc yêu cầu cung cấp thông tin gửi tới VASP";
   if (from === "gateway") return "Nhật ký rút tiền của sàn kèm địa chỉ ví đích";
-  if (to === "crypto" || from === "crypto") return "Phân cụm địa chỉ on-chain, hoặc dữ liệu nhãn ví từ nhà cung cấp";
-  if (to === "destination") return "Truy vết on-chain nhiều chặng tới ví đích";
+  if (to === "crypto" || from === "crypto") return "Phân cụm địa chỉ trên chuỗi, hoặc dữ liệu nhãn ví từ nhà cung cấp";
+  if (to === "destination") return "Truy vết trên chuỗi nhiều chặng tới ví đích";
   return "Dữ liệu giao dịch của tổ chức trung gian ở chặng này";
 }
 

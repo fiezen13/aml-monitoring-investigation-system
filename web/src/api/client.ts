@@ -15,6 +15,7 @@ import type { Evidence, NetworkEdge, NetworkNode, SarDraft, User } from "../type
 
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "") + "/api/v1";
 export const SESSION_TOKEN_KEY = "fin07.session.token";
+export const AUTH_EXPIRED_EVENT = "fin07:auth-expired";
 
 export class ApiError extends Error {
   constructor(
@@ -54,6 +55,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       if (typeof body?.detail === "string") detail = body.detail;
     } catch {
       /* thân phản hồi không phải JSON — giữ thông báo mặc định */
+    }
+    if (response.status === 401 && path !== "/auth/login") {
+      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail }));
     }
     throw new ApiError(response.status, detail);
   }
@@ -175,6 +179,13 @@ export interface ApiDashboard {
   cases_investigating: number;
   sar_pending: number;
   avg_risk_score: number;
+  latest_batch_id: string | null;
+  latest_source_name: string | null;
+  transactions_analyzed: number;
+  subjects_analyzed: number;
+  subjects_below_threshold: number;
+  subjects_triggered: number;
+  batch_alerts_created: number;
   typology_distribution: ApiTypologyShare[];
   top_alerts: ApiAlert[];
   queue_depth: number;
@@ -262,7 +273,9 @@ export interface FcHub {
   country: string;
   lat: number;
   lon: number;
-  jurisdiction_risk: "low" | "medium" | "high";
+  // "unknown" cho dữ liệu vận hành: quốc gia suy được từ tên ngân hàng, còn
+  // mức rủi ro pháp vực là quyết định chính sách nên chưa gán.
+  jurisdiction_risk: "low" | "medium" | "high" | "unknown";
   inbound: number;
   outbound: number;
   volume_usd: number;
@@ -297,6 +310,12 @@ export interface FcWorld {
   flows: FcFlow[];
   simulation_id: string | null;
   scenario_package: string | null;
+  data_mode: "operational" | "simulation";
+  source_id: string | null;
+  source_name: string | null;
+  transaction_count: number;
+  geography_available: boolean;
+  limitation: string | null;
 }
 
 export interface FcGraphNode {
@@ -488,6 +507,134 @@ export interface FcTxPage {
   pageSize: number;
 }
 
+export type InvestigationStatus =
+  | "QUEUED"
+  | "INVESTIGATING"
+  | "COMPLETED"
+  | "INSUFFICIENT_EVIDENCE"
+  | "NEEDS_HUMAN_REVIEW"
+  | "FAILED";
+
+export interface ApiRiskComponent {
+  score: number;
+  weight: number;
+  contribution: number;
+  available: boolean;
+  source_ref: string | null;
+}
+
+export interface ApiRiskBreakdown {
+  alert_id: string;
+  final_risk_score: number;
+  score_scale: "0-1";
+  fusion_available: boolean;
+  components: Record<string, ApiRiskComponent>;
+  source_of_truth: "detection_engine";
+  limitation: string | null;
+}
+
+export interface ApiValidationIssue {
+  type: string;
+  claim: string;
+  evidence_ref: string | null;
+  required_tool: string | null;
+  detail: string;
+}
+
+export interface ApiValidation {
+  status: "PASS" | "FAIL";
+  confidence: number;
+  issues: ApiValidationIssue[];
+  missing_evidence: string[];
+  unsupported_claims: string[];
+  next_action: "RETURN_TO_INVESTIGATION" | "BUILD_CASE_PACKAGE";
+}
+
+export interface ApiInvestigationState {
+  investigation_id: string;
+  alert_id: string;
+  case_id: string;
+  account_key: string;
+  status: InvestigationStatus;
+  workflow_state: string;
+  iteration: number;
+  tool_call_count: number;
+  snapshot_time: string;
+  risk_summary: Partial<ApiRiskBreakdown>;
+  accounts_expanded: string[];
+  open_questions: string[];
+  validation: ApiValidation | null;
+  failure_reason: string | null;
+  human_review: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface ApiInvestigationStart {
+  investigation_id: string;
+  alert_id: string;
+  case_id: string;
+  job_id: string;
+  status: "QUEUED";
+}
+
+export interface ApiInvestigationEvidence {
+  evidence_id: string;
+  type: string;
+  source: string;
+  account_key: string;
+  payload: Record<string, unknown>;
+  transaction_refs: string[];
+  created_at: string;
+  integrity: {
+    source_system: string;
+    source_record_ids: string[];
+    content_hash: string;
+  };
+  is_untrusted_content: boolean;
+}
+
+export interface ApiClaim {
+  claim_id: string;
+  claim: string;
+  claim_type: "FACT" | "INFERENCE";
+  evidence_refs: string[];
+  confidence: number;
+}
+
+export interface ApiExplanation {
+  summary: string;
+  risk_drivers: Array<{
+    source: "rule" | "anomaly" | "graph";
+    score: number;
+    weight: number;
+    contribution: number;
+    reason: string;
+    evidence_refs: string[];
+  }>;
+  claims: ApiClaim[];
+  facts: string[];
+  inferences: string[];
+  missing_information: string[];
+  typologies: string[];
+  confidence: number;
+  recommended_action: string;
+  requires_human_review: true;
+}
+
+export interface ApiTraceEvent {
+  trace_id: string;
+  investigation_id: string;
+  agent: string;
+  event_type: string;
+  tool: string | null;
+  input_summary: Record<string, unknown>;
+  output_ref: string | null;
+  short_rationale: string;
+  occurred_at: string;
+}
+
 // ---------------------------------------------------------------------
 // Điểm gọi
 // ---------------------------------------------------------------------
@@ -511,12 +658,45 @@ export const api = {
 
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 
-  dashboard: () => request<ApiDashboard>("/dashboard"),
+  dashboard: (source: "operational" | "all" = "operational") =>
+    request<ApiDashboard>(`/dashboard${query({ source })}`),
 
-  alerts: (params: { status?: string; typology_code?: string; min_risk?: number; limit?: number } = {}) =>
+  alerts: (
+    params: {
+      status?: string;
+      typology_code?: string;
+      min_risk?: number;
+      source?: "operational" | "all";
+      limit?: number;
+    } = {},
+  ) =>
     request<ApiAlert[]>(`/alerts${query(params)}`),
 
   alert: (alertId: string) => request<ApiAlertDetail>(`/alerts/${encodeURIComponent(alertId)}`),
+
+  latestInvestigation: (alertId: string) =>
+    request<ApiInvestigationState | null>(`/alerts/${encodeURIComponent(alertId)}/investigation`),
+
+  investigateAlert: (alertId: string) =>
+    request<ApiInvestigationStart>(`/alerts/${encodeURIComponent(alertId)}/investigate`, { method: "POST" }),
+
+  investigation: (investigationId: string) =>
+    request<ApiInvestigationState>(`/investigations/${encodeURIComponent(investigationId)}`),
+
+  investigationEvidence: (investigationId: string) =>
+    request<ApiInvestigationEvidence[]>(`/investigations/${encodeURIComponent(investigationId)}/evidence`),
+
+  investigationTrace: (investigationId: string) =>
+    request<ApiTraceEvent[]>(`/investigations/${encodeURIComponent(investigationId)}/trace`),
+
+  investigationExplanation: (investigationId: string) =>
+    request<ApiExplanation>(`/investigations/${encodeURIComponent(investigationId)}/explanation`),
+
+  reviewInvestigation: (investigationId: string, decision: string, reason: string) =>
+    request<ApiInvestigationState>(`/investigations/${encodeURIComponent(investigationId)}/review`, {
+      method: "POST",
+      body: JSON.stringify({ decision, reason }),
+    }),
 
   cases: (params: { state?: string; limit?: number } = {}) => request<ApiCase[]>(`/cases${query(params)}`),
 
@@ -580,7 +760,8 @@ export const api = {
 
   search: (q: string) => request<FcSearchHit[]>(`/search${query({ q })}`),
 
-  world: () => request<FcWorld>("/world"),
+  world: (mode: "operational" | "simulation" = "operational") =>
+    request<FcWorld>(`/world${query({ mode })}`),
 
   entityGraph: (limit = 400) => request<FcGraph>(`/fc/graph${query({ limit })}`),
 
@@ -603,7 +784,14 @@ export const api = {
   sources: () => request<FcSource[]>("/fc/sources"),
 
   transactions: (
-    params: { q?: string; channel?: string; min_amount?: number; page?: number; page_size?: number } = {},
+    params: {
+      q?: string;
+      channel?: string;
+      min_amount?: number;
+      source?: "operational" | "all";
+      page?: number;
+      page_size?: number;
+    } = {},
   ) => request<FcTxPage>(`/transactions${query(params)}`),
 
   // Không nằm dưới /api/v1 — đây là endpoint hạ tầng của chính ứng dụng.

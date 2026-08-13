@@ -54,7 +54,7 @@ export function ApprovalsPage() {
         sla: sar.approval?.requested_at ? new Date(sar.approval.requested_at).toLocaleString("vi-VN") : "Chưa gửi",
         slaPct: status === "pending" ? 70 : 100,
         slaTone: status === "pending" ? "warn" : status === "approved" ? "ok" : "info",
-        validation: sar.validationIssues.length === 0 ? "Evidence hợp lệ" : `${sar.validationIssues.length} lỗi`,
+        validation: sar.validationIssues.length === 0 ? "Bằng chứng hợp lệ" : `${sar.validationIssues.length} lỗi`,
         validationTone: sar.validationIssues.length === 0 ? "ok" : "risk",
         flagged: sar.riskLevel === "CAO",
       };
@@ -140,7 +140,7 @@ export function ApprovalsPage() {
     },
     {
       key: "validation",
-      header: "Validation Status",
+      header: "Trạng thái kiểm chứng",
       render: (a) =>
         a.validationTone === "ok" ? (
           <StatusBadge tone="ok" label={a.validation} />

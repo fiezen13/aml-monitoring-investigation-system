@@ -89,7 +89,7 @@ export function ModelsPage() {
   return (
     <div className="flex animate-up flex-col gap-3.5 p-4">
       <ScreenTitle
-        title="Model Monitoring"
+        title="Giám sát mô hình"
         meta={rows[0] ? `${rows[0].model_version} · 14 ngày gần nhất` : "Chưa có dữ liệu giám sát"}
       />
 
@@ -136,10 +136,10 @@ export function ModelsPage() {
           <ol className="flex list-decimal flex-col gap-2 pl-5 text-xs leading-relaxed text-ink-soft">
             <li>
               Xác định trôi đến từ đâu: dữ liệu nguồn đổi, hành vi thực tế đổi, hay chính đường ống nạp có lỗi. Xem
-              màn hình Data Quality trước khi kết luận là mô hình có vấn đề.
+              màn hình Chất lượng dữ liệu trước khi kết luận là mô hình có vấn đề.
             </li>
             <li>
-              Kiểm tra chỉ số phát hiện ở màn hình Benchmarks. Trôi phân phối chưa chắc làm giảm chất lượng phát hiện —
+              Kiểm tra chỉ số phát hiện ở màn hình Đánh giá chuẩn. Trôi phân phối chưa chắc làm giảm chất lượng phát hiện —
               nhưng nếu cả hai cùng xấu đi thì nguyên nhân đã rõ.
             </li>
             <li>

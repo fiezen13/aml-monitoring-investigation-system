@@ -10,11 +10,11 @@ import { Chip, Empty, KpiCard, Panel, ScreenTitle, Skeleton } from "../component
 import { C, SERIES } from "../design/palette";
 
 /**
- * Crypto Tracing — chuyển động on-chain và mức độ phơi nhiễm dịch vụ.
+ * Truy vết tài sản mã hoá — chuyển động trên chuỗi và mức độ phơi nhiễm dịch vụ.
  *
- * Điểm cần giữ đúng ở màn hình này là *độ bất định*. Dữ liệu on-chain là công
+ * Điểm cần giữ đúng ở màn hình này là *độ bất định*. Dữ liệu trên chuỗi là công
  * khai và chắc chắn, nhưng việc gán một địa chỉ cho một dịch vụ, hay nối chân
- * tiền đồng với chân on-chain, đều là suy luận có xác suất. Mọi con số suy
+ * tiền đồng với chân trên chuỗi, đều là suy luận có xác suất. Mọi con số suy
  * luận ở đây đều đi kèm độ tin cậy, và ngôn từ dừng ở "mức độ phơi nhiễm" chứ
  * không tuyên bố đã truy ra danh tính.
  */
@@ -32,6 +32,24 @@ const SERVICE_COLOR: Record<string, string> = {
   sanctioned: C.risk,
 };
 
+const SERVICE_LABEL: Record<string, string> = {
+  exchange: "Sàn giao dịch",
+  mixer: "Dịch vụ trộn",
+  bridge: "Cầu nối chuỗi",
+  gambling: "Cá cược",
+  darknet: "Chợ ẩn danh",
+  p2p: "P2P",
+  sanctioned: "Bị trừng phạt",
+};
+
+const TRANSFER_KIND_LABEL: Record<string, string> = {
+  transfer: "Chuyển tài sản",
+  swap: "Hoán đổi",
+  bridge: "Chuyển qua cầu nối",
+  mint: "Phát hành",
+  burn: "Tiêu huỷ",
+};
+
 export function CryptoPage() {
   const data = useApi(() => api.crypto(300), []);
   const [tab, setTab] = useState<"transfers" | "exposures">("transfers");
@@ -43,7 +61,7 @@ export function CryptoPage() {
     const lowConfidence = transfers.filter((t) => (t.link_confidence ?? 1) < 0.7).length;
     const indirect = exposures.filter((e) => e.exposure_kind === "indirect").length;
     return [
-      { label: "Tổng giá trị on-chain", value: usd(data.data?.total_usd ?? 0), color: C.inkHi, delta: `${transfers.length} giao dịch` },
+      { label: "Tổng giá trị trên chuỗi", value: usd(data.data?.total_usd ?? 0), color: C.inkHi, delta: `${transfers.length} giao dịch` },
       { label: "Địa chỉ có phơi nhiễm", value: new Set(exposures.map((e) => e.address)).size, color: C.warn, delta: `${indirect} gián tiếp` },
       {
         label: "Liên kết độ tin cậy thấp",
@@ -107,7 +125,7 @@ export function CryptoPage() {
     return {
       type: "donut",
       items: [...byType.entries()].map(([t, n], i) => ({
-        label: t,
+        label: SERVICE_LABEL[t] ?? t,
         value: n,
         color: SERVICE_COLOR[t] ?? SERIES[i % SERIES.length],
       })),
@@ -117,8 +135,8 @@ export function CryptoPage() {
   return (
     <div className="flex animate-up flex-col gap-3.5 p-4">
       <ScreenTitle
-        title="Crypto Tracing"
-        meta="Dữ liệu on-chain là quan sát chắc chắn; việc gán dịch vụ và nối với chân ngân hàng là suy luận có xác suất"
+        title="Truy vết tài sản mã hoá"
+        meta="Dữ liệu trên chuỗi là quan sát chắc chắn; việc gán dịch vụ và nối với chân ngân hàng là suy luận có xác suất"
       />
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
@@ -135,7 +153,7 @@ export function CryptoPage() {
           state={data.loading ? "loading" : volumeSpec ? "ok" : "empty"}
         />
         <ChartCard
-          title="Độ tin cậy liên kết bank ↔ chain"
+          title="Độ tin cậy liên kết ngân hàng ↔ chuỗi"
           subtitle="Phân bố — dồn ở giữa nghĩa là phần lớn chỉ là ứng viên"
           spec={confidenceSpec}
           tools={["data", "dl", "full"]}
@@ -154,7 +172,7 @@ export function CryptoPage() {
       <div className="flex gap-1.5">
         {(
           [
-            ["transfers", `Giao dịch on-chain (${transfers.length})`],
+            ["transfers", `Giao dịch trên chuỗi (${transfers.length})`],
             ["exposures", `Nhãn phơi nhiễm (${exposures.length})`],
           ] as const
         ).map(([key, label]) => (
@@ -180,7 +198,7 @@ export function CryptoPage() {
               className="grid gap-2 border-b border-line px-3 py-2 text-3xs uppercase tracking-[0.07em] text-ink-low"
               style={{ gridTemplateColumns: TX_COLS }}
             >
-              <span>Tx hash</span>
+              <span>Mã băm giao dịch</span>
               <span>Từ địa chỉ</span>
               <span>Đến địa chỉ</span>
               <span>Tài sản</span>
@@ -189,7 +207,7 @@ export function CryptoPage() {
               <span>Độ tin cậy</span>
             </div>
             {data.loading && <Skeleton rows={8} />}
-            {!data.loading && !transfers.length && <Empty text="Chưa có giao dịch on-chain nào" hint="Chạy scripts/abm_generate.py để sinh dữ liệu" />}
+            {!data.loading && !transfers.length && <Empty text="Chưa có giao dịch trên chuỗi nào" hint="Chạy scripts/abm_generate.py để sinh dữ liệu" />}
             {transfers.map((t) => (
               <div
                 key={t.id}
@@ -207,7 +225,7 @@ export function CryptoPage() {
                 </span>
                 <span className="text-xs text-ink-soft">{t.asset}</span>
                 <span className="tabular text-right font-mono text-xs">{usd(t.amount_usd)}</span>
-                <span className="text-xs text-ink-soft">{t.kind}</span>
+                <span className="text-xs text-ink-soft">{TRANSFER_KIND_LABEL[t.kind] ?? t.kind}</span>
                 <span
                   className="tabular font-mono text-xs"
                   style={{ color: (t.link_confidence ?? 1) < 0.7 ? C.warn : C.ok }}
@@ -228,7 +246,7 @@ export function CryptoPage() {
               <span>Địa chỉ</span>
               <span>Dịch vụ</span>
               <span>Loại phơi nhiễm</span>
-              <span>Số hop</span>
+              <span>Số chặng</span>
               <span>Độ tin cậy</span>
               <span>Nguồn · hiệu lực từ</span>
             </div>
@@ -243,7 +261,7 @@ export function CryptoPage() {
                 <span className="font-mono text-xs" title={e.address}>
                   {shortAddr(e.address)}
                 </span>
-                <Chip color={SERVICE_COLOR[e.service_type] ?? C.inkSoft}>{e.service_type}</Chip>
+                <Chip color={SERVICE_COLOR[e.service_type] ?? C.inkSoft}>{SERVICE_LABEL[e.service_type] ?? e.service_type}</Chip>
                 <span className="text-xs text-ink-soft">
                   {e.exposure_kind === "direct" ? "trực tiếp" : "gián tiếp"}
                 </span>
@@ -265,12 +283,12 @@ export function CryptoPage() {
 
       <Panel title="Giới hạn của phương pháp" subtitle="Phải công bố cùng mọi kết luận truy vết">
         <p className="text-xs leading-relaxed text-ink-soft">
-          Agent chỉ được kết luận rằng một địa chỉ <b className="text-ink-mid">có mức độ phơi nhiễm</b> hoặc{" "}
-          <b className="text-ink-mid">có đường đi phù hợp với typology</b>, kèm độ tin cậy. Không được tuyên bố đã phá
+          Tác tử chỉ được kết luận rằng một địa chỉ <b className="text-ink-mid">có mức độ phơi nhiễm</b> hoặc{" "}
+          <b className="text-ink-mid">có đường đi phù hợp với nhóm hành vi</b>, kèm độ tin cậy. Không được tuyên bố đã phá
           ẩn danh một dịch vụ trộn hay xác định danh tính chủ sở hữu ví.
         </p>
         <p className="mt-2 text-xs leading-relaxed text-ink-low">
-          Giao dịch tiền mặt thuần tuý và tài sản tăng cường ẩn danh không đi qua điểm on/off-ramp quan sát được sẽ tạo
+          Giao dịch tiền mặt thuần tuý và tài sản tăng cường ẩn danh không đi qua điểm chuyển đổi vào/ra tài sản quan sát được sẽ tạo
           ra vùng mù không thể khắc phục bằng dữ liệu ngân hàng. Sản phẩm đo và báo cáo độ phủ, không quảng cáo phát
           hiện toàn diện.
         </p>
