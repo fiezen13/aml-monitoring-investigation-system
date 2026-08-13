@@ -45,7 +45,11 @@
     "unique_evidence_ids": 117288,
     "witness_rows": 1838411,
     "unique_transaction_ids": 561643,
-    "transaction_ids_found": 561643
+    "transaction_ids_found": 561643,
+    "feature_join_checked": true,
+    "sample_split_checked": true,
+    "detector_versions_checked": true,
+    "config_hashes_checked": true
   },
   "telemetry": {
     "phases": [
@@ -276,6 +280,17 @@
     "peak_phase_rss_mb": 5523.6
   },
   "runtime_s": 176.933,
-  "created_at": "2026-08-13T03:28:31.724786+00:00",
-  "test_status": "PASS"
+  "created_at": "2026-08-13T04:19:24.967565+00:00",
+  "test_status": "PASS",
+  "manifest_path": "reports/graph_pipeline_manifest_v2.json",
+  "detection_artifact_checksum": "33e951696fbfe019d37c09e528b4f9d1cee40b1333f03f44108b480d3fdda841",
+  "evidence_artifact_checksum": "3a64a17d954f0b1b9ccfbd340a44dd095cdfa290196dac0be7e7c7d30db87223",
+  "features_prebuilt": true,
+  "feature_prebuilt_validation": {
+    "features_prebuilt": true,
+    "path": "data/processed/graph_features_v1.parquet",
+    "checksum": "a2dcd7f1f7eccf5ccd4123c52d0ff08466622ead1ac3621c23134e311c77c9fe",
+    "checksum_validated_against": "explicit_feature_checksum",
+    "schema_version": "graph_features_v1"
+  }
 }

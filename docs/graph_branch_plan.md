@@ -1,9 +1,11 @@
 # Graph Detection Branch Plan — FIN-07
 
-**Status:** implemented baseline — features + FAN v3-min + GATHER_SCATTER; CYCLE full-data remains performance-blocked  
+**Status:** implemented and evaluated baseline — frozen features + FAN v3-min + GATHER_SCATTER v1 + CYCLE v1; CYCLE full-run and GT evaluation complete
 **Scope:** Graph Detection baseline for FIN-07 AML  
 **Supersedes (for Graph direction):** cheap/deep graph + PageRank/betweenness/pass-through/GNN ideas in mentor review / older Data-ML notes, to the extent they conflict with this document  
 **Related contracts:** Task 1 (`src/data/schemas.py`, `data/processed/aml.duckdb`), Task 2 (`docs/task2_schema.md`), Isolation Forest (`docs/isolation_forest_handoff.md`)
+
+**Frozen detector versions:** `FAN_IN/FAN_OUT = graph_fan_v3_min` (`graph_fan_config_v3.json`), `GATHER_SCATTER = graph_gather_v1` (`graph_gather_config_v1.json`), `CYCLE = graph_cycle_v1` (`src/data/cycle_detector.py`). Thresholds/configs were selected on train/validation and are not retuned on test.
 
 ---
 
@@ -362,6 +364,8 @@ Baseline **không** cover `SCATTER-GATHER`, `STACK`, `BIPARTITE`, `RANDOM`.
 
 ### 4.1. `CYCLE`
 
+**Implementation status:** full 17-snapshot run completed with temporal witness validation; GT evaluation is complete on eligible IBM CYCLE blocks. The detector is frozen as `graph_cycle_v1`.
+
 **Ý tưởng:** dòng tiền khép kín `A → B → C → … → A` trong window 7d.
 
 **Baseline dự kiến**
@@ -456,6 +460,8 @@ Không dùng literal `p75(in) ≤ p25(out)` (gần như 0 hit trên LI-Small) v�
 ```text
 median(occurred_at | inbound) <= median(occurred_at | outbound) + tolerance_hours
 ```
+
+Production window is the UTC half-open interval `[as_of_ts - 7 days, as_of_ts)`, including the start and excluding the end. The frozen detector version is `graph_gather_v1`; its DuckDB path is timezone-safe for `TIMESTAMPTZ`.
 
 Skeleton:
 
@@ -669,9 +675,10 @@ Evaluation reports:
 
 Eval này **không** phụ thuộc có `graph_score`.
 
-**Matching GT (đã đóng — FAN / GATHER eval v1):**  
+**Matching GT (đã đóng — FAN / GATHER / CYCLE eval):**
 cùng loại pattern + cùng **center** + IBM time span overlap window 7d detection.  
-Enrich Patterns.txt → `ibm_graph_eval_gt_v1.json`; GATHER audit → `reports/graph_eval_v2.json`; frozen FAN comparison → `reports/fan_final_test_comparison_v1.json`. CYCLE excluded.
+Enrich Patterns.txt → `ibm_graph_eval_gt_v1.json`; GATHER audit → `reports/graph_eval_v2.json`; frozen FAN comparison → `reports/fan_final_test_comparison_v1.json`; CYCLE evaluation → `reports/graph_eval_cycle_full_v2.json`.
+Latest GATHER test metrics after the UTC fix: 163 predictions, precision `0.0429`, recall `0.375`, F1 `0.0771`. CYCLE test evaluation: 13,169 motifs, precision `0.00190`, recall `1.0`, F1 `0.00379`; low precision reflects sparse IBM GT and is not used for threshold tuning.
 
 ---
 
@@ -747,8 +754,8 @@ Alert → Graph Tool → detection_id → pattern_instance_id / evidence_id → 
 4. Feature pipeline → `graph_features_v1.parquet` (có `sample_split`)  
 5. Detector `CYCLE` (witness TX + canonicalize motif + fan-out `detection_id` theo participant) + evidence JSONL + perf smoke  
 6. EDA trên **train samples** → `FAN_IN` / `FAN_OUT` configurable thresholds (train→val freeze→test)  
-7. ~~`GATHER_SCATTER` median-based temporal~~ — baseline v1 frozen (`graph_gather_config_v1.json`); artifacts merged into `graph_detection_v1` / `graph_evidence_v1`  
-8. ~~Eval vs Task 2~~ — FAN_IN / FAN_OUT / GATHER_SCATTER P/R/F1 on test (`scripts/run_graph_detector_eval.py`); CYCLE deferred  
+7. ~~`GATHER_SCATTER` median-based temporal~~ — baseline v1 frozen (`graph_gather_config_v1.json`); UTC window bug fixed; artifacts merged into `graph_detection_v1` / `graph_evidence_v1`
+8. ~~Eval vs Task 2~~ — FAN_IN / FAN_OUT / GATHER_SCATTER P/R/F1 on test (`scripts/run_graph_detector_eval.py`); CYCLE full-run + GT evaluation complete
 9. (Sau / optional) `graph_score` aggregation theo account + fusion hook  
 
 **Không làm trong bước document này:** implement code Graph, sửa Task 1/2, invent FAN/GATHER thresholds, invent `graph_score`.
@@ -777,26 +784,26 @@ Alert → Graph Tool → detection_id → pattern_instance_id / evidence_id → 
 
 Chỉ các mục sau vẫn cần team/chốt thêm — **không** tự invent khi implement:
 
-1. ~~**FAN_IN / FAN_OUT threshold strategy**~~ — **ĐÃ ĐÓNG:** v1 audit (`graph_fan_config_v1.json`); MVP freeze **v2B** → `graph_fan_config_v2.json` (deg/HHI/dispersion siết trên train/val volume; không tune theo test)  
+1. ~~**FAN_IN / FAN_OUT threshold strategy**~~ — **ĐÃ ĐÓNG:** final freeze **v3-min** → `graph_fan_config_v3.json` (train/validation selection; không tune theo test)
 2. ~~**GATHER_SCATTER parameters**~~ — **ĐÃ ĐÓNG (baseline v1, train/val EDA):**  
    - Temporal: **median-based** (không dùng literal `p75_in ≤ p25_out` vì gần như 0 hit trên LI-Small; cũng không dùng `last_in ≤ first_out`)  
      `median(occurred_at | inbound) <= median(occurred_at | outbound) + tolerance_hours`  
    - `s_min = d_min = 5` (unique counterparties)  
    - Amount ratio `sum(amount out) / sum(amount_received in) ∈ [r_lo, r_hi]` với grid tune val  
    - Frozen values: xem `configs/graph/graph_gather_config_v1.json`  
-3. ~~**GT matching rule**~~ — **ĐÃ ĐÓNG (eval v1, FAN/GATHER only):**  
+3. ~~**GT matching rule**~~ — **ĐÃ ĐÓNG (FAN/GATHER/CYCLE evaluation):**
    - Same `detected_pattern` (map hyphen↔underscore) + **center** account (normalize `account_key` như Task 1) + IBM `[t_min, t_max]` **overlap** detection 7d window  
    - Enrich từ `LI-Small_Patterns.txt` (JSON Task 2 thiếu time; bank leading-zero lệch) → `data/processed/ibm_graph_eval_gt_v1.json`  
    - Credit: recall theo GT, precision theo `pattern_instance_id`; **primary = test**. FAN final comparison v1/v2B/v3-min nằm ở `reports/fan_final_test_comparison_v1.json`.  
-   - **CYCLE excluded** while blocked; no complex matching  
-4. **CYCLE performance bounds** — giới hạn số motif / snapshot; heuristic prune multi-edge enumeration nếu cần  
+   - CYCLE matching đã đóng: exact directed canonical account-cycle signature + IBM time interval overlap; report `graph_eval_cycle_full_v2.json`
+4. ~~**CYCLE performance bounds**~~ — **ĐÃ ĐÓNG:** full 17-snapshot run pass, no incomplete SCC/cap/prune semantics
 5. **Sample generation volume** — mọi account-ngày active vs subsample để kiểm soát kích thước artifact  
 
 ---
 
 ## Legacy / decisions superseded
 
-Repo hiện có pipeline Graph Detection cho features, FAN và GATHER_SCATTER. CYCLE đã có code/unit test nhưng full-data còn bị chặn bởi hiệu năng. Các mâu thuẫn chủ yếu nằm ở **tài liệu hướng cũ**:
+Repo hiện có pipeline Graph Detection cho features và cả bốn detector FAN/CYCLE/GATHER_SCATTER. Full-run, evidence validation và evaluation reports đã được tạo; các mâu thuẫn còn lại trong tài liệu hướng cũ được supersede bởi status/version ở đầu file.
 
 | Nguồn cũ | Nội dung cũ | Quyết định mới (plan này) |
 |----------|-------------|---------------------------|
@@ -814,4 +821,4 @@ Repo hiện có pipeline Graph Detection cho features, FAN và GATHER_SCATTER. C
 
 ---
 
-*Graph branch baseline — implementation status summarized above; frozen FAN details are in `docs/fan_detector_v3_design.md`.*
+*Graph branch baseline — implementation status summarized above; frozen FAN details are in `docs/fan_detector_v3_design.md`, and final artifacts/metrics are recorded in the v2 manifest/evaluation reports.*
