@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import resource
+import shutil
+import tempfile
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -37,6 +41,126 @@ FAN_PATTERNS = ("FAN_IN", "FAN_OUT")
 DEFAULT_CONFIG_PATH = (
     Path(__file__).resolve().parents[2] / "configs/graph/graph_fan_config_v3.json"
 )
+
+FAN_FEATURE_COLUMNS = (
+    "account_key",
+    "as_of_ts",
+    "snapshot_date",
+    "window",
+    "sample_split",
+    "in_degree_7d",
+    "out_degree_7d",
+    "inflow_concentration_7d",
+    "outflow_dispersion_7d",
+)
+
+
+def _sql_path(path: str | Path) -> str:
+    return Path(path).resolve().as_posix().replace("'", "''")
+
+
+def _current_rss_mb() -> float:
+    try:
+        for line in Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) / 1024.0
+    except OSError:
+        pass
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+
+
+def _open_fan_connection(
+    features_path: str | Path, duckdb_path: str | Path
+) -> duckdb.DuckDBPyConnection:
+    """Open lazy feature/transaction views without pandas materialization."""
+    con = duckdb.connect()
+    con.execute(f"ATTACH '{_sql_path(duckdb_path)}' AS aml (READ_ONLY)")
+    projected = ", ".join(f'"{column}"' for column in FAN_FEATURE_COLUMNS)
+    con.execute(
+        f"CREATE TEMP VIEW fan_feature_rows AS "
+        f"SELECT {projected} FROM read_parquet('{_sql_path(features_path)}')"
+    )
+    return con
+
+
+def _compute_fan_auxiliary_snapshot(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    as_of_ts: pd.Timestamp,
+    min_degree: int,
+    splits: list[str] | None,
+) -> pd.DataFrame:
+    """Exact daily-preaggregated v3 auxiliary values for one snapshot."""
+    split_filter = ""
+    params: list[Any] = [as_of_ts.to_pydatetime(), min_degree]
+    if splits:
+        placeholders = ",".join("?" for _ in splits)
+        split_filter = f"AND sample_split IN ({placeholders})"
+        params.extend(splits)
+    return con.execute(
+        f"""
+        WITH candidates AS (
+          SELECT account_key, as_of_ts, snapshot_date, "window", sample_split,
+                 'FAN_IN' AS detected_pattern, in_degree_7d AS degree_7d,
+                 inflow_concentration_7d AS shape_7d
+          FROM fan_feature_rows
+          WHERE as_of_ts = ? AND in_degree_7d >= ? {split_filter}
+          UNION ALL
+          SELECT account_key, as_of_ts, snapshot_date, "window", sample_split,
+                 'FAN_OUT', out_degree_7d, outflow_dispersion_7d
+          FROM fan_feature_rows
+          WHERE as_of_ts = ? AND out_degree_7d >= ? {split_filter}
+        ), relevant_tx AS (
+          SELECT occurred_at, from_account_key, to_account_key
+          FROM aml.transaction
+          WHERE occurred_at >= ? - INTERVAL 7 DAY AND occurred_at < ?
+        ), daily AS (
+          SELECT 'FAN_IN' AS detected_pattern, to_account_key AS account_key,
+                 CAST(occurred_at AT TIME ZONE 'UTC' AS DATE) AS tx_day,
+                 COUNT(*)::BIGINT AS day_tx_count,
+                 COUNT(DISTINCT from_account_key)::BIGINT AS day_cp_count
+          FROM relevant_tx GROUP BY to_account_key, tx_day
+          UNION ALL
+          SELECT 'FAN_OUT', from_account_key,
+                 CAST(occurred_at AT TIME ZONE 'UTC' AS DATE) AS tx_day,
+                 COUNT(*)::BIGINT, COUNT(DISTINCT to_account_key)::BIGINT
+          FROM relevant_tx
+          GROUP BY from_account_key, CAST(occurred_at AT TIME ZONE 'UTC' AS DATE)
+        )
+        SELECT c.account_key,c.as_of_ts,c.snapshot_date,c."window",c.sample_split,
+               c.detected_pattern,c.degree_7d,c.shape_7d,
+               SUM(d.day_tx_count)::BIGINT AS tx_count_7d,
+               MAX(d.day_cp_count)::BIGINT AS max_counterparties_1d,
+               MAX(d.day_cp_count)::DOUBLE/c.degree_7d AS counterparty_day_concentration
+        FROM candidates c JOIN daily d
+          ON c.detected_pattern=d.detected_pattern AND c.account_key=d.account_key
+        GROUP BY c.account_key,c.as_of_ts,c.snapshot_date,c."window",c.sample_split,
+                 c.detected_pattern,c.degree_7d,c.shape_7d
+        ORDER BY c.as_of_ts,c.detected_pattern,c.account_key
+        """,
+        params + params + [as_of_ts.to_pydatetime(), as_of_ts.to_pydatetime()],
+    ).fetchdf()
+
+
+def compute_fan_auxiliary_snapshot_duckdb(
+    features_path: str | Path,
+    *,
+    duckdb_path: str | Path,
+    as_of_ts: str | pd.Timestamp,
+    min_degree: int = 2,
+    splits: list[str] | None = None,
+) -> pd.DataFrame:
+    """Public snapshot helper used by correctness/oracle tests."""
+    con = _open_fan_connection(features_path, duckdb_path)
+    try:
+        return _compute_fan_auxiliary_snapshot(
+            con,
+            as_of_ts=parse_utc(as_of_ts),
+            min_degree=min_degree,
+            splits=splits,
+        )
+    finally:
+        con.close()
 
 
 def compute_fan_auxiliary_duckdb(
@@ -414,7 +538,20 @@ def _fan_witnesses_from_duckdb(
     con = duckdb.connect()
     try:
         con.execute(f"ATTACH '{Path(duckdb_path).resolve().as_posix()}' AS aml (READ_ONLY)")
-        con.register("fan_detections", detections)
+        return _fan_witnesses_from_connection(detections, con)
+    finally:
+        con.close()
+
+
+def _fan_witnesses_from_connection(
+    detections: pd.DataFrame,
+    con: duckdb.DuckDBPyConnection,
+) -> dict[str, list[dict[str, Any]]]:
+    """Hydrate one detection batch using an existing DuckDB connection."""
+    if detections.empty:
+        return {}
+    con.register("fan_detections", detections)
+    try:
         rows = con.execute(
             """
             WITH candidates AS (
@@ -456,7 +593,7 @@ def _fan_witnesses_from_duckdb(
             """
         ).fetchdf()
     finally:
-        con.close()
+        con.unregister("fan_detections")
     out: dict[str, list[dict[str, Any]]] = {}
     for rec in rows.to_dict(orient="records"):
         out.setdefault(str(rec.pop("evidence_id")), []).append(_witness_record(rec))
@@ -477,6 +614,14 @@ def hydrate_fan_evidence(
         witness_map = _fan_witnesses_from_duckdb(detections, duckdb_path)
     else:
         raise ValueError("provide transactions= or duckdb_path=")
+    return _hydrate_fan_evidence_with_map(evidence, witness_map)
+
+
+def _hydrate_fan_evidence_with_map(
+    evidence: list[dict[str, Any]],
+    witness_map: Mapping[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Apply an already-computed witness map without changing evidence policy."""
     hydrated: list[dict[str, Any]] = []
     for original in evidence:
         rec = dict(original)
@@ -495,6 +640,144 @@ def hydrate_fan_evidence(
         rec["witness_counterparty_count"] = len(counterparties)
         hydrated.append(rec)
     return hydrated
+
+
+def run_fan_detector_batched(
+    *,
+    features_path: str | Path,
+    duckdb_path: str | Path,
+    config_path: str | Path | None = None,
+    detection_path: str | Path,
+    evidence_path: str | Path,
+    splits: list[str] | None = None,
+) -> dict[str, Any]:
+    """Production v3 path: exact per-snapshot compute, hydrate, and disk merge.
+
+    The frozen selection and witness policies are unchanged. Batching only
+    bounds intermediate state to one snapshot and lets DuckDB pre-aggregate
+    transaction rows by UTC day before joining candidates.
+    """
+    cfg = load_fan_config(config_path)
+    if not str(cfg.get("detector_version", "")).startswith("graph_fan_v3"):
+        raise ValueError("batched production path supports frozen FAN v3 only")
+    detection_path = Path(detection_path)
+    evidence_path = Path(evidence_path)
+    detection_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    con = _open_fan_connection(features_path, duckdb_path)
+    started = time.perf_counter()
+    telemetry: list[dict[str, Any]] = []
+    detection_rows = 0
+    evidence_rows = 0
+    try:
+        split_filter = ""
+        split_params: list[str] = []
+        if splits:
+            placeholders = ",".join("?" for _ in splits)
+            split_filter = f"WHERE sample_split IN ({placeholders})"
+            split_params = list(splits)
+        snapshots = con.execute(
+            f"SELECT DISTINCT as_of_ts, snapshot_date FROM fan_feature_rows "
+            f"{split_filter} ORDER BY as_of_ts",
+            split_params,
+        ).fetchall()
+        with tempfile.TemporaryDirectory(prefix="fan_batches_", dir="/tmp") as temp:
+            temp_dir = Path(temp)
+            fan_in_evidence = temp_dir / "fan_in_evidence.jsonl"
+            fan_out_evidence = temp_dir / "fan_out_evidence.jsonl"
+            for snapshot_index, (as_of_raw, snapshot_date) in enumerate(snapshots):
+                snapshot_started = time.perf_counter()
+                as_of = parse_utc(as_of_raw)
+                aux_started = time.perf_counter()
+                auxiliary = _compute_fan_auxiliary_snapshot(
+                    con,
+                    as_of_ts=as_of,
+                    min_degree=int(cfg["candidate_min_degree"]),
+                    splits=splits,
+                )
+                auxiliary_runtime = time.perf_counter() - aux_started
+                detect_started = time.perf_counter()
+                detections, evidence = detect_fan_v3_min(
+                    auxiliary, cfg, splits=splits
+                )
+                detection_runtime = time.perf_counter() - detect_started
+                hydrate_started = time.perf_counter()
+                witness_map = _fan_witnesses_from_connection(detections, con)
+                hydrated = _hydrate_fan_evidence_with_map(evidence, witness_map)
+                hydration_runtime = time.perf_counter() - hydrate_started
+
+                if not detections.empty:
+                    detections["snapshot_date"] = pd.to_datetime(
+                        detections["snapshot_date"]
+                    ).dt.date
+                    detections.to_parquet(
+                        temp_dir / f"detection_{snapshot_index:03d}.parquet",
+                        index=False,
+                    )
+                for pattern, target in (
+                    ("FAN_IN", fan_in_evidence),
+                    ("FAN_OUT", fan_out_evidence),
+                ):
+                    with target.open("a", encoding="utf-8") as stream:
+                        for record in hydrated:
+                            if record["detected_pattern"] == pattern:
+                                stream.write(
+                                    json.dumps(
+                                        record,
+                                        ensure_ascii=False,
+                                        sort_keys=True,
+                                        default=str,
+                                    )
+                                    + "\n"
+                                )
+                detection_rows += len(detections)
+                evidence_rows += len(hydrated)
+                telemetry.append(
+                    {
+                        "snapshot_date": str(snapshot_date),
+                        "auxiliary_rows": len(auxiliary),
+                        "detection_rows": len(detections),
+                        "evidence_rows": len(hydrated),
+                        "auxiliary_runtime_s": round(auxiliary_runtime, 3),
+                        "selection_runtime_s": round(detection_runtime, 3),
+                        "hydration_runtime_s": round(hydration_runtime, 3),
+                        "runtime_s": round(time.perf_counter() - snapshot_started, 3),
+                        "current_rss_mb": round(_current_rss_mb(), 1),
+                    }
+                )
+                del auxiliary, detections, evidence, witness_map, hydrated
+
+            chunks = sorted(temp_dir.glob("detection_*.parquet"))
+            if not chunks:
+                pd.DataFrame(columns=list(DETECTION_COLUMNS)).to_parquet(
+                    detection_path, index=False
+                )
+            else:
+                chunk_paths = ",".join(
+                    f"'{_sql_path(path)}'" for path in chunks
+                )
+                con.execute(
+                    f"COPY (SELECT * FROM read_parquet([{chunk_paths}]) "
+                    f"ORDER BY as_of_ts,detected_pattern,account_key) "
+                    f"TO '{_sql_path(detection_path)}' (FORMAT PARQUET)"
+                )
+            with evidence_path.open("wb") as output:
+                for source in (fan_in_evidence, fan_out_evidence):
+                    if source.exists():
+                        with source.open("rb") as input_stream:
+                            shutil.copyfileobj(input_stream, output)
+    finally:
+        con.close()
+    return {
+        "runtime_s": round(time.perf_counter() - started, 3),
+        "peak_rss_mb": round(
+            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0, 1
+        ),
+        "detection_rows": detection_rows,
+        "evidence_rows": evidence_rows,
+        "snapshot_count": len(telemetry),
+        "snapshots": telemetry,
+    }
 
 
 def write_fan_artifacts(

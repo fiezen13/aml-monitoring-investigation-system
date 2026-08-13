@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import json
+
+import duckdb
 import pandas as pd
 
 from src.data.fan_detector import (
     DETECTION_COLUMNS,
+    compute_fan_auxiliary_duckdb,
+    compute_fan_auxiliary_snapshot_duckdb,
     detect_fan_from_features,
     hydrate_fan_evidence,
     load_fan_config,
+    run_fan_detector,
+    run_fan_detector_batched,
     select_fan_v3_min_hits,
 )
 from src.data.schemas import assert_no_label_leakage
@@ -160,6 +167,151 @@ def test_v3_min_point_rule_and_simple_fan_out() -> None:
     ])
     hits = select_fan_v3_min_hits(rows, cfg)
     assert set(hits["account_key"]) == {"IN_HIT", "OUT_HIT"}
+
+
+def test_daily_snapshot_auxiliary_matches_transaction_join_oracle(tmp_path) -> None:
+    features = pd.DataFrame(
+        [
+            _feat(
+                account_key="C",
+                as_of_ts=pd.Timestamp("2022-09-07T00:00:00Z"),
+                snapshot_date=pd.Timestamp("2022-09-06").date(),
+                in_degree_7d=2,
+                out_degree_7d=2,
+                inflow_concentration_7d=0.5,
+                outflow_dispersion_7d=0.5,
+            ),
+            _feat(
+                account_key="C",
+                as_of_ts=pd.Timestamp("2022-09-08T00:00:00Z"),
+                snapshot_date=pd.Timestamp("2022-09-07").date(),
+                in_degree_7d=2,
+                out_degree_7d=2,
+                inflow_concentration_7d=0.5,
+                outflow_dispersion_7d=0.5,
+            ),
+        ]
+    )
+    transactions = pd.DataFrame(
+        [
+            {"transaction_id": "i1", "occurred_at": pd.Timestamp("2022-09-01T01:00:00Z"), "from_account_key": "S1", "to_account_key": "C"},
+            {"transaction_id": "i2", "occurred_at": pd.Timestamp("2022-09-01T02:00:00Z"), "from_account_key": "S1", "to_account_key": "C"},
+            {"transaction_id": "i3", "occurred_at": pd.Timestamp("2022-09-02T01:00:00Z"), "from_account_key": "S2", "to_account_key": "C"},
+            {"transaction_id": "o1", "occurred_at": pd.Timestamp("2022-09-03T01:00:00Z"), "from_account_key": "C", "to_account_key": "D1"},
+            {"transaction_id": "o2", "occurred_at": pd.Timestamp("2022-09-03T02:00:00Z"), "from_account_key": "C", "to_account_key": "D2"},
+        ]
+    )
+    feature_path = tmp_path / "features.parquet"
+    db_path = tmp_path / "aml.duckdb"
+    features.to_parquet(feature_path, index=False)
+    con = duckdb.connect(str(db_path))
+    con.register("tx_frame", transactions)
+    con.execute("CREATE TABLE transaction AS SELECT * FROM tx_frame")
+    con.close()
+
+    oracle = compute_fan_auxiliary_duckdb(
+        features, duckdb_path=db_path, min_degree=2
+    )
+    actual = pd.concat(
+        [
+            compute_fan_auxiliary_snapshot_duckdb(
+                feature_path,
+                duckdb_path=db_path,
+                as_of_ts=as_of,
+                min_degree=2,
+            )
+            for as_of in sorted(features["as_of_ts"].unique())
+        ],
+        ignore_index=True,
+    )
+    columns = list(oracle.columns)
+    oracle = oracle.sort_values(
+        ["as_of_ts", "detected_pattern", "account_key"]
+    ).reset_index(drop=True)
+    actual = actual.loc[:, columns].sort_values(
+        ["as_of_ts", "detected_pattern", "account_key"]
+    ).reset_index(drop=True)
+    pd.testing.assert_frame_equal(actual, oracle, check_dtype=False)
+
+
+def test_batched_fan_artifacts_match_full_join_oracle(tmp_path) -> None:
+    features = pd.DataFrame(
+        [
+            _feat(
+                account_key="CENTER",
+                sample_split="train",
+                in_degree_7d=6,
+                out_degree_7d=5,
+                inflow_concentration_7d=0.2,
+                outflow_dispersion_7d=0.8,
+            )
+        ]
+    )
+    transactions = []
+    for index in range(6):
+        transactions.append(
+            {
+                "transaction_id": f"IN{index}",
+                "occurred_at": pd.Timestamp("2022-09-02T00:00:00Z") + pd.Timedelta(hours=index),
+                "from_account_key": f"S{index}",
+                "to_account_key": "CENTER",
+                "amount": float(index + 1),
+                "amount_received": float(index + 1),
+                "channel": "ACH",
+            }
+        )
+    for index in range(5):
+        transactions.append(
+            {
+                "transaction_id": f"OUT{index}",
+                "occurred_at": pd.Timestamp("2022-09-03T00:00:00Z") + pd.Timedelta(hours=index),
+                "from_account_key": "CENTER",
+                "to_account_key": f"D{index}",
+                "amount": float(index + 1),
+                "amount_received": float(index + 1),
+                "channel": "ACH",
+            }
+        )
+    feature_path = tmp_path / "features.parquet"
+    db_path = tmp_path / "aml.duckdb"
+    detection_path = tmp_path / "detections.parquet"
+    evidence_path = tmp_path / "evidence.jsonl"
+    features.to_parquet(feature_path, index=False)
+    con = duckdb.connect(str(db_path))
+    con.register("tx_frame", pd.DataFrame(transactions))
+    con.execute("CREATE TABLE transaction AS SELECT * FROM tx_frame")
+    con.close()
+
+    oracle_det, oracle_ev = run_fan_detector(
+        features_path=feature_path,
+        duckdb_path=db_path,
+        splits=["train"],
+    )
+    summary = run_fan_detector_batched(
+        features_path=feature_path,
+        duckdb_path=db_path,
+        detection_path=detection_path,
+        evidence_path=evidence_path,
+        splits=["train"],
+    )
+    actual_det = pd.read_parquet(detection_path)
+    actual_ev = [
+        json.loads(line)
+        for line in evidence_path.read_text(encoding="utf-8").splitlines()
+    ]
+    oracle_det["snapshot_date"] = pd.to_datetime(oracle_det["snapshot_date"]).dt.date
+    assert actual_det["cycle_length"].isna().all()
+    assert oracle_det["cycle_length"].isna().all()
+    pd.testing.assert_frame_equal(
+        actual_det.drop(columns="cycle_length"),
+        oracle_det.drop(columns="cycle_length"),
+        check_dtype=False,
+    )
+    assert json.dumps(actual_ev, sort_keys=True) == json.dumps(
+        oracle_ev, sort_keys=True, default=str
+    )
+    assert summary["detection_rows"] == len(oracle_det)
+    assert summary["evidence_rows"] == len(oracle_ev)
 
 
 def test_determinism() -> None:
