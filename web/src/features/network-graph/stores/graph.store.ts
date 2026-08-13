@@ -57,7 +57,10 @@ function layersForPreset(preset: PresetKey): Record<LayerKey, boolean> {
 export function initialState(): GraphState {
   return {
     preset: "overview",
-    layout: "flow",
+    // fCoSE là mặc định cho khám phá mạng lưới (§23). Layout theo chặng
+    // ("flow") vẫn chọn được từ thanh công cụ khi analyst muốn đọc thứ tự
+    // dòng tiền trái → phải.
+    layout: "force",
     layers: layersForPreset("overview"),
     mutedKinds: {},
     riskMin: 0,

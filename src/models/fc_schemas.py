@@ -88,6 +88,10 @@ class GraphNodeOut(BaseModel):
 
 
 class GraphEdgeOut(BaseModel):
+    # Định danh ổn định của cạnh. Cần cho việc chọn cạnh rồi hỏi sổ cái xem
+    # cạnh đó gồm những giao dịch nào — trước đây cạnh không có id nên phía
+    # giao diện phải tự ghép chuỗi từ hai đầu.
+    id: str
     s: str
     t: str
     kind: str
@@ -99,6 +103,23 @@ class GraphEdgeOut(BaseModel):
     conf: float | None
     logic: str | None
     known_from: datetime
+
+    # --- Chứng cứ giao dịch ---------------------------------------------
+    # Ba trường dưới đây KHÔNG đến từ `fc.relationship` mà được tổng hợp từ
+    # bảng `transaction` thật. Một cạnh là *quan hệ*, còn giao dịch là *sự
+    # kiện*; đồ thị chỉ được vẽ quan hệ, và mỗi quan hệ phải chỉ ra được nó
+    # dựa trên bao nhiêu sự kiện nào.
+    #
+    # `tx_count = 0` là một câu trả lời hợp lệ và hay gặp: quan hệ sở hữu, dùng
+    # chung thiết bị hay chuyển trên chuỗi vốn không có giao dịch ngân hàng nào
+    # đứng sau. Giao diện phải nói thẳng "không có bằng chứng giao dịch" chứ
+    # không được bịa ra một con số.
+    tx_count: int = 0
+    # Không cộng nhiều loại tiền vào một số. Khoá là mã ISO, giá trị là tổng
+    # theo đúng loại tiền đó.
+    amounts_by_currency: dict[str, float] = Field(default_factory=dict)
+    tx_first_seen: datetime | None = None
+    tx_last_seen: datetime | None = None
 
 
 class GraphOut(BaseModel):

@@ -896,15 +896,28 @@ class Generator:
 
         # Tài khoản thật cho các thực thể loại `account` của thế giới mô phỏng.
         # `account_key` phải đúng dạng <bank>:<số> theo ràng buộc CHECK.
+        #
+        # Số tài khoản băm bằng blake2b chứ không bằng `hash()`: Python bật
+        # randomization cho hash của chuỗi, nên mỗi tiến trình cho ra một số
+        # khác nhau. Với một khoá dùng để *nối* thực thể trong đồ thị với giao
+        # dịch trong sổ cái, không ổn định nghĩa là không nối lại được — và đó
+        # đúng là lý do màn đồ thị mạng lưới cho tới nay không có giao dịch nào
+        # đứng sau cạnh nào.
+        #
+        # Mapping còn được ghi ngược vào `fc.entity.attributes.account_key`, để
+        # truy vấn về sau join được mà không phải chạy lại bộ sinh.
         self.acct_of: dict[str, str] = {}
         for ent in self.w.entities:
             if ent["entity_type"] != "account":
                 continue
-            bank = ent["attributes"] and json.loads(ent["attributes"]).get("bank_code")
-            bank = bank or BANKS[len(self.acct_of) % len(BANKS)]
-            number = f"{abs(hash(ent['entity_id'])) % 9_000_000 + 1_000_000}"
+            attrs = json.loads(ent["attributes"]) if ent["attributes"] else {}
+            bank = attrs.get("bank_code") or BANKS[len(self.acct_of) % len(BANKS)]
+            digest = hashlib.blake2b(ent["entity_id"].encode(), digest_size=6).digest()
+            number = f"{int.from_bytes(digest, 'big') % 9_000_000 + 1_000_000}"
             key = f"{bank}:{number}"
             self.acct_of[ent["entity_id"]] = key
+            attrs["account_key"] = key
+            ent["attributes"] = json.dumps(attrs, ensure_ascii=False)
             self.w.accounts.append(
                 {
                     "account_key": key,
@@ -1256,6 +1269,18 @@ def wipe(session: Session) -> None:
     # Các bảng fc không gắn simulation_id phải xoá tay.
     session.execute(text("DELETE FROM fc.exposure_label WHERE source_id = 'PUBLIC_CHAIN_TRC20_USDT'"))
     session.execute(text("DELETE FROM fc.model_monitor WHERE model_version = 'fusion-v2.4.1'"))
+    # Ba bảng dưới đây khai báo `simulation_id ... ON DELETE SET NULL` chứ không
+    # CASCADE — cố ý, vì một lượt chạy agent hay một kết quả benchmark đã diễn ra
+    # thì không được biến mất chỉ vì mô phỏng bị dựng lại. Nhưng hệ quả là xoá
+    # simulation xong các dòng cũ vẫn nằm đó với nguyên khoá chính, và lần nạp
+    # sau đâm thẳng vào unique constraint. Xoá tường minh theo tiền tố ID mà
+    # generator này sinh ra; `fc.agent_step` đi theo `fc.agent_run` bằng CASCADE.
+    session.execute(text("DELETE FROM fc.agent_run WHERE run_id LIKE 'RUN-2026-0341-%'"))
+    session.execute(text("DELETE FROM fc.benchmark_result WHERE result_id LIKE 'BM-VN-CA-03-%'"))
+    session.execute(
+        text("DELETE FROM fc.data_quality_check WHERE simulation_id = :sid OR check_id LIKE 'DQ-%'"),
+        {"sid": SIMULATION_ID},
+    )
 
     # Bảng vận hành: xoá theo đúng thứ tự khoá ngoại, từ lá vào gốc. Chỉ đụng
     # tới dữ liệu do generator này tạo — không chạm dữ liệu seed.

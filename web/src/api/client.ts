@@ -331,6 +331,7 @@ export interface FcGraphNode {
 }
 
 export interface FcGraphEdge {
+  id: string;
   s: string;
   t: string;
   kind: string;
@@ -340,6 +341,18 @@ export interface FcGraphEdge {
   conf: number | null;
   logic: string | null;
   known_from: string;
+  /**
+   * Chứng cứ giao dịch, tổng hợp từ bảng `transaction` thật.
+   *
+   * `tx_count === 0` là câu trả lời hợp lệ và hay gặp: quan hệ sở hữu, dùng
+   * chung thiết bị hay chuyển on-chain không có chuyển khoản ngân hàng nào
+   * đứng sau. Giao diện phải nói thẳng điều đó, không được suy ra một con số.
+   */
+  tx_count: number;
+  /** Không cộng nhiều loại tiền vào một số — khoá là mã ISO. */
+  amounts_by_currency: Record<string, number>;
+  tx_first_seen: string | null;
+  tx_last_seen: string | null;
 }
 
 export interface FcGraph {
@@ -793,6 +806,18 @@ export const api = {
       page_size?: number;
     } = {},
   ) => request<FcTxPage>(`/transactions${query(params)}`),
+
+  /** Giao dịch thật nằm sau một cạnh quan hệ trong đồ thị. */
+  graphEdgeTransactions: (
+    edgeId: string,
+    params: { page?: number; page_size?: number; min_amount?: number; currency?: string } = {},
+  ) => request<FcTxPage>(`/fc/graph/edges/${encodeURIComponent(edgeId)}/transactions${query(params)}`),
+
+  /** Giao dịch của một thực thể; trả rỗng với thực thể không phải tài khoản. */
+  graphNodeTransactions: (
+    nodeId: string,
+    params: { direction?: "all" | "in" | "out"; page?: number; page_size?: number } = {},
+  ) => request<FcTxPage>(`/fc/graph/nodes/${encodeURIComponent(nodeId)}/transactions${query(params)}`),
 
   // Không nằm dưới /api/v1 — đây là endpoint hạ tầng của chính ứng dụng.
   ready: () => {

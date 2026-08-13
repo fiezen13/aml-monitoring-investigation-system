@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { usd } from "../../../api/fcFormat";
 import { C } from "../../../design/palette";
 import type { BottomTab } from "../stores/graph.store";
@@ -24,8 +26,14 @@ interface Props {
   onOpen: (on: boolean) => void;
   onPickPath: (id: string | null) => void;
   onStepPath: (delta: number) => void;
-  onFocusNode: (id: string) => void;
   missingLinks: number;
+  /**
+   * Nội dung tab "Giao dịch", do màn hình cha dựng.
+   *
+   * Panel này thuần trình bày; việc tải giao dịch phụ thuộc vào cạnh/đỉnh nào
+   * đang chọn, mà đó là state của màn hình chứ không phải của panel.
+   */
+  transactions: ReactNode;
 }
 
 /**
@@ -47,8 +55,8 @@ export function GraphBottomPanel({
   onOpen,
   onPickPath,
   onStepPath,
-  onFocusNode,
   missingLinks,
+  transactions,
 }: Props) {
   const activePath = paths.find((p) => p.id === activePathId) ?? null;
 
@@ -138,45 +146,11 @@ export function GraphBottomPanel({
             </div>
           )}
 
-          {tab === "transactions" && (
-            <div className="h-full overflow-y-auto">
-              <table className="w-full text-2xs">
-                <thead className="sticky top-0 bg-side">
-                  <tr className="border-b border-line text-left text-3xs uppercase tracking-[0.08em] text-ink-dim">
-                    <th className="px-3 py-1.5 font-medium">Từ</th>
-                    <th className="px-3 py-1.5 font-medium">Đến</th>
-                    <th className="px-3 py-1.5 font-medium">Loại</th>
-                    <th className="px-3 py-1.5 text-right font-medium">Giá trị</th>
-                    <th className="px-3 py-1.5 font-medium">Ghi nhận</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scopedEdges
-                    .filter((e) => e.money)
-                    .slice(0, 200)
-                    .map((e) => (
-                      <tr key={e.id} className="border-b border-line-faint hover:bg-elev">
-                        <td className="px-3 py-1 text-ink-mid">
-                          <button type="button" onClick={() => onFocusNode(e.s)} className="hover:text-ink-hi">
-                            {model.byId[e.s]?.label ?? e.s}
-                          </button>
-                        </td>
-                        <td className="px-3 py-1 text-ink-mid">
-                          <button type="button" onClick={() => onFocusNode(e.t)} className="hover:text-ink-hi">
-                            {model.byId[e.t]?.label ?? e.t}
-                          </button>
-                        </td>
-                        <td className="px-3 py-1 text-ink-low">{e.label || e.kind}</td>
-                        <td className="tabular px-3 py-1 text-right font-mono text-ink-hi">
-                          {e.amt != null ? usd(e.amt) : "—"}
-                        </td>
-                        <td className="px-3 py-1 font-mono text-ink-dim">{e.knownFrom.slice(0, 16).replace("T", " ")}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* Tab giao dịch giờ hiển thị GIAO DỊCH THẬT, không phải quan hệ.
+              Bản cũ liệt kê `scopedEdges` — tức là các cạnh — dưới tiêu đề
+              "Giao dịch", nên analyst không có đường nào đi từ một quan hệ
+              xuống tới những lần chuyển khoản làm nên quan hệ đó. */}
+          {tab === "transactions" && transactions}
 
           {tab === "timeline" && (
             <div className="h-full overflow-y-auto px-3 py-2">

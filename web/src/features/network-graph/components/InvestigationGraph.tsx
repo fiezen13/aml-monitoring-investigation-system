@@ -1,8 +1,11 @@
+import type { Core as CyCore } from "cytoscape";
+
+import type { FcTxRow } from "../../../api/client";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { Eyebrow, PulseDot } from "../../../components/fc/primitives";
 import { C } from "../../../design/palette";
-import type { GraphEngine } from "../engine/GraphEngine";
+import { useEdgeTransactions, type TxScope } from "../hooks/useEdgeTransactions";
 import { useGraphModel } from "../hooks/useGraphModel";
 import { useGraphTimeline } from "../hooks/useGraphTimeline";
 import { useMoneyPaths } from "../hooks/useMoneyPaths";
@@ -15,7 +18,7 @@ import type { FilterState } from "../utils/graphClustering";
 import { applyLayout } from "../utils/graphLayouts";
 import { resolveEmphasis } from "../utils/graphOpacity";
 import { GraphBottomPanel } from "./GraphBottomPanel";
-import { GraphCanvas } from "./GraphCanvas";
+import { CytoscapeCanvas } from "../cytoscape/CytoscapeCanvas";
 import { GraphInvestigationLeads } from "./GraphInvestigationLeads";
 import { GraphLayerPanel } from "./GraphLayerPanel";
 import { GraphLegend } from "./GraphLegend";
@@ -26,6 +29,20 @@ import { GraphViewPresets } from "./GraphViewPresets";
 import { GraphStoryStrip } from "./GraphStoryStrip";
 import { EdgeInspector } from "./EdgeInspector";
 import { NodeInspector } from "./NodeInspector";
+import { TransactionDetail } from "./TransactionDetail";
+import { TransactionTable } from "./TransactionTable";
+
+/**
+ * Đưa một đỉnh vào giữa khung nhìn mà không đổi mức phóng.
+ *
+ * Tách khỏi component vì nó là thao tác mệnh lệnh trên camera — không có state
+ * nào của React mô tả được "hãy trượt tới chỗ này".
+ */
+function centerOn(cy: CyCore | null, id: string): void {
+  if (!cy) return;
+  const node = cy.getElementById(id);
+  if (node.nonempty()) cy.animate({ center: { eles: node } }, { duration: 240 });
+}
 
 /**
  * Màn hình Network Graph.
@@ -45,7 +62,18 @@ export function InvestigationGraph() {
   // hình và vùng vẽ không còn đủ chỗ cho tám cột chặng. Thu sẵn cột trái ở kích
   // thước đó; người dùng mở lại bằng nút bất cứ lúc nào.
   const [leftOpen, setLeftOpen] = useState(() => window.innerWidth >= 1500);
-  const engineRef = useRef<GraphEngine | null>(null);
+  // Chỉ giữ tham chiếu tới instance Cytoscape cho thao tác camera; mọi thứ
+  // khác đi qua props. `centerOn` là việc duy nhất React không làm được bằng
+  // state vì nó là hành vi mệnh lệnh trên khung nhìn.
+  const cyRef = useRef<CyCore | null>(null);
+  // Tăng lên để yêu cầu chạy lại fCoSE. Chỉ ba việc được phép chạm vào nó: mở
+  // cụm, mở rộng lân cận, và nút sắp xếp lại — xem §23.
+  const [layoutNonce, setLayoutNonce] = useState(0);
+  const relayout = useCallback(() => setLayoutNonce((n) => n + 1), []);
+  // Chế độ đọc đường tiền do analyst bật, không phải trạng thái mặc định — xem
+  // ghi chú ở prop `pathMode` của CytoscapeCanvas.
+  const [pathMode, setPathMode] = useState(false);
+  const [selectedTx, setSelectedTx] = useState<FcTxRow | null>(null);
   const initedRef = useRef(false);
 
   // Lần đầu có mô hình: thu gọn cụm theo preset mặc định.
@@ -91,6 +119,13 @@ export function InvestigationGraph() {
     applyLayout(g, state.layout);
     return g;
   }, [model, filter, state.layout]);
+
+  // Cụm đang mở → compound node bao quanh thành viên. Cụm đang đóng đã được
+  // buildRenderGraph gộp thành một đỉnh duy nhất nên không cần khung.
+  const openClusterIds = useMemo(
+    () => graph.openClusters.map((c) => c.id),
+    [graph],
+  );
 
   // Chỗ đứt bằng chứng: tính trên mô hình thật, không phụ thuộc bộ lọc — một
   // mắt xích thiếu thì thiếu ở mọi chế độ xem.
@@ -188,12 +223,13 @@ export function InvestigationGraph() {
 
   const focusNode = useCallback((id: string) => {
     dispatch({ type: "selectNode", id });
-    engineRef.current?.centerOn(id);
+    centerOn(cyRef.current, id);
   }, []);
 
   const handleSelectNode = useCallback(
     (id: string | null) => {
       if (!id) {
+        setPathMode(false);
         dispatch({ type: "clearFocus" });
         return;
       }
@@ -208,17 +244,63 @@ export function InvestigationGraph() {
     [graph.byId],
   );
 
+  // --- Tầng giao dịch -------------------------------------------------
+  // Phạm vi: cạnh đang chọn > đỉnh đang chọn > không có gì. Không mặc định
+  // liệt kê cả mạng lưới — bảng vài nghìn dòng không trả lời được câu hỏi nào.
+  const txScope: TxScope = useMemo(() => {
+    if (state.focus.edgeId) {
+      const re = graph.edges.find((e) => e.id === state.focus.edgeId);
+      // Cạnh gộp (hai đầu là cụm thu gọn) không tương ứng với một quan hệ nào
+      // trong sổ cái, nên không hỏi được. Mở cụm ra mới truy được.
+      if (re?.ref) return { kind: "edge", id: re.ref.id };
+      return { kind: "none" };
+    }
+    if (state.focus.nodeId) {
+      const rn = graph.byId[state.focus.nodeId];
+      if (rn?.kind === "node") return { kind: "node", id: state.focus.nodeId };
+      return { kind: "none" };
+    }
+    return { kind: "none" };
+  }, [state.focus.edgeId, state.focus.nodeId, graph]);
+
+  const tx = useEdgeTransactions(txScope);
+
+  useEffect(() => {
+    setSelectedTx(null);
+    // Chọn một quan hệ hay một thực thể thì câu hỏi tiếp theo gần như luôn là
+    // "gồm những giao dịch nào" — mở sẵn đúng tab đó (§31).
+    if (txScope.kind !== "none") dispatch({ type: "bottomTab", tab: "transactions" });
+  }, [txScope]);
+
+  const selectedRenderEdge = useMemo(
+    () => graph.edges.find((e) => e.id === state.focus.edgeId) ?? null,
+    [graph.edges, state.focus.edgeId],
+  );
+
+  const txScopeLabel = useMemo(() => {
+    if (selectedRenderEdge) {
+      const a = model?.byId[selectedRenderEdge.s]?.label ?? graph.byId[selectedRenderEdge.s]?.label ?? selectedRenderEdge.s;
+      const b = model?.byId[selectedRenderEdge.t]?.label ?? graph.byId[selectedRenderEdge.t]?.label ?? selectedRenderEdge.t;
+      return `${a} → ${b}`;
+    }
+    if (state.focus.nodeId) return graph.byId[state.focus.nodeId]?.label ?? state.focus.nodeId;
+    return "Chưa chọn quan hệ nào";
+  }, [selectedRenderEdge, state.focus.nodeId, graph, model]);
+
   const handleExpandNode = useCallback(
     (id: string) => {
       const rn = graph.byId[id];
       if (rn?.kind === "cluster") {
         dispatch({ type: "toggleCluster", id });
+        // Cụm vừa mở ra thêm N đỉnh vào chỗ trước đó chỉ có một — không xếp lại
+        // thì chúng chồng lên nhau và lên cả các đỉnh xung quanh.
+        relayout();
         return;
       }
       dispatch({ type: "selectNode", id });
       dispatch({ type: "hops", value: Math.min(3, state.focus.hops + 1) });
     },
-    [graph.byId, state.focus.hops],
+    [graph.byId, state.focus.hops, relayout],
   );
 
   const handlePreset = useCallback(
@@ -295,11 +377,12 @@ export function InvestigationGraph() {
         onSearch={handleSearch}
         onLayout={(l) => {
           dispatch({ type: "layout", layout: l });
-          setFitNonce((n) => n + 1);
+          relayout();
         }}
         onFit={() => setFitNonce((n) => n + 1)}
         onExpandHop={(h) => dispatch({ type: "hops", value: h })}
         onMoneyPath={() => {
+          setPathMode(true);
           dispatch({ type: "bottomTab", tab: "paths" });
           if (!state.activePathId && paths.length) dispatch({ type: "activePath", id: paths[0].id });
         }}
@@ -389,20 +472,24 @@ export function InvestigationGraph() {
               </div>
             )}
 
-            <GraphCanvas
+            <CytoscapeCanvas
               graph={graph}
               emphasis={emphasis}
-              perf={state.perf}
-              showColumns={state.layout === "flow" || state.layout === "hierarchy"}
+              layout={state.layout}
               selectedNodeId={state.focus.nodeId}
               selectedEdgeId={state.focus.edgeId}
+              openClusterIds={openClusterIds}
+              pathNodeIds={pathOnRender?.nodeIds ?? []}
+              pathEdgeIds={pathOnRender?.edgeIds ?? []}
+              gaps={renderGaps}
+              pathMode={pathMode}
+              layoutNonce={layoutNonce}
               fitNonce={fitNonce}
               onSelectNode={handleSelectNode}
               onSelectEdge={(id) => dispatch({ type: "selectEdge", id })}
               onExpandNode={handleExpandNode}
               onZoomLevel={setZoomLevel}
-              gaps={renderGaps}
-              engineRef={(e) => (engineRef.current = e)}
+              cyRef={(cy) => (cyRef.current = cy)}
             />
 
             {state.story && (
@@ -410,7 +497,7 @@ export function InvestigationGraph() {
                 model={model}
                 onPickStage={(nodeId) => {
                   dispatch({ type: "selectNode", id: nodeId });
-                  engineRef.current?.centerOn(nodeId);
+                  centerOn(cyRef.current, nodeId);
                 }}
               />
             )}
@@ -444,12 +531,29 @@ export function InvestigationGraph() {
               paths={paths}
               cycles={cycles}
               activePathId={state.activePathId}
+              transactions={
+                <TransactionTable
+                  rows={tx.rows}
+                  total={tx.total}
+                  page={tx.page}
+                  pageSize={tx.pageSize}
+                  loading={tx.loading}
+                  error={tx.error}
+                  scopeLabel={txScopeLabel}
+                  amountsByCurrency={selectedRenderEdge?.amountsByCurrency ?? {}}
+                  selectedId={selectedTx?.id ?? null}
+                  onPick={setSelectedTx}
+                  onPage={tx.setPage}
+                />
+              }
               selectedNodeId={state.focus.nodeId}
               onTab={(t) => dispatch({ type: "bottomTab", tab: t })}
               onOpen={(on) => dispatch({ type: "bottomOpen", on })}
-              onPickPath={(id) => dispatch({ type: "activePath", id })}
+              onPickPath={(id) => {
+                setPathMode(true);
+                dispatch({ type: "activePath", id });
+              }}
               onStepPath={handleStepPath}
-              onFocusNode={focusNode}
               missingLinks={gaps.length}
             />
           )}
@@ -503,7 +607,23 @@ export function InvestigationGraph() {
             />
           )}
 
-          {model && selectedEdge && (
+          {model && selectedTx && (
+            <TransactionDetail
+              tx={selectedTx}
+              fromLabel={selectedTx.from_account}
+              toLabel={selectedTx.to_account}
+              onClose={() => setSelectedTx(null)}
+              onHighlight={() => {
+                // Vòng khép kín: từ một giao dịch quay ngược lên đúng quan hệ
+                // sinh ra nó, rồi đưa quan hệ đó vào giữa khung nhìn.
+                if (!selectedRenderEdge) return;
+                dispatch({ type: "selectEdge", id: selectedRenderEdge.id });
+                centerOn(cyRef.current, selectedRenderEdge.s);
+              }}
+            />
+          )}
+
+          {model && selectedEdge && !selectedTx && (
             <EdgeInspector edge={selectedEdge} model={model} onClose={() => dispatch({ type: "clearFocus" })} />
           )}
         </aside>

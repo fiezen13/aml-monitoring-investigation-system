@@ -43,6 +43,34 @@ export function EdgeInspector({ edge, model, onClose }: Props) {
         {edge.count > 1 && <StatTile label="Số quan hệ gộp" value={String(edge.count)} valueColor={C.primary} />}
       </div>
 
+      {/* Chứng cứ giao dịch. Đây là chỗ trả lời "quan hệ này dựa trên cái gì" —
+          bản cũ chỉ có một con số USD không nói được nó gồm mấy lần chuyển. */}
+      <div className="mt-3 rounded-control bg-sunken px-2.5 py-2">
+        <div className="fc-eyebrow mb-1.5">Chứng cứ giao dịch</div>
+        {edge.txCount > 0 ? (
+          <>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="tabular font-mono text-2xl font-semibold text-ink-hi">{edge.txCount}</span>
+              <span className="text-2xs text-ink-low">giao dịch</span>
+              {Object.entries(edge.amountsByCurrency).map(([ccy, amount]) => (
+                <span key={ccy} className="tabular font-mono text-2xs text-ink-soft">
+                  {ccy === "USD" ? usd(amount) : `${amount.toLocaleString("vi-VN")} ${ccy}`}
+                </span>
+              ))}
+            </div>
+            <p className="mt-1.5 text-3xs leading-relaxed text-ink-low">
+              Mở tab <b className="text-ink-soft">Giao dịch</b> ở panel dưới để xem từng lần chuyển khoản.
+            </p>
+          </>
+        ) : (
+          // §41: nói thẳng, không bịa một con số nào.
+          <p className="text-2xs leading-relaxed text-ink-low">
+            Không có bằng chứng giao dịch. Quan hệ sở hữu, thiết bị dùng chung và chuyển trên chuỗi không sinh ra
+            chuyển khoản ngân hàng nào để đối chiếu.
+          </p>
+        )}
+      </div>
+
       {edge.count > 1 && (
         <p className="mt-2 rounded-control border border-line bg-sunken px-2.5 py-2 text-3xs leading-relaxed text-ink-low">
           Cạnh này là kết quả gộp vì một trong hai đầu đang là cụm thu gọn. Mở cụm ra để thấy từng quan hệ riêng.

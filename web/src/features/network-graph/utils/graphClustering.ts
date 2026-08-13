@@ -217,7 +217,14 @@ export function buildRenderGraph(model: GraphModel, f: FilterState): RenderGraph
       existing.inferred = existing.inferred && e.inferred;
       existing.time = Math.min(existing.time, e.time);
       existing.ref = null;
-      existing.label = `${existing.count} giao dịch`;
+      // `count` là số *quan hệ* đã gộp, `txCount` là số *giao dịch* đứng sau
+      // chúng — hai con số khác nhau và nhãn phải nói đúng con số nó đang nói.
+      // Bản cũ ghi "n giao dịch" cho n quan hệ, tức là đếm nhầm đơn vị.
+      existing.txCount += e.txCount;
+      for (const [ccy, amount] of Object.entries(e.amountsByCurrency)) {
+        existing.amountsByCurrency[ccy] = (existing.amountsByCurrency[ccy] ?? 0) + amount;
+      }
+      existing.label = `${existing.count} quan hệ`;
       return;
     }
     merged.set(key, {
@@ -234,6 +241,10 @@ export function buildRenderGraph(model: GraphModel, f: FilterState): RenderGraph
       time: e.time,
       count: 1,
       ref: e,
+      txCount: e.txCount,
+      // Sao chép chứ không dùng chung tham chiếu: cạnh gộp sau đó cộng dồn vào
+      // đây, và cộng thẳng lên object của model sẽ làm hỏng dữ liệu gốc.
+      amountsByCurrency: { ...e.amountsByCurrency },
     });
   });
 

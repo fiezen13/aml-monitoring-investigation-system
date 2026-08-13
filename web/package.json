@@ -14,6 +14,8 @@
   "dependencies": {
     "@xyflow/react": "^12.3.6",
     "cesium": "^1.144.0",
+    "cytoscape": "^3.34.1",
+    "cytoscape-fcose": "^2.2.0",
     "lucide-react": "^0.469.0",
     "maplibre-gl": "^6.3.0",
     "react": "^18.3.1",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
+    "@types/cytoscape": "^3.21.9",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^22.10.5",
     "@types/react": "^18.3.12",

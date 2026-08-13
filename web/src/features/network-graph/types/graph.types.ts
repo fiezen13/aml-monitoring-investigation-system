@@ -99,6 +99,22 @@ export interface GEdge {
   layer: LayerKey;
   /** Cạnh nằm trên dòng tiền (transfer/swap/bridge…) — luôn ưu tiên vẽ. */
   money: boolean;
+
+  /**
+   * Chứng cứ giao dịch của quan hệ này, tổng hợp từ sổ cái thật.
+   *
+   * Đồ thị vẽ *quan hệ*, còn giao dịch là *sự kiện*. Bốn trường dưới đây là
+   * cầu nối giữa hai tầng đó: chúng cho phép một cạnh nói được "tôi dựa trên
+   * 42 lần chuyển khoản, từ ngày này tới ngày kia" mà không phải kéo cả 42
+   * dòng lên màn hình.
+   *
+   * `txCount === 0` nghĩa là không có bằng chứng giao dịch — hợp lệ với quan
+   * hệ sở hữu, thiết bị dùng chung hay chuyển on-chain.
+   */
+  txCount: number;
+  amountsByCurrency: Record<string, number>;
+  txFirstSeen: string | null;
+  txLastSeen: string | null;
 }
 
 export interface GCluster {
@@ -167,6 +183,9 @@ export interface RenderEdge {
   count: number;
   /** Cạnh thật gốc; null nếu là cạnh gộp. */
   ref: GEdge | null;
+  /** Tổng số giao dịch của mọi cạnh thật đã gộp vào đây. */
+  txCount: number;
+  amountsByCurrency: Record<string, number>;
 }
 
 export interface RenderGraph {

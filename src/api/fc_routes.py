@@ -16,6 +16,7 @@ from typing import Any, Literal, NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from src.db.session import get_session
 from src.models.fc_schemas import (
@@ -536,6 +537,78 @@ async def world(mode: Literal["operational", "simulation"] = "operational") -> W
 # Đồ thị mạng lưới
 # ---------------------------------------------------------------------
 
+# Cạnh chưa có giao dịch nào đứng sau. Là giá trị hợp lệ, không phải lỗi: quan
+# hệ sở hữu, dùng chung thiết bị hay chuyển on-chain vốn không sinh ra chuyển
+# khoản ngân hàng nào.
+_EMPTY_TX_METRICS: dict[str, Any] = {
+    "tx_count": 0,
+    "amounts_by_currency": {},
+    "tx_first_seen": None,
+    "tx_last_seen": None,
+}
+
+# Nối thực thể trong đồ thị với tài khoản trong sổ cái. `fc.entity` loại
+# `account` lưu `account_key` trong attributes; bộ sinh ABM ghi khoá này bằng
+# một hàm băm tất định để lần chạy sau vẫn nối lại được.
+_ENTITY_ACCOUNT_JOIN = """
+    fc.entity src
+      ON src.simulation_id = :sid
+     AND src.attributes ->> 'account_key' = t.from_account_key
+    JOIN fc.entity dst
+      ON dst.simulation_id = :sid
+     AND dst.attributes ->> 'account_key' = t.to_account_key
+"""
+
+
+def _edge_transaction_metrics(session: Session, sim_id: str) -> dict[tuple[str, str], dict[str, Any]]:
+    """Tổng hợp giao dịch thật thành số đo của từng cạnh quan hệ.
+
+    Đây là chiều dữ liệu mà màn đồ thị vốn thiếu: cạnh nói *có quan hệ*, còn số
+    ở đây nói *quan hệ đó dựa trên bao nhiêu sự kiện nào*. Gộp ở tầng SQL chứ
+    không kéo giao dịch lên rồi gộp bằng Python — một cặp tài khoản có thể có
+    hàng nghìn dòng, và đồ thị chỉ cần bốn con số.
+
+    Tiền tệ KHÔNG được cộng gộp: `SUM(amount)` nhóm theo `currency` rồi mới xếp
+    thành từ điển. Cộng 120.000 USD với 45.000 EUR thành 165.000 là sai về
+    nghiệp vụ và analyst sẽ không phát hiện ra khi nhìn một con số duy nhất.
+    """
+    rows = (
+        session.execute(
+            text(
+                f"""SELECT src.entity_id AS source_id,
+                           dst.entity_id AS target_id,
+                           t.currency,
+                           count(*)      AS n,
+                           sum(t.amount) AS total,
+                           min(t.occurred_at) AS first_seen,
+                           max(t.occurred_at) AS last_seen
+                      FROM transaction t
+                      JOIN {_ENTITY_ACCOUNT_JOIN}
+                     GROUP BY src.entity_id, dst.entity_id, t.currency"""  # noqa: S608 — join là hằng số
+            ),
+            {"sid": sim_id},
+        )
+        .mappings()
+        .all()
+    )
+
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in rows:
+        key = (r["source_id"], r["target_id"])
+        bucket = out.setdefault(
+            key,
+            {"tx_count": 0, "amounts_by_currency": {}, "tx_first_seen": None, "tx_last_seen": None},
+        )
+        bucket["tx_count"] += r["n"]
+        bucket["amounts_by_currency"][r["currency"]] = _f(r["total"])
+        first, last = r["first_seen"], r["last_seen"]
+        if bucket["tx_first_seen"] is None or first < bucket["tx_first_seen"]:
+            bucket["tx_first_seen"] = first
+        if bucket["tx_last_seen"] is None or last > bucket["tx_last_seen"]:
+            bucket["tx_last_seen"] = last
+    return out
+
+
 
 @router.get("/fc/graph", response_model=GraphOut)
 async def entity_graph(
@@ -567,7 +640,7 @@ async def entity_graph(
         edges = (
             session.execute(
                 text(
-                    """SELECT source_id, target_id, kind, label, amount_usd,
+                    """SELECT relationship_id, source_id, target_id, kind, label, amount_usd,
                               is_inferred, confidence, inference_logic, known_from
                          FROM fc.relationship
                         WHERE simulation_id = :sid"""
@@ -613,8 +686,11 @@ async def entity_graph(
             .all()
         )
 
+        tx_metrics = _edge_transaction_metrics(session, sim["simulation_id"])
+
     crypto_edges = [
         GraphEdgeOut(
+            id=f"CRY-{c['source_id']}-{c['target_id']}-{c['transfer_kind']}-{c['asset']}",
             s=c["source_id"],
             t=c["target_id"],
             kind="bridge" if c["transfer_kind"] == "bridge" else "crypto",
@@ -655,6 +731,7 @@ async def entity_graph(
         # engine layout văng.
         edges=[
             GraphEdgeOut(
+                id=e["relationship_id"],
                 s=e["source_id"],
                 t=e["target_id"],
                 kind=e["kind"],
@@ -664,11 +741,189 @@ async def entity_graph(
                 conf=_f(e["confidence"]) if e["confidence"] is not None else None,
                 logic=e["inference_logic"],
                 known_from=e["known_from"],
+                **tx_metrics.get((e["source_id"], e["target_id"]), _EMPTY_TX_METRICS),
             )
             for e in edges
             if e["source_id"] in ids and e["target_id"] in ids
         ]
         + crypto_edges,
+    )
+
+
+@router.get("/fc/graph/edges/{edge_id}/transactions", response_model=TxPageOut)
+async def edge_transactions(
+    edge_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=200),
+    min_amount: float = Query(default=0, ge=0),
+    currency: str = Query(default="all", max_length=8),
+) -> TxPageOut:
+    """Những giao dịch thật nằm sau một cạnh quan hệ.
+
+    Đây là bước xuống tầng của màn điều tra: đồ thị vẽ *quan hệ*, còn đây là
+    *sự kiện* làm nên quan hệ đó. Tách ra thành lời gọi riêng chứ không nhét
+    vào `/fc/graph` — một cặp tài khoản có thể có hàng nghìn giao dịch, và
+    nhét chúng vào phản hồi đồ thị sẽ biến một màn hình 60 cạnh thành vài MB
+    JSON mà 99% không bao giờ được mở ra xem.
+
+    Trả về danh sách rỗng khi cạnh không có giao dịch nào đứng sau — quan hệ sở
+    hữu, dùng chung thiết bị hay chuyển on-chain đều rơi vào trường hợp này.
+    Giao diện có nhiệm vụ nói thẳng điều đó thay vì dựng ra một con số.
+    """
+    with get_session() as session:
+        sim = _current_simulation(session)
+        if not sim:
+            raise HTTPException(status_code=404, detail="Chưa có lần chạy mô phỏng nào.")
+
+        rel = (
+            session.execute(
+                text(
+                    """SELECT source_id, target_id
+                         FROM fc.relationship
+                        WHERE relationship_id = :rid AND simulation_id = :sid"""
+                ),
+                {"rid": edge_id, "sid": sim["simulation_id"]},
+            )
+            .mappings()
+            .first()
+        )
+        if not rel:
+            raise HTTPException(status_code=404, detail=f"Không có quan hệ {edge_id}.")
+
+        where = ["src.entity_id = :source", "dst.entity_id = :target"]
+        params: dict[str, Any] = {
+            "sid": sim["simulation_id"],
+            "source": rel["source_id"],
+            "target": rel["target_id"],
+            "limit": page_size,
+            "offset": (page - 1) * page_size,
+        }
+        if min_amount > 0:
+            where.append("t.amount >= :min_amount")
+            params["min_amount"] = min_amount
+        if currency != "all":
+            where.append("t.currency = :currency")
+            params["currency"] = currency
+        clause = " AND ".join(where)
+
+        total = session.execute(
+            text(
+                f"""SELECT count(*)
+                      FROM transaction t
+                      JOIN {_ENTITY_ACCOUNT_JOIN}
+                     WHERE {clause}"""  # noqa: S608 — clause dựng từ hằng số
+            ),
+            params,
+        ).scalar_one()
+
+        rows = (
+            session.execute(
+                text(
+                    f"""SELECT t.transaction_id, t.occurred_at, t.from_account_key, t.to_account_key,
+                               t.amount, t.currency, t.channel, t.remarks
+                          FROM transaction t
+                          JOIN {_ENTITY_ACCOUNT_JOIN}
+                         WHERE {clause}
+                         ORDER BY t.occurred_at DESC
+                         LIMIT :limit OFFSET :offset"""  # noqa: S608
+                ),
+                params,
+            )
+            .mappings()
+            .all()
+        )
+
+    return TxPageOut(
+        rows=[
+            TxRowOut(
+                id=r["transaction_id"],
+                occurred_at=r["occurred_at"],
+                from_account=r["from_account_key"],
+                to_account=r["to_account_key"],
+                amount=_f(r["amount"]),
+                currency=r["currency"],
+                channel=r["channel"],
+                remarks=r["remarks"],
+            )
+            for r in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/fc/graph/nodes/{node_id}/transactions", response_model=TxPageOut)
+async def node_transactions(
+    node_id: str,
+    direction: Literal["all", "in", "out"] = Query(default="all"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=200),
+) -> TxPageOut:
+    """Giao dịch của một thực thể, cả hai chiều hoặc một chiều."""
+    with get_session() as session:
+        sim = _current_simulation(session)
+        if not sim:
+            raise HTTPException(status_code=404, detail="Chưa có lần chạy mô phỏng nào.")
+
+        key = session.execute(
+            text(
+                """SELECT attributes ->> 'account_key'
+                     FROM fc.entity
+                    WHERE entity_id = :eid AND simulation_id = :sid"""
+            ),
+            {"eid": node_id, "sid": sim["simulation_id"]},
+        ).scalar_one_or_none()
+        # Thực thể không phải tài khoản (người, thiết bị, ví) thì không có sổ
+        # cái ngân hàng nào cả — trả rỗng chứ không phải lỗi.
+        if not key:
+            return TxPageOut(rows=[], total=0, page=page, page_size=page_size)
+
+        if direction == "in":
+            clause = "t.to_account_key = :key"
+        elif direction == "out":
+            clause = "t.from_account_key = :key"
+        else:
+            clause = "(t.from_account_key = :key OR t.to_account_key = :key)"
+        params = {"key": key, "limit": page_size, "offset": (page - 1) * page_size}
+
+        total = session.execute(
+            text(f"SELECT count(*) FROM transaction t WHERE {clause}"),  # noqa: S608
+            params,
+        ).scalar_one()
+        rows = (
+            session.execute(
+                text(
+                    f"""SELECT t.transaction_id, t.occurred_at, t.from_account_key, t.to_account_key,
+                               t.amount, t.currency, t.channel, t.remarks
+                          FROM transaction t
+                         WHERE {clause}
+                         ORDER BY t.occurred_at DESC
+                         LIMIT :limit OFFSET :offset"""  # noqa: S608
+                ),
+                params,
+            )
+            .mappings()
+            .all()
+        )
+
+    return TxPageOut(
+        rows=[
+            TxRowOut(
+                id=r["transaction_id"],
+                occurred_at=r["occurred_at"],
+                from_account=r["from_account_key"],
+                to_account=r["to_account_key"],
+                amount=_f(r["amount"]),
+                currency=r["currency"],
+                channel=r["channel"],
+                remarks=r["remarks"],
+            )
+            for r in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
     )
 
 

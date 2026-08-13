@@ -366,7 +366,9 @@ export function buildModel(raw: FcGraph): GraphModel {
   const edges: GEdge[] = raw.edges
     .filter((e: FcGraphEdge) => byId[e.s] && byId[e.t])
     .map((e, i) => ({
-      id: `E${i}-${e.s}-${e.t}-${e.kind}`,
+      // Ưu tiên id do backend cấp (relationship_id) — nó ổn định giữa các lần
+      // tải và là thứ endpoint drill-down nhận vào. Chỉ tự ghép khi thiếu.
+      id: e.id || `E${i}-${e.s}-${e.t}-${e.kind}`,
       s: e.s,
       t: e.t,
       kind: e.kind,
@@ -379,6 +381,10 @@ export function buildModel(raw: FcGraph): GraphModel {
       time: (new Date(e.known_from).getTime() - min) / span,
       layer: edgeLayerOf(e.kind),
       money: MONEY_KINDS.has(e.kind),
+      txCount: e.tx_count ?? 0,
+      amountsByCurrency: e.amounts_by_currency ?? {},
+      txFirstSeen: e.tx_first_seen ?? null,
+      txLastSeen: e.tx_last_seen ?? null,
     }));
 
   if (distinctStages(nodes) < 3) topologicalStages(nodes, edges);
