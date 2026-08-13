@@ -16,6 +16,7 @@ pandas>=2.2.0
 numpy>=2.0.0
 duckdb>=1.1.0
 pyarrow>=18.0.0
+scikit-learn>=1.6.0
 
 # Database (uncomment as needed)
 # sqlalchemy>=2.0.0
