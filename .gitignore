@@ -33,6 +33,11 @@ Thumbs.db
 *.db
 *.sqlite3
 
+# Graph handoff payloads distributed through Drive (checksums in manifest)
+/graph_handoff/graph_features_v1.parquet
+/graph_handoff/graph_account_modeling_v1.parquet
+/graph_handoff/graph_evidence_v1.jsonl
+
 # Logs
 logs/
 *.log
