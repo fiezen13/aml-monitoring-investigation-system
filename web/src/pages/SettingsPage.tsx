@@ -68,7 +68,7 @@ export function SettingsPage() {
                     <td className="tabular px-4 py-2.5 text-[13px] font-semibold text-ink-hi">{displayValue(setting)} <span className="text-2xs font-normal text-ink-low">{setting.unit}</span></td>
                     <td className="px-4 py-2.5 text-2xs text-ink-mid">{setting.source}</td>
                     <td className="tabular px-4 py-2.5 text-2xs text-ink-low">{formatDateTime(setting.updated_at)}</td>
-                    <td className="px-4 py-2.5"><Tooltip content={canEdit ? "Thay đổi cần lý do và ghi vào nhật ký kiểm toán" : "Chỉ Quản trị viên hoặc MLRO được chỉnh bộ máy rủi ro"}><button type="button" disabled={!canEdit || saving === setting.code} onClick={() => edit(setting)} className="rounded-control border border-line px-2.5 py-1 text-2xs font-medium text-ink-hi hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-40">{saving === setting.code ? "Đang lưu" : "Chỉnh"}</button></Tooltip></td>
+                    <td className="px-4 py-2.5"><Tooltip content={canEdit ? "Thay đổi cần lý do và ghi vào nhật ký kiểm toán" : "Chỉ Quản trị viên hoặc MLRO được chỉnh bộ máy rủi ro"}><button type="button" disabled={!canEdit || saving === setting.code} onClick={() => edit(setting)} className="rounded-control border border-line px-2.5 py-1 text-2xs font-medium text-ink-hi hover:border-line-emphasis disabled:cursor-not-allowed disabled:opacity-40">{saving === setting.code ? "Đang lưu" : "Chỉnh"}</button></Tooltip></td>
                   </tr>
                 ))}</tbody>
               </table>

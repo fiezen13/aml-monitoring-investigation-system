@@ -75,7 +75,7 @@ export function ValidationPanel({ status, issues, onFix }: ValidationPanelProps)
           <button
             type="button"
             onClick={onFix}
-            className="w-full rounded-control border border-primary/40 bg-primary-soft py-2 text-[13px] font-semibold text-primary hover:border-primary"
+            className="w-full rounded-control bg-primary py-2 text-md font-semibold text-app transition-colors hover:bg-primary-hover"
           >
             Đồng bộ số liệu từ công cụ tính toán & bổ sung chứng từ
           </button>

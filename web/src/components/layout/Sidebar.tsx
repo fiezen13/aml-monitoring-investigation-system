@@ -24,13 +24,13 @@ export function Sidebar({ counts = {} }: Props) {
       style={{ width: collapsed ? 58 : 218 }}
     >
       <div className="flex items-center gap-2.5 border-b border-line-soft px-4 py-3.5">
-        <div className="grid h-[30px] w-[30px] flex-none place-items-center rounded-[9px] border border-primary-line bg-gradient-to-br from-[#0E3A44] to-[#0A1F33] font-mono text-2xs font-semibold text-primary">
+        <div className="grid h-[30px] w-[30px] flex-none place-items-center rounded-control border border-line-strong bg-elev font-mono text-2xs font-semibold text-ink-mid">
           F7
         </div>
         {!collapsed && (
           <div className="min-w-0">
             <div className="truncate-1 text-lg font-semibold tracking-[0.02em]">FIN-07 · Thành phố tài chính</div>
-            <div className="text-3xs uppercase tracking-[0.14em] text-ink-low">Trung tâm điều hành AML</div>
+            <div className="fc-eyebrow">Trung tâm điều hành AML</div>
           </div>
         )}
       </div>
@@ -47,7 +47,7 @@ export function Sidebar({ counts = {} }: Props) {
                   // giữ được ranh giới giữa các nhóm.
                   <div className="mx-3 my-2 border-t border-line-soft" />
                 ) : (
-                  <div className="px-[18px] pb-1 pt-3.5 text-3xs uppercase tracking-[0.14em] text-ink-dim">
+                  <div className="fc-eyebrow px-4 pb-1 pt-4">
                     {it.section}
                   </div>
                 ))}
@@ -55,20 +55,29 @@ export function Sidebar({ counts = {} }: Props) {
                 to={it.to}
                 title={it.label}
                 className={({ isActive }) =>
-                  `relative mx-2 my-px flex items-center gap-2.5 rounded-control px-3 py-1.5 transition-colors ${
-                    isActive ? "bg-primary-soft text-ink-hi" : "text-ink-soft hover:bg-elev hover:text-ink-hi"
+                  `relative mx-2 my-px flex items-center gap-2.5 rounded-control px-3 py-[7px] transition-colors ${
+                    isActive
+                      ? "bg-elev font-medium text-ink-hi"
+                      : "text-ink-soft hover:bg-elev/60 hover:text-ink-mid"
                   }`
                 }
               >
                 {({ isActive }) => (
                   <>
+                    {/* Chỉ báo mảnh ở mép trái thay cho một vùng teal đặc:
+                        đủ để định vị mục đang mở, không biến nó thành nút. */}
                     {isActive && (
-                      <span className="absolute -left-2 bottom-[7px] top-[7px] w-[3px] rounded-sm bg-primary" />
+                      <span className="absolute -left-2 bottom-1.5 top-1.5 w-[2px] rounded-sm bg-primary" aria-hidden />
                     )}
-                    <it.icon size={16} strokeWidth={1.7} className="flex-none" aria-hidden />
+                    <it.icon
+                      size={16}
+                      strokeWidth={1.6}
+                      className={`flex-none ${isActive ? "text-primary" : ""}`}
+                      aria-hidden
+                    />
                     {!collapsed && <span className="truncate-1 flex-1 text-base">{it.label}</span>}
                     {!collapsed && hasBadge && (
-                      <span className="tabular flex-none rounded-chip border border-risk/30 bg-risk/15 px-1.5 font-mono text-2xs leading-4 text-risk-soft">
+                      <span className="tabular flex-none rounded-chip bg-risk/15 px-1.5 font-mono text-3xs leading-[17px] text-risk-soft">
                         {badge}
                       </span>
                     )}
@@ -93,7 +102,7 @@ export function Sidebar({ counts = {} }: Props) {
           type="button"
           onClick={toggleSidebar}
           aria-label={collapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
-          className="grid h-7 w-7 flex-none place-items-center rounded-[7px] border border-line-strong/70 text-ink-soft transition-colors hover:border-line-strong hover:text-ink-hi"
+          className="grid h-7 w-7 flex-none place-items-center rounded-[7px] border border-line-strong text-ink-soft transition-colors hover:border-line-emphasis hover:bg-elev hover:text-ink-hi"
         >
           {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
         </button>
@@ -108,7 +117,7 @@ export function Sidebar({ counts = {} }: Props) {
               onClick={() => void logout().then(() => navigate("/login", { replace: true }))}
               aria-label="Đăng xuất"
               title="Đăng xuất"
-              className="grid h-7 w-7 flex-none place-items-center rounded-[7px] border border-line-strong/70 text-ink-soft transition-colors hover:border-risk/50 hover:text-risk-soft"
+              className="grid h-7 w-7 flex-none place-items-center rounded-[7px] border border-line-strong text-ink-soft transition-colors hover:border-risk/50 hover:text-risk-soft"
             >
               <LogOut size={13} />
             </button>

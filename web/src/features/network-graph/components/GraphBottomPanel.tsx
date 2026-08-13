@@ -1,4 +1,5 @@
 import { usd } from "../../../api/fcFormat";
+import { C } from "../../../design/palette";
 import type { BottomTab } from "../stores/graph.store";
 import type { GEdge, GraphModel, MoneyPath } from "../types/graph.types";
 import { MoneyPathPanel } from "./MoneyPathPanel";
@@ -82,7 +83,7 @@ export function GraphBottomPanel({
             aria-selected={tab === key}
             className={[
               "border-b-2 px-2.5 py-1.5 text-2xs transition-colors",
-              tab === key ? "border-primary text-primary" : "border-transparent text-ink-low hover:text-ink-mid",
+              tab === key ? "border-primary text-ink-hi" : "border-transparent text-ink-low hover:text-ink-mid",
             ].join(" ")}
           >
             {label}
@@ -156,17 +157,17 @@ export function GraphBottomPanel({
                     .map((e) => (
                       <tr key={e.id} className="border-b border-line-faint hover:bg-elev">
                         <td className="px-3 py-1 text-ink-mid">
-                          <button type="button" onClick={() => onFocusNode(e.s)} className="hover:text-primary">
+                          <button type="button" onClick={() => onFocusNode(e.s)} className="hover:text-ink-hi">
                             {model.byId[e.s]?.label ?? e.s}
                           </button>
                         </td>
                         <td className="px-3 py-1 text-ink-mid">
-                          <button type="button" onClick={() => onFocusNode(e.t)} className="hover:text-primary">
+                          <button type="button" onClick={() => onFocusNode(e.t)} className="hover:text-ink-hi">
                             {model.byId[e.t]?.label ?? e.t}
                           </button>
                         </td>
                         <td className="px-3 py-1 text-ink-low">{e.label || e.kind}</td>
-                        <td className="tabular px-3 py-1 text-right font-mono text-primary">
+                        <td className="tabular px-3 py-1 text-right font-mono text-ink-hi">
                           {e.amt != null ? usd(e.amt) : "—"}
                         </td>
                         <td className="px-3 py-1 font-mono text-ink-dim">{e.knownFrom.slice(0, 16).replace("T", " ")}</td>
@@ -190,7 +191,7 @@ export function GraphBottomPanel({
                       </span>
                       <span
                         className="h-1.5 w-1.5 flex-none rounded-full"
-                        style={{ background: e.inferred ? "#A78BFA" : "#12D6C5" }}
+                        style={{ background: e.inferred ? C.agent : C.info }}
                       />
                       <span className="min-w-0 flex-1 truncate text-ink-mid">
                         {model.byId[e.s]?.shortLabel ?? e.s} → {model.byId[e.t]?.shortLabel ?? e.t}

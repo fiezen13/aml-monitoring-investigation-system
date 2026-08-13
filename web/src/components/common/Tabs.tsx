@@ -8,16 +8,14 @@ interface TabsProps {
 export function Tabs({ tabs, active, onChange, variant = "underline" }: TabsProps) {
   if (variant === "pill") {
     return (
-      <div className="inline-flex gap-1 rounded-control border border-line bg-elev p-0.5">
+      <div className="inline-flex gap-0.5 rounded-control border border-line bg-sunken p-0.5">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => onChange(tab.id)}
-            className={`rounded px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide transition-colors ${
-              active === tab.id
-                ? "bg-primary text-app"
-                : "text-ink-mid hover:text-ink-hi"
+            className={`rounded-[5px] px-2.5 py-1 text-2xs font-medium transition-colors ${
+              active === tab.id ? "bg-panel text-ink-hi shadow-sm" : "text-ink-soft hover:text-ink-hi"
             }`}
           >
             {tab.label}
@@ -35,10 +33,10 @@ export function Tabs({ tabs, active, onChange, variant = "underline" }: TabsProp
           role="tab"
           aria-selected={active === tab.id}
           onClick={() => onChange(tab.id)}
-          className={`-mb-px border-b-2 px-3 py-2 text-[13px] font-medium transition-colors ${
+          className={`-mb-px border-b-2 px-3 py-2 text-md font-medium transition-colors ${
             active === tab.id
               ? "border-primary text-ink-hi"
-              : "border-transparent text-ink-mid hover:text-ink-hi"
+              : "border-transparent text-ink-soft hover:text-ink-mid"
           }`}
         >
           {tab.label}

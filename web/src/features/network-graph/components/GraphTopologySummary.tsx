@@ -30,7 +30,7 @@ export function GraphTopologySummary({ model, graph, paths, cycles, health, onOp
   const tiles: { label: string; value: string; color?: string }[] = [
     { label: "Đỉnh đang vẽ", value: String(graph.nodes.length) },
     { label: "Cạnh đang vẽ", value: String(graph.edges.length) },
-    { label: "Đường tiền", value: String(paths.length), color: C.primary },
+    { label: "Đường tiền", value: String(paths.length), color: C.info },
     { label: "Chu trình", value: String(cycles.length), color: cycles.length ? C.warn : C.inkLow },
     { label: "Rủi ro ≥ 80", value: String(highRisk), color: C.risk },
     { label: "Cạnh suy luận", value: String(inferred), color: C.agent },
@@ -91,7 +91,7 @@ export function GraphTopologySummary({ model, graph, paths, cycles, health, onOp
       <dl className="mt-3 flex flex-col gap-1.5 text-xs">
         <div className="flex gap-2">
           <dt className="w-32 flex-none text-ink-low">Tổng dòng tiền</dt>
-          <dd className="tabular font-mono text-primary">{usd(model.totalFlowUsd)}</dd>
+          <dd className="tabular font-mono text-ink-hi">{usd(model.totalFlowUsd)}</dd>
         </div>
         {mule && (
           <div className="flex gap-2">

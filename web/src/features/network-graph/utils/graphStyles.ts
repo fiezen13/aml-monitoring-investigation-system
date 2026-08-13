@@ -29,10 +29,10 @@ export interface TypeStyle {
 }
 
 export const TYPE_STYLE: Record<string, TypeStyle> = {
-  person: { color: C.info, shape: "circle", name: "Cá nhân", glyph: "P" },
+  person: { color: "#38BDF8", shape: "circle", name: "Cá nhân", glyph: "P" },
   organisation: { color: C.agent, shape: "rrect", name: "Tổ chức", glyph: "O" },
   org: { color: C.agent, shape: "rrect", name: "Tổ chức", glyph: "O" },
-  account: { color: C.primary, shape: "rect", name: "Tài khoản", glyph: "A" },
+  account: { color: C.info, shape: "rect", name: "Tài khoản", glyph: "A" },
   device: { color: C.inkLow, shape: "hex", name: "Thiết bị", glyph: "D" },
   wallet: { color: C.ok, shape: "diamond", name: "Ví", glyph: "W" },
   vasp: { color: C.agent, shape: "octagon", name: "VASP", glyph: "V" },
@@ -96,7 +96,7 @@ export const EDGE_LEVEL: Record<EdgeLevel, EdgeLevelStyle> = {
 export function pathStageColor(stage: string): string {
   if (stage === "destination" || stage === "case") return C.risk;
   if (stage === "crypto" || stage === "gateway") return C.warn;
-  return C.primary;
+  return C.info;
 }
 
 export function edgeColor(opts: {
@@ -110,7 +110,7 @@ export function edgeColor(opts: {
   if (opts.selected) return C.primary;
   if (opts.negative) return C.inkDim;
   if (opts.inferred) return C.agent;
-  if (opts.money) return C.primary;
+  if (opts.money) return C.info;
   return C.inkLow;
 }
 

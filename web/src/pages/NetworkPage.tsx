@@ -290,7 +290,7 @@ export function NetworkPage() {
                     key={r.id}
                     type="button"
                     onClick={() => setSelectedId(r.id)}
-                    className="flex w-full items-center justify-between rounded-control border border-line bg-elev px-3 py-2 text-left hover:border-primary/40"
+                    className="flex w-full items-center justify-between rounded-control border border-line bg-elev px-3 py-2 text-left hover:border-line-emphasis"
                   >
                     <div>
                       <div className="text-[13px] font-medium text-ink-hi">{r.label}</div>

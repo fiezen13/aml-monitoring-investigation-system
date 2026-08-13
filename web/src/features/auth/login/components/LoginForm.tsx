@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowRight, CheckCircle2, LogIn, Mail, ShieldCheck } from "lucide-react";
+import { AlertCircle, CheckCircle2, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -12,13 +12,15 @@ import { PasswordField } from "./PasswordField";
 
 type Status = "idle" | "submitting" | "success";
 
+/** Ô nhập dùng chung cho email và mật khẩu — cao 44px, viền mảnh, focus rõ. */
+const FIELD =
+  "h-11 w-full rounded-control border border-line-strong bg-sunken px-3 text-md text-ink-hi outline-none transition-[border-color,box-shadow] placeholder:text-ink-dim hover:border-line-emphasis focus:border-primary/60 focus:shadow-[0_0_0_3px_rgba(32,199,167,0.14)] disabled:opacity-60";
+
 /**
  * Form đăng nhập.
  *
- * Toàn bộ luồng xác thực giữ nguyên như bản cũ: gọi `login()` của AppContext,
- * đẩy toast, rồi điều hướng sang dashboard. Vòng này chỉ thêm trạng thái đang
- * gửi và trạng thái thành công — hai thứ bản cũ thiếu, khiến bấm nút xong màn
- * hình đứng im và người dùng bấm lại lần nữa.
+ * Toàn bộ luồng xác thực giữ nguyên: gọi `login()` của AppContext, đẩy toast,
+ * rồi điều hướng sang dashboard. Vòng refactor này chỉ đụng tới lớp thị giác.
  */
 export function LoginForm() {
   const { login, pushToast } = useApp();
@@ -61,29 +63,22 @@ export function LoginForm() {
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-4" noValidate>
+      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4" noValidate>
         <div>
-          <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-ink-mid">
+          <label htmlFor="email" className="mb-1.5 block text-2xs font-medium text-ink-mid">
             Email công vụ
           </label>
-          <div className="group relative">
-            <Mail
-              size={16}
-              aria-hidden
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-low transition-colors group-focus-within:text-primary"
-            />
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="username"
-              value={email}
-              disabled={busy}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="ten.nguoidung@nganhang.vn"
-              className="h-[52px] w-full rounded-[11px] border border-line bg-sunken pl-11 pr-3.5 text-[13.5px] text-ink-hi outline-none transition-[border-color,box-shadow] placeholder:text-ink-dim focus:border-primary-line focus:shadow-[0_0_0_3px_rgba(18,214,197,0.10)] disabled:opacity-60"
-            />
-          </div>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="username"
+            value={email}
+            disabled={busy}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="ten.nguoidung@nganhang.vn"
+            className={FIELD}
+          />
         </div>
 
         <PasswordField
@@ -99,7 +94,7 @@ export function LoginForm() {
           }
         />
 
-        <label className="flex cursor-pointer items-center gap-2.5 text-xs text-ink-mid">
+        <label className="flex cursor-pointer items-center gap-2.5 text-2xs text-ink-mid">
           <input
             type="checkbox"
             checked={remember}
@@ -123,10 +118,13 @@ export function LoginForm() {
           )}
         </div>
 
+        {/* Teal đặc, chữ tối, không gradient và không quầng sáng ngoài. Đây là
+            chỗ duy nhất trên màn hình được tô teal đầy — nhờ vậy nó là hành
+            động rõ ràng chứ không phải một khối màu nữa trong nhiều khối. */}
         <button
           type="submit"
           disabled={busy}
-          className="group relative flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-[12px] bg-gradient-to-r from-primary to-[#0FBFB2] text-[14px] font-semibold text-app transition-[transform,filter,box-shadow] hover:-translate-y-px hover:brightness-110 hover:shadow-[0_8px_24px_rgba(18,214,197,0.22)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-80 disabled:hover:translate-y-0"
+          className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-control bg-primary text-md font-semibold text-[#04140F] transition-colors hover:bg-primary-hover active:bg-[#1BAF92] disabled:cursor-not-allowed disabled:opacity-70"
         >
           {status === "submitting" && (
             <>
@@ -139,27 +137,17 @@ export function LoginForm() {
           )}
           {status === "success" && (
             <>
-              <CheckCircle2 size={17} aria-hidden />
+              <CheckCircle2 size={16} aria-hidden />
               Đã xác thực
             </>
           )}
-          {status === "idle" && (
-            <>
-              <LogIn size={17} aria-hidden />
-              Truy cập hệ thống
-              <ArrowRight
-                size={16}
-                aria-hidden
-                className="transition-transform duration-150 group-hover:translate-x-0.5"
-              />
-            </>
-          )}
+          {status === "idle" && "Truy cập hệ thống"}
         </button>
       </form>
 
-      <div className="mt-4 flex items-start gap-2.5 rounded-control border border-info/25 bg-info/[0.07] px-3 py-2.5">
-        <ShieldCheck size={15} className="mt-px flex-none text-info-soft" aria-hidden />
-        <p className="text-2xs leading-relaxed text-ink-mid">
+      <div className="fc-auth-tight mt-4 flex items-start gap-2.5 rounded-control bg-info/[0.06] px-3 py-2.5">
+        <ShieldCheck size={14} className="mt-px flex-none text-info-soft" aria-hidden />
+        <p className="text-2xs leading-relaxed text-ink-low">
           Mọi hành động đăng nhập và thao tác trên hệ thống đều được lưu nhật ký (audit log) phục vụ mục đích kiểm
           soát.
         </p>

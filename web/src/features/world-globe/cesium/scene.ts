@@ -111,7 +111,7 @@ export async function createScene(container: HTMLElement, token?: string): Promi
   applyDarkTone(viewer);
 
   const { scene } = viewer;
-  scene.backgroundColor = Color.fromCssColorString("#050B12");
+  scene.backgroundColor = Color.fromCssColorString("#080D12");
   if (scene.skyAtmosphere) scene.skyAtmosphere.show = true;
   scene.globe.showGroundAtmosphere = true;
   scene.globe.baseColor = Color.fromCssColorString("#08111C");

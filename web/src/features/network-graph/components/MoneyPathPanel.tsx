@@ -37,11 +37,11 @@ export function MoneyPathPanel({ paths, activeId, model, onPick, onStep, missing
           đọc to lên. Chuỗi chặng viết đầy đủ chứ không chỉ hai đầu. */}
       {active && (
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-primary-line bg-primary-soft px-3 py-1.5">
-          <span className="font-mono text-2xs text-primary">Đường tiền ưu tiên #{paths.indexOf(active) + 1}</span>
+          <span className="font-mono text-2xs text-ink-hi">Đường tiền ưu tiên #{paths.indexOf(active) + 1}</span>
           <span className="min-w-0 flex-1 truncate text-2xs text-ink-mid">
             {active.nodeIds.map((id) => model.byId[id]?.shortLabel ?? id).join(" → ")}
           </span>
-          <span className="tabular font-mono text-2xs text-primary">{usd(active.amountUsd)}</span>
+          <span className="tabular font-mono text-2xs text-ink-hi">{usd(active.amountUsd)}</span>
           <span className="font-mono text-3xs text-ink-low">{active.hops} chặng</span>
           <span className="font-mono text-3xs text-ink-low">
             {active.durationMin > 0 ? `${active.durationMin} phút` : "cùng thời điểm"}
@@ -111,7 +111,7 @@ export function MoneyPathPanel({ paths, activeId, model, onPick, onStep, missing
                   </span>
                 </span>
                 <span className="tabular flex-none text-right">
-                  <span className="block font-mono text-xs text-primary">{usd(p.amountUsd)}</span>
+                  <span className="block font-mono text-xs text-ink-hi">{usd(p.amountUsd)}</span>
                   <span
                     className="block font-mono text-3xs"
                     style={{ color: p.confidence >= 0.8 ? C.ok : p.confidence >= 0.6 ? C.warn : C.risk }}

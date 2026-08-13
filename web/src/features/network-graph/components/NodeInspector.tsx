@@ -111,7 +111,7 @@ export function NodeInspector({ node, model, tab, onTab, onClose, onExpand, onFi
             className={[
               "border-b-2 px-2 py-1.5 text-2xs transition-colors",
               tab === key
-                ? "border-primary text-primary"
+                ? "border-primary text-ink-hi"
                 : "border-transparent text-ink-low hover:text-ink-mid",
             ].join(" ")}
           >

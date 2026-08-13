@@ -10,7 +10,7 @@
   body {
     @apply bg-app text-ink-hi antialiased;
     font-size: 13px;
-    line-height: 1.45;
+    line-height: 1.5;
   }
 
   /* Thanh cuộn mảnh, viền cùng màu nền để không cắt ngang bố cục tối. */
@@ -22,60 +22,81 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #14283c;
+    background: #1d2a35;
     border-radius: 6px;
-    border: 2px solid #050b12;
+    border: 2px solid #080d12;
   }
 
+  /* Vòng focus: viền teal mảnh + quầng rất nhạt. Không phải neon — nhưng phải
+     thấy được trên cả năm tầng nền, nên dùng hai lớp thay vì tăng độ chói. */
   :focus-visible {
-    outline: 2px solid #12d6c5;
+    outline: 1px solid #20c7a7;
     outline-offset: 1px;
+    box-shadow: 0 0 0 3px rgba(32, 199, 167, 0.16);
   }
 
   /* Trình duyệt vẽ <option> bằng nền hệ thống — sáng trắng trên giao diện tối
      nếu không ép màu ở đây. */
   select option {
-    background: #0a1724;
-    color: #e6f0f8;
+    background: #101820;
+    color: #e6edf3;
   }
 
   input::placeholder,
   textarea::placeholder {
-    color: #4a5d70;
+    color: #708597;
   }
 }
 
 @layer components {
-  /* Thẻ nội dung chuẩn. Gần như mọi khối trong prototype là biến thể của nó. */
+  /* Thẻ nội dung chuẩn. Gần như mọi khối trong console là biến thể của nó. */
   .fc-panel {
     @apply rounded-panel border border-line bg-panel;
   }
 
+  /* Biến thể không viền: dùng khi nhiều khối nằm cạnh nhau và mỗi khối một
+     viền sẽ tạo ra một lưới ô vuông thay vì một phân cấp. Nền nhạt hơn nền
+     trang một bậc là đủ để tách khối. */
+  .fc-quiet {
+    @apply rounded-panel bg-panel;
+  }
+
   /* Nhãn nhóm viết hoa, giãn chữ — đứng đầu mỗi cụm trong sidebar và inspector. */
   .fc-eyebrow {
-    @apply text-3xs uppercase tracking-[0.14em] text-ink-dim;
+    @apply text-3xs font-medium uppercase tracking-[0.12em] text-ink-dim;
   }
 
   /* Ô nhập liệu và select dùng chung một dáng. */
   .fc-input {
-    @apply rounded-control border border-line bg-sunken px-2.5 py-1.5 text-base text-ink-hi outline-none;
+    @apply rounded-control border border-line-strong bg-sunken px-2.5 py-1.5 text-base text-ink-hi outline-none transition-colors;
+  }
+  .fc-input:hover {
+    @apply border-line-emphasis;
   }
   .fc-input:focus {
-    @apply border-primary/40;
+    @apply border-primary/60;
+    box-shadow: 0 0 0 3px rgba(32, 199, 167, 0.14);
   }
 
+  /* Nút phụ: chỉ có viền, không nền. Nút chính mới được tô. */
   .fc-btn {
     @apply cursor-pointer rounded-control border border-line-strong px-2.5 py-1.5 text-sm text-ink-soft transition-colors;
   }
   .fc-btn:hover {
-    @apply border-line-strong/60 text-ink-hi;
+    @apply border-line-emphasis bg-elev text-ink-hi;
   }
 
+  /* Nút chính: teal đặc, chữ tối. Bản cũ dùng nền teal 14% + chữ teal, nên nó
+     nằm cùng một tông với mọi thứ khác đang teal và không nổi lên như một
+     hành động. Không có quầng sáng ngoài — đây là phần mềm ngân hàng. */
   .fc-btn-primary {
-    @apply cursor-pointer rounded-control border border-primary-line bg-primary-soft px-3 py-1.5 text-sm font-semibold text-primary transition-colors;
+    @apply cursor-pointer rounded-control bg-primary px-3 py-1.5 text-sm font-semibold text-[#04140F] transition-colors;
   }
   .fc-btn-primary:hover {
-    background: rgba(18, 214, 197, 0.24);
+    @apply bg-primary-hover;
+  }
+  .fc-btn-primary:active {
+    background: #1BAF92;
   }
 
   /* Viên thuốc trạng thái. Màu do chỗ dùng truyền vào qua style inline. */
@@ -94,12 +115,58 @@
   .truncate-1 {
     @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap;
   }
+
+  /* Khung căn giữa dùng chung cho các bố cục toàn màn hình (hiện là màn đăng
+     nhập). Không có nó, nội dung bám hai mép viewport và màn càng rộng thì
+     khoảng trống giữa càng phình ra. */
+  .fc-shell {
+    width: min(100% - 48px, 1440px);
+    margin-inline: auto;
+  }
+
+  /* Khung hẹp hơn cho màn đăng nhập. Nội dung ở đó có bề rộng tự nhiên xác
+     định: tiêu đề đọc tốt nhất ở khoảng 740px, thẻ đăng nhập ở 440px. Cộng
+     khoảng cách giữa hai cột là ~1240px — kéo khung ra 1440px chỉ tạo thêm
+     chùng bên trong mỗi cột chứ không làm cột nào rộng thêm. */
+  .fc-shell-auth {
+    width: min(100% - 48px, 1264px);
+    margin-inline: auto;
+  }
+
+  /* Khung nhìn cao dưới 840px — laptop 1366×768 là cấu hình phổ biến nhất
+     trong ngân hàng — thì thẻ đăng nhập cao 677px không vừa một màn. Thay vì
+     để nó tràn xuống dưới nếp gấp, siết nhịp dọc bên trong thẻ. Gom vào một
+     khối duy nhất ở đây thay vì rải `[@media(max-height:…)]` lên từng
+     component: chiều cao là một quyết định của cả trang, không phải của từng
+     hộp. */
+  @media (max-height: 840px) {
+    .fc-auth-page > header {
+      padding-top: 16px;
+    }
+    .fc-auth-page > main {
+      padding-block: 20px;
+    }
+    .fc-auth-card {
+      padding-block: 20px;
+    }
+    .fc-auth-card form {
+      margin-top: 18px;
+      gap: 12px;
+    }
+    .fc-auth-list {
+      max-height: 84px;
+    }
+    .fc-auth-tight {
+      margin-top: 12px;
+      padding-top: 12px;
+    }
+  }
 }
 
 /* React Flow — nền tối, bỏ nền trắng mặc định của attribution. */
 .react-flow__attribution {
   background: transparent;
-  color: #4a5d70;
+  color: #708597;
 }
 
 @media (prefers-reduced-motion: reduce) {

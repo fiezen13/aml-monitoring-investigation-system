@@ -1,51 +1,67 @@
 /** @type {import('tailwindcss').Config} */
 //
-// Bảng màu lấy nguyên từ prototype "Financial City AML" (thư mục
-// `Financial City AML Prototype/`). Tên token đặt theo vai trò chứ không theo
-// màu, để đổi tông về sau không phải sửa từng chỗ dùng.
+// FIN-07 Intelligence Dark.
+//
+// Tên token đặt theo vai trò chứ không theo màu, để đổi tông về sau không phải
+// sửa từng chỗ dùng — và đó chính là điều đã xảy ra: bảng này thay thế bảng lấy
+// từ prototype "Financial City AML", nơi mọi thứ đều là cyan #12D6C5.
+//
+// Hai luật màu của bộ này:
+//
+//  1. `primary` (teal) CHỈ mang một nghĩa: đang chọn / hành động chính / đang
+//     sống. Không dùng nó cho "khối này bấm được", cho biểu đồ, hay cho màu
+//     kênh — nếu teal ở khắp nơi thì nó không còn báo gì nữa.
+//  2. Mức độ rủi ro có thang riêng và không trùng teal: ok xanh lá, info xanh
+//     dương, warn hổ phách, risk đỏ. Bản cũ đặt ok = #2DD4A7, tức cũng là teal,
+//     nên "bình thường" và "được chọn" nhìn như nhau.
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        // Nền — bốn tầng độ sâu, tối dần từ panel ra ngoài.
-        app: "#050B12", // nền ngoài cùng, cũng là nền của body
-        side: "#07111C", // sidebar, header, thanh công cụ
-        panel: "#0D1C2A", // thẻ nội dung
-        elev: "#112538", // trạng thái hover của thẻ và hàng bảng
-        sunken: "#0A1724", // ô nhập liệu, select, nền lõm
+        // Nền — năm tầng độ sâu. Khoảng cách giữa các tầng cố ý nhỏ: phân cấp
+        // đến từ khoảng trắng và cỡ chữ, không phải từ độ tương phản nền.
+        app: "#080D12", // nền ngoài cùng, cũng là nền của body
+        side: "#0C131B", // sidebar, header, thanh công cụ
+        panel: "#101820", // thẻ nội dung
+        elev: "#15212B", // hover của thẻ, hàng bảng, popover
+        sunken: "#0A1017", // ô nhập liệu, select, nền lõm
 
         primary: {
-          DEFAULT: "#12D6C5",
-          hover: "#5FE8DB",
-          soft: "rgba(18, 214, 197, 0.14)",
-          line: "rgba(18, 214, 197, 0.45)",
+          DEFAULT: "#20C7A7",
+          hover: "#2FDDBA",
+          // Nền của trạng thái đang chọn. Đủ để thấy, không đủ để thành khối
+          // màu — sidebar bản cũ dùng 0.14 và trông như một nút phát sáng.
+          soft: "rgba(32, 199, 167, 0.10)",
+          line: "rgba(32, 199, 167, 0.32)",
         },
 
-        // Đường kẻ. Prototype dùng đúng ba mức đậm nhạt.
+        // Đường kẻ. Màu đặc chứ không phải rgba: viền phải trông như nhau trên
+        // cả năm tầng nền, mà rgba thì đổi theo thứ nằm phía sau.
         line: {
-          DEFAULT: "rgba(133, 173, 209, 0.14)",
-          soft: "rgba(133, 173, 209, 0.10)",
-          faint: "rgba(133, 173, 209, 0.06)",
-          strong: "rgba(133, 173, 209, 0.25)",
+          faint: "#141D26",
+          soft: "#182430",
+          DEFAULT: "#1D2A35",
+          strong: "#293B49",
+          emphasis: "#385062",
         },
 
-        // Chữ — bốn mức, dùng đúng thứ tự này cho phân cấp thông tin.
+        // Chữ — năm mức, dùng đúng thứ tự này cho phân cấp thông tin.
         ink: {
-          hi: "#E6F0F8", // tiêu đề, số liệu chính
-          mid: "#B9C9D6", // nội dung thường
-          soft: "#91A4B5", // nội dung phụ
-          low: "#607487", // nhãn, chú thích
-          dim: "#4A5D70", // nhãn nhóm viết hoa
+          hi: "#E6EDF3", // tiêu đề, số liệu chính
+          mid: "#B6C4D0", // nội dung thường
+          soft: "#91A2B1", // nội dung phụ
+          low: "#8397A8", // nhãn, chú thích
+          dim: "#708597", // nhãn nhóm viết hoa
         },
 
-        // Ngữ nghĩa rủi ro. `risk` và `risk-soft` là cặp: nền đậm / chữ nhạt.
-        risk: { DEFAULT: "#FF4D61", soft: "#FF6B7C" },
-        warn: { DEFAULT: "#F5A524", soft: "#F5C97A" },
-        ok: { DEFAULT: "#2DD4A7", soft: "#8FE8DF" },
-        info: { DEFAULT: "#3185FF", soft: "#6FB0FF" },
-        agent: { DEFAULT: "#A78BFA", soft: "#C9B8FC" }, // hoạt động của AI agent
-        token: "#FF8A5C", // kênh token / dự án
+        // Ngữ nghĩa rủi ro. `x` và `x-soft` là cặp: nền/viền đậm, chữ nhạt.
+        risk: { DEFAULT: "#F45B69", soft: "#FF8792" },
+        warn: { DEFAULT: "#F0B44D", soft: "#F5CE8A" },
+        ok: { DEFAULT: "#4CC38A", soft: "#86DCB4" },
+        info: { DEFAULT: "#4B9EFF", soft: "#8CC0FF" },
+        agent: { DEFAULT: "#A78BFA", soft: "#C9B8FC" }, // hoạt động của AI agent, VASP
+        token: "#F08A5C", // kênh token / dự án
       },
 
       fontFamily: {
@@ -55,23 +71,27 @@ export default {
         mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
       },
 
+      // Thang chữ. Bản cũ nén tất cả vào 9.5–19px nên tiêu đề màn hình (17px)
+      // gần bằng nội dung (12px) và không có phân cấp nào đọc được từ xa. Bản
+      // này giữ nguyên phần dày đặc ở dưới cho bảng biểu, nhưng mở phần trên
+      // ra để tiêu đề và số liệu chính có sức nặng.
       fontSize: {
-        "3xs": ["9.5px", "13px"],
-        "2xs": ["10.5px", "14px"],
-        xs: ["11px", "15px"],
-        sm: ["11.5px", "16px"],
-        base: ["12px", "17px"],
-        md: ["12.5px", "18px"],
-        lg: ["13px", "19px"],
-        xl: ["13.5px", "19px"],
-        "2xl": ["15px", "21px"],
-        "3xl": ["17px", "24px"],
-        "4xl": ["19px", "26px"],
+        "3xs": ["10px", "13px"], // nhãn nhóm viết hoa
+        "2xs": ["11px", "15px"], // metadata
+        xs: ["11.5px", "16px"],
+        sm: ["12px", "16px"],
+        base: ["12.5px", "18px"], // điều hướng, nội dung bảng
+        md: ["13px", "19px"], // nội dung thường
+        lg: ["13.5px", "20px"],
+        xl: ["14px", "20px"], // tiêu đề mục
+        "2xl": ["16px", "22px"],
+        "3xl": ["20px", "27px"], // tiêu đề màn hình
+        "4xl": ["24px", "30px"], // số liệu KPI
       },
 
       borderRadius: {
-        panel: "12px",
-        control: "8px",
+        panel: "10px",
+        control: "7px",
         chip: "20px",
       },
 

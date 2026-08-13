@@ -16,7 +16,7 @@ export function Eyebrow({ children, className = "" }: { children: ReactNode; cla
 export function ScreenTitle({ title, meta }: { title: string; meta?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline gap-2.5">
-      <h1 className="m-0 text-3xl font-semibold">{title}</h1>
+      <h1 className="m-0 text-3xl font-semibold tracking-[-0.01em] text-ink-hi">{title}</h1>
       {meta && <span className="text-sm text-ink-low">{meta}</span>}
     </div>
   );
@@ -45,16 +45,16 @@ export function KpiCard({
   return (
     <Tag
       onClick={onClick}
-      className={`rounded-panel border border-line bg-panel px-3.5 py-3 text-left transition-colors ${
+      className={`fc-quiet px-3.5 py-3 text-left transition-colors ${
         onClick ? "cursor-pointer hover:bg-elev" : ""
       }`}
     >
-      <div className="truncate-1 text-2xs uppercase tracking-[0.07em] text-ink-low">{label}</div>
-      <div className="tabular mt-1 font-mono text-4xl font-semibold" style={{ color: valueColor }}>
+      <div className="fc-eyebrow truncate-1">{label}</div>
+      <div className="tabular mt-1.5 font-mono text-4xl font-semibold leading-none" style={{ color: valueColor }}>
         {value}
       </div>
       {delta != null && (
-        <div className="mt-0.5 text-2xs" style={{ color: deltaColor }}>
+        <div className="mt-1.5 text-2xs" style={{ color: deltaColor }}>
           {delta}
         </div>
       )}
@@ -77,9 +77,9 @@ export function StatTile({
   subColor?: string;
 }) {
   return (
-    <div className="min-w-0 rounded-[10px] border border-line bg-panel px-2.5 py-2">
+    <div className="fc-quiet min-w-0 px-2.5 py-2">
       <div className="truncate-1 text-2xs text-ink-low">{label}</div>
-      <div className="tabular truncate-1 font-mono text-2xl font-semibold" style={{ color: valueColor }}>
+      <div className="tabular truncate-1 mt-0.5 font-mono text-2xl font-semibold" style={{ color: valueColor }}>
         {value}
       </div>
       {sub != null && (
@@ -127,7 +127,7 @@ export function RiskScore({ score, width = 44 }: { score: number; width?: number
         className="h-1 flex-1 rounded-sm"
         style={{
           maxWidth: width,
-          background: `linear-gradient(90deg, ${color} ${pct}, rgba(133,173,209,0.15) ${pct})`,
+          background: `linear-gradient(90deg, ${color} ${pct}, #1D2A35 ${pct})`,
         }}
       />
       <b className="tabular font-mono text-xs" style={{ color }}>
@@ -138,12 +138,12 @@ export function RiskScore({ score, width = 44 }: { score: number; width?: number
 }
 
 /** Thanh tiến độ mảnh, dùng cho độ phủ evidence và tỷ lệ hoàn thành. */
-export function ProgressBar({ value, color = C.primary }: { value: number; color?: string }) {
+export function ProgressBar({ value, color = C.info }: { value: number; color?: string }) {
   const pct = `${Math.max(0, Math.min(100, value))}%`;
   return (
     <span
       className="block h-1 rounded-sm"
-      style={{ background: `linear-gradient(90deg, ${color} ${pct}, rgba(133,173,209,0.15) ${pct})` }}
+      style={{ background: `linear-gradient(90deg, ${color} ${pct}, #1D2A35 ${pct})` }}
     />
   );
 }
@@ -177,9 +177,9 @@ export function Panel({
   return (
     <section className={`overflow-hidden rounded-panel border border-line bg-panel ${className}`}>
       {(title || actions) && (
-        <header className="flex flex-wrap items-start gap-2 px-3.5 pb-1.5 pt-3">
+        <header className="flex flex-wrap items-start gap-2 px-3.5 pb-2 pt-3">
           <div className="min-w-0 flex-1">
-            {title && <div className="text-md font-semibold leading-tight text-ink-hi">{title}</div>}
+            {title && <div className="text-xl font-semibold leading-tight text-ink-hi">{title}</div>}
             {subtitle && <div className="mt-px text-2xs text-ink-low">{subtitle}</div>}
           </div>
           {actions && <div className="flex flex-none gap-1.5">{actions}</div>}
@@ -195,7 +195,7 @@ export function Empty({ text, hint }: { text: string; hint?: string }) {
   return (
     <div className="grid place-items-center px-4 py-10 text-center text-sm leading-relaxed text-ink-low">
       <div>
-        <div className="mb-1 text-lg text-[#33465A]">◌</div>
+        <div className="mb-1 text-lg text-ink-dim">◌</div>
         {text}
         {hint && (
           <>

@@ -20,12 +20,12 @@ const ITEMS = [
 
 export function LoginTrustIndicators() {
   return (
-    <div className="mt-5 grid grid-cols-3 gap-2 border-t border-line pt-4">
+    <div className="fc-auth-tight mt-4 grid grid-cols-3 gap-2 border-t border-line-faint pt-4">
       {ITEMS.map(({ icon: Icon, code, label }) => (
         <div key={code} className="flex items-center gap-2">
-          <Icon size={14} className="flex-none text-ink-low" aria-hidden />
+          <Icon size={13} strokeWidth={1.6} className="flex-none text-ink-dim" aria-hidden />
           <span className="min-w-0">
-            <span className="block font-mono text-3xs font-semibold tracking-[0.08em] text-ink-soft">{code}</span>
+            <span className="block font-mono text-3xs font-semibold tracking-[0.06em] text-ink-soft">{code}</span>
             <span className="block truncate text-3xs text-ink-dim">{label}</span>
           </span>
         </div>

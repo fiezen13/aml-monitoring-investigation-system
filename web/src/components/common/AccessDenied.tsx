@@ -50,7 +50,7 @@ export function AccessDenied() {
         </button>
         <button
           type="button"
-          className="rounded-control border border-line px-4 py-2 text-[13px] font-medium text-ink-hi hover:border-primary/40"
+          className="rounded-control border border-line px-4 py-2 text-[13px] font-medium text-ink-hi hover:border-line-emphasis"
         >
           Liên hệ Quản trị viên
         </button>

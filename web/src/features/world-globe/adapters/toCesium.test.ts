@@ -115,7 +115,7 @@ describe("kiểu vẽ hành lang", () => {
 
   it("nghiêm trọng: màu đỏ, dày nhất, có hoạt hoạ", () => {
     const [crit] = buildScene(data({ flows: [flow({ risk: "crit" })] }), ALL_ON).routes;
-    expect(crit.color.toUpperCase()).toBe("#FF4D61");
+    expect(crit.color.toUpperCase()).toBe("#F45B69");
     expect(crit.animated).toBe(true);
     expect(crit.width).toBeGreaterThan(3);
   });
@@ -127,7 +127,7 @@ describe("kiểu vẽ hành lang", () => {
 
   it("kênh lạ không làm hỏng cảnh, chỉ lùi về màu ngân hàng", () => {
     const [odd] = buildScene(data({ flows: [flow({ ch: "Cheque" })] }), ALL_ON).routes;
-    expect(odd.color.toUpperCase()).toBe("#3185FF");
+    expect(odd.color.toUpperCase()).toBe("#4B9EFF");
   });
 });
 

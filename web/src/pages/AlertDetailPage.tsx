@@ -164,7 +164,7 @@ export function AlertDetailPage() {
           <button
             type="button"
             onClick={alert.reload}
-            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-primary/50"
+            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-line-emphasis"
           >
             <RefreshCw size={12} aria-hidden />
             Làm mới
@@ -279,7 +279,7 @@ export function AlertDetailPage() {
                 <button
                   type="button"
                   onClick={() => navigate(`/cases/${a.case_id}`)}
-                  className="mt-3 w-full rounded-control border border-primary/50 bg-primary-soft py-2 text-2xs font-semibold text-primary hover:border-primary"
+                  className="mt-3 w-full rounded-control bg-primary py-2 text-2xs font-semibold text-app transition-colors hover:bg-primary-hover"
                 >
                   Mở hồ sơ điều tra →
                 </button>

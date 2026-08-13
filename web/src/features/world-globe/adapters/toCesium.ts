@@ -7,21 +7,24 @@
  */
 
 import type { MapData, MapFlow, MapHub } from "../../../components/fc/WorldMap";
+import { C, CHANNEL } from "../../../design/palette";
 
-/** Bảng màu kênh — lấy nguyên từ engine canvas cũ để hai chế độ không lệch nhau. */
-export const CHANNEL_COLOR: Record<string, string> = {
-  bank: "#3185FF",
-  p2p: "#12D6C5",
-  vasp: "#A78BFA",
-  chain: "#2DD4A7",
-  gamb: "#F5A524",
-  proj: "#FF8A5C",
-};
+/**
+ * Bảng màu kênh và bảng màu mức độ đều lấy từ design token, không chép lại
+ * hằng số ở đây: bản đồ, chú giải dưới bản đồ và bảng xếp hạng bên phải phải
+ * cùng một màu cho cùng một kênh, mà ba chỗ đó nằm ở ba file khác nhau.
+ */
+export const CHANNEL_COLOR: Record<string, string> = CHANNEL;
 
+/**
+ * Mức "bình thường" dùng xanh dương chứ không dùng teal: trên bản đồ, teal
+ * dành riêng cho thực thể đang được chọn (§4). Hành lang bình thường vốn đã mờ
+ * và nét đứt nên không cần thêm màu để nói rằng nó không đáng chú ý.
+ */
 export const RISK_COLOR = {
-  ok: "#12D6C5",
-  warn: "#F5A524",
-  crit: "#FF4D61",
+  ok: C.info,
+  warn: C.warn,
+  crit: C.risk,
 } as const;
 
 export type Severity = "ok" | "warn" | "crit";

@@ -1,4 +1,5 @@
 import { Eyebrow } from "../../../components/fc/primitives";
+import { riskColor } from "../../../design/palette";
 import type { GCluster, LayerKey } from "../types/graph.types";
 import { LAYER_LABEL, LAYER_ORDER } from "../utils/graphStyles";
 
@@ -135,7 +136,7 @@ export function GraphLayerPanel({
                   <span className="font-mono text-ink-low">×{c.memberIds.length}</span>
                   <span
                     className="font-mono"
-                    style={{ color: c.risk >= 80 ? "#FF4D61" : c.risk >= 60 ? "#F5A524" : "#2DD4A7" }}
+                    style={{ color: riskColor(c.risk) }}
                   >
                     {c.risk}
                   </span>

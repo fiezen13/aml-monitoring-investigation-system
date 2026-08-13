@@ -117,7 +117,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
                   key={other.id}
                   type="button"
                   onClick={() => onSelect(other.id)}
-                  className="flex w-full items-center justify-between rounded-control border border-line bg-elev px-3 py-2 text-left hover:border-primary/40"
+                  className="flex w-full items-center justify-between rounded-control border border-line bg-elev px-3 py-2 text-left hover:border-line-emphasis"
                 >
                   <div className="min-w-0">
                     <div className="truncate text-[13px] font-medium text-ink-hi">

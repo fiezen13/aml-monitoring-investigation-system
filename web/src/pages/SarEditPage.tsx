@@ -89,7 +89,7 @@ export function SarEditPage() {
                 pushToast({ tone: "error", title: "Kiểm chứng thất bại", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
               }
             }}
-            className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-[13px] font-medium text-ink-hi hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-[13px] font-medium text-ink-hi hover:border-line-emphasis disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Play size={13} aria-hidden />
             Chạy kiểm chứng
@@ -259,7 +259,7 @@ export function SarEditPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setDrawerEvidence(item.evidence)}
-                  className="w-full rounded-control border border-line bg-elev p-2.5 text-left hover:border-primary/40"
+                  className="w-full rounded-control border border-line bg-elev p-2.5 text-left hover:border-line-emphasis"
                 >
                   <div className="tabular text-2xs text-ink-low">{item.id}</div>
                   <div className="mt-0.5 text-[13px] font-medium text-ink-hi">{item.title}</div>

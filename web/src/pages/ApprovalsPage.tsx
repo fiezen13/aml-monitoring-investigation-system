@@ -153,7 +153,7 @@ export function ApprovalsPage() {
     {
       key: "action",
       header: "Thao tác",
-      render: () => <span className="font-medium text-primary">Xem chi tiết</span>,
+      render: () => <span className="font-medium text-info-soft">Xem chi tiết</span>,
     },
   ];
 
@@ -340,7 +340,7 @@ export function ApprovalsPage() {
           <button
             type="button"
             onClick={() => pushToast({ tone: "info", title: "AI Chat chưa bật vì môi trường chưa cấu hình model" })}
-            className="mt-3 w-full rounded-control border border-line py-2 text-[13px] font-medium text-ink-hi hover:border-primary/50"
+            className="mt-3 w-full rounded-control border border-line py-2 text-[13px] font-medium text-ink-hi hover:border-line-emphasis"
           >
             Mở AI Chat chi tiết
           </button>

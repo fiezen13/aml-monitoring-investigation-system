@@ -5,8 +5,8 @@ import { EmptyState } from "./States";
 const ACTOR_DOT: Record<string, string> = {
   system: "bg-info",
   agent: "bg-info",
-  analyst: "bg-primary",
-  investigator: "bg-primary",
+  analyst: "bg-info",
+  investigator: "bg-agent",
   mlro: "bg-warn",
   auditor: "bg-ink-low",
 };

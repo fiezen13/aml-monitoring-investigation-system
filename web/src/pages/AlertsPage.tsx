@@ -81,7 +81,7 @@ export function AlertsPage() {
       header: "Chủ thể",
       render: (a) => (
         <span className="inline-flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-elev text-2xs font-bold text-primary">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-elev text-2xs font-semibold text-ink-soft">
             {initials(a.customer_id)}
           </span>
           <span>
@@ -139,7 +139,7 @@ export function AlertsPage() {
     {
       key: "action",
       header: "Hành động",
-      render: () => <span className="font-medium text-primary">Xem chi tiết</span>,
+      render: () => <span className="font-medium text-info-soft">Xem chi tiết</span>,
     },
   ];
 

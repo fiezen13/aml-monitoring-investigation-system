@@ -24,7 +24,7 @@ export function FilterBar({ dateLabel, chips, onAdvanced, onExport, trailing }: 
       {dateLabel && (
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-control border border-line bg-elev px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-primary/40"
+          className="inline-flex items-center gap-1.5 rounded-control border border-line bg-elev px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-line-emphasis"
         >
           <Calendar size={12} aria-hidden />
           {dateLabel}
@@ -34,7 +34,7 @@ export function FilterBar({ dateLabel, chips, onAdvanced, onExport, trailing }: 
         <button
           type="button"
           onClick={onAdvanced}
-          className="inline-flex items-center gap-1.5 rounded-control border border-line bg-elev px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-primary/40"
+          className="inline-flex items-center gap-1.5 rounded-control border border-line bg-elev px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-line-emphasis"
         >
           <Filter size={12} aria-hidden />
           Bộ lọc nâng cao
@@ -67,7 +67,7 @@ export function FilterBar({ dateLabel, chips, onAdvanced, onExport, trailing }: 
           <button
             type="button"
             onClick={onExport}
-            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-elev px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-primary/40"
+            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-elev px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-line-emphasis"
           >
             <Download size={12} aria-hidden />
             Xuất báo cáo

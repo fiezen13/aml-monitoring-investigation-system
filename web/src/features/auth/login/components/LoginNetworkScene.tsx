@@ -104,9 +104,9 @@ export function LoginNetworkScene({ size, reducedMotion }: Props) {
 
       // Quầng khí quyển — một lớp gradient duy nhất, không phải mesh.
       const halo = g.createRadialGradient(cx, cy, radius * 0.72, cx, cy, radius * 1.62);
-      halo.addColorStop(0, "rgba(18,214,197,0.16)");
-      halo.addColorStop(0.55, "rgba(49,133,255,0.085)");
-      halo.addColorStop(1, "rgba(3,10,17,0)");
+      halo.addColorStop(0, "rgba(32,199,167,0.10)");
+      halo.addColorStop(0.55, "rgba(75,158,255,0.06)");
+      halo.addColorStop(1, "rgba(8,13,18,0)");
       g.fillStyle = halo;
       g.beginPath();
       g.arc(cx, cy, radius * 1.62, 0, Math.PI * 2);
@@ -116,7 +116,7 @@ export function LoginNetworkScene({ size, reducedMotion }: Props) {
       [1.34, 1.62].forEach((k, i) => {
         g.beginPath();
         g.ellipse(cx, cy + radius * 0.06, radius * k, radius * k * 0.19, 0, 0, Math.PI * 2);
-        g.strokeStyle = i === 0 ? "rgba(18,214,197,0.22)" : "rgba(49,133,255,0.12)";
+        g.strokeStyle = i === 0 ? "rgba(32,199,167,0.14)" : "rgba(75,158,255,0.09)";
         g.lineWidth = 1;
         g.stroke();
       });
@@ -125,7 +125,7 @@ export function LoginNetworkScene({ size, reducedMotion }: Props) {
       //
       // Chỉ có kinh tuyến thì mắt đọc ra một nắm đường cong chứ không ra khối
       // cầu — phải có cả hai chiều thì bề mặt mới hiện hình.
-      g.strokeStyle = "rgba(133,173,209,0.10)";
+      g.strokeStyle = "rgba(133,173,209,0.07)";
       g.lineWidth = 1;
       for (let m = 0; m < 8; m++) {
         const a = (m / 8) * Math.PI;
@@ -162,7 +162,7 @@ export function LoginNetworkScene({ size, reducedMotion }: Props) {
         g.beginPath();
         g.moveTo(a.sx, a.sy);
         g.lineTo(b.sx, b.sy);
-        g.strokeStyle = `rgba(18,214,197,${(0.09 + front * 0.38) * link.weight})`;
+        g.strokeStyle = `rgba(75,158,255,${(0.06 + front * 0.26) * link.weight})`;
         g.lineWidth = 0.6 + front * 0.5;
         g.stroke();
       });
@@ -195,14 +195,14 @@ export function LoginNetworkScene({ size, reducedMotion }: Props) {
             headFront = p.front;
           }
         }
-        g.strokeStyle = "rgba(95,232,219,0.42)";
+        g.strokeStyle = "rgba(47,221,186,0.30)";
         g.lineWidth = 1.1;
         g.stroke();
 
         if (headX && headFront > 0.25) {
           g.beginPath();
           g.arc(headX, headY, 2.2, 0, Math.PI * 2);
-          g.fillStyle = `rgba(159,247,238,${0.5 + headFront * 0.5})`;
+          g.fillStyle = `rgba(134,220,180,${0.35 + headFront * 0.4})`;
           g.fill();
         }
       });
@@ -221,15 +221,15 @@ export function LoginNetworkScene({ size, reducedMotion }: Props) {
           const glow = 0.18 + pulse * 0.3;
           g.beginPath();
           g.arc(q.sx, q.sy, r * (2.6 + pulse * 1.1), 0, Math.PI * 2);
-          g.fillStyle = `rgba(255,77,97,${glow * front})`;
+          g.fillStyle = `rgba(244,91,105,${glow * front * 0.8})`;
           g.fill();
         }
 
         g.beginPath();
         g.arc(q.sx, q.sy, r, 0, Math.PI * 2);
         g.fillStyle = p.alert
-          ? `rgba(255,107,124,${0.55 + front * 0.45})`
-          : `rgba(${95 + pulse * 40},${232},${219},${0.2 + front * 0.7})`;
+          ? `rgba(255,135,146,${0.45 + front * 0.4})`
+          : `rgba(${120 + pulse * 30},${180},${210},${0.14 + front * 0.5})`;
         g.fill();
       });
 

@@ -244,7 +244,7 @@ export function WorldPage() {
               </p>
             </div>
             <div className="flex gap-2">
-              <Link to="/transactions" className="fc-btn border-primary-line bg-primary-soft text-primary">
+              <Link to="/transactions" className="fc-btn">
                 Mở Tra cứu giao dịch
               </Link>
               <button type="button" onClick={() => setDataMode("simulation")} className="fc-btn">
@@ -312,13 +312,16 @@ export function WorldPage() {
                 >
                   <span className="h-[9px] w-[9px] flex-none rounded-sm" style={{ background: CHANNEL[ch] }} />
                   <span className="flex-1 text-left text-ink-mid">{CHANNEL_LABEL[ch]}</span>
+                  {/* Công tắc mang màu của chính lớp đó, không phải màu accent
+                      chung: sáu công tắc cùng một sắc teal thì chỉ nói được
+                      "đang bật", còn ở đây chúng nói luôn "đang bật cái gì". */}
                   <span
                     className="relative h-[14px] w-[30px] flex-none rounded-full border border-line-strong transition-colors"
-                    style={{ background: layers[ch] ? "rgba(18,214,197,0.3)" : "transparent" }}
+                    style={{ background: layers[ch] ? `${CHANNEL[ch]}2E` : "transparent" }}
                   >
                     <span
-                      className="absolute top-[1.5px] h-[9px] w-[9px] rounded-full bg-ink-soft transition-[left]"
-                      style={{ left: layers[ch] ? 18 : 2 }}
+                      className="absolute top-[1.5px] h-[9px] w-[9px] rounded-full transition-[left]"
+                      style={{ left: layers[ch] ? 18 : 2, background: layers[ch] ? CHANNEL[ch] : C.inkDim }}
                     />
                   </span>
                 </button>
@@ -386,7 +389,7 @@ export function WorldPage() {
         {/* --- Cột giữa: bản đồ --- */}
         <div
           className="relative min-w-[390px] flex-[1_1_480px] overflow-hidden"
-          style={{ background: "radial-gradient(ellipse at 50% 42%,#081827 0%,#050B12 72%)" }}
+          style={{ background: "radial-gradient(ellipse at 50% 42%,#0D1B26 0%,#080D12 72%)" }}
         >
           <WorldMap
             data={mapData}
@@ -668,7 +671,7 @@ export function WorldPage() {
             value={replayT}
             onChange={(e) => setReplayT(Number(e.target.value))}
             aria-label="Thanh trượt thời gian"
-            className="min-w-[120px] flex-1 accent-agent"
+            className="min-w-[120px] flex-1 accent-info"
           />
           <span className="tabular w-[92px] flex-none text-right font-mono text-2xs text-ink-soft">
             {replayT >= 100 ? "thời gian thực" : `phát lại ${replayT.toFixed(0)}%`}

@@ -2,17 +2,17 @@
 (() => {
 if (customElements.get('fc-graph')) return;
 const TYPE = {
-  person:{c:'#3185FF',shape:'circle',name:'Person',g:'P'},
+  person:{c:'#4B9EFF',shape:'circle',name:'Person',g:'P'},
   org:{c:'#A78BFA',shape:'rrect',name:'Organization',g:'O'},
-  account:{c:'#12D6C5',shape:'rect',name:'Account',g:'A'},
-  device:{c:'#607487',shape:'hex',name:'Device',g:'D'},
-  wallet:{c:'#2DD4A7',shape:'diamond',name:'Wallet',g:'W'},
-  project:{c:'#FF8A5C',shape:'rrect-lg',name:'Project',g:'T'},
+  account:{c:'#20C7A7',shape:'rect',name:'Account',g:'A'},
+  device:{c:'#8397A8',shape:'hex',name:'Device',g:'D'},
+  wallet:{c:'#4CC38A',shape:'diamond',name:'Wallet',g:'W'},
+  project:{c:'#F08A5C',shape:'rrect-lg',name:'Project',g:'T'},
   token:{c:'#8FA4B8',shape:'pill',name:'Token',g:'$'},
-  contract:{c:'#F5A524',shape:'diamond2',name:'Smart contract',g:'C'},
-  platform:{c:'#91A4B5',shape:'octagon',name:'Platform',g:'X'},
-  alert:{c:'#FF4D61',shape:'warning',name:'Alert',g:'!'},
-  case:{c:'#FF6B7C',shape:'container',name:'Case',g:'K'},
+  contract:{c:'#F0B44D',shape:'diamond2',name:'Smart contract',g:'C'},
+  platform:{c:'#91A2B1',shape:'octagon',name:'Platform',g:'X'},
+  alert:{c:'#F45B69',shape:'warning',name:'Alert',g:'!'},
+  case:{c:'#FF8792',shape:'container',name:'Case',g:'K'},
 };
 const EDGE_LABEL = {transfer:'Transferred to',owns:'Owns',device:'Shared device/IP',p2p:'P2P purchase',
   deposit:'Deposit',withdrawal:'Withdrawal',crypto:'Wallet transfer',swap:'Swap',bridge:'Bridge',
@@ -26,7 +26,7 @@ class FCGraph extends HTMLElement {
     if(getComputedStyle(this).position==='static') this.style.position='relative';
     this.cv=document.createElement('canvas'); this.cv.style.cssText='position:absolute;inset:0;width:100%;height:100%;display:block';
     this.tip=document.createElement('div');
-    this.tip.style.cssText='position:absolute;pointer-events:none;background:rgba(10,23,36,0.97);border:1px solid rgba(133,173,209,0.3);border-radius:9px;padding:8px 11px;font:11px Geist,sans-serif;color:#E6F0F8;display:none;z-index:6;line-height:1.55;box-shadow:0 10px 30px rgba(0,0,0,0.5);max-width:280px';
+    this.tip.style.cssText='position:absolute;pointer-events:none;background:rgba(10,23,36,0.97);border:1px solid rgba(133,173,209,0.3);border-radius:9px;padding:8px 11px;font:11px Geist,sans-serif;color:#E6EDF3;display:none;z-index:6;line-height:1.55;box-shadow:0 10px 30px rgba(0,0,0,0.5);max-width:280px';
     this.appendChild(this.cv); this.appendChild(this.tip);
     this.zoom=1; this.px=0; this.py=0; this.sel=null; this.selEdge=null; this.hov=null;
     this._hlPath=null; this._edgeF=null; this._typeF=null; this._minAmt=0; this._riskMin=0; this._timeT=1;
@@ -211,23 +211,23 @@ class FCGraph extends HTMLElement {
     const r=this.getBoundingClientRect(); const mx=e.clientX-r.left,my=e.clientY-r.top;
     this.style.cursor=(n||ed)?'pointer':'grab';
     if(n){ const st=TYPE[n.type]||TYPE.account;
-      this.tip.innerHTML='<b>'+n.label+'</b> <span style="color:#607487">· '+st.name+'</span>'+
-        (n.sub?'<br><span style="color:#91A4B5">'+n.sub+'</span>':'')+
+      this.tip.innerHTML='<b>'+n.label+'</b> <span style="color:#8397A8">· '+st.name+'</span>'+
+        (n.sub?'<br><span style="color:#91A2B1">'+n.sub+'</span>':'')+
         (n.risk!=null?'<br>Risk <b style="font-family:JetBrains Mono,monospace;color:'+this._rc(n.risk)+'">'+n.risk+'</b>':'')+
-        (n.first?'<br><span style="color:#607487;font-size:10px">'+n.first+' → '+n.last+'</span>':'')+
-        (n.negative?'<br><span style="color:#8FE8DF;font-size:10px">hard negative — hoạt động hợp pháp</span>':''); }
+        (n.first?'<br><span style="color:#8397A8;font-size:10px">'+n.first+' → '+n.last+'</span>':'')+
+        (n.negative?'<br><span style="color:#86DCB4;font-size:10px">hard negative — hoạt động hợp pháp</span>':''); }
     else if(ed){ const a=this.byId[ed.s],b=this.byId[ed.t];
-      this.tip.innerHTML='<b>'+(a||{}).label+' → '+(b||{}).label+'</b><br><span style="color:#91A4B5">'+(EDGE_LABEL[ed.kind]||ed.kind)+'</span>'+
+      this.tip.innerHTML='<b>'+(a||{}).label+' → '+(b||{}).label+'</b><br><span style="color:#91A2B1">'+(EDGE_LABEL[ed.kind]||ed.kind)+'</span>'+
         (ed.label?' · '+ed.label:'')+
         (ed.inferred?'<br><span style="color:#C9B8FC;font-size:10px">INFERRED · confidence '+(ed.conf!=null?ed.conf.toFixed(2):'—')+' — cần evidence xác nhận</span>':'')+
-        (ed.sourceOnly?'<br><span style="color:#607487;font-size:10px">source-specific observation</span>':'')+
-        (ed.ev?'<br><span style="font-family:JetBrains Mono,monospace;font-size:10px;color:#12D6C5">'+ed.ev+'</span>':''); }
+        (ed.sourceOnly?'<br><span style="color:#8397A8;font-size:10px">source-specific observation</span>':'')+
+        (ed.ev?'<br><span style="font-family:JetBrains Mono,monospace;font-size:10px;color:#20C7A7">'+ed.ev+'</span>':''); }
     if(n||ed){ this.tip.style.display='block'; const tw=this.tip.offsetWidth;
       let lx=mx+15; if(lx+tw>r.width-4) lx=mx-tw-15;
       this.tip.style.left=lx+'px'; this.tip.style.top=Math.max(4,Math.min(r.height-60,my-16))+'px'; }
     else this.tip.style.display='none';
   }
-  _rc(r){ return r>=80?'#FF4D61':r>=55?'#F5A524':'#2DD4A7'; }
+  _rc(r){ return r>=80?'#F45B69':r>=55?'#F0B44D':'#4CC38A'; }
   // ===== shapes =====
   _shape(g,n,r,st){
     const x=n.x,y=n.y;
@@ -279,7 +279,7 @@ class FCGraph extends HTMLElement {
       let alpha=(selId||path)?((touched||onPath)?0.95:0.08):(e.sourceOnly?0.3:0.5);
       if(isSelE||hovE) alpha=1;
       if(expSet&&!expSet.has(e.s)&&!expSet.has(e.t)) alpha*=0.35;
-      const col=onPath?'#FF4D61':isSelE?'#12D6C5':(e.inferred?'#A78BFA':e.sourceOnly?'#607487':'#8FAAC4');
+      const col=onPath?'#F45B69':isSelE?'#20C7A7':(e.inferred?'#A78BFA':e.sourceOnly?'#8397A8':'#8FAAC4');
       const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
       const ra=this._radius(a)+5, rb=this._radius(b)+9;
       const x1=a.x+ux*ra,y1=a.y+uy*ra,x2=b.x-ux*rb,y2=b.y-uy*rb;
@@ -321,11 +321,11 @@ class FCGraph extends HTMLElement {
       g.textAlign='center'; g.textBaseline='middle'; g.fillText(st.g,n.x,n.y+0.5);
       // severity badge
       if((n.risk||0)>=55){ const bx=n.x+r*0.95, by=n.y-r*0.95;
-        g.beginPath(); g.arc(bx,by,6.4,0,7); g.fillStyle=(n.risk>=80?'#FF4D61':'#F5A524'); g.fill();
-        g.fillStyle='#050B12'; g.font='700 8px "JetBrains Mono",monospace'; g.fillText(n.risk>=80?'!':'▲',bx,by+0.4); }
+        g.beginPath(); g.arc(bx,by,6.4,0,7); g.fillStyle=(n.risk>=80?'#F45B69':'#F0B44D'); g.fill();
+        g.fillStyle='#080D12'; g.font='700 8px "JetBrains Mono",monospace'; g.fillText(n.risk>=80?'!':'▲',bx,by+0.4); }
       if(n.negative){ const bx=n.x-r*0.95, by=n.y-r*0.95;
-        g.beginPath(); g.arc(bx,by,6,0,7); g.fillStyle='#2DD4A7'; g.fill();
-        g.fillStyle='#050B12'; g.font='700 8px "JetBrains Mono",monospace'; g.fillText('✓',bx,by+0.4); }
+        g.beginPath(); g.arc(bx,by,6,0,7); g.fillStyle='#4CC38A'; g.fill();
+        g.fillStyle='#080D12'; g.font='700 8px "JetBrains Mono",monospace'; g.fillText('✓',bx,by+0.4); }
       if(!this._perf&&(this.zoom>0.45||isSel||isHov)){
         g.font='500 10px Geist,sans-serif'; g.fillStyle='rgba(230,240,248,'+(0.9*alpha)+')';
         g.fillText(n.label,n.x,n.y+r+12);
@@ -346,7 +346,7 @@ class FCGraph extends HTMLElement {
     g.fillStyle='rgba(7,17,28,0.86)'; g.strokeStyle='rgba(133,173,209,0.18)'; g.lineWidth=1;
     g.beginPath(); this._rr(g,mx,my,mw,mh,8); g.fill(); g.stroke();
     vis.forEach(n=>{ const px=mx+6+(n.x-x0)*k, py=my+6+(n.y-y0)*k;
-      g.fillStyle=(n.risk||0)>=80?'#FF4D61':(n.risk||0)>=55?'#F5A524':'#3A6E8A';
+      g.fillStyle=(n.risk||0)>=80?'#F45B69':(n.risk||0)>=55?'#F0B44D':'#3A6E8A';
       g.fillRect(px-1,py-1,2.2,2.2); });
     // viewport rect
     const vx0=(-this.px)/this.zoom, vy0=(-this.py)/this.zoom;

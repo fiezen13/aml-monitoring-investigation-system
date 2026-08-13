@@ -124,7 +124,7 @@ export function UsersPage() {
         </Panel>
       </div>
 
-      <Panel title="Hoạt động Người dùng gần đây" action={<a href="/audit" className="text-2xs font-medium text-primary hover:underline">Xem toàn bộ nhật ký kiểm toán ›</a>}>
+      <Panel title="Hoạt động Người dùng gần đây" action={<a href="/audit" className="text-2xs font-medium text-info-soft hover:underline">Xem toàn bộ nhật ký kiểm toán ›</a>}>
         {auditQuery.loading && <LoadingSkeleton rows={3} />}
         {!auditQuery.loading && !userEvents.length && <EmptyState detail="Chưa có hoạt động người dùng." />}
         <div className="grid gap-3 md:grid-cols-3">{userEvents.map((event) => {

@@ -29,9 +29,9 @@ class FCChartCard extends HTMLElement {
     this.head.style.cssText='display:flex;align-items:flex-start;gap:8px;padding:11px 13px 6px;flex-wrap:wrap';
     this.body=document.createElement('div'); this.body.style.cssText='position:relative;padding:0 13px 11px';
     this.legend=document.createElement('div');
-    this.legend.style.cssText='display:flex;gap:9px;flex-wrap:wrap;padding:0 13px 9px;font-size:10.5px;color:#91A4B5';
+    this.legend.style.cssText='display:flex;gap:9px;flex-wrap:wrap;padding:0 13px 9px;font-size:10.5px;color:#91A2B1';
     this.foot=document.createElement('div');
-    this.foot.style.cssText='padding:0 13px 10px;font-size:10px;color:#4A5D70;line-height:1.5';
+    this.foot.style.cssText='padding:0 13px 10px;font-size:10px;color:#708597;line-height:1.5';
     this.state=document.createElement('div');
     this.state.style.cssText='position:absolute;inset:0;display:none;place-items:center;background:rgba(13,28,42,0.92);z-index:3;border-radius:9px;text-align:center;padding:14px';
     this.slotBox=document.createElement('div'); this.slotBox.style.cssText='position:relative';
@@ -44,9 +44,9 @@ class FCChartCard extends HTMLElement {
   _btn(key,label,active){
     const b=document.createElement('button'); b.type='button'; b.title=label; b.setAttribute('aria-label',label);
     b.style.cssText='display:flex;align-items:center;gap:4px;background:'+(active?'rgba(18,214,197,0.14)':'transparent')+
-      ';border:1px solid '+(active?'rgba(18,214,197,0.45)':'rgba(133,173,209,0.18)')+';color:'+(active?'#12D6C5':'#7E93A6')+
+      ';border:1px solid '+(active?'rgba(18,214,197,0.45)':'rgba(133,173,209,0.18)')+';color:'+(active?'#20C7A7':'#7E93A6')+
       ';border-radius:6px;padding:3px 7px;font:10.5px '+SANS+';cursor:pointer';
-    b.innerHTML=ICON[key]||''; b.onmouseenter=()=>{ if(!active){ b.style.color='#E6F0F8'; b.style.borderColor='rgba(133,173,209,0.4)'; } };
+    b.innerHTML=ICON[key]||''; b.onmouseenter=()=>{ if(!active){ b.style.color='#E6EDF3'; b.style.borderColor='rgba(133,173,209,0.4)'; } };
     b.onmouseleave=()=>{ if(!active){ b.style.color='#7E93A6'; b.style.borderColor='rgba(133,173,209,0.18)'; } };
     return b;
   }
@@ -56,8 +56,8 @@ class FCChartCard extends HTMLElement {
     const note=this.getAttribute('note')||'';
     this.head.innerHTML='';
     const tw=document.createElement('div'); tw.style.cssText='flex:1;min-width:0';
-    tw.innerHTML='<div style="font-size:12.5px;font-weight:600;color:#E6F0F8;line-height:1.3">'+title+'</div>'+
-      (sub?'<div style="font-size:10.5px;color:#607487;margin-top:1px">'+sub+'</div>':'');
+    tw.innerHTML='<div style="font-size:12.5px;font-weight:600;color:#E6EDF3;line-height:1.3">'+title+'</div>'+
+      (sub?'<div style="font-size:10.5px;color:#8397A8;margin-top:1px">'+sub+'</div>':'');
     this.head.appendChild(tw);
     const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:4px;flex:none';
     if(tools.includes('compare')){ const b=this._btn('compare','So sánh kỳ trước',this._compare);
@@ -87,10 +87,10 @@ class FCChartCard extends HTMLElement {
     if(!this._showData) return;
     const c=this.chart; const td=c&&c.tableData; if(!td||!td.cols.length) return;
     const box=document.createElement('div');
-    box.style.cssText='margin-top:8px;max-height:150px;overflow:auto;border:1px solid rgba(133,173,209,0.14);border-radius:8px;background:#0A1724';
+    box.style.cssText='margin-top:8px;max-height:150px;overflow:auto;border:1px solid rgba(133,173,209,0.14);border-radius:8px;background:#0A1017';
     let html='<table style="width:100%;border-collapse:collapse;font:10.5px '+MONO+'"><thead><tr>'+
-      td.cols.map(c2=>'<th style="text-align:left;padding:5px 8px;color:#607487;font-weight:500;position:sticky;top:0;background:#0A1724;border-bottom:1px solid rgba(133,173,209,0.14);white-space:nowrap">'+c2+'</th>').join('')+'</tr></thead><tbody>';
-    td.rows.slice(0,60).forEach(r=>{ html+='<tr>'+r.map((v,i)=>'<td style="padding:4px 8px;color:'+(i?'#D4E3EE':'#91A4B5')+';border-bottom:1px solid rgba(133,173,209,0.05);white-space:nowrap;font-variant-numeric:tabular-nums">'+v+'</td>').join('')+'</tr>'; });
+      td.cols.map(c2=>'<th style="text-align:left;padding:5px 8px;color:#8397A8;font-weight:500;position:sticky;top:0;background:#0A1017;border-bottom:1px solid rgba(133,173,209,0.14);white-space:nowrap">'+c2+'</th>').join('')+'</tr></thead><tbody>';
+    td.rows.slice(0,60).forEach(r=>{ html+='<tr>'+r.map((v,i)=>'<td style="padding:4px 8px;color:'+(i?'#D4E3EE':'#91A2B1')+';border-bottom:1px solid rgba(133,173,209,0.05);white-space:nowrap;font-variant-numeric:tabular-nums">'+v+'</td>').join('')+'</tr>'; });
     html+='</tbody></table>';
     box.innerHTML=html; this._dataBox=box; this.body.appendChild(box);
   }
@@ -105,7 +105,7 @@ class FCChartCard extends HTMLElement {
       items.forEach((it,i)=>{
         const off=!!this._hidden[i];
         const el=document.createElement('button'); el.type='button';
-        el.style.cssText='display:flex;align-items:center;gap:5px;background:none;border:none;padding:0;cursor:pointer;font:10.5px '+SANS+';color:'+(off?'#4A5D70':'#91A4B5');
+        el.style.cssText='display:flex;align-items:center;gap:5px;background:none;border:none;padding:0;cursor:pointer;font:10.5px '+SANS+';color:'+(off?'#708597':'#91A2B1');
         el.innerHTML='<span style="width:8px;height:8px;border-radius:2px;background:'+(off?'#33465A':it.color)+';display:inline-block"></span>'+it.name;
         el.onclick=()=>{ this._hidden[i]=!off; const s=c.data;
           if(s&&s.series){ s.series.forEach((se,k)=>{ se.hidden=!!this._hidden[k]; }); c.data=s; }
@@ -116,9 +116,9 @@ class FCChartCard extends HTMLElement {
     // state overlay
     if(st==='ok'){ this.state.style.display='none'; if(c) c.style.visibility='visible'; }
     else { this.state.style.display='grid'; if(c) c.style.visibility='hidden';
-      if(st==='loading') this.state.innerHTML='<div><div style="width:26px;height:26px;margin:0 auto 8px;border-radius:50%;border:2px solid rgba(18,214,197,0.15);border-top-color:#12D6C5;animation:fcSpin .9s linear infinite"></div><span style="font:11px '+SANS+';color:#607487">Đang tải dữ liệu…</span></div><style>@keyframes fcSpin{to{transform:rotate(360deg)}}</style>';
-      else if(st==='empty') this.state.innerHTML='<div style="font:11.5px '+SANS+';color:#607487;line-height:1.6"><div style="font-size:18px;color:#33465A;margin-bottom:4px">◌</div>Không có dữ liệu trong khoảng đã chọn<br><span style="font-size:10.5px;color:#4A5D70">Thử mở rộng cửa sổ thời gian hoặc bỏ bớt filter</span></div>';
-      else this.state.innerHTML='<div style="font:11.5px '+SANS+';color:#FF6B7C;line-height:1.6"><div style="font-size:18px;margin-bottom:4px">⚠</div>Không tải được dữ liệu chart<br><span style="font-size:10.5px;color:#91A4B5">Pipeline nguồn đang trễ — thử lại sau</span></div>'; }
+      if(st==='loading') this.state.innerHTML='<div><div style="width:26px;height:26px;margin:0 auto 8px;border-radius:50%;border:2px solid rgba(18,214,197,0.15);border-top-color:#20C7A7;animation:fcSpin .9s linear infinite"></div><span style="font:11px '+SANS+';color:#8397A8">Đang tải dữ liệu…</span></div><style>@keyframes fcSpin{to{transform:rotate(360deg)}}</style>';
+      else if(st==='empty') this.state.innerHTML='<div style="font:11.5px '+SANS+';color:#8397A8;line-height:1.6"><div style="font-size:18px;color:#33465A;margin-bottom:4px">◌</div>Không có dữ liệu trong khoảng đã chọn<br><span style="font-size:10.5px;color:#708597">Thử mở rộng cửa sổ thời gian hoặc bỏ bớt filter</span></div>';
+      else this.state.innerHTML='<div style="font:11.5px '+SANS+';color:#FF8792;line-height:1.6"><div style="font-size:18px;margin-bottom:4px">⚠</div>Không tải được dữ liệu chart<br><span style="font-size:10.5px;color:#91A2B1">Pipeline nguồn đang trễ — thử lại sau</span></div>'; }
   }
   toggleFull(){
     this._full=!this._full;

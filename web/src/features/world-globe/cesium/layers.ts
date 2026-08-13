@@ -68,8 +68,8 @@ function addNode(viewer: Viewer, node: NodeDescriptor): Entity {
     label: {
       text: node.name,
       font: "500 12px Geist, system-ui, sans-serif",
-      fillColor: css("#E6F0F8", 0.92),
-      outlineColor: css("#050B12", 0.9),
+      fillColor: css("#E6EDF3", 0.92),
+      outlineColor: css("#080D12", 0.9),
       outlineWidth: 3,
       style: LabelStyle.FILL_AND_OUTLINE,
       horizontalOrigin: HorizontalOrigin.LEFT,

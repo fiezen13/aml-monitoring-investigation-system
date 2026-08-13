@@ -2,9 +2,7 @@ import { Suspense, lazy } from "react";
 
 import { useReducedMotion, useSceneSize } from "../hooks/useReducedLoginEffects";
 import { IntelligenceMetrics } from "./IntelligenceMetrics";
-import { LoginBrand } from "./LoginBrand";
 import { LoginFeatureCards } from "./LoginFeatureCards";
-import { SystemStatusBar } from "./SystemStatusBar";
 
 // Tách khỏi bundle chính: form phải hiện ngay, quả cầu đến sau cũng được.
 const LoginNetworkScene = lazy(() =>
@@ -12,21 +10,24 @@ const LoginNetworkScene = lazy(() =>
 );
 
 /**
- * Cột trái — vùng nhận diện và bối cảnh.
+ * Cột trái — nhận diện và bối cảnh.
  *
- * Quả cầu nằm *dưới* chữ và tràn khỏi mép trái màn hình, không đứng cạnh chữ.
- * Nhờ vậy nó lấp đầy khoảng trống mà bản cũ bỏ phí, nhưng vẫn là nền: mắt đọc
- * tiêu đề trước, thấy quả cầu sau, và không có gì tranh chỗ với thẻ đăng nhập.
+ * Phân cấp: eyebrow → tiêu đề → đoạn dẫn → dải năng lực → dải số liệu. Bốn khối
+ * cách nhau bằng khoảng trắng và một đường kẻ mảnh, không phải bằng bốn cái
+ * hộp có viền — đây là chỗ bản cũ tạo ra cảm giác lưới ô vuông.
+ *
+ * Quả cầu nằm *dưới* chữ và tràn khỏi mép trái, không đứng cạnh chữ: nó là nền,
+ * không phải một cột nội dung. Ẩn hẳn dưới 1024px, nơi trang chỉ còn một cột và
+ * thứ duy nhất người dùng cần là đăng nhập được.
  */
 export function LoginHero() {
   const reducedMotion = useReducedMotion();
   const sceneSize = useSceneSize();
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col justify-between overflow-hidden px-8 py-7 xl:px-12 xl:py-9">
-      {/* Lớp nền: quả cầu neo về mép trái, cố ý bị cắt một phần. */}
+    <div className="relative">
       <div
-        className="pointer-events-none absolute -left-[8%] top-1/2 -translate-y-1/2 opacity-95"
+        className="pointer-events-none absolute -left-[26%] top-1/2 hidden -translate-y-1/2 opacity-70 lg:block"
         aria-hidden
       >
         <Suspense fallback={<div style={{ width: sceneSize, height: sceneSize }} />}>
@@ -34,41 +35,41 @@ export function LoginHero() {
         </Suspense>
       </div>
 
-      <div className="relative z-[1]">
-        <LoginBrand />
-      </div>
-
       {/* Màn che dọc: quả cầu sáng nhất ở giữa, đúng chỗ tiêu đề nằm. Không có
           lớp này thì chữ đọc trên nền lưới lấp lánh và mất tương phản. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-[54%]"
-        style={{ background: "linear-gradient(90deg, rgba(3,10,17,0.62) 0%, rgba(3,10,17,0.22) 52%, transparent 100%)" }}
+        className="pointer-events-none absolute -inset-y-16 -left-[30%] right-[18%] hidden lg:block"
+        style={{
+          background:
+            "linear-gradient(90deg, rgba(8,13,18,0.78) 0%, rgba(8,13,18,0.42) 55%, transparent 100%)",
+        }}
       />
 
-      <div className="relative z-[1] my-6 flex flex-col gap-5">
-        <div>
-          <h1
-            className="animate-up max-w-[620px] text-[38px] font-bold leading-[1.08] tracking-tight text-ink-hi xl:text-[50px] 2xl:text-[56px]"
-            style={{ animationDelay: "80ms", animationFillMode: "backwards" }}
-          >
-            Hệ thống giám sát và điều tra <span className="text-primary">AML</span> thế hệ mới
-          </h1>
-          <p
-            className="animate-up mt-4 max-w-[520px] text-md leading-relaxed text-ink-mid"
-            style={{ animationDelay: "160ms", animationFillMode: "backwards" }}
-          >
-            Phân tích dòng tiền, nhận diện rủi ro và hỗ trợ điều tra các hành vi tài chính bất thường trên dữ liệu có
-            nguồn gốc rõ ràng.
-          </p>
-        </div>
+      <div className="relative max-w-[740px]">
+        <p
+          className="animate-up fc-eyebrow"
+          style={{ animationDelay: "60ms", animationFillMode: "backwards" }}
+        >
+          Nền tảng tình báo tài chính FIN-07
+        </p>
+
+        <h1
+          className="animate-up mt-3 text-[32px] font-semibold leading-[1.06] tracking-[-0.02em] text-ink-hi sm:text-[38px] xl:text-[46px] 2xl:text-[50px]"
+          style={{ animationDelay: "100ms", animationFillMode: "backwards" }}
+        >
+          Giám sát và điều tra rủi ro tài chính.
+        </h1>
+
+        <p
+          className="animate-up mt-4 max-w-[560px] text-md leading-relaxed text-ink-soft"
+          style={{ animationDelay: "160ms", animationFillMode: "backwards" }}
+        >
+          Phát hiện tín hiệu bất thường, truy vết dòng tiền và hỗ trợ điều tra trên dữ liệu có nguồn gốc rõ ràng.
+        </p>
 
         <LoginFeatureCards />
-      </div>
-
-      <div className="relative z-[1] flex flex-col gap-3">
         <IntelligenceMetrics />
-        <SystemStatusBar />
       </div>
     </div>
   );

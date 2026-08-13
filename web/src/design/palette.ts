@@ -5,44 +5,56 @@
 // sửa một bên thì sửa cả bên kia.
 
 export const C = {
-  app: "#050B12",
-  side: "#07111C",
-  panel: "#0D1C2A",
-  elev: "#112538",
-  sunken: "#0A1724",
+  app: "#080D12",
+  side: "#0C131B",
+  panel: "#101820",
+  elev: "#15212B",
+  sunken: "#0A1017",
 
-  primary: "#12D6C5",
-  primaryHi: "#5FE8DB",
+  primary: "#20C7A7",
+  primaryHi: "#2FDDBA",
 
-  inkHi: "#E6F0F8",
-  inkMid: "#B9C9D6",
-  inkSoft: "#91A4B5",
-  inkLow: "#607487",
-  inkDim: "#4A5D70",
+  inkHi: "#E6EDF3",
+  inkMid: "#B6C4D0",
+  inkSoft: "#91A2B1",
+  inkLow: "#8397A8",
+  inkDim: "#708597",
 
-  risk: "#FF4D61",
-  riskSoft: "#FF6B7C",
-  warn: "#F5A524",
-  warnSoft: "#F5C97A",
-  ok: "#2DD4A7",
-  okSoft: "#8FE8DF",
-  info: "#3185FF",
-  infoSoft: "#6FB0FF",
+  risk: "#F45B69",
+  riskSoft: "#FF8792",
+  warn: "#F0B44D",
+  warnSoft: "#F5CE8A",
+  ok: "#4CC38A",
+  okSoft: "#86DCB4",
+  info: "#4B9EFF",
+  infoSoft: "#8CC0FF",
   agent: "#A78BFA",
   agentSoft: "#C9B8FC",
-  token: "#FF8A5C",
+  token: "#F08A5C",
 
-  grid: "rgba(133,173,209,0.10)",
-  line: "rgba(133,173,209,0.14)",
+  grid: "#141D26",
+  line: "#1D2A35",
+  lineStrong: "#293B49",
 } as const;
 
-/** Thứ tự màu mặc định cho các series không chỉ định màu riêng. */
-export const SERIES = [C.primary, C.info, C.warn, C.risk, C.agent, C.ok];
+/**
+ * Thứ tự màu mặc định cho các series không chỉ định màu riêng.
+ *
+ * Mở đầu bằng xanh dương chứ không phải teal: teal là màu của "đang chọn", và
+ * một biểu đồ mà series đầu tiên luôn teal thì tín hiệu đó mất nghĩa.
+ */
+export const SERIES = [C.info, C.agent, C.ok, C.warn, C.risk, C.token];
 
-/** Màu theo kênh dòng tiền — dùng chung bởi world map, network graph và chú giải. */
+/**
+ * Màu theo kênh dòng tiền — dùng chung bởi world map, network graph và chú giải.
+ *
+ * Không kênh nào lấy màu `primary`: trên bản đồ, teal dành riêng cho thực thể
+ * đang được chọn, và nếu P2P cũng teal thì không phân biệt được "kênh P2P" với
+ * "hành lang tôi vừa bấm".
+ */
 export const CHANNEL: Record<string, string> = {
   bank: C.info,
-  p2p: C.primary,
+  p2p: "#38BDF8",
   vasp: C.agent,
   chain: C.ok,
   gamb: C.warn,

@@ -175,7 +175,7 @@ export function GraphToolbar({
                 className="flex w-full items-center justify-between rounded-control px-2 py-1.5 text-left text-2xs text-ink-mid hover:bg-elev"
               >
                 Chế độ hiệu năng
-                <span className={perf ? "text-primary" : "text-ink-dim"}>{perf ? "BẬT" : "TẮT"}</span>
+                <span className={perf ? "text-ok" : "text-ink-dim"}>{perf ? "Bật" : "Tắt"}</span>
               </button>
               <button
                 type="button"

@@ -27,17 +27,17 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
     .join("");
 
   return (
-    <header className="flex h-[52px] flex-none items-center gap-3 border-b border-line bg-side px-4">
-      <div className="truncate-1 flex-none text-xl font-semibold">{crumb}</div>
+    <header className="flex h-14 flex-none items-center gap-2.5 border-b border-line-soft bg-side px-4">
+      <div className="truncate-1 flex-none text-xl font-semibold text-ink-hi">{crumb}</div>
 
       <button
         type="button"
         onClick={() => setPaletteOpen(true)}
-        className="flex min-w-[110px] flex-[0_1_270px] items-center gap-2 overflow-hidden rounded-control border border-line bg-sunken px-2.5 py-[5px] text-ink-low transition-colors hover:border-primary/40"
+        className="fc-input flex h-8 min-w-[110px] flex-[0_1_280px] items-center gap-2 overflow-hidden py-0 text-ink-low"
       >
         <Search size={13} className="flex-none" aria-hidden />
         <span className="truncate-1 flex-1 text-left text-base">Tìm thực thể, vụ việc, cảnh báo…</span>
-        <span className="flex-none rounded-[5px] border border-line-strong/80 px-1.5 font-mono text-2xs">⌘K</span>
+        <span className="flex-none rounded-[5px] border border-line-strong px-1.5 font-mono text-3xs">⌘K</span>
       </button>
 
       <div className="flex-1" />
@@ -46,7 +46,7 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
         aria-label="Thế giới mô phỏng"
         value={world}
         onChange={(e) => setWorld(e.target.value)}
-        className="fc-input py-[5px] text-base"
+        className="fc-input h-8 py-0 text-base"
       >
         {WORLDS.map((w) => (
           <option key={w} value={w}>
@@ -59,7 +59,7 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
         aria-label="Cửa sổ thời gian"
         value={win}
         onChange={(e) => setWindow(e.target.value as TimeWindow)}
-        className="fc-input py-[5px] text-base"
+        className="fc-input h-8 py-0 text-base"
       >
         {WINDOWS.map((w) => (
           <option key={w} value={w}>
@@ -70,16 +70,16 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
 
       {/* Nhãn này không phải trang trí: toàn bộ dữ liệu trong console là tổng
           hợp, và người xem phải biết điều đó ở mọi màn hình. */}
-      <span className="whitespace-nowrap rounded-[6px] border border-warn/40 bg-warn/10 px-2 py-[3px] font-mono text-2xs tracking-[0.08em] text-warn">
+      <span className="whitespace-nowrap rounded-control bg-warn/12 px-2 py-[3px] font-mono text-3xs tracking-[0.08em] text-warn-soft">
         POC
       </span>
 
       <div
         title="Trạng thái luồng dữ liệu"
-        className="flex items-center gap-1.5 whitespace-nowrap text-xs text-ink-soft"
+        className="flex items-center gap-1.5 whitespace-nowrap text-2xs text-ink-soft"
       >
         <PulseDot />
-        ĐANG HOẠT ĐỘNG
+        Đang hoạt động
       </div>
 
       <div className="relative">
@@ -92,11 +92,11 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
         >
           <Bell size={17} strokeWidth={1.8} />
           {criticalCount > 0 && (
-            <span className="absolute right-[3px] top-[2px] h-[7px] w-[7px] rounded-full border-[1.5px] border-side bg-risk" />
+            <span className="absolute right-[3px] top-[2px] h-[7px] w-[7px] rounded-full border-[1.5px] border-side bg-risk" aria-hidden />
           )}
         </button>
         {bellOpen && (
-          <div className="absolute right-0 top-full z-40 mt-1.5 w-72 rounded-panel border border-line bg-elev p-3 shadow-2xl">
+          <div className="absolute right-0 top-full z-40 mt-1.5 w-72 rounded-panel border border-line-strong bg-elev p-3 shadow-2xl">
             <div className="fc-eyebrow mb-2">Thông báo nội bộ</div>
             <p className="text-xs leading-relaxed text-ink-mid">
               {criticalCount} cảnh báo đang ở mức nghiêm trọng trong cửa sổ {WINDOW_LABEL[win]}. Thông báo chỉ phát trong
@@ -108,7 +108,7 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
 
       <div
         title={`${currentUser?.name} · ${currentUser?.roleLabel}`}
-        className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full border border-primary/35 bg-gradient-to-br from-[#134B5F] to-[#0E2A44] text-xs font-semibold text-ok-soft"
+        className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full border border-line-strong bg-elev text-2xs font-semibold text-ink-mid"
       >
         {initials}
       </div>

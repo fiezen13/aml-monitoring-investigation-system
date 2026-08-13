@@ -212,7 +212,7 @@ export function DashboardPage() {
           <Panel
             title="Hàng đợi ưu tiên — cần xử lý trước"
             actions={
-              <Link to="/alerts" className="text-sm text-primary hover:text-primary-hover">
+              <Link to="/alerts" className="text-sm text-info-soft transition-colors hover:text-info">
                 Mở Trung tâm cảnh báo →
               </Link>
             }
@@ -275,7 +275,7 @@ export function DashboardPage() {
                       <b className="tabular w-16 flex-none text-right font-mono">{usd(h.volume_usd)}</b>
                     </div>
                   ))}
-                <Link to="/world" className="mt-1 text-center text-sm text-primary hover:text-primary-hover">
+                <Link to="/world" className="mt-1 text-center text-sm text-info-soft transition-colors hover:text-info">
                   Mở Giám sát địa lý →
                 </Link>
               </div>
@@ -288,7 +288,7 @@ export function DashboardPage() {
                   <span className="font-mono text-ink-mid">
                     {int(world.data.transaction_count)} giao dịch · {world.data.source_name ?? "chưa có nguồn"}
                   </span>
-                  <Link to="/world" className="text-primary hover:text-primary-hover">
+                  <Link to="/world" className="text-info-soft transition-colors hover:text-info">
                     Xem nguồn →
                   </Link>
                 </div>

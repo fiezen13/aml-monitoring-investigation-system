@@ -155,7 +155,7 @@ export function CaseDetailPage() {
           <button
             type="button"
             onClick={reloadAll}
-            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-primary/50"
+            className="inline-flex items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 py-1.5 text-2xs font-medium text-ink-hi hover:border-line-emphasis"
           >
             <RefreshCw size={12} aria-hidden />
             Làm mới
@@ -297,7 +297,7 @@ export function CaseDetailPage() {
                     <button
                       type="button"
                       onClick={() => navigate(`/alerts/${id}`)}
-                      className="tabular w-full rounded-control border border-line bg-elev px-2.5 py-1.5 text-left text-2xs text-info hover:border-primary/50"
+                      className="tabular w-full rounded-control border border-line bg-elev px-2.5 py-1.5 text-left text-2xs text-info hover:border-line-emphasis"
                     >
                       {id}
                     </button>

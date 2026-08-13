@@ -2,6 +2,8 @@ import { TrendingDown, TrendingUp } from "lucide-react";
 import type { ReactNode } from "react";
 import { Line, LineChart, ResponsiveContainer } from "recharts";
 
+import { C } from "../../design/palette";
+
 interface KPIStatCardProps {
   label: string;
   value: string;
@@ -20,7 +22,7 @@ export function KPIStatCard({
   trend,
   note,
   spark,
-  sparkColor = "#00B2A9",
+  sparkColor = C.info,
 }: KPIStatCardProps) {
   const trendColor =
     trend?.tone === "good"
@@ -29,16 +31,14 @@ export function KPIStatCard({
         ? "text-risk"
         : "text-ink-mid";
   return (
-    <div className="rounded-panel border border-line bg-panel p-4">
+    <div className="fc-quiet p-4">
       <div className="flex items-start justify-between">
-        <span className="text-2xs font-semibold uppercase tracking-wider text-ink-mid">
-          {label}
-        </span>
-        {icon && <span className="text-ink-mid">{icon}</span>}
+        <span className="fc-eyebrow">{label}</span>
+        {icon && <span className="text-ink-dim">{icon}</span>}
       </div>
       <div className="mt-2 flex items-end justify-between gap-2">
         <div>
-          <div className="tabular text-[26px] font-bold leading-none text-ink-hi">
+          <div className="tabular font-mono text-4xl font-semibold leading-none text-ink-hi">
             {value}
           </div>
           {trend && (

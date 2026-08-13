@@ -3,8 +3,8 @@
    shared: tabular-number tooltip, legend data, zoom+brush, compare-period overlay, click cross-filter, ref lines, markers */
 (() => {
 if (customElements.get('fc-chart')) return;
-const PAL={grid:'rgba(133,173,209,0.10)',txt:'#91A4B5',mut:'#607487',cyan:'#12D6C5',blue:'#3185FF',amber:'#F5A524',red:'#FF4D61',green:'#2DD4A7',purple:'#A78BFA'};
-const SC=[PAL.cyan,PAL.blue,PAL.amber,PAL.red,PAL.purple,PAL.green];
+const PAL={grid:'rgba(133,173,209,0.06)',txt:'#91A2B1',mut:'#8397A8',cyan:'#20C7A7',blue:'#4B9EFF',amber:'#F0B44D',red:'#F45B69',green:'#4CC38A',purple:'#A78BFA'};
+const SC=[PAL.blue,PAL.purple,PAL.green,PAL.amber,PAL.red,PAL.cyan];
 const MONO='"JetBrains Mono", monospace', SANS='Geist, sans-serif';
 function fmt(n,d){ if(n==null||isNaN(n)) return '—';
   const a=Math.abs(n); const s=n<0?'-':'';
@@ -21,7 +21,7 @@ class FCChart extends HTMLElement {
     if(getComputedStyle(this).position==='static') this.style.position='relative';
     this.cv=document.createElement('canvas'); this.cv.style.cssText='width:100%;height:100%;display:block';
     this.tip=document.createElement('div');
-    this.tip.style.cssText='position:absolute;pointer-events:none;background:#0A1724;border:1px solid rgba(133,173,209,0.28);border-radius:8px;padding:7px 10px;font:11px '+SANS+';color:#E6F0F8;display:none;z-index:5;white-space:nowrap;box-shadow:0 10px 26px rgba(0,0,0,0.5);line-height:1.55';
+    this.tip.style.cssText='position:absolute;pointer-events:none;background:#0A1017;border:1px solid rgba(133,173,209,0.28);border-radius:8px;padding:7px 10px;font:11px '+SANS+';color:#E6EDF3;display:none;z-index:5;white-space:nowrap;box-shadow:0 10px 26px rgba(0,0,0,0.5);line-height:1.55';
     this.appendChild(this.cv); this.appendChild(this.tip);
     this.hi=-1; this._zoom=null; this._brush=null;
     this.ro=new ResizeObserver(()=>{ if(this._roQ) return; this._roQ=requestAnimationFrame(()=>{ this._roQ=null; this.draw(); }); });
@@ -82,19 +82,19 @@ class FCChart extends HTMLElement {
     const t=s.type;
     if(/line|area|bars|stackbars|stackarea/.test(t)){
       hi=this._idxAt(mx);
-      if(hi>=0){ html='<b style="color:#E6F0F8">'+(s.labels?s.labels[hi]:hi)+'</b>';
+      if(hi>=0){ html='<b style="color:#E6EDF3">'+(s.labels?s.labels[hi]:hi)+'</b>';
         s.series.forEach((se,k)=>{ if(se.hidden) return;
           html+='<br><span style="color:'+(se.color||SC[k])+'">●</span> '+se.name+': <b style="font-family:'+MONO+';font-variant-numeric:tabular-nums">'+(se.fmt==='raw'?nf(se.data[hi]):fmt(se.data[hi]))+(se.unit||s.unit||'')+'</b>'; });
         if(s.compare&&s.compare.series) s.compare.series.forEach((se,k)=>{
-          html+='<br><span style="color:#607487">◌</span> '+se.name+': <b style="font-family:'+MONO+';color:#91A4B5">'+fmt(se.data[hi])+(s.unit||'')+'</b>'; }); } }
+          html+='<br><span style="color:#8397A8">◌</span> '+se.name+': <b style="font-family:'+MONO+';color:#91A2B1">'+fmt(se.data[hi])+(s.unit||'')+'</b>'; }); } }
     else if(t==='hbars'||t==='funnel'||t==='waterfall'){
       const bh=this.geo.bh; const i=Math.floor((my-this.geo.y0)/bh);
       const list=s.items||[];
       if(i>=0&&i<list.length){ hi=i; const it=list[i];
         html='<b>'+it.label+'</b>: <b style="font-family:'+MONO+'">'+nf(it.value)+(s.unit||'')+'</b>'+
-          (it.target!=null?'<br><span style="color:#91A4B5">Yêu cầu: <b style="font-family:'+MONO+'">'+nf(it.target)+(s.unit||'')+'</b></span>':'')+
-          (it.pctOfPrev?'<br><span style="color:#91A4B5">'+it.pctOfPrev+'</span>':'')+
-          (it.sub?'<br><span style="color:#607487">'+it.sub+'</span>':''); } }
+          (it.target!=null?'<br><span style="color:#91A2B1">Yêu cầu: <b style="font-family:'+MONO+'">'+nf(it.target)+(s.unit||'')+'</b></span>':'')+
+          (it.pctOfPrev?'<br><span style="color:#91A2B1">'+it.pctOfPrev+'</span>':'')+
+          (it.sub?'<br><span style="color:#8397A8">'+it.sub+'</span>':''); } }
     else if(t==='donut'){ const {cx,cy,R,r:ri}=this.geo; const dx=mx-cx,dy=my-cy,d=Math.hypot(dx,dy);
       if(d>ri&&d<R){ let a=Math.atan2(dy,dx)+Math.PI/2; if(a<0)a+=Math.PI*2;
         const tot=s.items.reduce((p,c)=>p+c.value,0); let acc=0;
@@ -103,15 +103,15 @@ class FCChart extends HTMLElement {
             html='<b>'+it.label+'</b>: <b style="font-family:'+MONO+'">'+nf(it.value)+(s.unit||'')+'</b> · '+Math.round(it.value/tot*100)+'%'; break; } } } }
     else if(t==='heat'){ const {x0,y0,cw,ch}=this.geo; const c=Math.floor((mx-x0)/cw),rr=Math.floor((my-y0)/ch);
       if(c>=0&&c<s.cols.length&&rr>=0&&rr<s.rows.length){ hi=rr*s.cols.length+c;
-        html='<b>'+s.rows[rr]+' · '+s.cols[c]+'</b>: <b style="font-family:'+MONO+'">'+nf(s.data[rr][c])+(s.unit||'')+'</b><br><span style="color:#607487;font-size:10px">click để lọc bảng</span>'; } }
+        html='<b>'+s.rows[rr]+' · '+s.cols[c]+'</b>: <b style="font-family:'+MONO+'">'+nf(s.data[rr][c])+(s.unit||'')+'</b><br><span style="color:#8397A8;font-size:10px">click để lọc bảng</span>'; } }
     else if(t==='sankey'){ (this.geo.nodes||[]).forEach((nd,i)=>{
         if(mx>=nd.x&&mx<=nd.x+nd.w&&my>=nd.y&&my<=nd.y+nd.h){ hi=i;
           html='<b>'+nd.name+'</b>: <b style="font-family:'+MONO+'">'+fmt(nd.total)+(s.unit||'')+'</b>'; } }); }
     else if(t==='percentile'){ const rows=s.items||[]; const bh=this.geo.bh;
       const i=Math.floor((my-this.geo.y0)/bh);
       if(i>=0&&i<rows.length){ hi=i; const it=rows[i];
-        html='<b>'+it.label+'</b><br><span style="color:#91A4B5">Entity:</span> <b style="font-family:'+MONO+'">'+nf(it.value)+(it.unit||'')+'</b> · percentile <b style="color:'+(it.pct>=95?'#FF6B7C':it.pct>=80?'#F5A524':'#2DD4A7')+'">'+it.pct+'</b>'+
-          '<br><span style="color:#607487">Peer p50 '+nf(it.p50)+' · p95 '+nf(it.p95)+'</span>'; } }
+        html='<b>'+it.label+'</b><br><span style="color:#91A2B1">Entity:</span> <b style="font-family:'+MONO+'">'+nf(it.value)+(it.unit||'')+'</b> · percentile <b style="color:'+(it.pct>=95?'#FF8792':it.pct>=80?'#F0B44D':'#4CC38A')+'">'+it.pct+'</b>'+
+          '<br><span style="color:#8397A8">Peer p50 '+nf(it.p50)+' · p95 '+nf(it.p95)+'</span>'; } }
     if(hi!==this.hi){ this.hi=hi; this.draw();
       this.dispatchEvent(new CustomEvent('hoverindex',{detail:{index:hi,group:s.syncGroup||null}})); }
     if(hi>=0&&html){ this.tip.innerHTML=html; this.tip.style.display='block';
@@ -148,7 +148,7 @@ class FCChart extends HTMLElement {
     if(this._zoom){ g.fillStyle='rgba(18,214,197,0.10)'; g.strokeStyle='rgba(18,214,197,0.35)';
       const bw=g.measureText('zoom · dbl-click reset').width+10;
       g.fillRect(w-bw-6,4,bw,15); g.strokeRect(w-bw-6,4,bw,15);
-      g.fillStyle='#8FE8DF'; g.textAlign='left'; g.font='9px '+SANS; g.fillText('zoom · dbl-click reset',w-bw-1,12); }
+      g.fillStyle='#86DCB4'; g.textAlign='left'; g.font='9px '+SANS; g.fillText('zoom · dbl-click reset',w-bw-1,12); }
   }
   frame(g,w,h,s,maxV,minV){
     const lo=minV||0;
@@ -241,14 +241,14 @@ class FCChart extends HTMLElement {
     this.geo={x0,y0,bh,x1,y1:y0+bh*items.length};
     const clip=(t,m)=>{ if(g.measureText(t).width<=m) return t; while(t.length>1&&g.measureText(t+'…').width>m) t=t.slice(0,-1); return t+'…'; };
     items.forEach((it,i)=>{ const y=y0+bh*i; const col=it.color||SC[i%6];
-      g.fillStyle=this.hi===i?'#E6F0F8':PAL.txt; g.textAlign='right'; g.font='10px '+SANS;
+      g.fillStyle=this.hi===i?'#E6EDF3':PAL.txt; g.textAlign='right'; g.font='10px '+SANS;
       g.fillText(clip(it.label,lw-8),lw-8,y+bh/2);
-      g.fillStyle='rgba(133,173,209,0.08)'; g.fillRect(x0,y+bh*0.24,x1-x0,bh*0.52);
+      g.fillStyle='rgba(133,173,209,0.05)'; g.fillRect(x0,y+bh*0.24,x1-x0,bh*0.52);
       const bwv=(x1-x0)*Math.min(1,Math.abs(it.value)/maxV);
       g.fillStyle=this.hi===i?col:col+'CC'; g.fillRect(x0,y+bh*0.24,bwv,bh*0.52);
       if(it.target!=null){ const tx=x0+(x1-x0)*Math.min(1,it.target/maxV);
-        g.strokeStyle='#E6F0F8'; g.lineWidth=1.4; g.beginPath(); g.moveTo(tx,y+bh*0.14); g.lineTo(tx,y+bh*0.86); g.stroke(); }
-      if(valW){ g.fillStyle='#E6F0F8'; g.textAlign='left'; g.font='10px '+MONO;
+        g.strokeStyle='#E6EDF3'; g.lineWidth=1.4; g.beginPath(); g.moveTo(tx,y+bh*0.14); g.lineTo(tx,y+bh*0.86); g.stroke(); }
+      if(valW){ g.fillStyle='#E6EDF3'; g.textAlign='left'; g.font='10px '+MONO;
         g.fillText((it.value<0?'−':'')+fmt(Math.abs(it.value))+(s.unit||''),Math.min(x1+4,x0+bwv+6),y+bh/2); } });
     g.font='10px '+SANS;
   }
@@ -262,15 +262,15 @@ class FCChart extends HTMLElement {
     this.geo={x0,y0,bh,x1,y1:y0+bh*items.length};
     const clip=(t,m)=>{ if(g.measureText(t).width<=m) return t; while(t.length>1&&g.measureText(t+'…').width>m) t=t.slice(0,-1); return t+'…'; };
     items.forEach((it,i)=>{ const y=y0+bh*i; const seg=tots[i];
-      const col=it.total?'#12D6C5':(it.value<0?PAL.red:(it.color||SC[i%6]));
-      g.fillStyle=this.hi===i?'#E6F0F8':PAL.txt; g.textAlign='right'; g.font='10px '+SANS; g.fillText(clip(it.label,lw-8),lw-8,y+bh/2);
+      const col=it.total?'#20C7A7':(it.value<0?PAL.red:(it.color||SC[i%6]));
+      g.fillStyle=this.hi===i?'#E6EDF3':PAL.txt; g.textAlign='right'; g.font='10px '+SANS; g.fillText(clip(it.label,lw-8),lw-8,y+bh/2);
       const xa=x0+(x1-x0)*Math.min(1,Math.min(seg.from,seg.to)/maxV);
       const xb=x0+(x1-x0)*Math.min(1,Math.max(seg.from,seg.to)/maxV);
-      g.fillStyle='rgba(133,173,209,0.07)'; g.fillRect(x0,y+bh*0.26,x1-x0,bh*0.48);
+      g.fillStyle='rgba(133,173,209,0.05)'; g.fillRect(x0,y+bh*0.26,x1-x0,bh*0.48);
       g.fillStyle=this.hi===i?col:col+'CC'; g.fillRect(xa,y+bh*0.26,Math.max(1.5,xb-xa),bh*0.48);
       if(i<items.length-1&&!items[i+1].total){ g.strokeStyle='rgba(133,173,209,0.3)'; g.setLineDash([2,2]);
         g.beginPath(); g.moveTo(xb,y+bh*0.74); g.lineTo(xb,y+bh*1.26); g.stroke(); g.setLineDash([]); }
-      if(valW){ g.fillStyle=it.total?'#8FE8DF':'#E6F0F8'; g.textAlign='left'; g.font='10px '+MONO;
+      if(valW){ g.fillStyle=it.total?'#86DCB4':'#E6EDF3'; g.textAlign='left'; g.font='10px '+MONO;
         g.fillText((it.value<0?'−':it.total?'=':'+')+fmt(Math.abs(it.value))+(s.unit||''),Math.min(x1+4,xb+6),y+bh/2); } });
     g.font='10px '+SANS;
   }
@@ -284,12 +284,12 @@ class FCChart extends HTMLElement {
     items.forEach((it,i)=>{ const y=y0+bh*i; const col=it.color||SC[i%6];
       const frac=Math.min(1,it.value/maxV); const bwv=(x1-x0)*frac;
       const cx=(x0+x1)/2;
-      g.fillStyle=this.hi===i?'#E6F0F8':PAL.txt; g.textAlign='right'; g.font='10px '+SANS; g.fillText(clip(it.label,lw-8),lw-8,y+bh/2);
+      g.fillStyle=this.hi===i?'#E6EDF3':PAL.txt; g.textAlign='right'; g.font='10px '+SANS; g.fillText(clip(it.label,lw-8),lw-8,y+bh/2);
       g.fillStyle=this.hi===i?col:col+'C4';
       g.fillRect(cx-bwv/2,y+bh*0.2,bwv,bh*0.6);
       const prev=i>0?items[i-1].value:it.value;
       it.pctOfPrev=i>0?('so bước trước: '+Math.round(it.value/prev*100)+'%'):'100% baseline';
-      if(valW){ g.fillStyle='#E6F0F8'; g.textAlign='left'; g.font='10px '+MONO;
+      if(valW){ g.fillStyle='#E6EDF3'; g.textAlign='left'; g.font='10px '+MONO;
         g.fillText(nf(it.value)+'  '+Math.round(frac*100)+'%',x1+4,y+bh/2); } });
     g.font='10px '+SANS;
   }
@@ -301,7 +301,7 @@ class FCChart extends HTMLElement {
     this.geo={x0,y0,bh,x1,y1:y0+bh*items.length};
     const clip=(t,m)=>{ if(g.measureText(t).width<=m) return t; while(t.length>1&&g.measureText(t+'…').width>m) t=t.slice(0,-1); return t+'…'; };
     items.forEach((it,i)=>{ const y=y0+bh*i+bh/2;
-      g.fillStyle=this.hi===i?'#E6F0F8':PAL.txt; g.textAlign='right'; g.font='10px '+SANS; g.fillText(clip(it.label,lw-8),lw-8,y);
+      g.fillStyle=this.hi===i?'#E6EDF3':PAL.txt; g.textAlign='right'; g.font='10px '+SANS; g.fillText(clip(it.label,lw-8),lw-8,y);
       // peer distribution band p25–p95
       const px=p=>x0+(x1-x0)*p/100;
       g.fillStyle='rgba(133,173,209,0.12)'; g.fillRect(px(0),y-5,px(100)-px(0),10);
@@ -310,7 +310,7 @@ class FCChart extends HTMLElement {
       g.beginPath(); g.moveTo(px(50),y-7); g.lineTo(px(50),y+7); g.stroke();
       const col=it.pct>=95?PAL.red:it.pct>=80?PAL.amber:PAL.green;
       g.beginPath(); g.arc(px(it.pct),y,this.hi===i?5.4:4.2,0,7); g.fillStyle=col; g.fill();
-      g.strokeStyle='#050B12'; g.lineWidth=1; g.stroke();
+      g.strokeStyle='#080D12'; g.lineWidth=1; g.stroke();
       if(valW){ g.fillStyle=col; g.textAlign='left'; g.font='10px '+MONO; g.fillText('p'+it.pct,x1+5,y); } });
     g.textAlign='center'; g.fillStyle=PAL.mut; g.font='9px '+SANS;
     ['p0','p50','p95'].forEach((t,i)=>{ const p=[0,50,95][i]; g.fillText(t,x0+(x1-x0)*p/100,this.geo.y1+2); });
@@ -322,7 +322,7 @@ class FCChart extends HTMLElement {
     s.items.forEach((it,i)=>{ const a2=a+it.value/tot*Math.PI*2; const col=it.color||SC[i%6];
       g.beginPath(); g.arc(cx,cy,this.hi===i?R:R-2,a+0.008,a2-0.008); g.arc(cx,cy,r,a2-0.008,a+0.008,true); g.closePath();
       g.fillStyle=this.hi===i?col:col+'D9'; g.fill(); a=a2; });
-    g.fillStyle='#E6F0F8'; g.textAlign='center'; g.font='600 15px '+MONO; g.fillText(s.center||fmt(tot),cx,cy-6);
+    g.fillStyle='#E6EDF3'; g.textAlign='center'; g.font='600 15px '+MONO; g.fillText(s.center||fmt(tot),cx,cy-6);
     g.fillStyle=PAL.mut; g.font='9px '+SANS; g.fillText(s.centerSub||'',cx,cy+9);
   }
   dHeat(g,w,h,s){
@@ -333,7 +333,7 @@ class FCChart extends HTMLElement {
         g.fillStyle='rgba(18,214,197,'+(0.04+v*0.8)+')';
         if(v>0.8) g.fillStyle='rgba(245,165,36,'+v+')'; if(v>0.93) g.fillStyle='rgba(255,77,97,0.95)';
         g.fillRect(x0+cw*c+0.5,y0+ch*r+0.5,cw-1,ch-1);
-        if(this.hi===r*s.cols.length+c){ g.strokeStyle='#E6F0F8'; g.lineWidth=1.4; g.strokeRect(x0+cw*c+0.5,y0+ch*r+0.5,cw-1,ch-1); } }); });
+        if(this.hi===r*s.cols.length+c){ g.strokeStyle='#E6EDF3'; g.lineWidth=1.4; g.strokeRect(x0+cw*c+0.5,y0+ch*r+0.5,cw-1,ch-1); } }); });
     g.textAlign='center'; g.fillStyle=PAL.mut;
     s.cols.forEach((cl,c)=>{ if(c%Math.ceil(s.cols.length/12)===0) g.fillText(cl,x0+cw*c+cw/2,y1+8); });
     g.font='10px '+SANS;
@@ -363,7 +363,7 @@ class FCChart extends HTMLElement {
     const colGap=cols.length>1?((w-120-14)/(cols.length-1)):w;
     const trunc=(t,m)=>{ if(g.measureText(t).width<=m) return t; while(t.length>1&&g.measureText(t+'…').width>m) t=t.slice(0,-1); return t+'…'; };
     s.nodes.forEach(n=>{ g.fillStyle=n.color||PAL.cyan; g.fillRect(n._x,n._y,nw,n._h);
-      g.fillStyle='#E6F0F8'; g.textAlign='left'; g.font='10px '+SANS;
+      g.fillStyle='#E6EDF3'; g.textAlign='left'; g.font='10px '+SANS;
       g.fillText(trunc(n.name,Math.max(34,colGap-24)),n._x+nw+5,n._y+Math.max(6,n._h/2));
       g.fillStyle=PAL.mut; g.font='9px '+MONO; g.fillText(fmt(nodeV[n.id])+(s.unit||''),n._x+nw+5,n._y+Math.max(6,n._h/2)+11); });
     g.font='10px '+SANS;

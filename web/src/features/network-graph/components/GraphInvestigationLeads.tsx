@@ -30,7 +30,7 @@ export function GraphInvestigationLeads({ leads, onPick }: Props) {
             <button
               type="button"
               onClick={() => onPick(lead)}
-              className="flex w-full items-start gap-2.5 rounded-control border border-line bg-sunken px-2.5 py-2 text-left transition-colors hover:border-primary-line hover:bg-elev"
+              className="flex w-full items-start gap-2.5 rounded-control border border-line bg-sunken px-2.5 py-2 text-left transition-colors hover:border-line-emphasis hover:bg-elev"
             >
               <span className="mt-[1px] flex h-4 w-4 flex-none items-center justify-center rounded-full bg-primary-soft font-mono text-3xs text-primary">
                 {i + 1}
