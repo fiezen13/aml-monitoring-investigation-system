@@ -59,15 +59,15 @@ def _parse_args() -> argparse.Namespace:
         choices=("1d", "7d", "14d"),
         help="Cửa sổ đặc trưng (mặc định: 7d)",
     )
+    p.add_argument("--processed-dir", default=str(PROCESSED_DIR), help="Thu muc feature/model artifacts")
+    p.add_argument("--model-version", default=None, help="Version ghi vao artifact")
     return p.parse_args()
 
 
-def _load_train_features(window: str) -> pd.DataFrame:
-    path = PROCESSED_DIR / f"features_train_{window}.parquet"
+def _load_train_features(window: str, processed_dir: Path = PROCESSED_DIR) -> pd.DataFrame:
+    path = processed_dir / f"features_train_{window}.parquet"
     if not path.exists():
-        raise FileNotFoundError(
-            f"Khong tim thay {path}. Hay chay buoc extract features truoc."
-        )
+        raise FileNotFoundError(f"Khong tim thay {path}. Hay chay buoc extract features truoc.")
     df = pd.read_parquet(path)
     # Anti-leakage: drop moi cot nhan neu lo lot vao file
     label_cols = [c for c in df.columns if c in META_COLS or "laundering" in c.lower()]
@@ -75,10 +75,7 @@ def _load_train_features(window: str) -> pd.DataFrame:
         df = df.drop(columns=label_cols, errors="ignore")
     missing = [c for c in FEATURE_COLS if c not in df.columns]
     if missing:
-        raise ValueError(
-            f"Thieu {len(missing)} cot dac trung bat buoc: {missing}. "
-            "Doi chieu docs/feature_spec.md."
-        )
+        raise ValueError(f"Thieu {len(missing)} cot dac trung bat buoc: {missing}. Doi chieu docs/feature_spec.md.")
     return df
 
 
@@ -87,14 +84,15 @@ def _feature_matrix(df: pd.DataFrame) -> np.ndarray:
     return feat_df.to_numpy(dtype=np.float64)
 
 
-def train(window: str) -> Path:
+def train(
+    window: str,
+    processed_dir: Path = PROCESSED_DIR,
+    model_version: str | None = None,
+) -> Path:
     print(f"[1/4] Doc features_train_{window}.parquet ...")
-    df = _load_train_features(window)
+    df = _load_train_features(window, processed_dir)
     feature_matrix = _feature_matrix(df)
-    print(
-        f"       n_samples={feature_matrix.shape[0]:,}  "
-        f"n_features={feature_matrix.shape[1]} (expect 20)"
-    )
+    print(f"       n_samples={feature_matrix.shape[0]:,}  n_features={feature_matrix.shape[1]} (expect 20)")
 
     if feature_matrix.shape[1] != 20:
         raise RuntimeError(f"Ky vong 20 cot so, nhan duoc {feature_matrix.shape[1]}")
@@ -114,13 +112,10 @@ def train(window: str) -> Path:
     risk_raw = (-raw).reshape(-1, 1)
     scaler = MinMaxScaler(feature_range=(0.0, 1.0))
     risk_01 = scaler.fit_transform(risk_raw).ravel()
-    print(
-        f"       risk_score min={risk_01.min():.4f}  max={risk_01.max():.4f}  "
-        f"mean={risk_01.mean():.4f}"
-    )
+    print(f"       risk_score min={risk_01.min():.4f}  max={risk_01.max():.4f}  mean={risk_01.mean():.4f}")
 
-    out_path = PROCESSED_DIR / f"isolation_forest_model_{window}.joblib"
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = processed_dir / f"isolation_forest_model_{window}.joblib"
+    processed_dir.mkdir(parents=True, exist_ok=True)
     artifact = {
         "model": model,
         "scaler": scaler,
@@ -128,6 +123,7 @@ def train(window: str) -> Path:
         "window": window,
         "score_range": (0.0, 1.0),
         "score_meaning": "1.0 = highest risk, 0.0 = safest",
+        "model_version": model_version or f"if_baseline_{window}_v1",
     }
     joblib.dump(artifact, out_path)
     print(f"[4/4] Da luu model + scaler -> {out_path}")
@@ -136,7 +132,7 @@ def train(window: str) -> Path:
 
 def main() -> None:
     args = _parse_args()
-    train(args.window)
+    train(args.window, Path(args.processed_dir), args.model_version)
 
 
 if __name__ == "__main__":

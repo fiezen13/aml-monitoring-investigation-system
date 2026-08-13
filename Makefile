@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs ps health seed seed-verify db-reset db-shell redis-shell \
+.PHONY: help up down restart logs ps health seed seed-verify db-reset db-shell redis-shell behavior-batch \
         migrate migrate-status \
         build run worker test test-unit contracts-check lint format typecheck check clean \
         aml-up aml-down aml-status aml-topics aml-fixture aml-producer-sample aml-producer-run \
@@ -63,6 +63,15 @@ db-shell:  ## Mở psql
 
 redis-shell:  ## Mở redis-cli
 	$(COMPOSE) exec redis redis-cli
+
+behavior-batch:  ## Chạy Behaviour ML PoC; FILE=transactions.csv trong data/batch/ (SUBJECTS=... giới hạn tài khoản được chấm điểm)
+	@test -n "$(FILE)" || (echo "Thiếu FILE. Ví dụ: make behavior-batch FILE=transactions.csv" && exit 2)
+	$(COMPOSE) --profile batch run --rm behavior-batch \
+		--input "/input/$(FILE)" \
+		$(if $(SUBJECTS),--subject-accounts "/input/$(SUBJECTS)",) \
+		--window "$${BEHAVIOR_WINDOW:-7d}" \
+		--threshold "$${BEHAVIOR_THRESHOLD:-0.70}" \
+		--top-k "$${BEHAVIOR_TOP_K:-100}"
 
 # --- Chạy ngoài Docker -----------------------------------------------
 

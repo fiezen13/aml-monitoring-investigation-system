@@ -38,6 +38,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--report", default=str(REPORT_PATH))
     p.add_argument("--target-recall", type=float, default=TARGET_RECALL)
     p.add_argument(
+        "--subject-accounts",
+        default=None,
+        help="Manifest tai khoan co lich su day du; chi danh gia nhung tai khoan nay",
+    )
+    p.add_argument(
         "--precision-at-k",
         default=",".join(str(k) for k in DEFAULT_PRECISION_AT_K),
         help="Danh sach K cho Precision@K (vd 50,100,500,1000)",
@@ -72,9 +77,7 @@ def _attach_split(scores: pd.DataFrame, window: str) -> pd.DataFrame:
         keys["split"] = split
         parts.append(keys)
     if not parts:
-        raise FileNotFoundError(
-            f"Khong tim thay features_*_{window}.parquet de gan split."
-        )
+        raise FileNotFoundError(f"Khong tim thay features_*_{window}.parquet de gan split.")
     key_map = pd.concat(parts, ignore_index=True)
     scores = scores.copy()
     scores["as_of_ts"] = pd.to_datetime(scores["as_of_ts"], utc=True)
@@ -86,9 +89,7 @@ def _attach_split(scores: pd.DataFrame, window: str) -> pd.DataFrame:
     return merged
 
 
-def _window_labels_from_duckdb(
-    samples: pd.DataFrame, db_path: Path, window_days: int
-) -> pd.DataFrame:
+def _window_labels_from_duckdb(samples: pd.DataFrame, db_path: Path, window_days: int) -> pd.DataFrame:
     """y_true theo handoff §4: laundering TX trong (as_of - window, as_of]."""
     if not db_path.exists():
         raise FileNotFoundError(f"Khong tim thay DuckDB: {db_path}")
@@ -143,9 +144,7 @@ def _window_labels_from_duckdb(
     return df
 
 
-def _find_best_threshold(
-    y_true: np.ndarray, scores: np.ndarray, target_recall: float
-) -> float:
+def _find_best_threshold(y_true: np.ndarray, scores: np.ndarray, target_recall: float) -> float:
     """argmin #alerts s.t. Recall >= target; fallback max recall."""
     uniq = np.unique(scores)
     if len(uniq) > 2500:
@@ -169,10 +168,7 @@ def _find_best_threshold(
             found = True
 
     if not found:
-        print(
-            f"[warn] Khong dat Recall>={target_recall:.0%}. "
-            "Chon nguong Recall cao nhat (it alert nhat)."
-        )
+        print(f"[warn] Khong dat Recall>={target_recall:.0%}. Chon nguong Recall cao nhat (it alert nhat).")
         best_rec = -1.0
         for thr in np.sort(cand)[::-1]:
             y_pred = (scores >= thr).astype(int)
@@ -258,6 +254,7 @@ def evaluate_model(
     report_path: Path,
     target_recall: float,
     precision_at_k: tuple[int, ...],
+    subject_accounts: Path | None = None,
 ) -> None:
     if not scores_path.exists():
         raise FileNotFoundError(f"Thieu {scores_path}. Chay generate_scores.py truoc.")
@@ -265,10 +262,21 @@ def evaluate_model(
     window_days = WINDOW_DAYS[window]
 
     print("[1/4] Doc if_scores_v1.parquet ...", flush=True)
-    scores = pd.read_parquet(
-        scores_path, columns=["account_key", "as_of_ts", "window", "anomaly_score"]
-    )
+    scores = pd.read_parquet(scores_path, columns=["account_key", "as_of_ts", "window", "anomaly_score"])
     scores = _attach_split(scores, window)
+    if subject_accounts is not None:
+        # Counterparties appear in the batch only for the rows that touch a
+        # subject, so their feature vectors describe that fragment. The
+        # operational run does not score them; a benchmark that does is not
+        # measuring the same system.
+        subjects = {line.strip() for line in subject_accounts.read_text(encoding="utf-8").splitlines() if line.strip()}
+        if not subjects:
+            raise ValueError(f"File --subject-accounts rong: {subject_accounts}")
+        before = len(scores)
+        scores = scores[scores["account_key"].isin(subjects)].copy()
+        if scores.empty:
+            raise RuntimeError("Khong co tai khoan nao trong scores khop --subject-accounts")
+        print(f"       loc theo subject: {before:,} -> {len(scores):,} dong", flush=True)
 
     print(
         f"[2/4] Gan nhan window-strict (laundering trong (as_of-{window}, as_of]) ...",
@@ -282,8 +290,7 @@ def evaluate_model(
     test = scored[scored["split"] == "test"].copy()
     if val.empty or test.empty:
         raise RuntimeError(
-            f"Val/Test rong sau join (val={len(val)}, test={len(test)}). "
-            "Kiem tra features_* parquet va scores."
+            f"Val/Test rong sau join (val={len(val)}, test={len(test)}). Kiem tra features_* parquet va scores."
         )
 
     print(
@@ -303,9 +310,7 @@ def evaluate_model(
         precision_at_k,
     )
 
-    val_text = _format_block(
-        f"VALIDATION @ best_thresh (target Recall>={target_recall:.0%})", val_m
-    )
+    val_text = _format_block(f"VALIDATION @ best_thresh (target Recall>={target_recall:.0%})", val_m)
     test_text = _format_block(f"TEST @ best_thresh={best_thresh:.4f}", test_m)
     report = (
         f"best_thresh={best_thresh}\n"
@@ -335,6 +340,7 @@ def main() -> None:
         report_path=Path(args.report),
         target_recall=args.target_recall,
         precision_at_k=_parse_ks(args.precision_at_k),
+        subject_accounts=Path(args.subject_accounts) if args.subject_accounts else None,
     )
 
 

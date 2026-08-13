@@ -123,8 +123,7 @@ def check_api(api_base: str) -> dict:
     ml_rows = [
         r
         for r in rows
-        if isinstance(r, dict)
-        and (r.get("detector") == "ml" or str(r.get("alert_id", "")).startswith("ALT-IF-"))
+        if isinstance(r, dict) and (r.get("detector") == "ml" or str(r.get("alert_id", "")).startswith("ALT-IF-"))
     ]
     out["ml_seen"] = len(ml_rows) > 0
     out["list_ml_rows"] = len(ml_rows)
@@ -144,9 +143,7 @@ def check_api(api_base: str) -> dict:
             out["detail_has_customer"] = "customer" in detail
     except urllib.error.HTTPError as exc:
         out["detail_ok"] = False
-        out["notes"].append(
-            f"GET /api/v1/alerts/{{id}} HTTP {exc.code} — stack may only expose list endpoint"
-        )
+        out["notes"].append(f"GET /api/v1/alerts/{{id}} HTTP {exc.code} — stack may only expose list endpoint")
     except Exception as exc:  # noqa: BLE001
         out["detail_ok"] = False
         out["notes"].append(f"detail error: {exc}")

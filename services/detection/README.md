@@ -1,6 +1,8 @@
 # services/detection — Detection & Scoring plane
 
-**Trạng thái: CHƯA CÓ CODE.** Thư mục này là nhà chờ sẵn.
+**Trạng thái:** runtime ensemble/graph/fusion vẫn chưa có. Behaviour Isolation Forest đã có một
+đường batch PoC tại `src/behavior/` và `scripts/run_behavior_batch.py`; giữ ngoài thư mục này cho
+tới khi detection runtime dạng service được xây dựng.
 
 Cơ sở: kiến trúc mục 7 (Detection Engine), mục 4 (mặt phẳng 3).
 
@@ -64,7 +66,7 @@ khác nhau là so sánh vô nghĩa.
 
 ---
 
-## Isolation Forest offline → contract (tạm thời)
+## Isolation Forest batch → PostgreSQL/contract (tạm thời)
 
 Trong lúc `services/detection/` chưa có runtime stream, nhánh IF offline emit theo contract:
 
@@ -72,6 +74,9 @@ Trong lúc `services/detection/` chưa có runtime stream, nhánh IF offline emi
 |---|---|
 | `src/services/if_detection_result.py` | Map score row → `aml.detection.result.v1` |
 | `scripts/emit_if_detection_results.py` | JSONL outbox (+ optional Kafka) |
+| `scripts/run_behavior_batch.py` | CSV không nhãn → features → IF → detection_result + alert trong PostgreSQL |
+| `db/init/008_behavior_batch_poc.sql` | Provenance batch, feature snapshot và toàn bộ detection result |
 | `contracts/events/aml.detection.result.v1.schema.json` | Schema bắt buộc |
 
-`detector_type=ML_UNSUPERVISED`. **Không** tạo `aml.alert.created.v1` từ đây — việc đó thuộc `fusion/`.
+`detector_type=ML_UNSUPERVISED`. Batch PoC tạo trực tiếp alert cho các result vượt ngưỡng để console
+có thể dùng trước khi fusion tồn tại; alert ghi rõ `detector=ml`, không giả lập rule/graph/fusion.

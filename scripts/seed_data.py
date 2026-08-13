@@ -765,6 +765,22 @@ TABLES_IN_WIPE_ORDER = [
     "sar_draft",
     "approval",
     "audit_log",
+    # Migrations 006-009 added the investigation runtime and the Behaviour batch
+    # tables. Leaving them out made --force a half-wipe: detection rows and
+    # investigations survived pointing at accounts and transactions that had
+    # just been deleted, so a reseeded database still served the previous
+    # batch's alerts. Children first; `evidence` below is held by
+    # investigation_evidence with ON DELETE RESTRICT.
+    "case_explanation",
+    "investigation_validation",
+    "investigation_agent_run",
+    "investigation_tool_call",
+    "investigation_trace",
+    "investigation_evidence",
+    "investigation",
+    "detection_result",
+    "behavior_feature_snapshot",
+    "behavior_batch",
     "evidence",
     "screening_result",
     "alert_reason",

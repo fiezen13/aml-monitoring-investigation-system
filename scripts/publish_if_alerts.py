@@ -202,9 +202,10 @@ def load_top_k(scores_path: Path, window: str, top_k: int) -> pd.DataFrame:
 
 def list_if_alert_subjects(session: Session) -> list[dict[str, Any]]:
     """Tat ca account_key tu alert IF + trang thai co/khong co customer (API detail)."""
-    rows = session.execute(
-        text(
-            """
+    rows = (
+        session.execute(
+            text(
+                """
             SELECT al.alert_id,
                    al.account_key,
                    al.created_at,
@@ -217,8 +218,11 @@ def list_if_alert_subjects(session: Session) -> list[dict[str, Any]]:
                AND al.alert_id LIKE 'ALT-IF-%'
              ORDER BY al.risk_score DESC
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [dict(r) for r in rows]
 
 

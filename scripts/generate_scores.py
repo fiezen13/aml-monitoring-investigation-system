@@ -56,6 +56,7 @@ def _parse_args() -> argparse.Namespace:
         "--output",
         default=str(PROCESSED_DIR / "if_scores_v1.parquet"),
     )
+    p.add_argument("--processed-dir", default=str(PROCESSED_DIR), help="Thu muc feature artifacts")
     return p.parse_args()
 
 
@@ -68,10 +69,14 @@ def _load_artifact(path: Path) -> dict:
     return art
 
 
-def _load_features(window: str, splits: tuple[str, ...] = SPLITS) -> pd.DataFrame:
+def _load_features(
+    window: str,
+    splits: tuple[str, ...] = SPLITS,
+    processed_dir: Path = PROCESSED_DIR,
+) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     for split in splits:
-        path = PROCESSED_DIR / f"features_{split}_{window}.parquet"
+        path = processed_dir / f"features_{split}_{window}.parquet"
         if not path.exists():
             raise FileNotFoundError(f"Thieu {path}")
         df = pd.read_parquet(path)
@@ -80,7 +85,9 @@ def _load_features(window: str, splits: tuple[str, ...] = SPLITS) -> pd.DataFram
     return pd.concat(frames, ignore_index=True)
 
 
-def _train_percentiles(train: pd.DataFrame, feature_cols: list[str]) -> tuple[pd.Series, pd.Series, dict[str, np.ndarray]]:
+def _train_percentiles(
+    train: pd.DataFrame, feature_cols: list[str]
+) -> tuple[pd.Series, pd.Series, dict[str, np.ndarray]]:
     """p5/p95 + mang sorted de tinh percentile rank (chi fit tren TRAIN)."""
     feat_df = train[feature_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
     p5 = feat_df.quantile(0.05)
@@ -135,49 +142,82 @@ def _build_top_anomalous_features(
     return out
 
 
-def generate_scores(window: str, model_path: Path, output_path: Path) -> Path:
+def score_features(
+    features: pd.DataFrame,
+    artifact: dict,
+    reference_train: pd.DataFrame,
+) -> pd.DataFrame:
+    """Score point-in-time features using a frozen train-only reference.
+
+    `features` may contain an operational snapshot built from the complete
+    history. Percentile explanations still use train only, so inference data
+    cannot move its own reference distribution.
+    """
+    feature_cols: list[str] = list(artifact["feature_cols"])
+    missing = [column for column in feature_cols if column not in features.columns]
+    if missing:
+        raise ValueError(f"Thieu cot feature: {missing}")
+    reference_missing = [column for column in feature_cols if column not in reference_train.columns]
+    if reference_missing:
+        raise ValueError(f"Train reference thieu cot feature: {reference_missing}")
+
+    scored = features.copy()
+    reference = reference_train.copy()
+    for column in feature_cols:
+        scored[column] = pd.to_numeric(scored[column], errors="coerce").fillna(0.0)
+        reference[column] = pd.to_numeric(reference[column], errors="coerce").fillna(0.0)
+
+    p5, p95, sorted_cols = _train_percentiles(reference, feature_cols)
+    feature_matrix = scored[feature_cols].to_numpy(dtype=np.float64)
+    scored["anomaly_score"] = _anomaly_scores(artifact["model"], artifact["scaler"], feature_matrix)
+    scored["model_version"] = str(artifact.get("model_version") or MODEL_VERSION)
+    scored["top_anomalous_features"] = _build_top_anomalous_features(
+        feature_matrix,
+        feature_cols,
+        p5,
+        p95,
+        sorted_cols,
+    )
+    return scored[
+        [
+            "account_key",
+            "as_of_ts",
+            "window",
+            *feature_cols,
+            "anomaly_score",
+            "model_version",
+            "top_anomalous_features",
+        ]
+    ].copy()
+
+
+def generate_scores(
+    window: str,
+    model_path: Path,
+    output_path: Path,
+    processed_dir: Path = PROCESSED_DIR,
+) -> Path:
     print(f"[1/5] Load model {model_path} ...")
     art = _load_artifact(model_path)
-    model = art["model"]
-    scaler = art["scaler"]
     feature_cols: list[str] = list(art["feature_cols"])
     if len(feature_cols) != 20:
         raise RuntimeError(f"Ky vong 20 feature, artifact co {len(feature_cols)}")
 
     print(f"[2/5] Load features_*_{window}.parquet (train/val/test) ...")
-    df = _load_features(window)
-    missing = [c for c in feature_cols if c not in df.columns]
-    if missing:
-        raise ValueError(f"Thieu cot feature: {missing}")
-
-    for c in feature_cols:
-        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
-
+    df = _load_features(window, processed_dir=processed_dir)
     train = df[df["split"] == "train"]
     if train.empty:
         raise RuntimeError("Khong co hang split=train de tinh p5/p95.")
 
     print("[3/5] Tinh p5/p95 tren TRAIN (dong bang cho val/test) ...")
-    p5, p95, sorted_cols = _train_percentiles(train, feature_cols)
+    p5, p95, _ = _train_percentiles(train, feature_cols)
     print(
         "       Vi du repeated_amount_ratio: "
         f"p5={p5['repeated_amount_ratio']:.6f} p95={p95['repeated_amount_ratio']:.6f}"
     )
 
     print("[4/5] Cham anomaly_score [0,1] + top_anomalous_features ...")
-    feature_matrix = df[feature_cols].to_numpy(dtype=np.float64)
-    df["anomaly_score"] = _anomaly_scores(model, scaler, feature_matrix)
-    df["model_version"] = MODEL_VERSION
-    df["top_anomalous_features"] = _build_top_anomalous_features(
-        feature_matrix, feature_cols, p5, p95, sorted_cols
-    )
-
-    out_cols = (
-        ["account_key", "as_of_ts", "window"]
-        + feature_cols
-        + ["anomaly_score", "model_version", "top_anomalous_features"]
-    )
-    out = df[out_cols].copy()
+    out = score_features(df, art, train)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     out.to_parquet(output_path, index=False)
@@ -192,10 +232,11 @@ def generate_scores(window: str, model_path: Path, output_path: Path) -> Path:
 def main() -> None:
     args = _parse_args()
     window = args.window
-    model_path = Path(args.model) if args.model else PROCESSED_DIR / f"isolation_forest_model_{window}.joblib"
+    processed_dir = Path(args.processed_dir)
+    model_path = Path(args.model) if args.model else processed_dir / f"isolation_forest_model_{window}.joblib"
     if not model_path.exists():
         raise FileNotFoundError(f"Khong tim thay model: {model_path}")
-    generate_scores(window, model_path, Path(args.output))
+    generate_scores(window, model_path, Path(args.output), processed_dir)
 
 
 if __name__ == "__main__":

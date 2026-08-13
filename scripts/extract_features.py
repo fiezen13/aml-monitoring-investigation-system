@@ -8,7 +8,7 @@ Ví dụ:
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -57,6 +57,7 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Extract 20 account features from aml.duckdb")
     p.add_argument("--window", default="7d", choices=tuple(WINDOW_DAYS))
     p.add_argument("--db", default=str(DB_PATH), help="Duong dan DuckDB")
+    p.add_argument("--output-dir", default=str(PROCESSED_DIR), help="Thu muc ghi feature parquet")
     return p.parse_args()
 
 
@@ -146,10 +147,9 @@ def _pass_through_features(win_events: pl.DataFrame) -> pl.DataFrame:
             ).alias("is_rapid")
         )
         rapid = joined.group_by("account_key").agg(
-            (
-                pl.col("out_amt").filter(pl.col("is_rapid")).sum().fill_null(0.0)
-                / (pl.col("out_amt").sum() + EPS)
-            ).alias("rapid_outflow_ratio")
+            (pl.col("out_amt").filter(pl.col("is_rapid")).sum().fill_null(0.0) / (pl.col("out_amt").sum() + EPS)).alias(
+                "rapid_outflow_ratio"
+            )
         )
 
     if ins.is_empty() or outs.is_empty():
@@ -161,12 +161,12 @@ def _pass_through_features(win_events: pl.DataFrame) -> pl.DataFrame:
             right_on="out_ts",
             by="account_key",
             strategy="forward",
-        ).with_columns(
-            ((pl.col("out_ts") - pl.col("in_ts")).dt.total_seconds() / 3600.0).alias("dwell_h")
+        ).with_columns(((pl.col("out_ts") - pl.col("in_ts")).dt.total_seconds() / 3600.0).alias("dwell_h"))
+        dwell = (
+            pairs.group_by("account_key")
+            .agg(pl.col("dwell_h").drop_nulls().median().alias("median_dwell_time"))
+            .with_columns(pl.col("median_dwell_time").fill_null(999.0))
         )
-        dwell = pairs.group_by("account_key").agg(
-            pl.col("dwell_h").drop_nulls().median().alias("median_dwell_time")
-        ).with_columns(pl.col("median_dwell_time").fill_null(999.0))
 
     return rapid.join(dwell, on="account_key", how="full", coalesce=True).with_columns(
         [
@@ -178,19 +178,14 @@ def _pass_through_features(win_events: pl.DataFrame) -> pl.DataFrame:
 
 def _new_counterparty_ratio(win_events: pl.DataFrame, hist_events: pl.DataFrame) -> pl.DataFrame:
     if hist_events.is_empty():
-        return win_events.select("account_key").unique().with_columns(
-            pl.lit(1.0).alias("new_counterparty_ratio")
-        )
+        return win_events.select("account_key").unique().with_columns(pl.lit(1.0).alias("new_counterparty_ratio"))
     win_cp = win_events.select("account_key", "counterparty").unique()
-    hist_cp = hist_events.select("account_key", "counterparty").unique().with_columns(
-        pl.lit(True).alias("seen_before")
-    )
+    hist_cp = hist_events.select("account_key", "counterparty").unique().with_columns(pl.lit(True).alias("seen_before"))
     marked = win_cp.join(hist_cp, on=["account_key", "counterparty"], how="left")
     return marked.group_by("account_key").agg(
-        (
-            pl.col("seen_before").is_null().sum().cast(pl.Float64)
-            / (pl.len().cast(pl.Float64) + EPS)
-        ).alias("new_counterparty_ratio")
+        (pl.col("seen_before").is_null().sum().cast(pl.Float64) / (pl.len().cast(pl.Float64) + EPS)).alias(
+            "new_counterparty_ratio"
+        )
     )
 
 
@@ -198,9 +193,7 @@ def _inter_txn_gap(win_events: pl.DataFrame) -> pl.DataFrame:
     """median + p10 khoang cach lien tiep (phut)."""
     return (
         win_events.sort(["account_key", "ts"])
-        .with_columns(
-            (pl.col("ts").diff().over("account_key").dt.total_seconds() / 60.0).alias("gap_min")
-        )
+        .with_columns((pl.col("ts").diff().over("account_key").dt.total_seconds() / 60.0).alias("gap_min"))
         .group_by("account_key")
         .agg(
             [
@@ -237,9 +230,7 @@ def _empty_feature_frame() -> pl.DataFrame:
     )
 
 
-def _aggregate_account_features(
-    win_events: pl.DataFrame, hist_events: pl.DataFrame
-) -> pl.DataFrame:
+def _aggregate_account_features(win_events: pl.DataFrame, hist_events: pl.DataFrame) -> pl.DataFrame:
     """Tinh 20 feature cho moi account co >= 1 TX trong window (handoff §3.3.4)."""
     win_events = win_events.with_columns(
         [
@@ -257,14 +248,8 @@ def _aggregate_account_features(
             pl.col("day").n_unique().alias("active_days"),
             pl.col("amount").filter(pl.col("is_in")).sum().fill_null(0.0).alias("sum_in"),
             pl.col("amount").filter(pl.col("is_out")).sum().fill_null(0.0).alias("sum_out"),
-            pl.col("counterparty")
-            .filter(pl.col("is_in"))
-            .n_unique()
-            .alias("unique_in_counterparties"),
-            pl.col("counterparty")
-            .filter(pl.col("is_out"))
-            .n_unique()
-            .alias("unique_out_counterparties"),
+            pl.col("counterparty").filter(pl.col("is_in")).n_unique().alias("unique_in_counterparties"),
+            pl.col("counterparty").filter(pl.col("is_out")).n_unique().alias("unique_out_counterparties"),
             pl.col("amount").median().alias("median_amount_raw"),
             pl.col("amount").quantile(0.90).alias("p90_amount_raw"),
             pl.col("amount").std().alias("amount_std_raw"),
@@ -278,9 +263,7 @@ def _aggregate_account_features(
             (pl.col("sum_in") + 1.0).log().alias("total_inflow"),
             (pl.col("sum_out") + 1.0).log().alias("total_outflow"),
             (
-                pl.when(pl.col("sum_in") - pl.col("sum_out") >= 0)
-                .then(1.0)
-                .otherwise(-1.0)
+                pl.when(pl.col("sum_in") - pl.col("sum_out") >= 0).then(1.0).otherwise(-1.0)
                 * (1.0 + (pl.col("sum_in") - pl.col("sum_out")).abs()).log()
             ).alias("net_flow"),
             (1.0 + pl.col("median_amount_raw").fill_null(0.0)).log().alias("median_amount"),
@@ -338,12 +321,10 @@ def extract_split_features(tx: pl.DataFrame, window: str) -> pl.DataFrame:
     day_i = 0
     while d <= day_end:
         day_i += 1
-        as_of = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+        as_of = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=UTC)
         win_start = as_of - timedelta(days=days)
 
-        win_events = events.filter(
-            (pl.col("ts") > pl.lit(win_start)) & (pl.col("ts") <= pl.lit(as_of))
-        )
+        win_events = events.filter((pl.col("ts") > pl.lit(win_start)) & (pl.col("ts") <= pl.lit(as_of)))
         if win_events.is_empty():
             d += timedelta(days=1)
             continue
@@ -356,9 +337,7 @@ def extract_split_features(tx: pl.DataFrame, window: str) -> pl.DataFrame:
                 pl.lit(window).alias("window"),
             ]
         )
-        frames.append(
-            day_feats.select(["account_key", "as_of_ts", "window", *FEATURE_COLS])
-        )
+        frames.append(day_feats.select(["account_key", "as_of_ts", "window", *FEATURE_COLS]))
 
         if day_i == 1 or day_i == n_days or day_i % 5 == 0:
             print(
@@ -373,11 +352,11 @@ def extract_split_features(tx: pl.DataFrame, window: str) -> pl.DataFrame:
     return pl.concat(frames, how="vertical").sort(["as_of_ts", "account_key"])
 
 
-def extract_features(window: str, db_path: Path) -> None:
+def extract_features(window: str, db_path: Path, output_dir: Path = PROCESSED_DIR) -> None:
     if not db_path.exists():
         raise FileNotFoundError(f"Khong tim thay DuckDB: {db_path}")
 
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(db_path), read_only=True)
 
     try:
@@ -389,7 +368,7 @@ def extract_features(window: str, db_path: Path) -> None:
 
             print(f"[{split}] rows={tx.height:,} | window={window}")
             feats = extract_split_features(tx, window=window)
-            out = PROCESSED_DIR / f"features_{split}_{window}.parquet"
+            out = output_dir / f"features_{split}_{window}.parquet"
             feats.write_parquet(out, compression="zstd")
             print(f"[{split}] -> {out} | samples={feats.height:,} | cols={feats.width}")
     finally:
@@ -400,7 +379,7 @@ def extract_features(window: str, db_path: Path) -> None:
 
 def main() -> None:
     args = _parse_args()
-    extract_features(args.window, Path(args.db))
+    extract_features(args.window, Path(args.db), Path(args.output_dir))
 
 
 if __name__ == "__main__":

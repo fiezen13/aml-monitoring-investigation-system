@@ -166,9 +166,7 @@ def insert_ml_alert(
     cleaned = _clean_reasons(reasons)
     risk = round(min(max(float(risk_score), 0.0), 100.0), 2)
 
-    subjects_created = ensure_subject(
-        session, account_key, as_of_ts or datetime.now(tz=UTC)
-    )
+    subjects_created = ensure_subject(session, account_key, as_of_ts or datetime.now(tz=UTC))
 
     existing = session.execute(
         text("SELECT 1 FROM alert WHERE alert_id = :a"),

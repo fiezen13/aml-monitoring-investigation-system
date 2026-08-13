@@ -243,3 +243,53 @@ client sẽ hỏi.** Kiểm tra cổng có mở không nói lên điều gì v�
   mát qua `double`, nhưng đây là ràng buộc phải biết trước khi mở rộng.
 - **Watermark đã nối dây nhưng chưa có cửa sổ nào dùng.** Trục thời gian đúng từ đầu là có chủ đích.
 - **Không có schema registry.** Version kiểm bằng validator viết tay ở hai đầu.
+
+---
+
+## 11. PoC batch Behaviour ML với dữ liệu giao dịch bên ngoài
+
+Đường batch cục bộ không cần Kafka/HDFS và không dùng cột nhãn. Contract là
+[`behavior-batch-v1.schema.json`](behavior-batch-v1.schema.json); file mẫu nằm tại
+[`examples/behavior-batch-valid.csv`](examples/behavior-batch-valid.csv).
+
+```bash
+mkdir -p data/batch
+cp contracts/ingestion/examples/behavior-batch-valid.csv data/batch/transactions.csv
+make migrate
+make behavior-batch FILE=transactions.csv
+```
+
+Muốn tạo một batch PoC không nhãn từ bộ IBM AML đã tải về, dùng bộ chuyển đổi streaming. Lệnh dưới
+đây chỉ lấy giao dịch USD, bỏ self-loop, giữ nguyên mã ngân hàng/tài khoản dạng chuỗi và không xuất
+cột `Is Laundering`:
+
+```bash
+./scripts/_pyrun.sh scripts/prepare_ibm_behavior_batch.py \
+  --input data/raw/ibm-aml/LI-Small_Trans.csv \
+  --output data/batch/li-small-poc.csv \
+  --limit 10000 \
+  --scan-limit 100000
+make behavior-batch FILE=li-small-poc.csv
+```
+
+Luồng chạy:
+
+```text
+CSV canonical (unlabeled)
+  → validate fail-closed + time split
+  → PostgreSQL transaction (idempotent bằng source_transaction_id)
+  → DuckDB riêng của batch
+  → 20 Behaviour features
+  → Isolation Forest
+  → behavior_feature_snapshot + detection_result trong PostgreSQL
+  → alert + alert_reason cho score vượt threshold
+  → Web Console / Multi-Agent Investigation
+```
+
+Mặc định runner tự train baseline trên 60% đầu theo thời gian để bootstrap PoC. Khi có artifact đã
+được kiểm định, truyền `--model /path/model.joblib`; artifact phải có `model_version`, hoặc truyền
+thêm `--model-version`. Mọi detection, kể cả `triggered=false`, được lưu; chỉ tập vượt ngưỡng mới
+thành alert. Graph score và score fusion không được giả lập.
+
+Đây là đường PoC tối đa 100.000 dòng mỗi lượt. Input không được copy vào image, log hay git. CSV có
+dòng sai làm cả batch dừng; chỉ dùng `--allow-rejected` khi đã chấp nhận rõ việc bỏ các dòng đó.

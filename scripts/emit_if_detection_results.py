@@ -18,9 +18,10 @@ import json
 import logging
 import re
 import sys
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import pyarrow.parquet as pq
 
@@ -174,9 +175,7 @@ class KafkaDetectionSink:
         try:
             from confluent_kafka import Producer
         except ImportError as exc:  # pragma: no cover
-            raise RuntimeError(
-                "Thieu confluent-kafka. Cai: pip install -r requirements.txt"
-            ) from exc
+            raise RuntimeError("Thieu confluent-kafka. Cai: pip install -r requirements.txt") from exc
         self._topic = topic
         self._producer = Producer(
             {
@@ -231,7 +230,6 @@ def main() -> None:
         raise SystemExit("--threshold phai trong [0,1]")
     if not _typology_ok(args.typology):
         raise SystemExit(f"--typology khong hop le: {args.typology}")
-
 
     limit: int | None = None if args.all else max(1, args.limit)
     if args.all:
@@ -323,4 +321,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
