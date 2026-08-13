@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from datetime import date
 
+import duckdb
 import pandas as pd
 
+import src.data.gather_scatter_detector as gather_detector
 from src.data.gather_scatter_detector import (
     DETECTED_PATTERN,
     DETECTION_COLUMNS,
     detect_gather_scatter,
+    evaluate_gather_duckdb,
     load_gather_config,
 )
 from src.data.schemas import assert_no_label_leakage
@@ -259,6 +262,65 @@ def test_frozen_config_loads() -> None:
     assert cfg["amount_ratio_hi"] == 5.0
     assert cfg["tuned_on"] == "val"
     assert cfg["temporal_rule"] == "median_inbound_le_median_outbound_plus_tolerance"
+
+
+def test_duckdb_path_uses_as_of_utc_window_in_local_timezone(tmp_path, monkeypatch) -> None:
+    """TIMESTAMPTZ bounds stay UTC-correct when DuckDB displays Asia/Ho_Chi_Minh."""
+    db_path = tmp_path / "gather_timezone.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("SET TimeZone='Asia/Ho_Chi_Minh'")
+    tx_rows = [
+        # Correct window is [2022-09-02 00:00Z, 2022-09-09 00:00Z).
+        {"transaction_id": "in_start", "occurred_at": "2022-09-02 07:00:00+07", "from_account_key": "S0", "to_account_key": "C", "amount": 100.0, "amount_received": 100.0},
+        {"transaction_id": "in_mid_1", "occurred_at": "2022-09-03 07:00:00+07", "from_account_key": "S1", "to_account_key": "C", "amount": 100.0, "amount_received": 100.0},
+        {"transaction_id": "in_mid_2", "occurred_at": "2022-09-04 07:00:00+07", "from_account_key": "S2", "to_account_key": "C", "amount": 100.0, "amount_received": 100.0},
+        # This is before the correct start, but inside the old local-midnight start.
+        {"transaction_id": "in_before_start", "occurred_at": "2022-09-02 03:00:00+07", "from_account_key": "S_before", "to_account_key": "C", "amount": 100.0, "amount_received": 100.0},
+        {"transaction_id": "out_mid_1", "occurred_at": "2022-09-05 07:00:00+07", "from_account_key": "C", "to_account_key": "D0", "amount": 100.0, "amount_received": 100.0},
+        {"transaction_id": "out_mid_2", "occurred_at": "2022-09-06 07:00:00+07", "from_account_key": "C", "to_account_key": "D1", "amount": 100.0, "amount_received": 100.0},
+        {"transaction_id": "out_mid_3", "occurred_at": "2022-09-07 07:00:00+07", "from_account_key": "C", "to_account_key": "D2", "amount": 100.0, "amount_received": 100.0},
+        # Between the old local-midnight end and the correct UTC end.
+        {"transaction_id": "out_after_old_end", "occurred_at": "2022-09-09 03:00:00+07", "from_account_key": "C", "to_account_key": "D_after", "amount": 100.0, "amount_received": 100.0},
+        # Exact end: must be excluded by the half-open interval.
+        {"transaction_id": "out_at_end", "occurred_at": "2022-09-09 07:00:00+07", "from_account_key": "C", "to_account_key": "D_end", "amount": 100.0, "amount_received": 100.0},
+    ]
+    con.register("tx_rows", pd.DataFrame(tx_rows))
+    con.execute(
+        """
+        CREATE TABLE transaction AS
+        SELECT transaction_id,
+               CAST(occurred_at AS TIMESTAMPTZ) AS occurred_at,
+               from_account_key, to_account_key, amount, amount_received
+        FROM tx_rows
+        """
+    )
+    con.close()
+
+    raw_connect = duckdb.connect
+
+    def connect_in_local_timezone(*args, **kwargs):
+        local_con = raw_connect(*args, **kwargs)
+        local_con.execute("SET TimeZone='Asia/Ho_Chi_Minh'")
+        return local_con
+
+    monkeypatch.setattr(gather_detector.duckdb, "connect", connect_in_local_timezone)
+
+    candidates = pd.DataFrame([_feat(
+        snapshot_date=date(2022, 9, 8),
+        as_of_ts=pd.Timestamp("2022-09-09T00:00:00Z"),
+        in_degree_7d=3,
+        out_degree_7d=3,
+    )])
+    hits = evaluate_gather_duckdb(candidates, duckdb_path=db_path, config=CFG)
+
+    assert len(hits) == 1
+    assert set(hits[0]["gather_transaction_ids"]) == {"in_start", "in_mid_1", "in_mid_2"}
+    assert set(hits[0]["scatter_transaction_ids"]) == {
+        "out_mid_1", "out_mid_2", "out_mid_3", "out_after_old_end"
+    }
+    all_ids = set(hits[0]["gather_transaction_ids"] + hits[0]["scatter_transaction_ids"])
+    assert "in_before_start" not in all_ids
+    assert "out_at_end" not in all_ids
 
 
 def test_determinism() -> None:

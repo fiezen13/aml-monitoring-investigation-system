@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +10,6 @@ import duckdb
 import pandas as pd
 
 from src.data.schemas import assert_no_label_leakage
-from src.data.snapshot_split import snapshot_window_bounds
 
 
 def validate_graph_artifacts(
@@ -45,10 +43,15 @@ def validate_graph_artifacts(
         errors.append("orphan evidence")
 
     tx_ids: set[str] = set()
+    gather_refs: list[tuple[str, str, str, str, set[str], set[str], pd.Timestamp, pd.Timestamp]] = []
     witness_rows = 0
     for row in evidence:
-        snap = date.fromisoformat(str(row["snapshot_date"])[:10])
-        start, end = snapshot_window_bounds(snap)
+        as_of = pd.Timestamp(row["as_of_ts"])
+        if as_of.tzinfo is None:
+            as_of = as_of.tz_localize("UTC")
+        else:
+            as_of = as_of.tz_convert("UTC")
+        start, end = as_of - pd.Timedelta(days=7), as_of
         pattern = row.get("detected_pattern")
         if pattern == "CYCLE":
             accounts = row.get("accounts", [])
@@ -62,13 +65,38 @@ def validate_graph_artifacts(
                 ts = pd.Timestamp(hop["occurred_at"])
                 if not (start <= ts < end):
                     errors.append(f"transaction outside window: {hop.get('transaction_id')}")
-                tx_ids.add(str(hop["transaction_id"])); witness_rows += 1
+                tx_ids.add(str(hop["transaction_id"]))
+                witness_rows += 1
             times = [pd.Timestamp(h["occurred_at"]) for h in hops]
             if times and any(times[i] > times[i + 1] for i in range(len(times) - 1)):
                 errors.append(f"CYCLE witness not temporal: {row['pattern_instance_id']}")
+        elif pattern == "GATHER_SCATTER":
+            linked = det.loc[det["evidence_id"] == row["evidence_id"]]
+            centers = set(linked["account_key"].astype(str))
+            if len(centers) != 1:
+                errors.append(f"GATHER center cardinality: {row['pattern_instance_id']}")
+            center = next(iter(centers), "")
+            sources = set(str(x) for x in row.get("sources", []) or [])
+            destinations = set(str(x) for x in row.get("destinations", []) or [])
+            gather_ids = [str(x) for x in row.get("gather_transaction_ids", []) or []]
+            scatter_ids = [str(x) for x in row.get("scatter_transaction_ids", []) or []]
+            if set(gather_ids) & set(scatter_ids):
+                errors.append(f"GATHER/SCATTER transaction overlap: {row['pattern_instance_id']}")
+            if set(str(x) for x in row.get("transaction_ids", []) or []) != set(gather_ids + scatter_ids):
+                errors.append(f"GATHER transaction union mismatch: {row['pattern_instance_id']}")
+            for tx_id in gather_ids:
+                gather_refs.append((row["evidence_id"], tx_id, "gather", center, sources, destinations, start, end))
+                tx_ids.add(tx_id)
+                witness_rows += 1
+            for tx_id in scatter_ids:
+                gather_refs.append((row["evidence_id"], tx_id, "scatter", center, sources, destinations, start, end))
+                tx_ids.add(tx_id)
+                witness_rows += 1
+            continue
         for key in ("transaction_ids", "gather_transaction_ids", "scatter_transaction_ids"):
             for tx_id in row.get(key, []) or []:
-                tx_ids.add(str(tx_id)); witness_rows += 1
+                tx_ids.add(str(tx_id))
+                witness_rows += 1
 
     found = 0
     if db_path and tx_ids:
@@ -78,9 +106,32 @@ def validate_graph_artifacts(
         found = con.execute(
             "SELECT COUNT(*) FROM transaction t JOIN graph_validator_tx x USING (transaction_id)"
         ).fetchone()[0]
+        tx_rows = con.execute(
+            """
+            SELECT t.transaction_id, t.occurred_at, t.from_account_key, t.to_account_key
+            FROM transaction t JOIN graph_validator_tx x USING (transaction_id)
+            """
+        ).fetchall()
         con.close()
         if found != len(tx_ids):
             errors.append(f"missing transaction IDs: expected={len(tx_ids)} found={found}")
+        tx_by_id = {str(tx_id): (pd.Timestamp(ts), str(src), str(dst)) for tx_id, ts, src, dst in tx_rows}
+        for evidence_id, tx_id, leg, center, sources, destinations, start, end in gather_refs:
+            tx = tx_by_id.get(tx_id)
+            if tx is None:
+                continue
+            ts, src, dst = tx
+            if ts.tzinfo is None:
+                ts = ts.tz_localize("UTC")
+            else:
+                ts = ts.tz_convert("UTC")
+            if not (start <= ts < end):
+                errors.append(f"GATHER transaction outside window: {evidence_id}:{tx_id}")
+            if leg == "gather":
+                if dst != center or src not in sources:
+                    errors.append(f"GATHER direction mismatch: {evidence_id}:{tx_id}")
+            elif src != center or dst not in destinations:
+                errors.append(f"SCATTER direction mismatch: {evidence_id}:{tx_id}")
     return {
         "status": "PASS" if not errors else "FAIL",
         "errors": errors,
