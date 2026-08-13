@@ -1,7 +1,7 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,11 +27,22 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     cors_origins: str = "http://localhost:5173"
 
-    # LLM
-    openai_api_key: str = ""
+    # Google Gemini reasoning layer. `mock` is reserved for CI/development;
+    # production agent execution uses the official Google Gen AI SDK.
+    llm_mode: Literal["mock", "gemini"] = "mock"
     google_api_key: str = ""
-    model_name: str = "gemini-1.5-flash"
-    llm_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    gemini_model: Literal["gemini-3.1-flash-lite"] = "gemini-3.1-flash-lite"
+    gemini_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    gemini_max_retries: int = Field(default=2, ge=0, le=10)
+
+    # Explainable investigation workflow. These are hard safety budgets, not
+    # suggestions passed to a model.
+    aml_agent_max_iterations: int = Field(default=3, ge=1, le=10)
+    aml_agent_max_tool_calls: int = Field(default=8, ge=1, le=50)
+    max_graph_hops: int = Field(default=2, ge=1, le=4)
+    max_graph_nodes: int = Field(default=100, ge=2, le=1000)
+    max_graph_edges: int = Field(default=250, ge=1, le=5000)
+    investigation_tx_limit: int = Field(default=100, ge=1, le=500)
 
     # Database
     database_url: str = "postgresql+psycopg://fin07:fin07_dev_password@localhost:5432/fin07"
@@ -53,6 +64,26 @@ class Settings(BaseSettings):
 
     # Vector Store
     chroma_persist_dir: str = "./data/chroma"
+
+    @model_validator(mode="after")
+    def validate_gemini_runtime(self) -> Self:
+        if self.app_env == "production" and self.llm_mode != "gemini":
+            raise ValueError("LLM_MODE=gemini is required in production")
+        if self.llm_mode != "gemini":
+            return self
+        if not self.google_api_key:
+            raise ValueError("GOOGLE_API_KEY is required for Gemini agent execution")
+        return self
+
+    @property
+    def max_agent_iterations(self) -> int:
+        """Compatibility name used by the explicit workflow."""
+        return self.aml_agent_max_iterations
+
+    @property
+    def max_tool_calls(self) -> int:
+        """Compatibility name used by the explicit workflow."""
+        return self.aml_agent_max_tool_calls
 
 
 @lru_cache

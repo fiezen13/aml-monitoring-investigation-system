@@ -1,7 +1,10 @@
 # services/agent-runtime — AI Agent plane
 
-**Trạng thái: CHƯA CÓ CODE.** `src/agents/` hiện là khung mẫu hai node của bộ khởi tạo dự án, không
-gọi LLM, không gọi tool, không chạm cơ sở dữ liệu. Agent thật sẽ được xây ở đây.
+**Trạng thái: ĐÃ CÓ RUNTIME TÍCH HỢP.** Implementation nằm ở `src/investigation/` để dùng trực tiếp
+DB/session, queue và worker hiện hữu. `src/agents/` cũ vẫn là chat demo, không tham gia workflow
+AML explainable. Runtime mới dùng ba vai trò Supervisor → Explanation → Evidence Critic, bảy tool
+allow-list và state/trace bền vững trong migration 006–007. Cả ba vai trò gọi độc lập một
+`GeminiService` dùng official Google Gen AI SDK; mock service chỉ dành cho CI/dev.
 
 Cơ sở: kiến trúc mục 8 (AI Investigation Agent), phụ lục B (tool call contract), phụ lục C (phân
 loại dữ liệu cho prompt).
@@ -10,7 +13,7 @@ loại dữ liệu cho prompt).
 
 ## Mô hình đã chốt
 
-> **deterministic orchestrator + bounded reasoning + controlled tools**
+> **explicit orchestrator + Google Gemini reasoning + deterministic validation + controlled tools**
 
 Không triển khai multi-agent tự do trao đổi vô hạn. Không cho model truy cập trực tiếp cơ sở dữ liệu.
 

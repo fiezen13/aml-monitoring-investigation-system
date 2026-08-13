@@ -1,12 +1,7 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
+"""Compatibility import for code that used the former LangChain helper."""
 
-from src.config import get_settings
+from src.investigation.llm import GeminiService, get_gemini_service
 
 
-def get_llm() -> ChatGoogleGenerativeAI:
-    settings = get_settings()
-    return ChatGoogleGenerativeAI(
-        model=settings.model_name,
-        google_api_key=settings.google_api_key,
-        temperature=settings.llm_temperature,
-    )
+def get_llm() -> GeminiService:
+    return get_gemini_service()

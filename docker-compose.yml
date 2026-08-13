@@ -35,9 +35,17 @@ x-app-env: &app-env
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fin07}:${POSTGRES_PASSWORD:-fin07_dev_password}@postgres:5432/${POSTGRES_DB:-fin07}
   REDIS_URL: redis://redis:6379/0
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+  LLM_MODE: ${LLM_MODE:-mock}
   GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-  MODEL_NAME: ${MODEL_NAME:-gemini-1.5-flash}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+  GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
+  GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-2}
+  AML_AGENT_MAX_ITERATIONS: ${AML_AGENT_MAX_ITERATIONS:-3}
+  AML_AGENT_MAX_TOOL_CALLS: ${AML_AGENT_MAX_TOOL_CALLS:-8}
+  MAX_GRAPH_HOPS: ${MAX_GRAPH_HOPS:-2}
+  MAX_GRAPH_NODES: ${MAX_GRAPH_NODES:-100}
+  MAX_GRAPH_EDGES: ${MAX_GRAPH_EDGES:-250}
+  INVESTIGATION_TX_LIMIT: ${INVESTIGATION_TX_LIMIT:-100}
   SEED_VALUE: ${SEED_VALUE:-20260728}
   SEED_CUSTOMERS: ${SEED_CUSTOMERS:-48}
   SEED_DAYS: ${SEED_DAYS:-90}
@@ -107,6 +115,26 @@ services:
     command: ["python", "scripts/seed_data.py"]
     environment: *app-env
     env_file: *env-file
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # -------------------------------------------------------------------
+  # PoC batch Behaviour ML. Không tự chạy cùng stack chính và không gọi
+  # Gemini. Đặt CSV canonical trong BEHAVIOR_BATCH_DIR (mặc định
+  # ./data/batch), rồi dùng `make behavior-batch`.
+  behavior-batch:
+    image: *app-image
+    build: *app-build
+    profiles: ["batch"]
+    entrypoint: ["python", "scripts/run_behavior_batch.py"]
+    command: ["--help"]
+    environment: *app-env
+    env_file: *env-file
+    volumes:
+      - app_data:/app/data
+      - ${BEHAVIOR_BATCH_DIR:-./data/batch}:/input:ro
     depends_on:
       postgres:
         condition: service_healthy

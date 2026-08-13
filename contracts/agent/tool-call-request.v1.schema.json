@@ -42,7 +42,14 @@
         "create_case_draft",
         "propose_edd_request",
         "propose_str_draft",
-        "commit_case_note"
+        "commit_case_note",
+        "GetRiskBreakdown",
+        "GetAccountBehavior",
+        "GetTransactions",
+        "GetGraphEvidence",
+        "GetGraphNeighborhood",
+        "GetTypology",
+        "GetAnomalyExplanation"
       ],
       "description": "Danh sách ĐÓNG, đúng theo mục 8.5. Enum ở đây là allowlist thứ nhất: một tool không có trong danh sách này thì request không hợp lệ về schema, chưa cần tới tầng policy. Thêm tool mới là một thay đổi contract cần review bảo mật."
     },

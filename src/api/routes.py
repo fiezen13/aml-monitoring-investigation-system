@@ -2,7 +2,7 @@ import hashlib
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from sqlalchemy import text
@@ -14,6 +14,19 @@ from src.domain import (
     next_state,
     state_label,
     typology_label,
+)
+from src.investigation.report import build_case_package
+from src.investigation.repository import InvestigationRepository
+from src.investigation.schemas import (
+    EvidenceEnvelope,
+    Explanation,
+    InvestigationOut,
+    InvestigationPackage,
+    InvestigationStartOut,
+    InvestigationStatus,
+    ReviewRequest,
+    TraceEvent,
+    WorkflowState,
 )
 from src.models.schemas import (
     AlertDetailOut,
@@ -379,6 +392,9 @@ async def list_alerts(
     status: str | None = Query(default=None, description="open | grouped | closed"),
     typology_code: str | None = Query(default=None, description="Mã typology T01–T10"),
     min_risk: float = Query(default=0, ge=0, le=100, description="Ngưỡng điểm rủi ro tối thiểu"),
+    source: Literal["operational", "all"] = Query(
+        default="operational", description="operational = batch Behaviour hoàn tất gần nhất; all = gồm cả seed"
+    ),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[AlertOut]:
     """Hàng đợi cảnh báo, xếp theo điểm rủi ro giảm dần."""
@@ -388,6 +404,19 @@ async def list_alerts(
          WHERE (CAST(:status AS text) IS NULL OR al.status = CAST(:status AS text))
            AND (CAST(:typology_code AS text) IS NULL OR al.typology_code = CAST(:typology_code AS text))
            AND al.risk_score >= :min_risk
+           AND (
+                :source = 'all'
+                OR EXISTS (
+                    SELECT 1
+                      FROM detection_result d
+                     WHERE d.alert_id = al.alert_id
+                       AND d.batch_id = (
+                           SELECT batch_id FROM behavior_batch
+                            WHERE status = 'completed'
+                            ORDER BY completed_at DESC NULLS LAST LIMIT 1
+                       )
+                )
+           )
          ORDER BY al.risk_score DESC, al.created_at DESC
          LIMIT :limit
     """
@@ -396,7 +425,13 @@ async def list_alerts(
         rows = (
             session.execute(
                 text(sql),
-                {"status": status, "typology_code": typology_code, "min_risk": min_risk, "limit": limit},
+                {
+                    "status": status,
+                    "typology_code": typology_code,
+                    "min_risk": min_risk,
+                    "source": source,
+                    "limit": limit,
+                },
             )
             .mappings()
             .all()
@@ -537,22 +572,71 @@ async def list_audit(
 
 
 @router.get("/dashboard", response_model=DashboardOut)
-async def dashboard() -> DashboardOut:
+async def dashboard(
+    source: Literal["operational", "all"] = Query(
+        default="operational", description="operational = batch Behaviour hoàn tất gần nhất; all = gồm cả seed"
+    ),
+) -> DashboardOut:
     """Số liệu Trung tâm Điều hành — đếm thật, không cứng hoá con số nào."""
     with get_session() as session:
         counts = (
             session.execute(
                 text(
-                    """SELECT
+                    """WITH latest AS (
+                           SELECT batch_id, source_name
+                             FROM behavior_batch
+                            WHERE status = 'completed'
+                            ORDER BY completed_at DESC NULLS LAST
+                            LIMIT 1
+                       )
+                       SELECT
                          -- "Chưa xử lý" là mọi cảnh báo chưa đóng, không chỉ cái chưa gom
                          -- vào vụ việc: một cảnh báo `grouped` vẫn đang chờ người xử lý.
-                         (SELECT count(*) FROM alert WHERE status <> 'closed')                 AS open_alerts,
-                         (SELECT count(*) FROM alert WHERE risk_score >= 80)                   AS high_risk_alerts,
+                         (SELECT count(*) FROM alert al
+                           WHERE status <> 'closed'
+                             AND (:source = 'all' OR EXISTS (
+                                 SELECT 1 FROM detection_result d
+                                  WHERE d.alert_id = al.alert_id
+                                    AND d.batch_id = (SELECT batch_id FROM latest))))          AS open_alerts,
+                         (SELECT count(*) FROM alert al
+                           WHERE risk_score >= 80
+                             AND (:source = 'all' OR EXISTS (
+                                 SELECT 1 FROM detection_result d
+                                  WHERE d.alert_id = al.alert_id
+                                    AND d.batch_id = (SELECT batch_id FROM latest))))          AS high_risk_alerts,
                          (SELECT count(*) FROM aml_case
-                           WHERE state NOT IN ('XuatHoSo', 'DongKhongBaoCao'))                 AS cases_investigating,
-                         (SELECT count(*) FROM approval WHERE decision = 'pending')            AS sar_pending,
-                         (SELECT coalesce(avg(risk_score), 0) FROM alert)                      AS avg_risk_score"""
-                )
+                           WHERE state NOT IN ('XuatHoSo', 'DongKhongBaoCao')
+                             AND (:source = 'all' OR EXISTS (
+                                 SELECT 1 FROM alert al JOIN detection_result d USING (alert_id)
+                                  WHERE al.case_id = aml_case.case_id
+                                    AND d.batch_id = (SELECT batch_id FROM latest))))          AS cases_investigating,
+                         (SELECT count(*) FROM approval ap
+                           JOIN sar_draft sd USING (sar_draft_id)
+                           WHERE ap.decision = 'pending'
+                             AND (:source = 'all' OR EXISTS (
+                                 SELECT 1 FROM alert al JOIN detection_result d USING (alert_id)
+                                  WHERE al.case_id = sd.case_id
+                                    AND d.batch_id = (SELECT batch_id FROM latest))))          AS sar_pending,
+                         (SELECT coalesce(avg(risk_score), 0) FROM alert al
+                           WHERE :source = 'all' OR EXISTS (
+                               SELECT 1 FROM detection_result d
+                                WHERE d.alert_id = al.alert_id
+                                  AND d.batch_id = (SELECT batch_id FROM latest)))             AS avg_risk_score,
+                         (SELECT batch_id FROM latest)                                         AS latest_batch_id,
+                         (SELECT source_name FROM latest)                                      AS latest_source_name,
+                         (SELECT count(*) FROM transaction
+                           WHERE behavior_batch_id = (SELECT batch_id FROM latest))             AS transactions_analyzed,
+                         (SELECT count(*) FROM detection_result
+                           WHERE batch_id = (SELECT batch_id FROM latest))                      AS subjects_analyzed,
+                         (SELECT count(*) FROM detection_result
+                           WHERE batch_id = (SELECT batch_id FROM latest) AND NOT triggered)    AS subjects_below_threshold,
+                         (SELECT count(*) FROM detection_result
+                           WHERE batch_id = (SELECT batch_id FROM latest) AND triggered)        AS subjects_triggered,
+                         (SELECT count(*) FROM detection_result
+                           WHERE batch_id = (SELECT batch_id FROM latest) AND alert_id IS NOT NULL)
+                                                                                               AS batch_alerts_created"""
+                ),
+                {"source": source},
             )
             .mappings()
             .one()
@@ -562,17 +646,42 @@ async def dashboard() -> DashboardOut:
             session.execute(
                 text(
                     """SELECT typology_code, count(*) AS alert_count
-                         FROM alert
+                         FROM alert al
+                        WHERE :source = 'all' OR EXISTS (
+                            SELECT 1 FROM detection_result d
+                             WHERE d.alert_id = al.alert_id
+                               AND d.batch_id = (
+                                   SELECT batch_id FROM behavior_batch
+                                    WHERE status = 'completed'
+                                    ORDER BY completed_at DESC NULLS LAST LIMIT 1
+                               )
+                        )
                         GROUP BY typology_code
                         ORDER BY count(*) DESC, typology_code"""
-                )
+                ),
+                {"source": source},
             )
             .mappings()
             .all()
         )
 
         top = (
-            session.execute(text(_ALERT_SELECT + " ORDER BY al.risk_score DESC, al.created_at DESC LIMIT 5"))
+            session.execute(
+                text(
+                    _ALERT_SELECT
+                    + """ WHERE :source = 'all' OR EXISTS (
+                            SELECT 1 FROM detection_result d
+                             WHERE d.alert_id = al.alert_id
+                               AND d.batch_id = (
+                                   SELECT batch_id FROM behavior_batch
+                                    WHERE status = 'completed'
+                                    ORDER BY completed_at DESC NULLS LAST LIMIT 1
+                               )
+                        )
+                        ORDER BY al.risk_score DESC, al.created_at DESC LIMIT 5"""
+                ),
+                {"source": source},
+            )
             .mappings()
             .all()
         )
@@ -584,6 +693,13 @@ async def dashboard() -> DashboardOut:
         cases_investigating=counts["cases_investigating"],
         sar_pending=counts["sar_pending"],
         avg_risk_score=round(float(counts["avg_risk_score"]), 1),
+        latest_batch_id=counts["latest_batch_id"],
+        latest_source_name=counts["latest_source_name"],
+        transactions_analyzed=counts["transactions_analyzed"],
+        subjects_analyzed=counts["subjects_analyzed"],
+        subjects_below_threshold=counts["subjects_below_threshold"],
+        subjects_triggered=counts["subjects_triggered"],
+        batch_alerts_created=counts["batch_alerts_created"],
         typology_distribution=[
             TypologyShareOut(
                 typology_code=d["typology_code"],
@@ -621,6 +737,147 @@ async def chat(request: ChatRequest) -> ChatResponse:
 async def agent_status():
     """Kiểm tra trạng thái agent."""
     return {"status": "ready", "agent": "LangGraph Agent v1.0"}
+
+
+# ---------------------------------------------------------------------
+# Explainable Multi-Agent AML Investigation
+# ---------------------------------------------------------------------
+
+
+@router.post("/alerts/{alert_id}/investigate", response_model=InvestigationStartOut)
+async def investigate_alert(alert_id: str, authorization: str | None = Header(default=None)) -> InvestigationStartOut:
+    """Create a persistent investigation and enqueue the bounded workflow."""
+    triggered_by = "system"
+    if authorization:
+        triggered_by = _require_user(authorization)["user_id"]
+    try:
+        with get_session() as session:
+            investigation = InvestigationRepository(session).create(alert_id, triggered_by=triggered_by)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        job_id = queue.enqueue("investigate_alert", {"investigation_id": investigation.investigation_id})
+    except Exception as exc:
+        with get_session() as session:
+            InvestigationRepository(session).update_state(
+                investigation.investigation_id,
+                status=InvestigationStatus.FAILED,
+                workflow_state=WorkflowState.FAILED,
+                failure_reason=f"Redis enqueue failed: {type(exc).__name__}",
+                completed=True,
+            )
+        raise HTTPException(status_code=503, detail="Không thể giao tác vụ điều tra cho worker") from exc
+    return InvestigationStartOut(
+        investigation_id=investigation.investigation_id,
+        alert_id=investigation.alert_id,
+        case_id=investigation.case_id,
+        job_id=job_id,
+    )
+
+
+@router.get("/alerts/{alert_id}/investigation", response_model=InvestigationOut | None)
+async def latest_alert_investigation(alert_id: str) -> InvestigationOut | None:
+    with get_session() as session:
+        row = session.execute(
+            text("SELECT investigation_id FROM investigation WHERE alert_id = :id ORDER BY created_at DESC LIMIT 1"),
+            {"id": alert_id},
+        ).scalar_one_or_none()
+        return InvestigationRepository(session).get(row) if row else None
+
+
+@router.get("/investigations/{investigation_id}", response_model=InvestigationOut)
+async def get_investigation(investigation_id: str) -> InvestigationOut:
+    try:
+        with get_session() as session:
+            return InvestigationRepository(session).get(investigation_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/investigations/{investigation_id}/evidence", response_model=list[EvidenceEnvelope])
+async def get_investigation_evidence(investigation_id: str) -> list[EvidenceEnvelope]:
+    with get_session() as session:
+        repository = InvestigationRepository(session)
+        try:
+            repository.get(investigation_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return repository.list_evidence(investigation_id)
+
+
+@router.get("/investigations/{investigation_id}/trace", response_model=list[TraceEvent])
+async def get_investigation_trace(investigation_id: str) -> list[TraceEvent]:
+    with get_session() as session:
+        repository = InvestigationRepository(session)
+        try:
+            repository.get(investigation_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return repository.list_trace(investigation_id)
+
+
+@router.get("/investigations/{investigation_id}/explanation", response_model=Explanation)
+async def get_investigation_explanation(investigation_id: str) -> Explanation:
+    with get_session() as session:
+        repository = InvestigationRepository(session)
+        try:
+            repository.get(investigation_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        # A run stopped by the critic still holds the explanation that sent it
+        # to a human, and that is what the reviewer has to read to act on it.
+        # The unvalidated version is served here and labelled in the UI; the
+        # case package below still refuses anything the critic has not passed.
+        explanation = repository.latest_explanation(investigation_id) or repository.latest_explanation(
+            investigation_id, validated_only=False
+        )
+        if explanation is None:
+            raise HTTPException(status_code=409, detail="Chưa có bản giải thích nào cho phiên điều tra này")
+        return explanation
+
+
+@router.get("/investigations/{investigation_id}/package", response_model=InvestigationPackage)
+async def get_investigation_package(investigation_id: str) -> InvestigationPackage:
+    with get_session() as session:
+        repository = InvestigationRepository(session)
+        try:
+            state = repository.get(investigation_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        explanation = repository.latest_explanation(investigation_id)
+        if explanation is None:
+            raise HTTPException(status_code=409, detail="Chưa có bản giải thích đã kiểm chứng")
+        return build_case_package(
+            investigation_id,
+            state.account_key,
+            state.risk_summary,
+            explanation,
+            repository.list_evidence(investigation_id),
+        )
+
+
+@router.post("/investigations/{investigation_id}/review", response_model=InvestigationOut)
+async def review_investigation(
+    investigation_id: str,
+    request: ReviewRequest,
+    authorization: str | None = Header(default=None),
+) -> InvestigationOut:
+    user = _require_user(authorization)
+    if user["role"] not in {"analyst", "compliance_officer", "mlro"}:
+        raise HTTPException(status_code=403, detail="Vai trò này không được rà soát phiên điều tra")
+    try:
+        with get_session() as session:
+            return InvestigationRepository(session).review(
+                investigation_id,
+                user_id=user["user_id"],
+                decision=request.decision,
+                reason=request.reason,
+            )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------
@@ -1017,7 +1274,7 @@ async def decide_approval(
 ) -> dict[str, Any]:
     user = _require_user(authorization)
     if user["role"] not in {"mlro", "admin"}:
-        raise HTTPException(status_code=403, detail="Chỉ MLRO hoặc Admin được ra quyết định")
+        raise HTTPException(status_code=403, detail="Chỉ MLRO hoặc Quản trị viên được ra quyết định")
     with get_session() as session:
         approval = (
             session.execute(text("SELECT * FROM approval WHERE approval_id = :id FOR UPDATE"), {"id": approval_id})
@@ -1238,7 +1495,7 @@ async def update_user(
 ) -> UserOut:
     user = _require_user(authorization)
     if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Chỉ Admin được thay đổi trạng thái tài khoản")
+        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên được thay đổi trạng thái tài khoản")
     if user_id == user["user_id"] and not request.active:
         raise HTTPException(status_code=409, detail="Không thể tự khóa tài khoản đang đăng nhập")
     with get_session() as session:
@@ -1282,7 +1539,7 @@ async def update_setting(
 ) -> dict[str, Any]:
     user = _require_user(authorization)
     if user["role"] not in {"admin", "mlro"}:
-        raise HTTPException(status_code=403, detail="Chỉ Admin hoặc MLRO được sửa cấu hình")
+        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên hoặc MLRO được sửa cấu hình")
     with get_session() as session:
         before = session.execute(
             text("SELECT value FROM system_setting WHERE code = :code"), {"code": code}

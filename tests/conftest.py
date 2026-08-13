@@ -1,10 +1,17 @@
-from unittest.mock import AsyncMock
+import os
 
-import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+# The suite asserts deterministic workflow outcomes, so it must never reach a
+# live model whatever LLM_MODE the developer's .env carries. Set before any
+# src import, because get_settings() caches on first call.
+os.environ["LLM_MODE"] = "mock"
 
-from src.main import app
+from unittest.mock import AsyncMock  # noqa: E402
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+
+from src.main import app  # noqa: E402
 
 
 @pytest_asyncio.fixture
