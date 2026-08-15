@@ -1,0 +1,59 @@
+{
+  "schema_version": "fin07.mega_pna.preflight.v1",
+  "created_at": "2026-08-14T13:58:02Z",
+  "status": "cuda_benchmark_required",
+  "algorithm_reference": {
+    "paper": "arXiv:2412.00241",
+    "official_repository": "https://github.com/hcagri/MEGA-GNN",
+    "official_commit_inspected": "ef60a7155460755513b52bd52995dbee5045a1f7"
+  },
+  "environment": {
+    "host": "Apple M3 Pro, 36 GiB unified memory",
+    "python": "3.14.2",
+    "torch": "2.13.0",
+    "torch_geometric": "2.8.0.post1",
+    "torch_scatter": "2.1.2",
+    "torch_sparse": "0.6.18",
+    "mps_available": true,
+    "cuda_available": false,
+    "gcloud_cli_available": false
+  },
+  "formatted_datasets": {
+    "Small_HI": {
+      "rows": 5078345,
+      "positives": 5177,
+      "self_transfers": 591212,
+      "source_sha256": "b19d39f515523373f991b689c07e11e7b0b95c17a2c27a87d91584ae16c5b040",
+      "formatted_sha256": "907663c35f5c27471a9945a287707736b7f0141c7e784070303e5f05a505e77a"
+    },
+    "Small_LI": {
+      "rows": 6924049,
+      "positives": 3565,
+      "self_transfers": 804477,
+      "source_sha256": "f7a9940339c78b5d1476071505b5867c0f5319640b9c4279d13f531bf965319d",
+      "formatted_sha256": "450d89e106631e9fabb26819d54833f1d6568a2e9d0948f5e6206a6e766cdddc"
+    },
+    "Medium_HI": {
+      "rows": 31898238,
+      "positives": 35230,
+      "self_transfers": 2561860,
+      "source_sha256": "3126afb8155e7c8815d62bc5370549a7b5ae6bf7dfe872b3cd7813e66a3d7ff5",
+      "formatted_sha256": "bfbd8847a3215826360dad60b9ef930308d5929c1725b846d43dd5547de9995e"
+    }
+  },
+  "checks": {
+    "unit_tests": "4 passed",
+    "formatter_contract": "passed",
+    "cpu_train_checkpoint_inference_roundtrip": "passed, 20/20 test rows",
+    "mps_model_forward_backward": "passed",
+    "real_hi_small_load": "passed, 5078345 edges",
+    "real_hi_small_neighbor_sample": "passed",
+    "real_hi_small_mps_paper_config": "stopped after more than 15 minutes before completing epoch 1; no metric retained"
+  },
+  "benchmark_gate": {
+    "required": "5 seeds x 80 epochs on both Small_HI and Small_LI",
+    "completed": false,
+    "reason": "This host has no CUDA device and no configured GCP CLI/project. MPS caused severe memory pressure at the paper batch and neighbor sizes.",
+    "next_command_on_l4": ".venv/bin/python scripts/benchmark_mega_pna.py --suite gate --device cuda --include-ablation"
+  }
+}

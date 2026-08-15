@@ -88,12 +88,12 @@ export function CommandPalette({ entities = [], onQueryChange }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-black/55 pt-[12vh] backdrop-blur-[2px]"
+      className="fixed inset-0 z-modal flex items-start justify-center bg-scrim pt-[12vh] backdrop-blur-[2px]"
       onClick={() => setPaletteOpen(false)}
       role="presentation"
     >
       <div
-        className="w-[min(620px,92vw)] overflow-hidden rounded-panel border border-line-strong bg-panel shadow-[0_30px_90px_rgba(0,0,0,0.7)]"
+        className="w-[min(620px,92vw)] overflow-hidden rounded-panel border border-line-strong bg-raised shadow-modal"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

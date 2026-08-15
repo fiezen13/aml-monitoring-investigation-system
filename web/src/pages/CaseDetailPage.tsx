@@ -16,6 +16,7 @@ import {
   riskRatingLabel,
 } from "../api/format";
 import { useApi } from "../api/useApi";
+import { PageShell } from "../components/ui";
 import { RiskBadge, StatusBadge } from "../components/common/Badges";
 import { AuditFeed } from "../components/common/AuditFeed";
 import { Panel } from "../components/common/Panel";
@@ -111,21 +112,21 @@ export function CaseDetailPage() {
 
   if (detail.loading) {
     return (
-      <div className="mx-auto max-w-[1280px]">
+      <PageShell>
         <LoadingSkeleton rows={8} />
-      </div>
+      </PageShell>
     );
   }
 
   if (detail.error || !detail.data) {
     return (
-      <div className="mx-auto max-w-[1280px]">
+      <PageShell>
         {detail.error?.includes("Không tìm thấy") ? (
           <EmptyState title="Không tìm thấy vụ việc" detail={`Vụ việc "${caseId}" không tồn tại.`} />
         ) : (
           <ErrorState detail={detail.error ?? "Không tải được vụ việc"} onRetry={detail.reload} />
         )}
-      </div>
+      </PageShell>
     );
   }
 
@@ -134,7 +135,7 @@ export function CaseDetailPage() {
   const awaitingApproval = k.timeline.every((s) => s.status !== "pending");
 
   return (
-    <div className="mx-auto max-w-[1280px] space-y-3">
+    <PageShell>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <button
@@ -145,8 +146,8 @@ export function CaseDetailPage() {
             <ArrowLeft size={12} aria-hidden />
             Hàng đợi cảnh báo
           </button>
-          <h1 className="tabular text-[20px] font-bold text-ink-hi">{k.case_id}</h1>
-          <p className="mt-0.5 text-[13px] text-ink-mid">{k.title}</p>
+          <h1 className="tabular text-h2 font-bold text-ink-hi">{k.case_id}</h1>
+          <p className="mt-0.5 text-body text-ink-mid">{k.title}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge tone="primary" label={caseStateLabel(k.state)} />
@@ -216,7 +217,7 @@ export function CaseDetailPage() {
                   </span>
                   <div className="flex flex-wrap items-center gap-2">
                     <span
-                      className={`text-[13px] ${
+                      className={`text-body ${
                         step.status === "pending" ? "text-ink-low" : "font-semibold text-ink-hi"
                       }`}
                     >
@@ -310,11 +311,11 @@ export function CaseDetailPage() {
           {c && (
             <Panel title="Hồ sơ chủ thể">
               <div className="mb-3 flex items-center gap-2.5">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-elev text-[13px] font-bold text-primary">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-elev text-body font-bold text-primary">
                   {initials(c.customer_id)}
                 </span>
                 <div>
-                  <div className="tabular text-[14px] font-semibold text-ink-hi">{c.customer_id}</div>
+                  <div className="tabular text-body-lg font-semibold text-ink-hi">{c.customer_id}</div>
                   <div className="text-2xs text-ink-mid">{profileValueLabel(c.occupation)}</div>
                 </div>
               </div>
@@ -338,7 +339,7 @@ export function CaseDetailPage() {
           )}
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

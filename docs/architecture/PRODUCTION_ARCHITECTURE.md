@@ -196,10 +196,10 @@ Xanh là **ĐANG CHẠY**, đỏ là **CHƯA CÓ**. Nhìn sơ đồ này là th�
 | GOLD | **CHƯA CÓ** | Contract đã định nghĩa ở `contracts/canonical/`, chưa có bên hiện thực |
 | FEATURE | **CHƯA CÓ** | `services/feature-platform/` mới chỉ có README |
 | DETECTION | **CHƯA CÓ** | `services/detection/` mới chỉ có README |
-| CASE | **ĐANG CHẠY** | Nhưng dữ liệu đến từ `scripts/seed_data.py`, **không** nối với BRONZE |
+| CASE | **ĐANG CHẠY** | Đọc cảnh báo từ batch LI-Small hoàn tất gần nhất |
 
-Câu cuối bảng là điều cần nói thẳng: hiện tại **bắn thêm CSV vào Kafka không làm xuất hiện thêm một
-cảnh báo nào trên console.** Hai bên chưa có dây nối. Việc nối chúng chính là các tầng màu đỏ.
+Kafka/Flink ingestion và Behaviour batch vẫn là hai đường riêng: gửi CSV vào Kafka không tự tạo
+cảnh báo trên console; dữ liệu phải đi qua batch detection trước.
 
 ---
 
@@ -294,8 +294,8 @@ Ba việc phải làm trước:
 1. **Di trú lược đồ** — hiện `db/init/*` chỉ chạy khi volume rỗng; `scripts/migrate.py` áp các file
    còn thiếu. Production cần di trú có phiên bản, chạy được khi hệ thống đang phục vụ.
 2. **Nhật ký có cấu trúc** — hiện log dạng người đọc. Cần JSON kèm mã tương quan.
-3. **Không seed** — `APP_ENV=production` đã làm `wipe()` trong `seed_data.py` từ chối chạy. Giữ
-   nguyên hành vi này.
+3. **Không sinh dữ liệu demo** — deployment chỉ chạy migration; dữ liệu nghiệp vụ được nạp từ
+   IBM AML LI-Small bằng quy trình riêng.
 
 ---
 

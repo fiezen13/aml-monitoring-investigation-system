@@ -7,25 +7,22 @@
  */
 
 import type { MapData, MapFlow, MapHub } from "../../../components/fc/WorldMap";
-import { C, CHANNEL } from "../../../design/palette";
+import { channelColor, routeColor } from "../../../design/adapters/mapTheme";
+import { severityOf as riskSeverityOf } from "../../../design/risk";
 
 /**
  * Bảng màu kênh và bảng màu mức độ đều lấy từ design token, không chép lại
  * hằng số ở đây: bản đồ, chú giải dưới bản đồ và bảng xếp hạng bên phải phải
  * cùng một màu cho cùng một kênh, mà ba chỗ đó nằm ở ba file khác nhau.
  */
-export const CHANNEL_COLOR: Record<string, string> = CHANNEL;
+export const CHANNEL_COLOR: Record<string, string> = channelColor;
 
 /**
  * Mức "bình thường" dùng xanh dương chứ không dùng teal: trên bản đồ, teal
  * dành riêng cho thực thể đang được chọn (§4). Hành lang bình thường vốn đã mờ
  * và nét đứt nên không cần thêm màu để nói rằng nó không đáng chú ý.
  */
-export const RISK_COLOR = {
-  ok: C.info,
-  warn: C.warn,
-  crit: C.risk,
-} as const;
+export const RISK_COLOR = routeColor;
 
 export type Severity = "ok" | "warn" | "crit";
 
@@ -75,9 +72,12 @@ export interface FilterState {
   suspiciousOnly: boolean;
 }
 
-/** Ngưỡng rủi ro dùng chung với WorldPage.severityOf(). */
+/**
+ * Ngưỡng rủi ro. Uỷ quyền cho `design/risk` để bản đồ, bảng cảnh báo và đồ thị
+ * không thể trôi khỏi nhau — trước đây ngưỡng này được chép lại ở ba nơi.
+ */
 export function severityOf(risk: number): Severity {
-  return risk >= 80 ? "crit" : risk >= 60 ? "warn" : "ok";
+  return riskSeverityOf(risk);
 }
 
 /**

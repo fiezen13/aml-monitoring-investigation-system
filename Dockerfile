@@ -24,7 +24,7 @@ FROM python:3.11-slim
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    # Chạy `python scripts/seed_data.py` thì sys.path[0] là /app/scripts chứ
+    # Chạy `python scripts/migrate.py` thì sys.path[0] là /app/scripts chứ
     # không phải /app, nên `import src...` hỏng. Khai báo ở đây một lần thay
     # vì mỗi lệnh gọi phải tự lo.
     PYTHONPATH=/app

@@ -37,7 +37,7 @@ def linked():
     except SQLAlchemyError as exc:
         pytest.skip(f"Không nối được PostgreSQL: {exc}")
     if not entities or not pairs:
-        pytest.skip("Chưa chạy scripts/abm_generate.py")
+        pytest.skip("Chưa có dữ liệu Graph LI-Small")
     return {"entities": entities, "pairs": pairs}
 
 
@@ -78,15 +78,19 @@ async def test_amounts_are_never_summed_across_currencies(client, linked):
     edges = response.json()["edges"]
 
     with get_engine().connect() as conn:
-        rows = conn.execute(
-            text(
-                """SELECT src.entity_id AS s, dst.entity_id AS t, t.currency, sum(t.amount) AS total
+        rows = (
+            conn.execute(
+                text(
+                    """SELECT src.entity_id AS s, dst.entity_id AS t, t.currency, sum(t.amount) AS total
                      FROM transaction t
                      JOIN fc.entity src ON src.attributes ->> 'account_key' = t.from_account_key
                      JOIN fc.entity dst ON dst.attributes ->> 'account_key' = t.to_account_key
                     GROUP BY 1, 2, 3"""
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
 
     expected: dict[tuple[str, str], dict[str, float]] = {}
     for r in rows:
@@ -198,14 +202,18 @@ def test_account_keys_are_stable_across_runs(linked):
     import hashlib
 
     with get_engine().connect() as conn:
-        rows = conn.execute(
-            text(
-                """SELECT entity_id, attributes ->> 'bank_code' AS bank,
+        rows = (
+            conn.execute(
+                text(
+                    """SELECT entity_id, attributes ->> 'bank_code' AS bank,
                           attributes ->> 'account_key' AS key
                      FROM fc.entity
                     WHERE attributes ? 'account_key'"""
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
 
     assert rows
     for r in rows:

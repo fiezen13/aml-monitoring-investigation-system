@@ -26,7 +26,7 @@ DB_PATH = Path("data/processed/aml.duckdb")
 SCORES_PATH = PROCESSED_DIR / "if_scores_v1.parquet"
 REPORT_PATH = PROCESSED_DIR / "evaluation_report.txt"
 TARGET_RECALL = 0.80
-WINDOW_DAYS = {"1d": 1, "7d": 7, "14d": 14}
+WINDOW_DAYS = {"1d": 1, "7d": 7}
 DEFAULT_PRECISION_AT_K = (50, 100, 500, 1000)
 
 
@@ -36,6 +36,16 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--db", default=str(DB_PATH))
     p.add_argument("--window", default="7d", choices=tuple(WINDOW_DAYS))
     p.add_argument("--report", default=str(REPORT_PATH))
+    p.add_argument(
+        "--features-dir",
+        default=str(PROCESSED_DIR),
+        help="Thu muc features_{train,val,test}_{window}.parquet",
+    )
+    p.add_argument(
+        "--threshold-out",
+        default=None,
+        help="File threshold; mac dinh nam canh report va co ten theo window",
+    )
     p.add_argument("--target-recall", type=float, default=TARGET_RECALL)
     p.add_argument(
         "--subject-accounts",
@@ -65,11 +75,11 @@ def _parse_ks(raw: str) -> tuple[int, ...]:
     return tuple(ks)
 
 
-def _attach_split(scores: pd.DataFrame, window: str) -> pd.DataFrame:
+def _attach_split(scores: pd.DataFrame, window: str, features_dir: Path = PROCESSED_DIR) -> pd.DataFrame:
     """Gan split bang join features_{split}_{window}.parquet (account_key, as_of_ts)."""
     parts: list[pd.DataFrame] = []
     for split in ("train", "val", "test"):
-        path = PROCESSED_DIR / f"features_{split}_{window}.parquet"
+        path = features_dir / f"features_{split}_{window}.parquet"
         if not path.exists():
             continue
         keys = pd.read_parquet(path, columns=["account_key", "as_of_ts"])
@@ -231,9 +241,9 @@ def _format_block(title: str, m: dict) -> str:
         f"{'Metric':<18} {'Value':>14}",
         "-" * 34,
         f"{'Threshold':<18} {m['threshold']:>14.4f}",
-        f"{'N accounts':<18} {m['n_accounts']:>14d}",
-        f"{'N positive':<18} {m['n_positive']:>14d}",
-        f"{'N alerts':<18} {m['n_alerts']:>14d}",
+        f"{'N accounts':<18} {m['n_accounts']:>14}",
+        f"{'N positive':<18} {m['n_positive']:>14}",
+        f"{'N alerts':<18} {m['n_alerts']:>14}",
         f"{'Precision':<18} {m['precision']:>14.4f}",
         f"{'Recall':<18} {m['recall']:>14.4f}",
         f"{'F1-Score':<18} {m['f1']:>14.4f}",
@@ -255,6 +265,8 @@ def evaluate_model(
     target_recall: float,
     precision_at_k: tuple[int, ...],
     subject_accounts: Path | None = None,
+    features_dir: Path = PROCESSED_DIR,
+    threshold_out: Path | None = None,
 ) -> None:
     if not scores_path.exists():
         raise FileNotFoundError(f"Thieu {scores_path}. Chay generate_scores.py truoc.")
@@ -263,7 +275,7 @@ def evaluate_model(
 
     print("[1/4] Doc if_scores_v1.parquet ...", flush=True)
     scores = pd.read_parquet(scores_path, columns=["account_key", "as_of_ts", "window", "anomaly_score"])
-    scores = _attach_split(scores, window)
+    scores = _attach_split(scores, window, features_dir)
     if subject_accounts is not None:
         # Counterparties appear in the batch only for the rows that touch a
         # subject, so their feature vectors describe that fragment. The
@@ -324,7 +336,7 @@ def evaluate_model(
 
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(report, encoding="utf-8")
-    thr_path = PROCESSED_DIR / "best_threshold.txt"
+    thr_path = threshold_out or report_path.parent / f"best_threshold_{window}.txt"
     thr_path.write_text(f"{best_thresh}\n", encoding="utf-8")
     print(f"report -> {report_path}", flush=True)
     print(f"best_thresh -> {thr_path}", flush=True)
@@ -341,6 +353,8 @@ def main() -> None:
         target_recall=args.target_recall,
         precision_at_k=_parse_ks(args.precision_at_k),
         subject_accounts=Path(args.subject_accounts) if args.subject_accounts else None,
+        features_dir=Path(args.features_dir),
+        threshold_out=Path(args.threshold_out) if args.threshold_out else None,
     )
 
 

@@ -1,0 +1,6 @@
+# Offline MEGA-PNA benchmark only. Keep these out of the production API image.
+# Python 3.14/macOS: install this file first, then build the sampler extensions
+# from requirements-mega-pna-sampler.txt with --no-build-isolation.
+torch==2.13.0
+torch-geometric==2.8.0.post1
+tqdm>=4.66

@@ -277,7 +277,7 @@ Nhưng số ngày danh nghĩa không phải số ngày dùng được. Khối l�
 
 Khối lượng còn rất không đều ngay trong 10 ngày đó: 09/01 có 1,52 triệu, 09/03 chỉ 283 nghìn — chênh 5,4 lần.
 
-> **Hệ quả 1 — cửa sổ đặc trưng tối đa là 3 ngày.** Với 10 ngày dữ liệu, cửa sổ 14 ngày bằng cả bộ nên là hằng số, cửa sổ 7 ngày chiếm 70% và gần như không trượt được. **Chốt bộ cửa sổ {1, 2, 3} ngày**, không phải {1, 3, 7, 14} như bản trước của tài liệu này.
+> **Hệ quả 1 — dữ liệu hiệu dụng quá ngắn cho cửa sổ dài.** Với 10 ngày giao dịch có mật độ đáng kể, cửa sổ 7 ngày chiếm 70% và gần như không trượt được. EDA ban đầu ưu tiên bộ cửa sổ `{1, 2, 3}` ngày; release hợp nhất sau đó khóa scoring unit ở `7d` để đồng bộ Graph.
 >
 > **Hệ quả 2 — không có mùa vụ, không có nền 30 ngày, không có đại lượng theo tháng.** DAT-001 §5.1 định nghĩa "doanh số trung vị theo tháng" và "tỉ lệ đối tác mới theo tháng" — không tính được, phải đổi sang cửa sổ ngày.
 

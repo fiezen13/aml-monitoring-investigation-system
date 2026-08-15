@@ -19,7 +19,7 @@ PROCESSED_DIR = Path("data/processed")
 SPLITS = ("train", "val", "test")
 EPS = 1e-6
 
-WINDOW_DAYS = {"1d": 1, "7d": 7, "14d": 14}
+WINDOW_DAYS = {"1d": 1, "7d": 7}
 
 FEATURE_COLS = [
     "txn_count",
@@ -61,8 +61,15 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _load_split_tx(con: duckdb.DuckDBPyConnection, split: str) -> pl.DataFrame:
-    """Doc transaction theo split — KHONG lay label_laundering (anti-leakage)."""
+def _load_all_tx(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
+    """Read the complete event history without labels.
+
+    Feature windows must remain continuous across train/validation/test
+    boundaries. Loading each transaction split independently resets history
+    at every boundary and makes a test feature describe only the test
+    fragment. The split is assigned to the *snapshot* after point-in-time
+    features have been computed from events at or before that snapshot.
+    """
     rel = con.execute(
         """
         SELECT
@@ -71,13 +78,11 @@ def _load_split_tx(con: duckdb.DuckDBPyConnection, split: str) -> pl.DataFrame:
             to_account_key,
             CAST(amount AS DOUBLE) AS amount
         FROM transaction
-        WHERE split = ?
-          AND from_account_key IS NOT NULL
+        WHERE from_account_key IS NOT NULL
           AND to_account_key IS NOT NULL
           AND amount IS NOT NULL
           AND occurred_at IS NOT NULL
-        """,
-        [split],
+        """
     )
     try:
         arrow = rel.to_arrow_table()
@@ -86,6 +91,49 @@ def _load_split_tx(con: duckdb.DuckDBPyConnection, split: str) -> pl.DataFrame:
     df = pl.from_arrow(arrow)
     df = df.with_columns(pl.col("occurred_at").dt.convert_time_zone("UTC"))
     return df
+
+
+def _load_split_cutoffs(con: duckdb.DuckDBPyConnection) -> tuple[datetime, datetime]:
+    """Return chronological snapshot cutoffs frozen by Task 1."""
+    rows = dict(
+        con.execute(
+            """SELECT split, max(occurred_at)
+                 FROM transaction
+                GROUP BY split"""
+        ).fetchall()
+    )
+    missing = [split for split in SPLITS if split not in rows or rows[split] is None]
+    if missing:
+        raise RuntimeError(f"Split transaction rong hoặc thiếu: {missing}")
+
+    def as_utc(value: datetime) -> datetime:
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+    train_end = as_utc(rows["train"])
+    val_end = as_utc(rows["val"])
+    test_end = as_utc(rows["test"])
+    if not train_end <= val_end <= test_end:
+        raise RuntimeError("Transaction split khong theo thu tu thoi gian train <= val <= test")
+    return train_end, val_end
+
+
+def assign_feature_splits(
+    features: pl.DataFrame,
+    *,
+    train_end: datetime,
+    val_end: datetime,
+) -> pl.DataFrame:
+    """Assign a split from snapshot time, never from events inside its window."""
+    if features.is_empty():
+        return features.with_columns(pl.lit(None, dtype=pl.Utf8).alias("sample_split"))
+    return features.with_columns(
+        pl.when(pl.col("as_of_ts") <= pl.lit(train_end))
+        .then(pl.lit("train"))
+        .when(pl.col("as_of_ts") <= pl.lit(val_end))
+        .then(pl.lit("val"))
+        .otherwise(pl.lit("test"))
+        .alias("sample_split")
+    )
 
 
 def _to_events(tx: pl.DataFrame) -> pl.DataFrame:
@@ -360,14 +408,24 @@ def extract_features(window: str, db_path: Path, output_dir: Path = PROCESSED_DI
     con = duckdb.connect(str(db_path), read_only=True)
 
     try:
+        print("Doc toan bo lich su transaction tu DuckDB (khong lay label_laundering)...")
+        train_end, val_end = _load_split_cutoffs(con)
+        tx = _load_all_tx(con)
+        if tx.is_empty():
+            raise RuntimeError("Bang transaction rong.")
+        print(f"rows={tx.height:,} | window={window} | rolling_history=continuous")
+        features = assign_feature_splits(
+            extract_split_features(tx, window=window),
+            train_end=train_end,
+            val_end=val_end,
+        )
         for split in SPLITS:
-            print(f"[{split}] Doc transaction tu DuckDB (khong lay label_laundering)...")
-            tx = _load_split_tx(con, split)
-            if tx.is_empty():
-                raise RuntimeError(f"Split '{split}' rong trong bang transaction.")
-
-            print(f"[{split}] rows={tx.height:,} | window={window}")
-            feats = extract_split_features(tx, window=window)
+            feats = features.filter(pl.col("sample_split") == split).drop("sample_split")
+            if feats.is_empty():
+                raise RuntimeError(
+                    f"Feature split '{split}' rong cho window={window}; "
+                    "dataset khong du do dai cho train/validation/test theo thoi gian."
+                )
             out = output_dir / f"features_{split}_{window}.parquet"
             feats.write_parquet(out, compression="zstd")
             print(f"[{split}] -> {out} | samples={feats.height:,} | cols={feats.width}")

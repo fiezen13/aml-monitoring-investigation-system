@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { api } from "../api/client";
 import { formatDateTime } from "../api/format";
 import { useApi } from "../api/useApi";
+import { ErrorState, PageShell } from "../components/ui";
 import { type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
 import { Chip, Empty, KpiCard, Panel, ProgressBar, ScreenTitle, Skeleton } from "../components/fc/primitives";
@@ -25,6 +26,12 @@ const METRIC_LABEL: Record<string, string> = {
   detection_lead_time_days: "Thời gian phát hiện sớm (ngày)",
   alert_to_case_conversion: "Tỷ lệ cảnh báo thành vụ việc",
   evidence_coverage: "Độ phủ bằng chứng",
+  f1_mean_5_seeds: "F1 trung bình 5 seed",
+  f1_primary_seed: "F1 seed chính",
+  f1_sample_std_5_seeds: "Độ lệch chuẩn F1 qua 5 seed",
+  pr_auc_primary_seed: "PR-AUC seed chính",
+  precision_primary_seed: "Precision seed chính",
+  recall_primary_seed: "Recall seed chính",
 };
 
 const METRIC_HINT: Record<string, string> = {
@@ -37,10 +44,16 @@ const METRIC_HINT: Record<string, string> = {
     "Khoảng cách giữa lúc mô hình gắn cờ và lúc đủ bằng chứng xác nhận. Càng dài càng có thời gian can thiệp.",
   alert_to_case_conversion: "Bao nhiêu phần cảnh báo được nâng thành vụ việc thay vì đóng lại.",
   evidence_coverage: "Bao nhiêu phần khẳng định trong hồ sơ neo được vào một mục bằng chứng cụ thể.",
+  f1_mean_5_seeds: "Trung bình điều hòa giữa precision và recall trên năm lần chạy với seed độc lập.",
+  f1_primary_seed: "F1 trên seed phát hành chính, dùng cùng test split và threshold đã khóa.",
+  f1_sample_std_5_seeds: "Độ dao động của F1 giữa năm seed; càng thấp mô hình càng ổn định.",
+  pr_auc_primary_seed: "Diện tích dưới đường precision-recall, phù hợp với bài toán mất cân bằng lớp.",
+  precision_primary_seed: "Tỷ lệ dương thật trong các giao dịch được model gắn cờ trên test split.",
+  recall_primary_seed: "Tỷ lệ giao dịch dương thật được model tìm thấy trên test split.",
 };
 
 /** Với các chỉ số này, giá trị thấp mới là đạt. */
-const LOWER_IS_BETTER = new Set(["false_positive_rate_hard_negative"]);
+const LOWER_IS_BETTER = new Set(["false_positive_rate_hard_negative", "f1_sample_std_5_seeds"]);
 
 export function BenchmarksPage() {
   const data = useApi(() => api.benchmarks(), []);
@@ -63,7 +76,7 @@ export function BenchmarksPage() {
   }, [rows]);
 
   return (
-    <div className="flex animate-up flex-col gap-3.5 p-4">
+    <PageShell variant="dense">
       <ScreenTitle
         title="Đánh giá chuẩn"
         meta="Kiểm định mức độ phát hiện — ngưỡng được đặt trước khi có kết quả, không chỉnh sau"
@@ -94,8 +107,12 @@ export function BenchmarksPage() {
       />
 
       {data.loading && <Skeleton rows={5} />}
-      {!data.loading && !rows.length && (
-        <Empty text="Chưa có kết quả kiểm định nào" hint="Chạy scripts/abm_generate.py để sinh dữ liệu" />
+      {data.error && <ErrorState detail={data.error} onRetry={data.reload} />}
+      {!data.loading && !data.error && !rows.length && (
+        <Empty
+          text="Release đang hoạt động chưa có kết quả kiểm định được công bố"
+          hint="Chạy pipeline benchmark đã khóa split và threshold, sau đó xuất kết quả vào PostgreSQL."
+        />
       )}
 
       <div className="flex flex-col gap-2.5">
@@ -166,6 +183,6 @@ export function BenchmarksPage() {
           vấn (dương tính giả trên mẫu âm khó). Thiếu nhóm mẫu âm khó thì cả ba chỉ số đều mất ý nghĩa.
         </p>
       </Panel>
-    </div>
+    </PageShell>
   );
 }

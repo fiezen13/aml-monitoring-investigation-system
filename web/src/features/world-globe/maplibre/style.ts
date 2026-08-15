@@ -12,11 +12,16 @@ import type { Feature, FeatureCollection } from "geojson";
 import type { StyleSpecification } from "maplibre-gl";
 import topology from "world-atlas/countries-110m.json";
 
-/** Bảng màu lấy từ design token của console (web/tailwind.config.js). */
+import { mapSurface } from "../../../design/adapters/mapTheme";
+
+/**
+ * Bảng màu nền lấy từ adapter bản đồ dùng chung — cùng chỗ mà Cesium đọc, nên
+ * bản dẹt và quả cầu không thể trôi thành hai tông khác nhau.
+ */
 export const BASEMAP = {
-  ocean: "#06111d",
-  land: "#102333",
-  border: "#29445a",
+  ocean: mapSurface.ocean,
+  land: mapSurface.land,
+  border: mapSurface.border,
 } as const;
 
 type Ring = [number, number][];

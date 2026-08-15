@@ -102,6 +102,13 @@ export interface ApiAlert {
   factor_count: number;
 }
 
+export interface ApiAlertPage {
+  rows: ApiAlert[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface ApiAlertReason {
   factor_code: string;
   factor_label: string;
@@ -296,6 +303,7 @@ export interface FcFlow {
   tlon: number;
   channel: "bank" | "p2p" | "vasp" | "chain" | "gamb" | "proj";
   currency: string;
+  amount_native: number;
   volume_usd: number;
   txn_count: number;
   risk_score: number;
@@ -310,7 +318,7 @@ export interface FcWorld {
   flows: FcFlow[];
   simulation_id: string | null;
   scenario_package: string | null;
-  data_mode: "operational" | "simulation";
+  data_mode: "operational";
   source_id: string | null;
   source_name: string | null;
   transaction_count: number;
@@ -368,7 +376,7 @@ export interface FcCryptoTransfer {
   to_address: string;
   asset: string;
   amount: number;
-  amount_usd: number;
+  amount_usd: number | null;
   block_time: string;
   kind: string;
   link_confidence: number | null;
@@ -389,6 +397,7 @@ export interface FcCrypto {
   transfers: FcCryptoTransfer[];
   exposures: FcExposure[];
   total_usd: number;
+  source_mode: "on_chain" | "ledger";
 }
 
 export interface FcProject {
@@ -503,13 +512,20 @@ export interface FcSource {
 
 export interface FcTxRow {
   id: number;
+  source_id: string | null;
   occurred_at: string;
   from_account: string;
   to_account: string;
   amount: number;
   currency: string;
+  amount_received: number | null;
+  receiving_currency: string | null;
   channel: string;
   remarks: string;
+  model_score: number | null;
+  threshold: number | null;
+  triggered: boolean | null;
+  model_version: string | null;
   is_laundering: boolean | null;
 }
 
@@ -518,6 +534,30 @@ export interface FcTxPage {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface EdgeModelRelease {
+  release_id: string;
+  model_version: string;
+  dataset: string;
+  split: string;
+  model_sha256: string;
+  scores_sha256: string;
+  source_database_sha256: string;
+  threshold: number;
+  transaction_rows: number;
+  positive_rows: number;
+  triggered_rows: number;
+  feature_count: number;
+  benchmark: {
+    primary_seed: Record<string, number>;
+    over_seeds: { count: number; f1_mean: number; f1_sample_std: number };
+    operating_points: Array<Record<string, number>>;
+  };
+  policy: Record<string, boolean | string>;
+  status: string;
+  trained_at: string;
+  activated_at: string | null;
 }
 
 export type InvestigationStatus =
@@ -652,7 +692,7 @@ export interface ApiTraceEvent {
 // Điểm gọi
 // ---------------------------------------------------------------------
 
-function query(params: Record<string, string | number | undefined>): string {
+function query(params: Record<string, string | number | boolean | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== "") search.set(key, String(value));
@@ -671,19 +711,28 @@ export const api = {
 
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 
-  dashboard: (source: "operational" | "all" = "operational") =>
-    request<ApiDashboard>(`/dashboard${query({ source })}`),
+  dashboard: () => request<ApiDashboard>("/dashboard"),
 
   alerts: (
     params: {
       status?: string;
       typology_code?: string;
       min_risk?: number;
-      source?: "operational" | "all";
       limit?: number;
     } = {},
   ) =>
     request<ApiAlert[]>(`/alerts${query(params)}`),
+
+  alertsPage: (
+    params: {
+      status?: string;
+      typology_code?: string;
+      min_risk?: number;
+      q?: string;
+      page?: number;
+      page_size?: number;
+    } = {},
+  ) => request<ApiAlertPage>(`/alerts/page${query(params)}`),
 
   alert: (alertId: string) => request<ApiAlertDetail>(`/alerts/${encodeURIComponent(alertId)}`),
 
@@ -765,16 +814,15 @@ export const api = {
     request<ApiAuditEvent[]>(`/audit${query(params)}`),
 
   // -------------------------------------------------------------------
-  // Màn hình "Thành phố tài chính" — dữ liệu do ABM sinh, đọc schema `fc`.
-  // Xem src/api/fc_routes.py.
+  // API phân tích mở rộng. Khi không có simulation, World/Graph/Crypto đọc
+  // trực tiếp release vận hành HI-Medium và công bố rõ giới hạn nguồn.
   // -------------------------------------------------------------------
 
   navCounts: () => request<FcNavCounts>("/nav-counts"),
 
   search: (q: string) => request<FcSearchHit[]>(`/search${query({ q })}`),
 
-  world: (mode: "operational" | "simulation" = "operational") =>
-    request<FcWorld>(`/world${query({ mode })}`),
+  world: () => request<FcWorld>("/world"),
 
   entityGraph: (limit = 400) => request<FcGraph>(`/fc/graph${query({ limit })}`),
 
@@ -790,6 +838,8 @@ export const api = {
 
   modelMonitor: () => request<FcModelMonitor[]>("/fc/model-monitor"),
 
+  edgeModelRelease: () => request<EdgeModelRelease>("/fc/edge-model/release"),
+
   dataQuality: () => request<FcDataQuality[]>("/fc/data-quality"),
 
   observations: () => request<FcObservation[]>("/fc/observations"),
@@ -801,7 +851,9 @@ export const api = {
       q?: string;
       channel?: string;
       min_amount?: number;
-      source?: "operational" | "all";
+      min_score?: number;
+      currency?: string;
+      triggered?: boolean;
       page?: number;
       page_size?: number;
     } = {},

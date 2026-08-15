@@ -24,6 +24,7 @@ import {
   riskRatingLabel,
 } from "../api/format";
 import { useApi } from "../api/useApi";
+import { PageShell } from "../components/ui";
 import { RiskBadge, StatusBadge } from "../components/common/Badges";
 import { AuditFeed } from "../components/common/AuditFeed";
 import { Panel } from "../components/common/Panel";
@@ -66,15 +67,15 @@ export function AlertDetailPage() {
 
   if (alert.loading) {
     return (
-      <div className="mx-auto max-w-[1280px]">
+      <PageShell>
         <LoadingSkeleton rows={8} />
-      </div>
+      </PageShell>
     );
   }
 
   if (alert.error || !alert.data) {
     return (
-      <div className="mx-auto max-w-[1280px]">
+      <PageShell>
         {alert.error?.includes("Không tìm thấy") ? (
           <EmptyState
             title="Không tìm thấy cảnh báo"
@@ -83,7 +84,7 @@ export function AlertDetailPage() {
         ) : (
           <ErrorState detail={alert.error ?? "Không tải được cảnh báo"} onRetry={alert.reload} />
         )}
-      </div>
+      </PageShell>
     );
   }
 
@@ -139,7 +140,7 @@ export function AlertDetailPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1280px] space-y-3">
+    <PageShell>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <button
@@ -150,8 +151,8 @@ export function AlertDetailPage() {
             <ArrowLeft size={12} aria-hidden />
             Hàng đợi cảnh báo
           </button>
-          <h1 className="tabular text-[20px] font-bold text-ink-hi">{a.alert_id}</h1>
-          <p className="mt-0.5 text-[13px] text-ink-mid">
+          <h1 className="tabular text-h2 font-bold text-ink-hi">{a.alert_id}</h1>
+          <p className="mt-0.5 text-body text-ink-mid">
             <span className="tabular font-semibold">{a.typology_code}</span> — {a.typology_label}
           </p>
         </div>
@@ -225,7 +226,7 @@ export function AlertDetailPage() {
                 <Info size={12} className="mt-0.5 shrink-0" aria-hidden />
                 <p>
                   NT7 — mỗi điểm rủi ro luôn kèm danh sách yếu tố đóng góp có giá trị số. Điểm này đến từ bộ
-                  luật và heuristic trong dữ liệu mẫu, chưa phải mô hình đã huấn luyện.
+                  model currency-native transaction edge trên HI-Medium; vẫn cần người phân tích xác nhận.
                 </p>
               </div>
             </Panel>
@@ -234,11 +235,11 @@ export function AlertDetailPage() {
           <div className="space-y-3">
             <Panel title="Hồ sơ chủ thể">
               <div className="mb-3 flex items-center gap-2.5">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-elev text-[13px] font-bold text-primary">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-elev text-body font-bold text-primary">
                   {initials(c.customer_id)}
                 </span>
                 <div>
-                  <div className="tabular text-[14px] font-semibold text-ink-hi">{c.customer_id}</div>
+                  <div className="tabular text-body-lg font-semibold text-ink-hi">{c.customer_id}</div>
                   <div className="text-2xs text-ink-mid">{profileValueLabel(c.occupation)}</div>
                 </div>
               </div>
@@ -273,7 +274,7 @@ export function AlertDetailPage() {
             {a.case_id && (
               <Panel title="Vụ việc liên quan">
                 <div className="space-y-1.5 text-2xs">
-                  <div className="tabular text-[14px] font-semibold text-info">{a.case_id}</div>
+                  <div className="tabular text-body-lg font-semibold text-info">{a.case_id}</div>
                   {a.case_state && <StatusBadge tone="primary" label={caseStateLabel(a.case_state)} />}
                 </div>
                 <button
@@ -321,7 +322,7 @@ export function AlertDetailPage() {
       )}
 
       {tab === "investigation" && <InvestigationPanel alertId={a.alert_id} />}
-    </div>
+    </PageShell>
   );
 }
 

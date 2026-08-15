@@ -6,12 +6,12 @@
 #
 #   node      → máy còn chỗ không (CPU, RAM, đĩa)
 #   cadvisor  → container nào đang ăn tài nguyên
-#   caddy     → người dùng thật thấy gì (tốc độ, mã lỗi)
+#   application → người dùng thật thấy gì (tốc độ, mã lỗi)
 #   redis     → hàng đợi tác vụ có bị ứ không
 #   postgres  → Cloud SQL còn nhận kết nối không
 #
-# Chưa có: metrics ở tầng ứng dụng. `src/` chưa expose /metrics, nên độ trễ
-# theo từng endpoint hiện đo gián tiếp qua Caddy. Xem docs/operations/MONITORING.md.
+# Ứng dụng đẩy metrics qua OTLP; Collector mở endpoint scrape 8889. /metrics
+# trên API chỉ là diagnostic cục bộ, không phải một pipeline thứ hai.
 
 global:
   scrape_interval: 15s
@@ -30,35 +30,25 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
+  - job_name: fin07-application
+    static_configs:
+      - targets: ["otel-collector:8889"]
+
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]
+
   # Máy chủ: CPU, RAM, đĩa, mạng.
   - job_name: node
     static_configs:
       - targets: ["node-exporter:9100"]
 
-  # KHÔNG có cAdvisor — số liệu theo từng container hiện không thu được.
-  #
-  # Docker 29 dùng containerd snapshotter (`Storage Driver: overlayfs`,
-  # `driver-type: io.containerd.snapshotter.v1`), bỏ hẳn bố cục
-  # /var/lib/docker/image/overlay2/layerdb mà cAdvisor dựa vào để nhận diện
-  # container. Nó khởi động được nhưng không đăng ký nổi container nào:
-  #
-  #   Failed to create existing container: … failed to identify the
-  #   read-write layer ID … no such file or directory
-  #
-  # Đã thử v0.49.1 và v0.52.1, cả hai đều cho 0 chuỗi có nhãn `name`, kể cả
-  # khi trỏ thẳng vào containerd bằng --containerd-namespace=moby.
-  #
-  # Hệ quả chấp nhận được: node-exporter vẫn cho toàn bộ tài nguyên máy, và
-  # đây là VM chạy đúng một hệ thống — biết máy hết RAM quan trọng hơn biết
-  # container nào chiếm phần lớn. Thà thiếu một tầng số liệu còn hơn để một
-  # thành phần hỏng nằm trong stack và ngốn CPU mà không cho lại gì.
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
 
   # Caddy đứng trước toàn bộ hệ thống nên số liệu của nó là thứ người dùng
   # thật sự trải nghiệm: bao nhiêu request, chậm bao nhiêu, lỗi bao nhiêu.
-  - job_name: caddy
-    static_configs:
-      - targets: ["caddy:2020"]
-
   - job_name: redis
     static_configs:
       - targets: ["redis-exporter:9121"]
@@ -68,3 +58,12 @@ scrape_configs:
   - job_name: postgres
     static_configs:
       - targets: ["postgres-exporter:9187"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+
+  # Jaeger v2 exposes internal Collector telemetry on 8888 when reachable.
+  - job_name: jaeger
+    static_configs:
+      - targets: ["jaeger:8888"]

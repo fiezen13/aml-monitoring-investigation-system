@@ -44,9 +44,7 @@ services:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
 
-  seed:
-    # Giữ development: seed phải nạp được dữ liệu mẫu cho bản demo. Đặt
-    # production ở đây sẽ khiến scripts/seed_data.py từ chối chạy.
+  migrate:
     restart: "no"
 
   api:

@@ -5,12 +5,16 @@ request (ARC-001 mục 6). API đẩy tác vụ vào đây, worker lấy ra xử
 """
 
 import json
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
 
 import redis
+from opentelemetry import propagate, trace
 
 from src.config import get_settings
+from src.observability.metrics import METRICS, attrs
+from src.observability.telemetry import tracer
 
 
 @lru_cache
@@ -28,8 +32,30 @@ def enqueue(job_type: str, payload: dict[str, Any]) -> str:
     """Đẩy một tác vụ vào cuối hàng đợi. Trả về mã tác vụ."""
     settings = get_settings()
     client = get_redis()
-    job_id = f"job-{client.incr('fin07:job_seq'):08d}"
-    client.rpush(settings.worker_queue, json.dumps({"job_id": job_id, "type": job_type, "payload": payload}))
+    with tracer().start_as_current_span(
+        f"send {settings.worker_queue}",
+        kind=trace.SpanKind.PRODUCER,
+        attributes={
+            "messaging.system": "redis",
+            "messaging.operation.name": "send",
+            "messaging.destination.name": settings.worker_queue,
+            "fin07.job.type": job_type,
+        },
+    ) as span:
+        job_id = f"job-{client.incr('fin07:job_seq'):08d}"
+        carrier: dict[str, str] = {}
+        propagate.inject(carrier)
+        message = {
+            "job_id": job_id,
+            "type": job_type,
+            "payload": payload,
+            "enqueued_at": datetime.now(UTC).isoformat(),
+            "trace_context": carrier,
+            "retry_count": 0,
+        }
+        client.rpush(settings.worker_queue, json.dumps(message))
+        span.set_attribute("messaging.message.id", job_id)
+        METRICS.worker_queue_depth.set(client.llen(settings.worker_queue), attrs(queue=settings.worker_queue))
     return job_id
 
 

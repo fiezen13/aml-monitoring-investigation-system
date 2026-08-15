@@ -2,6 +2,7 @@ import { FileUp, Play, Send } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { PageShell } from "../components/ui";
 import { StatusBadge } from "../components/common/Badges";
 import { Panel } from "../components/common/Panel";
 import { ReasonModal } from "../components/common/ReasonModal";
@@ -56,7 +57,7 @@ export function SarEditPage() {
     sarStatus === "PENDING_REVIEW" || sarStatus === "APPROVED" || sarStatus === "REJECTED";
 
   return (
-    <div className="mx-auto max-w-[1280px]">
+    <PageShell>
       <Breadcrumb
         items={[
           { label: "Phê duyệt SAR", to: "/approvals" },
@@ -64,7 +65,7 @@ export function SarEditPage() {
         ]}
       />
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-[18px] font-bold text-ink-hi">
+        <h1 className="text-h2 font-bold text-ink-hi">
           Rà soát bản nháp {SAR_DRAFT.sar_id}
         </h1>
         {sarStatus === "DRAFT" && <StatusBadge tone="muted" label="BẢN NHÁP" />}
@@ -89,7 +90,7 @@ export function SarEditPage() {
                 pushToast({ tone: "error", title: "Kiểm chứng thất bại", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
               }
             }}
-            className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-[13px] font-medium text-ink-hi hover:border-line-emphasis disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-body font-medium text-ink-hi hover:border-line-emphasis disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Play size={13} aria-hidden />
             Chạy kiểm chứng
@@ -105,7 +106,7 @@ export function SarEditPage() {
                   : "Phải chạy kiểm chứng và xử lý hết lỗi trước khi gửi phê duyệt"
             }
             onClick={() => setSubmitOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-control bg-primary px-3 py-1.5 text-[13px] font-semibold text-app hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-control bg-primary px-3 py-1.5 text-body font-semibold text-app hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Send size={13} aria-hidden />
             Gửi phê duyệt
@@ -124,10 +125,10 @@ export function SarEditPage() {
             {tab === "summary" && (
               <div className="space-y-4 p-4">
                 <div>
-                  <div className="mb-2 text-[14px] font-semibold text-ink-hi">
+                  <div className="mb-2 text-body-lg font-semibold text-ink-hi">
                     Tóm tắt hành vi nghi vấn
                   </div>
-                  <p className="text-[13px] leading-relaxed text-ink-mid">
+                  <p className="text-body leading-relaxed text-ink-mid">
                     {SAR_DRAFT.behaviourSummary}
                   </p>
                 </div>
@@ -150,13 +151,13 @@ export function SarEditPage() {
 
             {tab === "flow" && (
               <div className="space-y-4 p-4">
-                <div className="text-[14px] font-semibold text-ink-hi">Phân tích luồng tiền</div>
+                <div className="text-body-lg font-semibold text-ink-hi">Phân tích luồng tiền</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-panel border border-line bg-elev p-3.5">
                     <div className="text-2xs uppercase tracking-wide text-ink-low">
                       Nguồn tiền vào
                     </div>
-                    <div className="tabular mt-1 text-[22px] font-bold text-ink-hi">
+                    <div className="tabular mt-1 text-h1 font-bold text-ink-hi">
                       {formatCompactVnd(SAR_DRAFT.inflow)} ₫
                     </div>
                     <StatusBadge tone="warn" label={SAR_DRAFT.inflowNote} />
@@ -165,7 +166,7 @@ export function SarEditPage() {
                     <div className="text-2xs uppercase tracking-wide text-ink-low">
                       Đích tiền ra
                     </div>
-                    <div className="tabular mt-1 text-[22px] font-bold text-ink-hi">
+                    <div className="tabular mt-1 text-h1 font-bold text-ink-hi">
                       {formatCompactVnd(SAR_DRAFT.outflow)} ₫
                     </div>
                     <StatusBadge tone="info" label={SAR_DRAFT.outflowNote} />
@@ -188,12 +189,12 @@ export function SarEditPage() {
                     <tbody>
                       {SAR_DRAFT.relatedTransactions.map((t) => (
                         <tr key={t.transaction_id} className="border-b border-line/60 last:border-0">
-                          <td className="tabular px-3 py-2 text-[13px] font-medium text-info">
+                          <td className="tabular px-3 py-2 text-body font-medium text-info">
                             {t.transaction_id}
                           </td>
-                          <td className="tabular px-3 py-2 text-[13px] text-ink-mid">{t.time}</td>
-                          <td className="tabular px-3 py-2 text-[13px] text-ink-hi">{t.amount}</td>
-                          <td className="px-3 py-2 text-[13px] text-ink-mid">{t.location}</td>
+                          <td className="tabular px-3 py-2 text-body text-ink-mid">{t.time}</td>
+                          <td className="tabular px-3 py-2 text-body text-ink-hi">{t.amount}</td>
+                          <td className="px-3 py-2 text-body text-ink-mid">{t.location}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -208,8 +209,8 @@ export function SarEditPage() {
 
             {tab === "customer" && (
               <div className="space-y-3 p-4">
-                <div className="text-[14px] font-semibold text-ink-hi">Thông tin khách hàng</div>
-                <dl className="grid grid-cols-2 gap-3 text-[13px]">
+                <div className="text-body-lg font-semibold text-ink-hi">Thông tin khách hàng</div>
+                <dl className="grid grid-cols-2 gap-3 text-body">
                   <div>
                     <dt className="text-2xs uppercase tracking-wide text-ink-low">Chủ thể</dt>
                     <dd className="mt-0.5 font-medium text-ink-hi">{SAR_DRAFT.subjectName}</dd>
@@ -262,7 +263,7 @@ export function SarEditPage() {
                   className="w-full rounded-control border border-line bg-elev p-2.5 text-left hover:border-line-emphasis"
                 >
                   <div className="tabular text-2xs text-ink-low">{item.id}</div>
-                  <div className="mt-0.5 text-[13px] font-medium text-ink-hi">{item.title}</div>
+                  <div className="mt-0.5 text-body font-medium text-ink-hi">{item.title}</div>
                   <div className="mt-1 flex gap-1">
                     {item.tags.map((tag) => (
                       <span
@@ -315,6 +316,6 @@ export function SarEditPage() {
           }
         }}
       />
-    </div>
+    </PageShell>
   );
 }

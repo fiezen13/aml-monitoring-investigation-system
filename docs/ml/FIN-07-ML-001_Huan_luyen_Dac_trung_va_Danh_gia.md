@@ -31,7 +31,7 @@ Nó không thay thế FIN-07-DAT-001 mà cụ thể hoá phần mô hình. Chỗ
 > | Tỉ lệ nền tài khoản | 2,0152% | **0,7514%** |
 > | Tài khoản dương | 41.857 | **5.304** |
 > | Lift ACH | 7,2× | **6,37×** |
-> | Bộ cửa sổ đặc trưng | 1/3/7/14 ngày | **1/2/3 ngày** |
+> | Bộ cửa sổ đặc trưng | 1/3/7 ngày | **1/2/3 ngày** |
 > | Tài khoản bậc ≥ 20 | 39,3% | **33,7%** |
 > | Cạnh tự trỏ | 8,03% | **11,62%** |
 >
@@ -174,7 +174,7 @@ TEST          5,5 ngày      2022/09/23 → 2022/09/28
 Hệ quả bắt buộc phải chấp nhận:
 
 - **Không có mùa vụ, không có chu kỳ tháng, không có baseline 90 ngày.**
-- Cửa sổ đặc trưng dài nhất dùng được là **14 ngày**; cửa sổ 30 ngày bằng gần trọn bộ dữ liệu nên là hằng số, không phải đặc trưng.
+- Cửa sổ Behaviour dài nhất được giữ trong contract hiện tại là **7 ngày**.
 - Trong 5,5 ngày test, đặc trưng vẫn được nhìn lịch sử trước mốc cắt — ngân hàng thật cũng biết quá khứ — nhưng nghĩa là train và test **không độc lập ở mức tài khoản**. Phải đo và báo cáo, không phải giấu.
 
 > **[CẬP NHẬT 08/08/2026 — cách chia này đã bị bác bỏ bằng số liệu.]**
@@ -251,7 +251,7 @@ Tương tự, `expected_monthly_volume` ở mục 5.3 DAT-001 đổi thành `exp
 
 | Nhóm | Đặc trưng | Typology | Điều kiện |
 |---|---|---|---|
-| **Cường độ** | Doanh số cửa sổ 1/3/7/14 ngày; số giao dịch; trung vị; phân vị 90 | T01, T10 | Chuẩn hoá trong từng `currency` |
+| **Cường độ** | Doanh số cửa sổ 1/3/7 ngày; số giao dịch; trung vị; phân vị 90 | T01, T10 | Chuẩn hoá trong từng `currency` |
 | **Cận ngưỡng** | Tỉ lệ giao dịch trong dải sát dưới ngưỡng; độ lệch chuẩn số tiền; số lần lặp trong cửa sổ | T01 | Ngưỡng định nghĩa ở §4.4 |
 | **Luân chuyển** | Tỉ lệ tiền ra / tiền vào; thời gian lưu tiền trung vị; số dư cuối ngày | T02, T05 | Thời gian lưu tiền là **hiệu hai mốc** — hợp lệ kể cả khi giờ trong ngày là nhiễu |
 | **Mạng lưới** | Bậc vào, bậc ra, tỉ lệ đối tác mới, PageRank, chỉ số cụm | T02, T03, T04 | Trên đồ thị đã loại cạnh tự trỏ và loại hub; xem §5.2 về chi phí |
@@ -412,7 +412,7 @@ Hệ thống phải trả lời hai câu hỏi khác nhau, và chúng có phạm
 
 ### 5.9. Cross-validation
 
-Với 27,67 ngày, k-fold theo thời gian là mỏng — 5 fold cho ra fold 5,5 ngày mỗi cái, và fold đầu không đủ lịch sử để tính đặc trưng 14 ngày.
+Với 27,67 ngày, k-fold theo thời gian vẫn mỏng — 5 fold chỉ có khoảng 5,5 ngày mỗi fold, chưa đủ để đánh giá ổn định cửa sổ 7 ngày.
 
 **Chốt:** một lần chia theo thời gian như §3.1, cộng với **bootstrap khoảng tin cậy** trên tập đánh giá, cộng với **lặp lại 5 lần bằng 5 seed khác nhau** để đo phương sai do khởi tạo model. Đừng giả vờ làm 5-fold temporal CV trên 27 ngày.
 
@@ -655,7 +655,7 @@ Bước 3, 5 và 7 là ba điểm chặn. Bỏ qua bước 3 thì bước 11 ph�
 |---|---|---|---|---|
 | 1 | Bản dataset | DAT-001 §3.1 chốt LI-Small | **HI-Medium** | Gấp 10 lần mẫu dương; tỉ lệ nền chỉ chênh 2,2 lần; đã profiling đầy đủ. §1.1 |
 | 2 | Chia tập | §4.2 chia theo thời gian 60/20/20 | **Chia theo thành phần liên thông mạng lưới + thực thể, 70/10/10/10**, giữ `time_partition` để đánh giá theo thời gian | Đo được: chia theo thời gian để lại 262 mẫu dương ở test vì nhãn dương sụp đổ cuối cửa sổ. ML-002 §2.1 |
-| 3 | Cửa sổ đặc trưng | §5.1 và §9 dùng cửa sổ tháng và 30 ngày | Cửa sổ **1/3/7/14 ngày** | Dữ liệu chỉ có 27,67 ngày; cửa sổ tháng không tính được |
+| 3 | Cửa sổ đặc trưng | §5.1 và §9 dùng cửa sổ tháng và 30 ngày | Cửa sổ **1/3/7 ngày** | Dữ liệu ngắn; cửa sổ tháng không tính được |
 | 4 | `Payment Format` | §4.1 ánh xạ và giữ | Giữ để lưu và hiển thị, **cấm** làm đặc trưng model | Đo được lift 7,2 lần theo nhãn |
 | 5 | Đặc trưng theo giờ | §9 liệt kê phân bố giờ và tỉ lệ ngoài giờ cho T05, T07 | **Loại**; T05 vẫn phủ được bằng thời gian lưu tiền | Giờ phân bố đều 3,88–3,90%, là nhiễu |
 | 6 | Ngưỡng T01 | BUS-001 dùng 400 triệu VND | 10.000 USD quy đổi, giả định có tên, đặt trong cấu hình | Dữ liệu IBM không có VND |

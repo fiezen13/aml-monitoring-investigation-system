@@ -10,7 +10,7 @@ tầng truy vấn, chứ không để Decimal rơi ra ngoài.
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -47,6 +47,7 @@ class FlowOut(BaseModel):
     tlon: float
     channel: str
     currency: str
+    amount_native: float
     volume_usd: float
     txn_count: int
     risk_score: int
@@ -61,7 +62,7 @@ class WorldOut(BaseModel):
     flows: list[FlowOut]
     simulation_id: str | None
     scenario_package: str | None
-    data_mode: Literal["operational", "simulation"]
+    data_mode: Literal["operational"]
     source_id: str | None
     source_name: str | None
     transaction_count: int = 0
@@ -140,7 +141,7 @@ class CryptoTransferOut(BaseModel):
     to_address: str
     asset: str
     amount: float
-    amount_usd: float
+    amount_usd: float | None
     block_time: datetime
     kind: str
     link_confidence: float | None
@@ -161,6 +162,7 @@ class CryptoOut(BaseModel):
     transfers: list[CryptoTransferOut]
     exposures: list[ExposureOut]
     total_usd: float
+    source_mode: Literal["on_chain", "ledger"] = "on_chain"
 
 
 class ProjectOut(BaseModel):
@@ -307,13 +309,20 @@ class SearchHitOut(BaseModel):
 
 class TxRowOut(BaseModel):
     id: int
+    source_id: str | None = None
     occurred_at: datetime
     from_account: str
     to_account: str
     amount: float
     currency: str
+    amount_received: float | None = None
+    receiving_currency: str | None = None
     channel: str
     remarks: str
+    model_score: float | None = None
+    threshold: float | None = None
+    triggered: bool | None = None
+    model_version: str | None = None
     # Nhãn rửa tiền chỉ đi kèm khi người gọi có quyền kiểm định; mặc định None.
     is_laundering: bool | None = None
 
@@ -325,3 +334,23 @@ class TxPageOut(BaseModel):
     page_size: int = Field(alias="pageSize")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class EdgeModelReleaseOut(BaseModel):
+    release_id: str
+    model_version: str
+    dataset: str
+    split: str
+    model_sha256: str
+    scores_sha256: str
+    source_database_sha256: str
+    threshold: float
+    transaction_rows: int
+    positive_rows: int
+    triggered_rows: int
+    feature_count: int
+    benchmark: dict[str, Any]
+    policy: dict[str, Any]
+    status: str
+    trained_at: datetime
+    activated_at: datetime | None

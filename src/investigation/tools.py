@@ -32,8 +32,9 @@ from src.investigation.schemas import (
     TransactionRecord,
     TypologyResult,
 )
+from src.observability.metrics import METRICS, attrs
 
-WINDOW_DAYS = {"1d": 1, "7d": 7, "14d": 14, "30d": 30, "90d": 90}
+WINDOW_DAYS = {"1d": 1, "7d": 7, "30d": 30, "90d": 90}
 
 
 class RiskArgs(BaseModel):
@@ -42,7 +43,7 @@ class RiskArgs(BaseModel):
 
 class BehaviorArgs(BaseModel):
     account_key: str = Field(min_length=3, max_length=128)
-    window: Literal["1d", "7d", "14d", "30d", "90d"] = "7d"
+    window: Literal["1d", "7d", "30d", "90d"] = "7d"
 
 
 class TransactionArgs(BaseModel):
@@ -64,7 +65,7 @@ class GraphEvidenceArgs(BaseModel):
 class NeighborhoodArgs(BaseModel):
     account_key: str = Field(min_length=3, max_length=128)
     hops: int = Field(default=1, ge=1, le=4)
-    time_window: Literal["1d", "7d", "14d", "30d", "90d"] = "7d"
+    time_window: Literal["1d", "7d", "30d", "90d"] = "7d"
 
 
 class TypologyArgs(BaseModel):
@@ -75,7 +76,7 @@ class TypologyArgs(BaseModel):
 class AnomalyArgs(BaseModel):
     alert_id: str = Field(min_length=1, max_length=128)
     account_key: str = Field(min_length=3, max_length=128)
-    window: Literal["1d", "7d", "14d", "30d", "90d"] = "7d"
+    window: Literal["1d", "7d", "30d", "90d"] = "7d"
 
 
 @dataclass
@@ -316,6 +317,8 @@ class InvestigationTools:
         ]
 
     def _reject_tool(self, tool_name: str, reason: str) -> None:
+        event_type = "unauthorized_tool_request" if reason == "PermissionError" else "invalid_tool_request"
+        METRICS.security_events.add(1, attrs(type=event_type))
         self.repository.add_trace(
             self.investigation_id,
             agent="investigation_supervisor",

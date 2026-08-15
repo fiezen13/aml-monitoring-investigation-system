@@ -14,10 +14,10 @@ export function AccessDenied() {
           403
         </span>
       </div>
-      <h1 className="mt-6 text-[18px] font-bold uppercase tracking-[0.15em] text-ink-hi">
+      <h1 className="mt-6 text-h2 font-bold uppercase tracking-[0.15em] text-ink-hi">
         Truy cập bị từ chối
       </h1>
-      <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-ink-mid">
+      <p className="mt-2 max-w-sm text-body leading-relaxed text-ink-mid">
         Hành động của bạn đã bị ngăn chặn. Hệ thống giám sát Velrix xác nhận bạn không có
         đủ thẩm quyền để truy cập vào phân đoạn dữ liệu nhạy cảm này.
       </p>
@@ -43,14 +43,14 @@ export function AccessDenied() {
         <button
           type="button"
           onClick={() => navigate("/dashboard")}
-          className="inline-flex items-center gap-1.5 rounded-control bg-primary px-4 py-2 text-[13px] font-semibold text-app hover:bg-primary-hover"
+          className="inline-flex items-center gap-1.5 rounded-control bg-primary px-4 py-2 text-body font-semibold text-app hover:bg-primary-hover"
         >
           <LayoutGrid size={14} aria-hidden />
           Quay lại Dashboard
         </button>
         <button
           type="button"
-          className="rounded-control border border-line px-4 py-2 text-[13px] font-medium text-ink-hi hover:border-line-emphasis"
+          className="rounded-control border border-line px-4 py-2 text-body font-medium text-ink-hi hover:border-line-emphasis"
         >
           Liên hệ Quản trị viên
         </button>

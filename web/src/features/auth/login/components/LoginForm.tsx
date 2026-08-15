@@ -124,7 +124,7 @@ export function LoginForm() {
         <button
           type="submit"
           disabled={busy}
-          className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-control bg-primary text-md font-semibold text-[#04140F] transition-colors hover:bg-primary-hover active:bg-[#1BAF92] disabled:cursor-not-allowed disabled:opacity-70"
+          className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-control bg-primary text-md font-semibold text-primary-on transition-colors hover:bg-primary-hover active:bg-primary-press disabled:cursor-not-allowed disabled:opacity-70"
         >
           {status === "submitting" && (
             <>

@@ -166,10 +166,9 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.vm.yml logs -f api
 Luồng nối vào dữ liệu thật là: đăng nhập → tổng quan → cảnh báo → chi tiết
 cảnh báo → vụ việc → chạy bước điều tra → nhật ký kiểm toán.
 
-Các trang **Phê duyệt SAR**, **Người dùng**, **Cấu hình** và đồ thị mạng
-lưới vẫn chạy bằng dữ liệu mô phỏng trong `web/src/data/`. Điểm rủi ro đến
-từ bộ luật và heuristic trong `scripts/seed_data.py`, chưa phải mô hình đã
-huấn luyện.
+Console đọc batch IBM AML LI-Small mới nhất đã nạp vào PostgreSQL. Điểm rủi ro
+đến từ release fusion Isolation Forest + Graph hiện hành; stack không tự tạo
+dữ liệu mô phỏng khi khởi động.
 
 Luồng nạp dữ liệu IBM AML (Kafka → Flink → HDFS) nằm trong profile `aml` và
 không chạy cùng stack này — xem [contracts/ingestion/README.md](../../contracts/ingestion/README.md). Nó cần

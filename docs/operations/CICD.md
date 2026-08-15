@@ -61,8 +61,7 @@ agent. Mock một cơ sở dữ liệu rồi kiểm tra mock không chứng minh
 1. Dựng service container `postgres:16-alpine` và `redis:7-alpine` (cổng động — runner của ban tổ
    chức đã có thứ gì đó nghe trên 5432).
 2. Áp lược đồ bằng **chính** các file trong `db/init/`.
-3. Nạp dữ liệu mẫu, chạy `--verify` hai lần và so vân tay: cùng seed phải cho cùng dữ liệu.
-4. `pytest` toàn bộ, kèm báo cáo độ phủ tải lên artifact.
+3. `pytest` toàn bộ trên lược đồ sạch, kèm báo cáo độ phủ tải lên artifact.
 
 ---
 
@@ -144,10 +143,10 @@ build — cùng tinh thần với việc hệ thống bắt MLRO nêu lý do khi
 | PostgreSQL, Redis | mở cổng ra máy chủ | **không mở** | **không mở** |
 | Image | build tại chỗ | chỉ kéo image đã qua kiểm thử | chỉ kéo image đã qua kiểm thử |
 | `APP_ENV` | `development` | `staging` | `production` |
-| Xoá dữ liệu | được | phải bấm `FORCE_RESEED` | **script từ chối** |
+| Dữ liệu nghiệp vụ | LI-Small đã nạp | LI-Small đã nạp | LI-Small đã nạp |
 
-`APP_ENV=production` làm hàm `wipe()` trong `scripts/seed_data.py` từ chối chạy. Dữ liệu ở môi
-trường nghiệm thu không bị xoá bằng một lệnh lỡ tay.
+Pipeline không có bước xoá hay sinh dữ liệu nghiệp vụ. Dữ liệu LI-Small được
+nạp bằng quy trình vận hành riêng và được giữ nguyên giữa các lần triển khai.
 
 Không build tại chỗ ở staging và production-like, vì build tại chỗ nghĩa là thứ đang chạy không
 phải thứ CI vừa kiểm.

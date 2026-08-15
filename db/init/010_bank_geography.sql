@@ -6,10 +6,10 @@
 -- quốc gia (`China Bank #2820`). Hai bảng dưới đây biến thứ đó thành dữ liệu
 -- truy vấn được, và ghi rõ phần nào là đọc ra được, phần nào là gán.
 --
--- Không có khoá ngoại từ `account` sang `bank`: dữ liệu mẫu (seed_data.py) sinh
--- mã ngân hàng ở một không gian khác với bộ IBM, nên ràng buộc cứng sẽ chặn
--- việc nạp dữ liệu mẫu. Quan hệ là LEFT JOIN, tài khoản chưa biết ngân hàng thì
--- không có quốc gia — và bản đồ phải nói ra điều đó thay vì đoán.
+-- Không có khoá ngoại từ `account` sang `bank` vì account LI-Small được nạp
+-- trước, còn chiều bank được dựng sau bằng phép nối qua Account Number.
+-- Quan hệ truy vấn là LEFT JOIN để một handoff thiếu mapping lộ rõ thay vì
+-- chặn toàn bộ batch hoặc bị điền một quốc gia đoán mò.
 -- ---------------------------------------------------------------------
 
 CREATE TABLE bank (
@@ -27,6 +27,8 @@ CREATE TABLE bank (
     -- Nhà cung cấp dịch vụ tài sản mã hoá. Trong bộ LI-Small, tài khoản thuộc
     -- `Crytpo Bank` có 99,95% giao dịch bằng Bitcoin và chiếm 90,8% toàn bộ
     -- Bitcoin của bộ dữ liệu — đây là hành vi đo được, không phải suy đoán từ tên.
+    -- Mã `ZZ` là neo hiển thị kỹ thuật cho VASP không rõ pháp vực, không phải
+    -- quốc gia và không mang ý nghĩa rủi ro pháp vực.
     is_vasp        BOOLEAN     NOT NULL DEFAULT false,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT bank_unknown_has_no_country CHECK (
@@ -62,4 +64,4 @@ CREATE TABLE country_geo (
 );
 
 COMMENT ON TABLE country_geo IS
-    'Toạ độ đại diện của quốc gia để vẽ bản đồ World Monitor. Không mang ý nghĩa nghiệp vụ.';
+    'Toạ độ đại diện để vẽ World Monitor; ZZ là neo kỹ thuật cho VASP không rõ pháp vực.';

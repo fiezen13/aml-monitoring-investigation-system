@@ -128,6 +128,21 @@ def _adopt_existing_optional_migrations(session, applied: set[str]) -> None:
             "WHERE table_schema='public' AND table_name='behavior_batch' "
             "AND column_name='model_sha256')"
         ),
+        "010_bank_geography.sql": "SELECT to_regclass('public.bank') IS NOT NULL",
+        "011_remove_behavior_14d.sql": (
+            "SELECT NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='behavior_batch_feature_window_check') "
+            "OR pg_get_constraintdef((SELECT oid FROM pg_constraint "
+            "WHERE conname='behavior_batch_feature_window_check' LIMIT 1)) NOT LIKE '%14d%'"
+        ),
+        "012_operational_geography_rollup.sql": (
+            "SELECT to_regclass('public.operational_country_hub') IS NOT NULL"
+        ),
+        "013_currency_native_edge_release.sql": (
+            "SELECT to_regclass('public.edge_model_release') IS NOT NULL"
+        ),
+        "014_edge_operational_serving.sql": (
+            "SELECT to_regclass('public.edge_country_flow') IS NOT NULL"
+        ),
     }
     for filename, probe in probes.items():
         path = INIT_DIR / filename

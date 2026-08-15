@@ -14,6 +14,10 @@ from src.data.dq import DataQualityError, run_dq, sums_close
 from src.data.etl_transactions import read_raw_transactions, transform_transactions
 from src.data.pipeline import run_task1_etl
 from src.data.schemas import (
+    LI_SMALL_EXPECTED_ACTIVE_ACCOUNTS,
+    LI_SMALL_EXPECTED_ACTIVE_TRANSACTIONS,
+    LI_SMALL_EXPECTED_RAW_ENDPOINT_ACCOUNTS,
+    LI_SMALL_EXPECTED_RAW_TRANSACTIONS,
     TRANSACTION_ALL_COLUMNS,
     TRANSACTION_FEATURE_COLUMNS,
     assert_no_label_leakage,
@@ -113,6 +117,16 @@ def test_accounts_built(raw_df: pd.DataFrame) -> None:
     assert accounts["account_key"].is_unique
     assert accounts["tx_count_out"].ge(0).all()
     assert accounts["tx_count_in"].ge(0).all()
+
+
+def test_li_small_account_populations_match_etl_contract() -> None:
+    """Do not compare post-filter graph nodes with raw endpoint population."""
+    assert LI_SMALL_EXPECTED_RAW_TRANSACTIONS == 6_924_049
+    assert LI_SMALL_EXPECTED_ACTIVE_TRANSACTIONS == 6_119_572
+    assert LI_SMALL_EXPECTED_RAW_ENDPOINT_ACCOUNTS == 705_907
+    assert LI_SMALL_EXPECTED_ACTIVE_ACCOUNTS == 576_781
+    assert LI_SMALL_EXPECTED_ACTIVE_TRANSACTIONS < LI_SMALL_EXPECTED_RAW_TRANSACTIONS
+    assert LI_SMALL_EXPECTED_ACTIVE_ACCOUNTS < LI_SMALL_EXPECTED_RAW_ENDPOINT_ACCOUNTS
 
 
 def test_dq_passes_on_fixture(raw_df: pd.DataFrame) -> None:

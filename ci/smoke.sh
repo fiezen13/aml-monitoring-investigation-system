@@ -33,7 +33,7 @@ group_end
 group_start "Dữ liệu"
 cases=$(curl -fsS "${API_URL}/api/v1/cases")
 count=$(echo "$cases" | jq 'length')
-[ "$count" -gt 0 ] || die "Không có vụ việc nào — dữ liệu mẫu chưa nạp"
+[ "$count" -gt 0 ] || die "Không có vụ việc LI-Small nào — hãy chạy pipeline Behaviour trước"
 ok "${count} vụ việc trong hàng đợi"
 group_end
 

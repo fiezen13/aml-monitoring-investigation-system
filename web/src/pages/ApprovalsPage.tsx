@@ -17,6 +17,10 @@ import {
   XAxis,
 } from "recharts";
 
+import { axisProps } from "../design/adapters/rechartsTheme";
+import { toneColor } from "../design/semantic";
+import { PageShell } from "../components/ui";
+import { TEXT } from "../design/typography";
 import { FailBadge, StatusBadge } from "../components/common/Badges";
 import { Pagination } from "../components/common/Pagination";
 import { Panel } from "../components/common/Panel";
@@ -158,11 +162,11 @@ export function ApprovalsPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1280px] space-y-3">
+    <PageShell>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-[20px] font-bold text-ink-hi">Hàng đợi phê duyệt SAR</h1>
-          <p className="mt-0.5 text-[13px] text-ink-mid">
+          <h2 className={TEXT.h2}>Hàng đợi phê duyệt SAR</h2>
+          <p className="mt-1 text-body text-ink-soft">
             Quản lý và thẩm định các báo cáo giao dịch đáng ngờ trong hệ thống FIN-07.
           </p>
         </div>
@@ -234,7 +238,7 @@ export function ApprovalsPage() {
             <div className="mt-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">
               {label}
             </div>
-            <div className="tabular mt-1 text-[26px] font-bold leading-none text-ink-hi">
+            <div className="tabular mt-1 text-h1 font-bold leading-none text-ink-hi">
               {value}
             </div>
           </div>
@@ -270,6 +274,11 @@ export function ApprovalsPage() {
           rows={rows}
           rowKey={(a) => a.sar_id}
           onRowClick={(a) => navigate(`/approvals/${a.sar_id}`)}
+          loading={sars.loading}
+          error={sars.error}
+          onRetry={sars.reload}
+          emptyTitle="Chưa có SAR chờ xử lý"
+          emptyDetail="Cảnh báo mô hình không tự trở thành SAR; chuyên viên phải mở case, lập báo cáo và gửi phê duyệt."
         />
         <div className="border-t border-line px-2">
           <Pagination page={page} pageCount={1} onChange={setPage} summary="" />
@@ -296,13 +305,13 @@ export function ApprovalsPage() {
                   dataKey="day"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: "#64748B", fontSize: 10 }}
+                  tick={axisProps.tick}
                 />
-                <Bar dataKey="feedback" stackId="a" fill="#EF4444" isAnimationActive={false} />
+                <Bar dataKey="feedback" stackId="a" fill={toneColor("risk")} isAnimationActive={false} />
                 <Bar
                   dataKey="approved"
                   stackId="a"
-                  fill="#00B2A9"
+                  fill={toneColor("primary")}
                   radius={[3, 3, 0, 0]}
                   isAnimationActive={false}
                 />
@@ -340,12 +349,12 @@ export function ApprovalsPage() {
           <button
             type="button"
             onClick={() => pushToast({ tone: "info", title: "AI Chat chưa bật vì môi trường chưa cấu hình model" })}
-            className="mt-3 w-full rounded-control border border-line py-2 text-[13px] font-medium text-ink-hi hover:border-line-emphasis"
+            className="mt-3 w-full rounded-control border border-line py-2 text-body font-medium text-ink-hi hover:border-line-emphasis"
           >
             Mở AI Chat chi tiết
           </button>
         </Panel>
       </div>
-    </div>
+    </PageShell>
   );
 }

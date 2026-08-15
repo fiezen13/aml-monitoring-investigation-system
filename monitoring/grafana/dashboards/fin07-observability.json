@@ -1,0 +1,195 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(255, 166, 0, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Sáu tín hiệu cốt lõi để nhận biết tầng gây suy giảm. Logs và traces được tách sang Grafana Explore trên giao diện FIN-07.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Các cuộc điều tra đang kết thúc theo trạng thái nào?",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 8, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
+          "min": 0,
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (status) (rate(fin07_investigations_total{status=~\"completed|failed|needs_human_review|insufficient_evidence\"}[15m]))",
+          "legendFormat": "{{status}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Kết quả investigation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Thời gian bị tiêu tốn ở toàn luồng, agent hay Gemini?",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 8, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
+          "min": 0,
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "editorMode": "code", "exemplar": true, "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_investigation_duration_seconds_bucket[15m])))", "legendFormat": "Investigation p95", "range": true, "refId": "A" },
+        { "editorMode": "code", "exemplar": true, "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_agent_run_duration_seconds_bucket[15m])))", "legendFormat": "Agent p95", "range": true, "refId": "B" },
+        { "editorMode": "code", "exemplar": true, "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_gemini_request_duration_seconds_bucket[15m])))", "legendFormat": "Gemini p95", "range": true, "refId": "C" }
+      ],
+      "title": "Độ trễ p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Failure bắt đầu từ worker, agent, tool hay Gemini?",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
+          "min": 0,
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "editorMode": "code", "expr": "sum(rate(fin07_worker_job_failures_total[5m]))", "legendFormat": "Worker", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum(rate(fin07_agent_failures_total[5m]))", "legendFormat": "Agent", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "sum(rate(fin07_agent_tool_calls_total{status!=\"success\"}[5m]))", "legendFormat": "Tool", "range": true, "refId": "C" },
+        { "editorMode": "code", "expr": "sum(rate(fin07_gemini_requests_total{status=\"failure\"}[5m]))", "legendFormat": "Gemini", "range": true, "refId": "D" }
+      ],
+      "title": "Failure theo tầng",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Failure AI đến từ lỗi provider/schema hay bị Critic từ chối?",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "bars", "fillOpacity": 60, "lineWidth": 1, "showPoints": "never", "stacking": { "group": "A", "mode": "normal" } },
+          "min": 0,
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "editorMode": "code", "expr": "sum by (error_type) (rate(fin07_gemini_errors_total[15m]))", "legendFormat": "Gemini · {{error_type}}", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum by (issue_type) (rate(fin07_critic_issues_total[30m]))", "legendFormat": "Critic · {{issue_type}}", "range": true, "refId": "B" }
+      ],
+      "title": "Nguyên nhân failure AI",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Worker có đang bị backlog hoặc xử lý quá nhiều job đồng thời?",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
+          "min": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "editorMode": "code", "expr": "max(fin07_worker_queue_depth)", "legendFormat": "Đang chờ", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "sum(fin07_worker_active_jobs)", "legendFormat": "Đang xử lý", "range": true, "refId": "B" }
+      ],
+      "title": "Tải worker",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "CPU, RAM hay kết nối PostgreSQL có trùng thời điểm suy giảm không?",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 8, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
+          "max": 1,
+          "min": 0,
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": {
+        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "editorMode": "code", "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))", "legendFormat": "CPU", "range": true, "refId": "A" },
+        { "editorMode": "code", "expr": "1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes", "legendFormat": "RAM", "range": true, "refId": "B" },
+        { "editorMode": "code", "expr": "sum(pg_stat_activity_count) / clamp_min(max(pg_settings_max_connections), 1)", "legendFormat": "PostgreSQL", "range": true, "refId": "C" }
+      ],
+      "title": "Áp lực tài nguyên",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["fin07", "observability", "otel"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["30s", "1m", "5m"], "time_options": ["15m", "1h", "6h", "12h", "24h", "7d"] },
+  "timezone": "browser",
+  "title": "FIN-07 — Tổng quan vận hành",
+  "uid": "fin07-observability",
+  "version": 2,
+  "weekStart": ""
+}

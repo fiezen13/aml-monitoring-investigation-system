@@ -1,4 +1,5 @@
 import { C } from "../../../design/palette";
+import { getRiskColor } from "../../../design/risk";
 import type { EvidenceGap, RenderEdge, RenderGraph, RenderNode, ZoomLevel } from "../types/graph.types";
 import { STAGE_LABEL } from "../types/graph.types";
 import type { Emphasis } from "../utils/graphOpacity";
@@ -807,6 +808,8 @@ export class GraphEngine {
       }
 
       drawShape(g, st.shape, n.x, n.y, r);
+      // Mẫu âm khó có nền ngả xanh lá rất tối: nó phải đọc được là "cố ý hợp
+      // pháp" mà không dùng tới màu ngữ nghĩa nào của thang rủi ro.
       g.fillStyle = n.negative ? "#0B1A16" : C.panel;
       g.fill();
       g.strokeStyle = n.negative ? withAlpha(C.inkLow, 0.7) : st.color;
@@ -952,7 +955,7 @@ export class GraphEngine {
       const py = my + 7 + (n.y - y0) * k;
       const a = this.emphasis?.nodeAlpha.get(n.id) ?? 1;
       g.globalAlpha = Math.max(0.25, a);
-      g.fillStyle = n.risk >= 80 ? C.risk : n.risk >= 60 ? C.warn : "#3A6E8A";
+      g.fillStyle = getRiskColor(n.risk);
       g.fillRect(px - 1.1, py - 1.1, 2.4, 2.4);
     });
     g.globalAlpha = 1;

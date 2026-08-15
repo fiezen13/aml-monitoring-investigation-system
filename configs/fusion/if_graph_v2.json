@@ -1,0 +1,49 @@
+{
+  "schema_version": "fin07.fusion.training.v2",
+  "fusion_version": "if_graph_fusion_v2",
+  "window": "7d",
+  "canonical_window_semantics": "[as_of_ts - 7 days, as_of_ts)",
+  "inputs": {
+    "duckdb": "data/processed/aml.duckdb",
+    "isolation_forest_features_glob": "data/processed/behavior-7d/features_*_7d.parquet",
+    "graph_modeling": "data/processed/graph_account_modeling_v1.parquet"
+  },
+  "snapshot_splits": {
+    "train": {
+      "start": "2022-09-08T00:00:00Z",
+      "end": "2022-09-11T00:00:00Z"
+    },
+    "val": {
+      "start": "2022-09-11T00:00:00Z",
+      "end": "2022-09-14T00:00:00Z"
+    },
+    "test": {
+      "start": "2022-09-14T00:00:00Z",
+      "end": "2022-09-18T00:00:00Z"
+    }
+  },
+  "warmup_policy": "exclude snapshots before the first complete 7-day history",
+  "isolation_forest": {
+    "model_version": "fin07_if_7d_v2",
+    "n_estimators": 100,
+    "contamination": 0.0005,
+    "random_state": 42
+  },
+  "graph": {
+    "model_version": "fin07_graph_7d_v2",
+    "estimator": "hist_gradient_boosting",
+    "random_state": 42
+  },
+  "calibration": {
+    "method": "train_percentile",
+    "quantile_count": 4097
+  },
+  "weight_selection": {
+    "minimum_component_weight": 0.1,
+    "step": 0.05
+  },
+  "validation": {
+    "alert_budget_rate": 0.01,
+    "precision_k": 1000
+  }
+}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -11,9 +12,12 @@ from typing import Any, Generic, TypeVar
 
 from google import genai
 from google.genai import types
+from opentelemetry import trace
 from pydantic import BaseModel
 
 from src.config import Settings, get_settings
+from src.observability.metrics import METRICS, attrs
+from src.observability.telemetry import record_safe_exception, tracer
 
 StructuredT = TypeVar("StructuredT", bound=BaseModel)
 
@@ -47,12 +51,144 @@ class GeminiCallMetadata:
     output_token_count: int | None = None
     total_token_count: int | None = None
     response_id: str | None = None
+    finish_reason: str | None = None
+    structured_output_valid: bool = True
 
 
 @dataclass(frozen=True)
 class GeminiCallResult(Generic[StructuredT]):
     output: StructuredT
     metadata: GeminiCallMetadata
+
+
+_HEALTH_LOCK = threading.Lock()
+_GEMINI_EVENTS: list[tuple[float, bool, str]] = []
+_LAST_SUCCESS: datetime | None = None
+
+
+def _record_health(success: bool, error_type: str = "") -> None:
+    global _LAST_SUCCESS
+    now = time.time()
+    with _HEALTH_LOCK:
+        _GEMINI_EVENTS.append((now, success, error_type))
+        del _GEMINI_EVENTS[:-100]
+        if success:
+            _LAST_SUCCESS = datetime.now(UTC)
+
+
+def gemini_health_snapshot(settings: Settings | None = None) -> dict[str, Any]:
+    resolved = settings or get_settings()
+    cutoff = time.time() - 300
+    with _HEALTH_LOCK:
+        recent = [event for event in _GEMINI_EVENTS if event[0] >= cutoff]
+        failures = sum(1 for _, success, _ in recent if not success)
+        return {
+            "configured": gemini_is_configured(resolved),
+            "mode": resolved.llm_mode,
+            "model": resolved.gemini_model,
+            "last_successful_call": _LAST_SUCCESS.isoformat() if _LAST_SUCCESS else None,
+            "recent_error_rate": failures / len(recent) if recent else 0.0,
+            "sample_size": len(recent),
+        }
+
+
+def classify_gemini_error(exc: BaseException) -> str:
+    source = exc.__cause__ or exc
+    code = getattr(source, "status_code", None) or getattr(source, "code", None)
+    name = type(exc).__name__.lower() + " " + type(source).__name__.lower()
+    if code == 429 or "resourceexhausted" in name or "ratelimit" in name:
+        return "rate_limit"
+    if code in {401, 403} or "auth" in name or "permission" in name:
+        return "auth"
+    if isinstance(exc, GeminiTimeoutError) or "timeout" in name:
+        return "timeout"
+    if isinstance(exc, GeminiMalformedResponseError):
+        return "schema_validation"
+    if "connection" in name or "network" in name or "transport" in name:
+        return "network"
+    if code is not None or isinstance(exc, GeminiServiceError):
+        return "provider_error"
+    return "unknown"
+
+
+class _GeminiObservation:
+    def __init__(
+        self,
+        *,
+        provider: str,
+        model: str,
+        agent_name: str,
+        prompt_version: str,
+        prompt_size: int,
+    ) -> None:
+        self.provider = provider
+        self.model = model
+        self.agent_name = agent_name
+        self.started = time.monotonic()
+        self.span = tracer().start_span(
+            f"generate_content {model}",
+            kind=trace.SpanKind.CLIENT,
+            attributes={
+                "gen_ai.operation.name": "generate_content",
+                "gen_ai.provider.name": provider,
+                "gen_ai.request.model": model,
+                "server.address": "generativelanguage.googleapis.com" if provider == "gcp.gen_ai" else "local",
+                "aml.agent.name": agent_name,
+                "aml.prompt.template.version": prompt_version,
+                "aml.prompt.size_bytes": prompt_size,
+                "aml.genai.content_captured": False,
+                "aml.genai.structured_output_requested": True,
+            },
+        )
+        self.scope = trace.use_span(self.span, end_on_exit=False)
+        self.scope.__enter__()
+        self.closed = False
+
+    def success(self, metadata: GeminiCallMetadata) -> None:
+        dimensions = attrs(agent=self.agent_name, model=self.model, status="success")
+        METRICS.gemini_requests.add(1, dimensions)
+        METRICS.gemini_duration.record(metadata.duration_ms / 1000, attrs(agent=self.agent_name, model=self.model))
+        retries = max(0, metadata.attempt_count - 1)
+        if retries:
+            METRICS.gemini_retries.add(retries, attrs(agent=self.agent_name, reason="provider_retry"))
+        if metadata.input_token_count is not None:
+            METRICS.gemini_input_tokens.add(metadata.input_token_count, attrs(agent=self.agent_name, model=self.model))
+            self.span.set_attribute("gen_ai.usage.input_tokens", metadata.input_token_count)
+        if metadata.output_token_count is not None:
+            METRICS.gemini_output_tokens.add(
+                metadata.output_token_count, attrs(agent=self.agent_name, model=self.model)
+            )
+            self.span.set_attribute("gen_ai.usage.output_tokens", metadata.output_token_count)
+        self.span.set_attribute("aml.genai.retry_count", retries)
+        self.span.set_attribute("aml.genai.structured_output_valid", metadata.structured_output_valid)
+        if metadata.response_id:
+            self.span.set_attribute("gen_ai.response.id", metadata.response_id)
+        if metadata.finish_reason:
+            self.span.set_attribute("gen_ai.response.finish_reason", metadata.finish_reason)
+        _record_health(True)
+        self._close()
+
+    def failure(self, exc: BaseException) -> None:
+        error_type = classify_gemini_error(exc)
+        METRICS.gemini_requests.add(1, attrs(agent=self.agent_name, model=self.model, status="failure"))
+        METRICS.gemini_errors.add(1, attrs(agent=self.agent_name, error_type=error_type))
+        if error_type == "schema_validation":
+            METRICS.security_events.add(1, attrs(type="schema_validation_failure"))
+            if self.agent_name == "explanation_agent":
+                METRICS.explanation_schema_failures.add(1)
+        METRICS.gemini_duration.record(time.monotonic() - self.started, attrs(agent=self.agent_name, model=self.model))
+        self.span.set_attribute("error.type", error_type)
+        record_safe_exception(self.span, exc)
+        self.span.set_status(trace.Status(trace.StatusCode.ERROR, error_type))
+        _record_health(False, error_type)
+        self._close()
+
+    def _close(self, *exc_info: Any) -> None:
+        if self.closed:
+            return
+        self.scope.__exit__(*(exc_info or (None, None, None)))
+        self.span.end()
+        self.closed = True
 
 
 class GeminiService(ABC):
@@ -105,6 +241,13 @@ class FakeGeminiService(GeminiService):
     ) -> GeminiCallResult[StructuredT]:
         started_at = datetime.now(UTC)
         started = time.monotonic()
+        observation = _GeminiObservation(
+            provider="fin07.mock",
+            model=self.model_for(agent_name),
+            agent_name=agent_name,
+            prompt_version=prompt_version,
+            prompt_size=len(system_instruction.encode("utf-8")),
+        )
         self.calls.append(
             {
                 "investigation_id": investigation_id,
@@ -118,11 +261,18 @@ class FakeGeminiService(GeminiService):
         )
         configured = self.responses.get(agent_name, fallback_response)
         if isinstance(configured, Exception):
+            observation.failure(configured)
             raise configured
-        if sanitize is not None and not isinstance(configured, BaseModel):
-            configured = sanitize(configured)
-        output = response_schema.model_validate(configured)
-        return GeminiCallResult(
+        try:
+            if sanitize is not None and not isinstance(configured, BaseModel):
+                configured = sanitize(configured)
+            output = response_schema.model_validate(configured)
+        except Exception as exc:
+            normalized = GeminiMalformedResponseError("Mock response failed structured schema validation")
+            normalized.__cause__ = exc
+            observation.failure(normalized)
+            raise normalized from exc
+        result = GeminiCallResult(
             output=output,
             metadata=GeminiCallMetadata(
                 agent_name=agent_name,
@@ -134,6 +284,8 @@ class FakeGeminiService(GeminiService):
                 attempt_count=1,
             ),
         )
+        observation.success(result.metadata)
+        return result
 
 
 class GoogleGeminiService(GeminiService):
@@ -214,6 +366,18 @@ class GoogleGeminiService(GeminiService):
         last_error: Exception | None = None
         response: Any = None
         attempts = self.settings.gemini_max_retries + 1
+        prompt_size = (
+            len(system_instruction.encode("utf-8"))
+            + len(json.dumps(trusted_context, default=str).encode("utf-8"))
+            + len(json.dumps(untrusted_data, default=str).encode("utf-8"))
+        )
+        observation = _GeminiObservation(
+            provider="gcp.gen_ai",
+            model=model,
+            agent_name=agent_name,
+            prompt_version=prompt_version,
+            prompt_size=prompt_size,
+        )
 
         for attempt in range(1, attempts + 1):
             try:
@@ -240,7 +404,12 @@ class GoogleGeminiService(GeminiService):
                         "Gemini returned output that does not match the required structured schema"
                     ) from exc
                 usage = response.usage_metadata
-                return GeminiCallResult(
+                finish_reason = None
+                candidates = getattr(response, "candidates", None) or []
+                if candidates:
+                    raw_finish = getattr(candidates[0], "finish_reason", None)
+                    finish_reason = getattr(raw_finish, "name", None) or (str(raw_finish) if raw_finish else None)
+                result = GeminiCallResult(
                     output=output,
                     metadata=GeminiCallMetadata(
                         agent_name=agent_name,
@@ -254,8 +423,11 @@ class GoogleGeminiService(GeminiService):
                         output_token_count=getattr(usage, "candidates_token_count", None),
                         total_token_count=getattr(usage, "total_token_count", None),
                         response_id=getattr(response, "response_id", None),
+                        finish_reason=finish_reason,
                     ),
                 )
+                observation.success(result.metadata)
+                return result
             except TimeoutError as exc:
                 last_error = GeminiTimeoutError("Gemini request exceeded GEMINI_TIMEOUT_SECONDS")
                 last_error.__cause__ = exc
@@ -269,6 +441,7 @@ class GoogleGeminiService(GeminiService):
 
         if last_error is None:
             last_error = GeminiServiceError("Gemini request failed without a provider response")
+        observation.failure(last_error)
         raise last_error
 
     async def close(self) -> None:

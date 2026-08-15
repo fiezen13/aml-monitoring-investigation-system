@@ -1,37 +1,71 @@
 import type { ReactNode } from "react";
 
-import { C, riskColor } from "../../design/palette";
+import { getRiskTone } from "../../design/risk";
+import type { Tone } from "../../design/semantic";
+import { C } from "../../design/palette";
+import { Badge, ProgressBar as UiProgressBar, PulseDot as UiPulseDot } from "../ui/Badge";
+import { MetricCard, StatTile as UiStatTile } from "../ui/MetricCard";
+import { Panel as UiPanel, Eyebrow as UiEyebrow } from "../ui/Panel";
+import { RiskIndicator } from "../ui/RiskIndicator";
+import { EmptyState, TableSkeleton } from "../ui/States";
+import { TEXT } from "../../design/typography";
 
 /**
- * Các khối nhỏ lặp lại ở hầu hết màn hình. Gom vào một file để một thay đổi
- * thị giác (ví dụ bo góc thẻ KPI) chỉ phải sửa một chỗ.
+ * Lớp tương thích cho bộ primitive cũ của nhóm trang `fc`.
+ *
+ * Mọi thứ ở đây đã là lớp mỏng bọc `components/ui`. Giữ lại vì chín trang vẫn
+ * import chúng và vì vài chỗ truyền màu thô (`valueColor={C.warn}`) — thứ mà bộ
+ * mới cố ý không nhận nữa: màu phải đến từ `tone`, không phải từ chỗ gọi.
+ *
+ * @deprecated Import từ `components/ui` cho code mới.
  */
 
-/** Nhãn nhóm viết hoa, đứng đầu mỗi cụm nội dung. */
-export function Eyebrow({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`fc-eyebrow ${className}`}>{children}</div>;
+/** Suy ngược từ mã màu thô về tone ngữ nghĩa, để bản cũ vẫn ra đúng màu. */
+function toneOfColor(color?: string): Tone {
+  switch (color) {
+    case C.risk:
+    case C.riskSoft:
+      return "risk";
+    case C.warn:
+    case C.warnSoft:
+      return "warn";
+    case C.ok:
+    case C.okSoft:
+      return "ok";
+    case C.info:
+    case C.infoSoft:
+      return "info";
+    case C.agent:
+    case C.agentSoft:
+      return "agent";
+    case C.token:
+      return "token";
+    case C.primary:
+    case C.primaryHi:
+      return "primary";
+    default:
+      return "neutral";
+  }
 }
 
-/** Tiêu đề màn hình kèm dòng ngữ cảnh bên cạnh. */
+export function Eyebrow({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <UiEyebrow className={className}>{children}</UiEyebrow>;
+}
+
 export function ScreenTitle({ title, meta }: { title: string; meta?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline gap-2.5">
-      <h1 className="m-0 text-3xl font-semibold tracking-[-0.01em] text-ink-hi">{title}</h1>
-      {meta && <span className="text-sm text-ink-low">{meta}</span>}
+      <h1 className={`m-0 ${TEXT.h1}`}>{title}</h1>
+      {meta && <span className="text-meta text-ink-low">{meta}</span>}
     </div>
   );
 }
 
-/**
- * Thẻ chỉ số. `delta` là dòng biến động bên dưới; màu do chỗ gọi quyết định vì
- * "tăng" có thể là tốt (case đã đóng) hoặc xấu (alert tồn đọng).
- */
 export function KpiCard({
   label,
   value,
   delta,
-  valueColor = C.inkHi,
-  deltaColor = C.inkLow,
+  valueColor,
   onClick,
 }: {
   label: string;
@@ -41,34 +75,22 @@ export function KpiCard({
   deltaColor?: string;
   onClick?: () => void;
 }) {
-  const Tag = onClick ? "button" : "div";
   return (
-    <Tag
+    <MetricCard
+      label={label}
+      value={typeof value === "number" ? value : String(value)}
+      tone={toneOfColor(valueColor)}
+      note={delta}
       onClick={onClick}
-      className={`fc-quiet px-3.5 py-3 text-left transition-colors ${
-        onClick ? "cursor-pointer hover:bg-elev" : ""
-      }`}
-    >
-      <div className="fc-eyebrow truncate-1">{label}</div>
-      <div className="tabular mt-1.5 font-mono text-4xl font-semibold leading-none" style={{ color: valueColor }}>
-        {value}
-      </div>
-      {delta != null && (
-        <div className="mt-1.5 text-2xs" style={{ color: deltaColor }}>
-          {delta}
-        </div>
-      )}
-    </Tag>
+    />
   );
 }
 
-/** Ô số liệu nhỏ dùng trong sidebar và inspector. */
 export function StatTile({
   label,
   value,
   sub,
-  valueColor = C.inkHi,
-  subColor = C.inkLow,
+  valueColor,
 }: {
   label: string;
   value: ReactNode;
@@ -76,25 +98,12 @@ export function StatTile({
   valueColor?: string;
   subColor?: string;
 }) {
-  return (
-    <div className="fc-quiet min-w-0 px-2.5 py-2">
-      <div className="truncate-1 text-2xs text-ink-low">{label}</div>
-      <div className="tabular truncate-1 mt-0.5 font-mono text-2xl font-semibold" style={{ color: valueColor }}>
-        {value}
-      </div>
-      {sub != null && (
-        <div className="text-3xs" style={{ color: subColor }}>
-          {sub}
-        </div>
-      )}
-    </div>
-  );
+  return <UiStatTile label={label} value={value} sub={sub} tone={toneOfColor(valueColor)} />;
 }
 
-/** Viên thuốc trạng thái — viền và chữ cùng màu, nền trong suốt. */
 export function Chip({
   children,
-  color = C.inkSoft,
+  color,
   className = "",
   title,
 }: {
@@ -104,61 +113,26 @@ export function Chip({
   title?: string;
 }) {
   return (
-    <span
-      title={title}
-      className={`fc-chip whitespace-nowrap ${className}`}
-      style={{ color, borderColor: `${color}55` }}
-    >
+    <Badge tone={toneOfColor(color)} variant="outline" title={title} className={className}>
       {children}
-    </span>
+    </Badge>
   );
 }
 
-/**
- * Điểm rủi ro kèm thanh mức độ. Thanh dài theo điểm và đổi màu theo ngưỡng —
- * đọc được cả khi liếc nhanh qua một bảng dài.
- */
 export function RiskScore({ score, width = 44 }: { score: number; width?: number }) {
-  const color = riskColor(score);
-  const pct = `${Math.max(0, Math.min(100, score))}%`;
-  return (
-    <span className="flex items-center gap-1.5">
-      <span
-        className="h-1 flex-1 rounded-sm"
-        style={{
-          maxWidth: width,
-          background: `linear-gradient(90deg, ${color} ${pct}, #1D2A35 ${pct})`,
-        }}
-      />
-      <b className="tabular font-mono text-xs" style={{ color }}>
-        {score}
-      </b>
-    </span>
-  );
+  return <RiskIndicator score={score} width={width} />;
 }
 
-/** Thanh tiến độ mảnh, dùng cho độ phủ evidence và tỷ lệ hoàn thành. */
-export function ProgressBar({ value, color = C.info }: { value: number; color?: string }) {
-  const pct = `${Math.max(0, Math.min(100, value))}%`;
-  return (
-    <span
-      className="block h-1 rounded-sm"
-      style={{ background: `linear-gradient(90deg, ${color} ${pct}, #1D2A35 ${pct})` }}
-    />
-  );
+export function ProgressBar({ value, color }: { value: number; color?: string }) {
+  const tone = toneOfColor(color);
+  return <UiProgressBar value={value} tone={tone === "neutral" ? "info" : tone} />;
 }
 
-/** Chấm tròn có quầng sáng — chỉ báo trạng thái đang chạy. */
-export function PulseDot({ color = C.ok, size = 7 }: { color?: string; size?: number }) {
-  return (
-    <span
-      className="inline-block flex-none animate-pulse rounded-full"
-      style={{ width: size, height: size, background: color, boxShadow: `0 0 6px ${color}` }}
-    />
-  );
+export function PulseDot({ color, size = 7 }: { color?: string; size?: number }) {
+  const tone = toneOfColor(color);
+  return <UiPulseDot tone={tone === "neutral" ? "ok" : tone} size={size} />;
 }
 
-/** Khối nội dung có tiêu đề — bản rút gọn của ChartCard cho nội dung không phải biểu đồ. */
 export function Panel({
   title,
   subtitle,
@@ -175,46 +149,25 @@ export function Panel({
   bodyClassName?: string;
 }) {
   return (
-    <section className={`overflow-hidden rounded-panel border border-line bg-panel ${className}`}>
-      {(title || actions) && (
-        <header className="flex flex-wrap items-start gap-2 px-3.5 pb-2 pt-3">
-          <div className="min-w-0 flex-1">
-            {title && <div className="text-xl font-semibold leading-tight text-ink-hi">{title}</div>}
-            {subtitle && <div className="mt-px text-2xs text-ink-low">{subtitle}</div>}
-          </div>
-          {actions && <div className="flex flex-none gap-1.5">{actions}</div>}
-        </header>
-      )}
-      <div className={`px-3.5 pb-3 ${title ? "" : "pt-3"} ${bodyClassName}`}>{children}</div>
-    </section>
+    <UiPanel
+      title={title}
+      subtitle={subtitle}
+      actions={actions}
+      className={className}
+      bodyClassName={bodyClassName}
+    >
+      {children}
+    </UiPanel>
   );
 }
 
-/** Trạng thái rỗng thống nhất cho bảng và danh sách. */
 export function Empty({ text, hint }: { text: string; hint?: string }) {
-  return (
-    <div className="grid place-items-center px-4 py-10 text-center text-sm leading-relaxed text-ink-low">
-      <div>
-        <div className="mb-1 text-lg text-ink-dim">◌</div>
-        {text}
-        {hint && (
-          <>
-            <br />
-            <span className="text-2xs text-ink-dim">{hint}</span>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  return <EmptyState title={text} detail={hint ?? ""} />;
 }
 
-/** Khung tải cho bảng — giữ đúng chiều cao để bố cục không nhảy khi có dữ liệu. */
 export function Skeleton({ rows = 6 }: { rows?: number }) {
-  return (
-    <div className="flex flex-col gap-1.5 p-3" aria-hidden>
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="h-6 animate-pulse rounded-control bg-elev/60" />
-      ))}
-    </div>
-  );
+  return <TableSkeleton rows={rows} />;
 }
+
+/** Nhóm rủi ro của một điểm số — vài chỗ cũ cần tone để tô nền hàng. */
+export { getRiskTone };

@@ -1,3 +1,5 @@
+@import "../design/theme.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -102,6 +104,12 @@
   /* Viên thuốc trạng thái. Màu do chỗ dùng truyền vào qua style inline. */
   .fc-chip {
     @apply rounded-chip border px-2 py-0.5 text-center text-2xs;
+  }
+
+  /* Bề mặt nổi: popover, dropdown, modal, command palette. Đây là nơi duy nhất
+     trong console được dùng shadow — panel và thẻ lấy chiều sâu từ tầng nền. */
+  .fc-raised {
+    @apply rounded-panel border border-line-strong bg-raised shadow-popover;
   }
 }
 

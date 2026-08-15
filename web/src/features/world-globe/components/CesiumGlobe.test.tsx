@@ -1,29 +1,39 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MapData } from "../../../components/fc/WorldMap";
+import type { WorldRendererHandle } from "../state/worldView";
 
 /**
  * Mock hai module bọc Cesium chứ không mock cả `cesium`.
  *
- * Phần cần kiểm ở đây là điều phối: Viewer dựng đúng một lần, đổi chế độ gọi
- * morph chứ không dựng lại, lọc chỉ vẽ lại cảnh, và unmount thì huỷ sạch. Kéo cả
+ * Phần cần kiểm ở đây là điều phối: Viewer dựng đúng một lần, camera đặt được
+ * từ bên ngoài qua handle, lọc chỉ vẽ lại cảnh, và unmount thì huỷ sạch. Kéo cả
  * bundle Cesium vào jsdom chỉ để khẳng định mấy điều đó là vừa chậm vừa cần WebGL
  * mà CI không có.
  */
 const destroy = vi.fn();
 const isDestroyed = vi.fn(() => false);
-const fakeViewer = { destroy, isDestroyed, scene: { canvas: {} } };
+const setView = vi.fn();
+const requestRender = vi.fn();
+const resize = vi.fn();
+const fakeViewer = {
+  destroy,
+  isDestroyed,
+  resize,
+  useDefaultRenderLoop: true,
+  scene: { canvas: {}, requestRender },
+  camera: { setView, positionCartographic: { longitude: 0.35, latitude: 0.65, height: 12_000_000 } },
+};
 
 const createScene = vi.fn(async () => ({ viewer: fakeViewer, imagery: "offline" as const }));
-const morphTo = vi.fn();
 const syncScene = vi.fn();
 const highlight = vi.fn();
 const handlerDestroy = vi.fn();
 
 vi.mock("../cesium/scene", () => ({
   createScene: (...args: unknown[]) => createScene(...(args as [])),
-  morphTo: (...args: unknown[]) => morphTo(...(args as [])),
 }));
 
 vi.mock("../cesium/layers", () => ({
@@ -32,6 +42,8 @@ vi.mock("../cesium/layers", () => ({
 }));
 
 vi.mock("cesium", () => ({
+  Cartesian3: { fromDegrees: (lon: number, lat: number, height: number) => ({ lon, lat, height }) },
+  Math: { toRadians: (deg: number) => (deg * Math.PI) / 180, toDegrees: (rad: number) => (rad * 180) / Math.PI },
   JulianDate: { now: () => ({}) },
   ScreenSpaceEventHandler: class {
     setInputAction = vi.fn();
@@ -68,7 +80,6 @@ const DATA: MapData = {
 function props(over: Partial<Parameters<typeof CesiumGlobe>[0]> = {}) {
   return {
     data: DATA,
-    mode: "globe" as const,
     layers: { bank: true, p2p: true, vasp: true, chain: true, gamb: true, proj: true },
     sev: "all",
     typ: "all",
@@ -85,6 +96,7 @@ function props(over: Partial<Parameters<typeof CesiumGlobe>[0]> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   isDestroyed.mockReturnValue(false);
+  fakeViewer.useDefaultRenderLoop = true;
 });
 
 afterEach(cleanup);
@@ -113,21 +125,41 @@ describe("vòng đời Viewer", () => {
   });
 });
 
-describe("chuyển 2D ↔ 3D", () => {
-  it("đổi chế độ gọi morph chứ không dựng lại Viewer", async () => {
-    const view = render(<CesiumGlobe {...props({ mode: "globe" })} />);
+describe("liên tục không gian khi chuyển 2D ↔ 3D", () => {
+  it("đặt camera vào đúng vùng đất của bản đồ 2D ngay khi dựng", async () => {
+    render(<CesiumGlobe {...props({ initialCamera: { longitude: 103.8, latitude: 1.35, zoom: 4 } })} />);
     await waitFor(() => expect(syncScene).toHaveBeenCalled());
-    createScene.mockClear();
 
-    view.rerender(<CesiumGlobe {...props({ mode: "map" })} />);
-    await waitFor(() => expect(morphTo).toHaveBeenCalledWith(fakeViewer, "map"));
+    // Camera phải được đặt TRƯỚC khi quả cầu hiện ra; đặt sau sẽ thành một cú
+    // nhảy ngay trước mắt người dùng.
+    const destination = setView.mock.calls[0]?.[0]?.destination;
+    expect(destination.lon).toBeCloseTo(103.8, 5);
+    expect(destination.lat).toBeCloseTo(1.35, 5);
+    expect(destination.height).toBeGreaterThan(0);
+  });
 
-    view.rerender(<CesiumGlobe {...props({ mode: "globe" })} />);
-    await waitFor(() => expect(morphTo).toHaveBeenCalledWith(fakeViewer, "globe"));
+  it("handle đọc được khung nhìn hiện tại để trả về cho bản đồ 2D", async () => {
+    const ref = createRef<WorldRendererHandle>();
+    render(<CesiumGlobe ref={ref} {...props()} />);
+    await waitFor(() => expect(syncScene).toHaveBeenCalled());
 
-    // Đây là điểm mấu chốt: dựng lại Viewer mỗi lần bấm sẽ mất camera, mất lựa
-    // chọn, và rò rỉ một context WebGL mỗi lần.
-    expect(createScene).not.toHaveBeenCalled();
+    const camera = ref.current!.getCamera();
+    expect(camera).not.toBeNull();
+    expect(camera!.longitude).toBeCloseTo(20.05, 1);
+    expect(camera!.zoom).toBeGreaterThan(0);
+  });
+
+  it("tắt vòng lặp dựng hình khi không phải bộ dựng đang hiển thị", async () => {
+    const ref = createRef<WorldRendererHandle>();
+    render(<CesiumGlobe ref={ref} {...props()} />);
+    await waitFor(() => expect(syncScene).toHaveBeenCalled());
+
+    ref.current!.setActive(false);
+    expect(fakeViewer.useDefaultRenderLoop).toBe(false);
+
+    ref.current!.setActive(true);
+    expect(fakeViewer.useDefaultRenderLoop).toBe(true);
+    expect(resize).toHaveBeenCalled();
   });
 });
 

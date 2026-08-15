@@ -13,7 +13,7 @@ catalog).
 | Mặt phẳng | Trách nhiệm | Code hiện ở đâu | Trạng thái |
 |---|---|---|---|
 | 1. Integration & Event | Nhận, chuẩn hoá envelope, kiểm schema, replay, DLQ | `src/aml/` (producer), `flink/aml-ingestion/` (Flink job) | **ĐANG CHẠY** — chỉ mới có đường CSV → Kafka → HDFS |
-| 2. Data & Intelligence | Canonical data, identity graph, feature, evidence, lineage | `db/init/`, `scripts/seed_data.py` | **MỘT PHẦN** — có lược đồ và bộ sinh dữ liệu mẫu, chưa có feature platform |
+| 2. Data & Intelligence | Canonical data, identity graph, feature, evidence, lineage | `db/init/`, `src/behavior/` | **MỘT PHẦN** — có lược đồ và batch LI-Small, chưa có feature platform |
 | 3. Detection & Scoring | Rules, CEP, behavioral, graph, ML, score fusion | `services/detection/` | **CHƯA CÓ** |
 | 4. Case & Workflow | Alert queue, case state, SLA, maker-checker, EDD/STR | `src/api/`, `src/worker/`, `src/domain.py` | **MỘT PHẦN** — có máy trạng thái và quy trình phê duyệt |
 | 5. AI Agent | Thu thập bằng chứng, giả thuyết, giải thích, draft | `services/agent-runtime/` (đích), `src/agents/` (khung mẫu hiện tại) | **KHUNG MẪU** |

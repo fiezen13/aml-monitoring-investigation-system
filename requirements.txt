@@ -22,10 +22,24 @@ psycopg[binary]>=3.2.0
 # Hàng đợi tác vụ
 redis>=5.2.0
 
+# Correlated observability. Applications emit OTLP to the Collector while a
+# Prometheus reader also backs the local /metrics diagnostic endpoint.
+opentelemetry-api>=1.39.0,<2
+opentelemetry-sdk>=1.39.0,<2
+# The meta package keeps the gRPC and HTTP exporters on the same exact release.
+# Declaring both children independently lets a stale meta package remain in an
+# existing venv and causes an inconsistent OpenTelemetry installation.
+opentelemetry-exporter-otlp>=1.39.0,<2
+opentelemetry-exporter-prometheus>=0.60b0,<1
+opentelemetry-instrumentation-fastapi>=0.60b0,<1
+opentelemetry-instrumentation-redis>=0.60b0,<1
+opentelemetry-instrumentation-sqlalchemy>=0.60b0,<1
+prometheus-client>=0.21.0,<1
+
 # Kafka — producer phát lại dữ liệu AML (`python -m src.aml`).
 # Nằm ở đây chứ không ở requirements-dev vì producer chạy trong cùng image
 # với api và worker, đúng nguyên tắc "một image, nhiều lệnh khởi động" đã
-# áp dụng cho seed. Chọn confluent-kafka vì nó là client duy nhất hỗ trợ
+# áp dụng cho batch loader. Chọn confluent-kafka vì nó là client duy nhất hỗ trợ
 # idempotent producer — thứ quyết định việc thử lại không đẻ ra bản trùng.
 confluent-kafka>=2.6.0
 
@@ -38,7 +52,8 @@ PyYAML>=6.0.2
 pandas>=2.2.0
 numpy>=2.0.0
 polars>=1.0.0
-scikit-learn>=1.6.0
+# Runtime model bundles are repacked and parity-tested with this exact version.
+scikit-learn==1.9.0
 joblib>=1.4.0
 networkx>=3.0
 duckdb>=1.1.0

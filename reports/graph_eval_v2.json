@@ -201,7 +201,7 @@
     "status": "OK",
     "rows": [
       {
-        "instance_id": "b12cd3836e6725bc971978e0",
+        "instance_id": "b806fed6188808802bed43ec",
         "pattern_type": "CYCLE",
         "detected_pattern": "CYCLE",
         "cycle_signature": [
@@ -219,7 +219,7 @@
         "as_of_ts": "2022-09-06T00:00:00+00:00"
       },
       {
-        "instance_id": "f1ad31afbf73c68655448050",
+        "instance_id": "ebe91eaa5f7d767424c8920c",
         "pattern_type": "CYCLE",
         "detected_pattern": "CYCLE",
         "cycle_signature": [
@@ -236,7 +236,7 @@
         "as_of_ts": "2022-09-09T00:00:00+00:00"
       },
       {
-        "instance_id": "0d9b928ec48c38daf83d4e4b",
+        "instance_id": "dbc311ec7f42b2bc07550e5c",
         "pattern_type": "CYCLE",
         "detected_pattern": "CYCLE",
         "cycle_signature": [
@@ -253,7 +253,7 @@
         "as_of_ts": "2022-09-10T00:00:00+00:00"
       },
       {
-        "instance_id": "ac3e72a99698a0cd0fd23e29",
+        "instance_id": "1622ceb4dc4d226637c236b5",
         "pattern_type": "CYCLE",
         "detected_pattern": "CYCLE",
         "cycle_signature": [
@@ -271,7 +271,7 @@
         "as_of_ts": "2022-09-13T00:00:00+00:00"
       },
       {
-        "instance_id": "ffa3a89dbd514e8b5f87a4bb",
+        "instance_id": "f662eb415c401eba2c9cd190",
         "pattern_type": "CYCLE",
         "detected_pattern": "CYCLE",
         "cycle_signature": [
@@ -290,7 +290,7 @@
         "as_of_ts": "2022-09-11T00:00:00+00:00"
       },
       {
-        "instance_id": "4a2bd1d1dcb3d4e66bd7f822",
+        "instance_id": "534ec156e1d465b61c5a4c7c",
         "pattern_type": "CYCLE",
         "detected_pattern": "CYCLE",
         "cycle_signature": [
@@ -311,37 +311,37 @@
     ],
     "excluded": [
       {
-        "instance_id": "376b7474c73ee02f6594c0a5",
+        "instance_id": "c97d2b11f7340389fd3f7f92",
         "reason": "cycle_length_exceeds_detector",
         "n_tx": 11,
         "cycle_length": 11
       },
       {
-        "instance_id": "47c592e66fe2dc649c33cb2b",
+        "instance_id": "5be589f206aeb4050a4cb776",
         "reason": "cycle_length_exceeds_detector",
         "n_tx": 10,
         "cycle_length": 10
       },
       {
-        "instance_id": "181506815b67e1ad13e4db37",
+        "instance_id": "9f881fc735f622ddc0f1b57c",
         "reason": "cycle_length_exceeds_detector",
         "n_tx": 11,
         "cycle_length": 11
       },
       {
-        "instance_id": "2329f2c345682633d53b6e45",
+        "instance_id": "d25a8cc47702bffcda712b93",
         "reason": "cycle_length_exceeds_detector",
         "n_tx": 7,
         "cycle_length": 7
       },
       {
-        "instance_id": "6f77b8ea3d82df808758ebd7",
+        "instance_id": "c7702d6186adbcafa25de896",
         "reason": "cycle_length_exceeds_detector",
         "n_tx": 13,
         "cycle_length": 13
       },
       {
-        "instance_id": "059c8ca54a0c20a97e480820",
+        "instance_id": "b1ec7a366541fcea4bb3a24e",
         "reason": "cycle_length_exceeds_detector",
         "n_tx": 13,
         "cycle_length": 13

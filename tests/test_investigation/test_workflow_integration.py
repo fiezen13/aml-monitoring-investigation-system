@@ -31,7 +31,7 @@ def test_rule_alert_runs_supervisor_explanation_critic_to_pass(db_engine):
             text("SELECT alert_id FROM alert WHERE detector = 'rule' ORDER BY alert_id LIMIT 1")
         ).scalar_one_or_none()
     if not alert_id:
-        pytest.skip("Seed database has no rule alert")
+        pytest.skip("Current LI-Small batch has no rule alert")
 
     with get_session() as session:
         repository = InvestigationRepository(session)
@@ -72,7 +72,7 @@ def test_graph_alert_without_detector_evidence_stops_at_configured_limits(db_eng
             text("SELECT alert_id FROM alert WHERE detector = 'graph' ORDER BY alert_id LIMIT 1")
         ).scalar_one_or_none()
     if not alert_id:
-        pytest.skip("Seed database has no graph alert")
+        pytest.skip("Current LI-Small batch has no graph alert")
 
     with get_session() as session:
         repository = InvestigationRepository(session)
@@ -96,7 +96,7 @@ def test_anomaly_alert_collects_deterministic_feature_attribution(db_engine):
             text("SELECT alert_id FROM alert WHERE detector = 'ml' ORDER BY alert_id LIMIT 1")
         ).scalar_one_or_none()
     if not alert_id:
-        pytest.skip("Seed database has no ML alert")
+        pytest.skip("Current LI-Small batch has no ML alert")
 
     with get_session() as session:
         repository = InvestigationRepository(session)

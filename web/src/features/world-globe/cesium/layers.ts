@@ -16,13 +16,14 @@ import {
   DistanceDisplayCondition,
   JulianDate,
   NearFarScalar,
-  PolylineDashMaterialProperty,
-  PolylineGlowMaterialProperty,
   VerticalOrigin,
   Viewer,
 } from "cesium";
 
+import type { FlowAnimationSpec } from "../../../design/flow";
+import { mapSurface } from "../../../design/adapters/mapTheme";
 import type { GlobeScene, NodeDescriptor, RouteDescriptor } from "../adapters/toCesium";
+import { FlowMaterialProperty } from "./flowMaterial";
 
 /** Số điểm lấy mẫu trên mỗi cung. Đủ mượt ở mức toàn cầu, không phí đỉnh. */
 const ARC_SAMPLES = 64;
@@ -68,8 +69,8 @@ function addNode(viewer: Viewer, node: NodeDescriptor): Entity {
     label: {
       text: node.name,
       font: "500 12px Geist, system-ui, sans-serif",
-      fillColor: css("#E6EDF3", 0.92),
-      outlineColor: css("#080D12", 0.9),
+      fillColor: css(mapSurface.label, 0.95),
+      outlineColor: css(mapSurface.space, 0.9),
       outlineWidth: 3,
       style: LabelStyle.FILL_AND_OUTLINE,
       horizontalOrigin: HorizontalOrigin.LEFT,
@@ -86,25 +87,22 @@ function addNode(viewer: Viewer, node: NodeDescriptor): Entity {
   });
 }
 
-function addRoute(viewer: Viewer, route: RouteDescriptor): Entity {
-  const base = css(route.color, route.alpha);
-  const material = route.dashed
-    ? new PolylineDashMaterialProperty({ color: base, dashLength: 14 })
-    : route.severity === "crit"
-      ? new PolylineGlowMaterialProperty({ color: base, glowPower: 0.22, taperPower: 0.9 })
-      : base;
+function addRoute(viewer: Viewer, route: RouteDescriptor, spec: FlowAnimationSpec): Entity {
+  // Vật liệu tự kéo thời gian từ đồng hồ dùng chung ở mỗi khung hình; không có
+  // ai phải đẩy dữ liệu vào, và không có vòng lặp thứ hai nào cho lớp 3D.
+  const material = new FlowMaterialProperty(spec);
 
   return viewer.entities.add({
     id: `route:${route.id}`,
     polyline: {
       positions: arcPositions(route),
-      width: route.width,
-      material,
+      width: spec.width,
+      material: material as never,
       // `arcType` để mặc định NONE vì các điểm đã là toạ độ 3D tuyệt đối; không
       // đặt depthFailMaterial để cung phía bên kia Trái Đất bị che tự nhiên.
       clampToGround: false,
     },
-    properties: { kind: "route", payload: route.flow, baseWidth: route.width },
+    properties: { kind: "route", payload: route.flow, baseWidth: spec.width },
   });
 }
 
@@ -115,12 +113,19 @@ function addRoute(viewer: Viewer, route: RouteDescriptor): Entity {
  * không đáng kể, mà tránh được cả một lớp lỗi đồng bộ trạng thái. Camera và chế
  * độ cảnh không bị đụng tới, nên lọc không làm nhảy khung nhìn (§16).
  */
-export function syncScene(viewer: Viewer, scene: GlobeScene): void {
+export function syncScene(
+  viewer: Viewer,
+  scene: GlobeScene,
+  specs: Map<string, FlowAnimationSpec>,
+): void {
   viewer.entities.suspendEvents();
   try {
     viewer.entities.removeAll();
     for (const node of scene.nodes) addNode(viewer, node);
-    for (const route of scene.routes) addRoute(viewer, route);
+    for (const route of scene.routes) {
+      const spec = specs.get(route.id);
+      if (spec) addRoute(viewer, route, spec);
+    }
   } finally {
     viewer.entities.resumeEvents();
   }

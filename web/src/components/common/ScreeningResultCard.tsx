@@ -18,12 +18,12 @@ export function ScreeningResultCard({ result }: { result: ScreeningResult }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ScanSearch size={14} className="text-info" aria-hidden />
-          <span className="text-[13px] font-semibold text-ink-hi">{result.listName}</span>
+          <span className="text-body font-semibold text-ink-hi">{result.listName}</span>
           <span className="tabular text-2xs text-ink-low">{result.listVersion}</span>
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge tone={match.tone} label={match.label} />
-          <span className="tabular text-[13px] font-bold text-ink-hi">
+          <span className="tabular text-body font-bold text-ink-hi">
             {result.score.toLocaleString("vi-VN", { minimumFractionDigits: 2 })}
           </span>
         </div>

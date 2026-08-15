@@ -9,7 +9,7 @@ Mỗi mẫu là bộ ba:
 \]
 
 - `as_of_ts`: **cuối ngày lịch \(D\) UTC** (`23:59:59Z`) — handoff §3.3.
-- `window`: cửa sổ nhìn lùi — hỗ trợ `'1d'`, `'7d'` (mặc định), `'14d'`.
+- `window`: cửa sổ nhìn lùi — hỗ trợ `'1d'` và `'7d'` (mặc định).
 - Feature chỉ dùng TX thỏa `as_of_ts − window < occurred_at ≤ as_of_ts`.
 - Baseline: mỗi ngày lịch trong split tạo mẫu cho mọi account có **≥ 1** giao dịch (gửi hoặc nhận) trong window đó.
 - **Nhãn evaluate:** `y=1` nếu account tham gia ≥ 1 TX `label_laundering=1` trong đúng scoring window `(as_of_ts − window, as_of_ts]`.
@@ -65,7 +65,7 @@ Mỗi mẫu là bộ ba:
 19. `median_inter_txn_gap_{w}` — Khoảng cách thời gian trung vị giữa 2 TX liên tiếp (phút).
 20. `p10_inter_txn_gap_{w}` — Phân vị 10% khoảng cách liên tiếp (phút) — bắt burst / giao dịch dồn sát.
 
-> Ký hiệu `{w}` ∈ `{1d, 7d, 14d}`. Trong schema output có thể ghi tên không suffix khi `window` là cột riêng.
+> Ký hiệu `{w}` ∈ `{1d, 7d}`. Trong schema output có thể ghi tên không suffix khi `window` là cột riêng.
 >
 > **Lưu ý (khớp handoff + EDA ML-001/002):** không dùng đặc trưng theo giờ trong ngày (`off_hour_*`) — giờ 00 là artifact bộ sinh. `near_threshold_ratio` không nằm trong bộ 20 baseline handoff (có thể để nhánh rule riêng).
 
@@ -115,7 +115,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Tổng số TX (gửi + nhận) của \(a\) trong window |
 | **Công thức** | $\sum_{tx} \mathbf{1}\{\text{from}=a \lor \text{to}=a\}$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
 | **Fallback** | Không có TX → không tạo sample (1.1); nếu cần điền = 0 |
 
@@ -125,7 +125,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Số TX nhận tiền (`to_account_key = a`) |
 | **Công thức** | $\sum \mathbf{1}\{\text{to} = a\}$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `to_account_key` |
 | **Fallback** | 0 nếu không có TX nhận |
 
@@ -135,7 +135,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Số TX gửi tiền (`from_account_key = a`) |
 | **Công thức** | $\sum \mathbf{1}\{\text{from} = a\}$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key` |
 | **Fallback** | 0 nếu không có TX gửi |
 
@@ -145,7 +145,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Số ngày lịch UTC riêng biệt có ≥ 1 TX |
 | **Công thức** | $\|\text{distinct}(\text{DATE}(\text{occurred\_at}))\|$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at` |
 | **Fallback** | ∈ \([1, \text{window\_days}]\) khi đã qua rule 1.1 |
 
@@ -155,7 +155,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Mật độ giao dịch trên mỗi ngày hoạt động |
 | **Công thức** | $\frac{\text{txn\_count}}{\text{active\_days} + 10^{-6}}$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | suy từ `txn_count`, `active_days` |
 | **Fallback** | \(\varepsilon\) ở mẫu số; `.fillna(0.0)` |
 
@@ -169,7 +169,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Tổng USD nhận trong window (sau đó `log1p`) |
 | **Công thức** | $\log(1 + \sum_{\text{to}=a} \text{amount})$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `to_account_key`, `amount` |
 | **Fallback** | Heavy-tail `log1p`; `.fillna(0.0)` |
 
@@ -179,7 +179,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Tổng USD gửi trong window (sau đó `log1p`) |
 | **Công thức** | $\log(1 + \sum_{\text{from}=a} \text{amount})$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `amount` |
 | **Fallback** | Heavy-tail `log1p`; `.fillna(0.0)` |
 
@@ -189,7 +189,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Dòng tiền ròng (giữ dấu, thu hẹp biên độ bằng `log1p`) |
 | **Công thức** | $\text{sign}(In - Out) \cdot \log(1 + |In - Out|)$ với $In = \sum_{\text{to}} \text{amount}$, $Out = \sum_{\text{from}} \text{amount}$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key`, `amount` |
 | **Fallback** | Heavy-tail trên \(\lvert net\rvert\) |
 
@@ -199,7 +199,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Tỷ lệ tiền ra/vào — mule thường ≈ 1 |
 | **Công thức** | $\frac{\sum_{\text{from}=a} \text{amount}}{\sum_{\text{to}=a} \text{amount} + 10^{-6}}$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key`, `amount` |
 | **Fallback** | \(\varepsilon\) mẫu số; `.fillna(0.0)` |
 
@@ -213,7 +213,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Tỷ lệ tiền ra xảy ra ≤ 2 giờ sau một khoản tiền vào |
 | **Công thức** | $\frac{\sum \text{amount}_{\text{out}}(\exists t_{\text{in}}: 0 \le t_{\text{out}} - t_{\text{in}} \le 2h)}{\sum \text{amount}_{\text{out}} + 10^{-6}}$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key`, `amount` |
 | **Fallback** | \(\varepsilon\) mẫu số; `.fillna(0.0)` nếu không có outflow |
 
@@ -223,7 +223,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Trung vị thời gian lưu tiền (giờ) giữa nhận và rút (cặp In→Out liền kề / FIFO) |
 | **Công thức** | $\text{Median}(t_{\text{out}} - t_{\text{in}})$ (đơn vị giờ) |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
 | **Fallback** | Không ghép được cặp → gán `999.0` giờ (không có dấu hiệu xả nhanh) |
 
@@ -237,7 +237,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Số tài khoản gửi riêng biệt dồn tiền vào (fan-in) |
 | **Công thức** | $\|\text{distinct}(\text{from} \mid \text{to}=a)\|$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
 | **Fallback** | 0 nếu không có inflow |
 
@@ -247,7 +247,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Số tài khoản nhận riêng biệt được tỏa tiền tới (fan-out) |
 | **Công thức** | $\|\text{distinct}(\text{to} \mid \text{from}=a)\|$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
 | **Fallback** | 0 nếu không có outflow |
 
@@ -257,7 +257,7 @@ Ký hiệu: account đang xét = \(a\); tập giao dịch trong window = \(\math
 |---|---|
 | **Định nghĩa** | Tỷ lệ đối tác trong window chưa từng xuất hiện trước window |
 | **Công thức** | $\frac{|CP_{\text{window}} \setminus CP_{\text{history}}|}{|CP_{\text{window}}| + 10^{-6}}$ |
-| **Window** | `1d` / `7d` / `14d` (history = trước cạnh trái window, vẫn `occurred_at ≤ as_of_ts`) |
+| **Window** | `1d` / `7d` (history = trước cạnh trái window, vẫn `occurred_at ≤ as_of_ts`) |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
 | **Fallback** | \(\varepsilon\) mẫu số; history rỗng → gán `1.0` |
 
@@ -273,7 +273,7 @@ Mọi TX của \(a\) trong window (cả gửi và nhận) tạo tập \(\{amount
 |---|---|
 | **Định nghĩa** | Trung vị số tiền; sau đó `log1p` |
 | **Công thức** | $\log(1 + \text{Median}(\text{amount}))$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key`, `amount` |
 | **Fallback** | Heavy-tail; `.fillna(0.0)` |
 
@@ -283,7 +283,7 @@ Mọi TX của \(a\) trong window (cả gửi và nhận) tạo tập \(\{amount
 |---|---|
 | **Định nghĩa** | Phân vị 90% — bắt TX đột biến lớn |
 | **Công thức** | $\log(1 + Q_{0.90}(\text{amount}))$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key`, `amount` |
 | **Fallback** | Heavy-tail; `.fillna(0.0)` |
 
@@ -293,7 +293,7 @@ Mọi TX của \(a\) trong window (cả gửi và nhận) tạo tập \(\{amount
 |---|---|
 | **Định nghĩa** | Độ lệch chuẩn amount; smurfing thường std thấp |
 | **Công thức** | $\log(1 + \text{StdDev}(\text{amount}))$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key`, `amount` |
 | **Fallback** | 1 TX → không tính std → `.fillna(0.0)` |
 
@@ -303,7 +303,7 @@ Mọi TX của \(a\) trong window (cả gửi và nhận) tạo tập \(\{amount
 |---|---|
 | **Định nghĩa** | Tỷ lệ giao dịch trong window có `amount` xuất hiện **≥ 2 lần** (cùng account). Dấu chia đều / smurfing. |
 | **Công thức** | $\dfrac{\#\{tx : \mathrm{freq}(\mathrm{amount}(tx)) \ge 2\}}{\mathrm{txn\_count} + 10^{-6}}$ |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key`, `amount` |
 | **Fallback** | \(\varepsilon\) mẫu số; `.fillna(0.0)` |
 
@@ -317,7 +317,7 @@ Mọi TX của \(a\) trong window (cả gửi và nhận) tạo tập \(\{amount
 |---|---|
 | **Định nghĩa** | Trung vị khoảng cách giữa 2 TX liên tiếp (phút) |
 | **Công thức** | $\mathrm{Median}(t_{i+1} - t_i)$ sau khi sort `occurred_at` tăng dần |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
 | **Fallback** | Chỉ 1 TX → `.fillna(99999.0)` |
 
@@ -327,7 +327,7 @@ Mọi TX của \(a\) trong window (cả gửi và nhận) tạo tập \(\{amount
 |---|---|
 | **Định nghĩa** | Phân vị 10% khoảng cách giữa 2 TX liên tiếp (phút) — bắt cụm giao dịch sát nhau |
 | **Công thức** | $Q_{0.10}(t_{i+1} - t_i)$ (cùng chuỗi gap như median) |
-| **Window** | `1d` / `7d` / `14d` |
+| **Window** | `1d` / `7d` |
 | **Cột DuckDB** | `occurred_at`, `from_account_key`, `to_account_key` |
 | **Fallback** | Chỉ 1 TX → `.fillna(99999.0)` |
 
@@ -341,7 +341,7 @@ File kết quả: `data/processed/features_{train,val,test}_{window}.parquet`
 |---|---|---|
 | `account_key` | VARCHAR | Khóa `bank:account` |
 | `as_of_ts` | TIMESTAMPTZ | Mốc chốt sổ UTC |
-| `window` | VARCHAR | `'1d'` / `'7d'` / `'14d'` |
+| `window` | VARCHAR | `'1d'` / `'7d'` |
 | `txn_count` | BIGINT | A |
 | `incoming_count` | BIGINT | A |
 | `outgoing_count` | BIGINT | A |

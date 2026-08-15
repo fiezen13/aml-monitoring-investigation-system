@@ -24,9 +24,8 @@ services:
     ports: !override []
     restart: always
 
-  seed:
-    # Staging giữ dữ liệu giữa các lần triển khai. Script tự bỏ qua khi cơ sở
-    # dữ liệu đã có dữ liệu, nên nó chỉ chạy thật ở lần triển khai đầu tiên.
+  migrate:
+    # Chỉ áp schema; dữ liệu LI-Small được giữ giữa các lần triển khai.
     restart: "no"
 
   api:

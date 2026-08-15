@@ -3,13 +3,26 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
-import { int, usd } from "../api/fcFormat";
+import { int } from "../api/fcFormat";
 import { riskRatingLabel } from "../api/format";
 import { useApi } from "../api/useApi";
 import { Chart, type ChartSpec } from "../components/fc/Chart";
-import { Eyebrow, PulseDot, StatTile } from "../components/fc/primitives";
 import { WorldMap, type MapData } from "../components/fc/WorldMap";
-import { C, CHANNEL, CHANNEL_LABEL } from "../design/palette";
+import {
+  Badge,
+  Button,
+  Eyebrow,
+  IconButton,
+  Inspector,
+  Panel,
+  PageShell,
+  PulseDot,
+  SegmentedControl,
+  StatTile,
+  Switch,
+} from "../components/ui";
+import { mapSurface } from "../design/adapters/mapTheme";
+import { CHANNEL, CHANNEL_LABEL, getRiskTone, severityOf, toneColor, type Tone } from "../design";
 
 /**
  * World Monitor — bản đồ dòng tiền toàn cầu.
@@ -37,14 +50,12 @@ function hubNameVi(name: string): string {
   return labels[name] ?? name;
 }
 
-/** Engine bản đồ phân loại mức độ theo ba bậc, suy từ điểm rủi ro của hành lang. */
-function severityOf(risk: number): "crit" | "warn" | "ok" {
-  return risk >= 80 ? "crit" : risk >= 60 ? "warn" : "ok";
+function nativeAmount(value: number, currency: string): string {
+  return `${value.toLocaleString("vi-VN", { maximumFractionDigits: 8 })} ${currency}`;
 }
 
 export function WorldPage() {
-  const [dataMode, setDataMode] = useState<"operational" | "simulation">("operational");
-  const world = useApi(() => api.world(dataMode), [dataMode]);
+  const world = useApi(() => api.world(), []);
 
   const [mode, setMode] = useState<"map" | "globe">("map");
   const [layers, setLayers] = useState<Record<string, boolean>>(
@@ -71,10 +82,10 @@ export function WorldPage() {
         name: hubNameVi(h.name),
         lat: h.lat,
         lon: h.lon,
-        // Kích thước chấm theo khối lượng, thang log: chênh lệch giữa các
-        // trung tâm là vài bậc độ lớn, thang tuyến tính sẽ chỉ thấy một chấm to.
-        size: Math.max(1.2, Math.min(3, Math.log10(Math.max(10, h.volume_usd)) / 3)),
-        vol: usd(h.volume_usd),
+        // Kích thước chấm theo số giao dịch vào/ra, không cộng amount của
+        // nhiều currency thành một đại lượng giả.
+        size: Math.max(1.2, Math.min(3, Math.log10(Math.max(10, h.inbound + h.outbound)) / 2.5)),
+        vol: `${int(h.inbound + h.outbound)} giao dịch`,
         entities: h.entities,
         alerts: h.alerts,
         inb: h.inbound,
@@ -92,7 +103,10 @@ export function WorldPage() {
         tlon: f.tlon,
         ch: f.channel,
         risk: severityOf(f.risk_score),
-        vol: usd(f.volume_usd),
+        vol: nativeAmount(f.amount_native, f.currency),
+        // Engine chỉ dùng trường này để xếp hạng/độ dày cung. Dùng số giao
+        // dịch vì không được cộng khối lượng của nhiều currency.
+        volUsd: f.txn_count,
         txn: f.txn_count,
         typ: f.typology_hint,
         riskN: f.risk_score,
@@ -117,16 +131,21 @@ export function WorldPage() {
 
   const stats = useMemo(() => {
     const flows = world.data?.flows ?? [];
-    const total = flows.reduce((s, f) => s + f.volume_usd, 0);
+    const total = flows.reduce((s, f) => s + f.txn_count, 0);
     const susp = flows.filter((f) => f.risk_score >= 60);
     const crit = flows.filter((f) => f.risk_score >= 80);
     return [
-      { l: "Tổng khối lượng", v: usd(total), c: C.inkHi, d: `${flows.length} hành lang` },
-      { l: "Đáng ngờ", v: usd(susp.reduce((s, f) => s + f.volume_usd, 0)), c: C.warn, d: `${susp.length} hành lang` },
-      { l: "Nghiêm trọng", v: String(crit.length), c: C.risk, d: "cần xử lý ngay" },
-      { l: "Giao dịch", v: int(flows.reduce((s, f) => s + f.txn_count, 0)), c: C.inkHi, d: "trong cửa sổ" },
-      { l: "Cảnh báo", v: String(flows.reduce((s, f) => s + f.alert_count, 0)), c: C.risk, d: "trên hành lang" },
-      { l: "Trung tâm", v: String(world.data?.hubs.length ?? 0), c: C.info, d: "đang theo dõi" },
+      { l: "Giao dịch xuyên biên giới", v: int(total), t: "neutral" as Tone, d: `${flows.length} hành lang/currency` },
+      {
+        l: "Đáng ngờ",
+        v: int(susp.reduce((sum, f) => sum + f.txn_count, 0)),
+        t: "warn" as Tone,
+        d: `${susp.length} hành lang`,
+      },
+      { l: "Nghiêm trọng", v: String(crit.length), t: "risk" as Tone, d: "cần xử lý ngay" },
+      { l: "Giao dịch", v: int(flows.reduce((sum, f) => sum + f.txn_count, 0)), t: "neutral" as Tone, d: "trong cửa sổ" },
+      { l: "Cảnh báo", v: String(flows.reduce((sum, f) => sum + f.alert_count, 0)), t: "risk" as Tone, d: "trên hành lang" },
+      { l: "Trung tâm", v: String(world.data?.hubs.length ?? 0), t: "info" as Tone, d: "đang theo dõi" },
     ];
   }, [world.data]);
 
@@ -139,12 +158,12 @@ export function WorldPage() {
     const flows = world.data?.flows;
     if (!flows?.length) return null;
     const byCh = new Map<string, number>();
-    for (const f of flows) byCh.set(f.channel, (byCh.get(f.channel) ?? 0) + f.volume_usd);
+    for (const f of flows) byCh.set(f.channel, (byCh.get(f.channel) ?? 0) + f.txn_count);
     return {
       type: "donut",
       items: [...byCh.entries()].map(([ch, v]) => ({
         label: CHANNEL_LABEL[ch] ?? ch,
-        value: Math.round(v / 1e6),
+        value: v,
         color: CHANNEL[ch],
       })),
     };
@@ -153,13 +172,13 @@ export function WorldPage() {
   const corridorRankSpec = useMemo<ChartSpec | null>(() => {
     const flows = world.data?.flows;
     if (!flows?.length) return null;
-    const top = [...flows].sort((a, b) => b.volume_usd - a.volume_usd).slice(0, 8);
+    const top = [...flows].sort((a, b) => b.txn_count - a.txn_count).slice(0, 8);
     return {
       type: "hbars",
       items: top.map((f) => ({
         label: `${hubNameVi(f.source_name).slice(0, 12)} → ${hubNameVi(f.target_name).slice(0, 12)}`,
-        value: Math.round(f.volume_usd / 1e6),
-        color: f.risk_score >= 80 ? C.risk : f.risk_score >= 60 ? C.warn : C.info,
+        value: f.txn_count,
+        color: toneColor(f.risk_score >= 80 ? "risk" : f.risk_score >= 60 ? "warn" : "info"),
       })),
     };
   }, [world.data]);
@@ -175,7 +194,7 @@ export function WorldPage() {
         {
           name: "Rủi ro cao nhất",
           data: chans.map((c) => Math.max(...flows.filter((f) => f.channel === c).map((f) => f.risk_score))),
-          color: C.warn,
+          color: toneColor("warn"),
         },
       ],
     };
@@ -183,118 +202,86 @@ export function WorldPage() {
 
   if (!world.loading && world.data?.data_mode === "operational" && !world.data.geography_available) {
     return (
-      <div className="flex h-full min-w-0 flex-col overflow-y-auto bg-app p-5">
-        <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-4">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
-            <div>
-              <Eyebrow className="mb-2">Giám sát địa lý · dữ liệu vận hành</Eyebrow>
-              <h1 className="text-2xl font-semibold text-ink-hi">Không đủ dữ liệu để dựng bản đồ địa lý</h1>
-              <p className="mt-2 max-w-[760px] text-sm leading-relaxed text-ink-soft">
-                Hệ thống không suy diễn quốc gia hoặc toạ độ từ mã ngân hàng. Vì vậy bản đồ được chủ động tắt thay vì
-                ghép lô dữ liệu IBM với kịch bản Việt Nam không liên quan.
-              </p>
-            </div>
-            <span className="flex items-center gap-2 rounded-chip border border-warn/35 bg-warn/10 px-3 py-1.5 text-xs text-warn-soft">
-              <MapPinOff size={14} /> Chưa có dữ liệu địa lý đã kiểm chứng
-            </span>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-[12px] border border-line bg-panel p-4 md:col-span-2">
-              <div className="flex items-center gap-2 text-sm font-semibold text-ink-hi">
-                <Database size={15} className="text-primary" /> Nguồn đang hoạt động
+      <PageShell
+        title="Không đủ dữ liệu để dựng bản đồ địa lý"
+        subtitle="Hệ thống không suy diễn quốc gia hoặc toạ độ từ mã ngân hàng. Bản đồ được chủ động tắt thay vì ghép lô dữ liệu IBM với kịch bản Việt Nam không liên quan."
+        actions={
+          <Badge tone="warn" icon={<MapPinOff size={12} aria-hidden />}>
+            Chưa có dữ liệu địa lý đã kiểm chứng
+          </Badge>
+        }
+      >
+        <div className="grid gap-3.5 md:grid-cols-3">
+          <Panel
+            title={
+              <span className="flex items-center gap-2">
+                <Database size={15} className="text-primary" aria-hidden /> Nguồn đang hoạt động
+              </span>
+            }
+            className="md:col-span-2"
+          >
+            <dl className="grid gap-3 text-body sm:grid-cols-2">
+              <div>
+                <dt className="text-meta text-ink-low">Tệp nguồn</dt>
+                <dd className="mt-1 font-mono text-ink-mid">{world.data.source_name ?? "—"}</dd>
               </div>
-              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                <div>
-                  <dt className="text-xs text-ink-low">Tệp nguồn</dt>
-                  <dd className="mt-1 font-mono text-ink-mid">{world.data.source_name ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-ink-low">Mã lô dữ liệu</dt>
-                  <dd className="mt-1 font-mono text-ink-mid">{world.data.source_id ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-ink-low">Giao dịch đã nạp</dt>
-                  <dd className="mt-1 font-mono text-xl font-semibold text-ink-hi">
-                    {int(world.data.transaction_count)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-ink-low">Phạm vi địa lý</dt>
-                  <dd className="mt-1 font-medium text-warn-soft">Không được cung cấp</dd>
-                </div>
-              </dl>
-            </div>
+              <div>
+                <dt className="text-meta text-ink-low">Mã lô dữ liệu</dt>
+                <dd className="mt-1 font-mono text-ink-mid">{world.data.source_id ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-meta text-ink-low">Giao dịch đã nạp</dt>
+                <dd className="mt-1 font-mono text-h3 font-semibold text-ink-hi">
+                  {int(world.data.transaction_count)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-meta text-ink-low">Phạm vi địa lý</dt>
+                <dd className="mt-1 font-medium text-warn-soft">Không được cung cấp</dd>
+              </div>
+            </dl>
+          </Panel>
 
-            <div className="rounded-[12px] border border-line bg-side p-4">
-              <div className="text-sm font-semibold text-ink-hi">Giới hạn dữ liệu</div>
-              <p className="mt-3 text-xs leading-relaxed text-ink-soft">{world.data.limitation}</p>
-              <p className="mt-3 text-xs leading-relaxed text-ink-low">
-                Mã ngân hàng trong IBM AML là mã định danh của tập dữ liệu, không phải mã quốc gia và không đủ để đặt một
-                điểm lên bản đồ.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-line bg-side p-4">
-            <div>
-              <div className="text-sm font-semibold text-ink-hi">Dữ liệu giao dịch vẫn xem được đầy đủ</div>
-              <p className="mt-1 text-xs text-ink-soft">
-                Tra cứu giao dịch đọc trực tiếp bảng giao dịch và gồm cả giao dịch dưới ngưỡng ML hành vi.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Link to="/transactions" className="fc-btn">
-                Mở Tra cứu giao dịch
-              </Link>
-              <button type="button" onClick={() => setDataMode("simulation")} className="fc-btn">
-                Xem riêng mô phỏng ABM
-              </button>
-            </div>
-          </div>
-
-          <p className="text-2xs leading-relaxed text-ink-low">
-            Chế độ mô phỏng ABM là dữ liệu tổng hợp phục vụ minh hoạ/đánh giá chuẩn. Nó được tách khỏi nguồn vận hành và không
-            đại diện cho địa lý của tệp IBM.
-          </p>
+          <Panel title="Giới hạn dữ liệu">
+            <p className="text-meta leading-relaxed text-ink-soft">{world.data.limitation}</p>
+            <p className="mt-3 text-meta leading-relaxed text-ink-low">
+              Mã ngân hàng trong IBM AML là mã định danh của tập dữ liệu, không phải mã quốc gia và không đủ để đặt
+              một điểm lên bản đồ.
+            </p>
+          </Panel>
         </div>
-      </div>
+
+        <Panel
+          title="Dữ liệu giao dịch vẫn xem được đầy đủ"
+          subtitle="Tra cứu giao dịch đọc trực tiếp bảng giao dịch và gồm cả giao dịch dưới ngưỡng ML hành vi."
+          actions={
+            <Link to="/transactions">
+              <Button size="sm">Mở Tra cứu giao dịch</Button>
+            </Link>
+          }
+        >
+          <Eyebrow>Giám sát địa lý · dữ liệu vận hành</Eyebrow>
+        </Panel>
+      </PageShell>
     );
   }
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 overflow-x-auto">
+      {/* Dưới 1024px ba cột xếp chồng: giữ nguyên lưới cố định ở đó nghĩa là
+          bản đồ chỉ còn khoảng 400px giữa hai cột panel. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-x-auto lg:overflow-y-hidden">
         {/* --- Cột trái: bộ lọc --- */}
-        <aside className="flex min-w-[216px] flex-[0_3_300px] flex-col gap-3.5 overflow-y-auto border-r border-line bg-side p-3.5">
-          {/* Hai nguồn dữ liệu, hai cảnh báo khác nhau. Trước khi địa lý vận hành
-              chạy được, thân trang này chỉ hiện ở chế độ mô phỏng nên nhãn ABM
-              gắn cứng cũng không sai; giờ thì sai, vì bản đồ vận hành dùng chung
-              thân trang. */}
-          {dataMode === "simulation" ? (
-            <div className="rounded-[9px] border border-warn/30 bg-warn/10 p-2.5">
-              <div className="text-3xs font-semibold uppercase tracking-[0.09em] text-warn-soft">Mô phỏng ABM</div>
-              <p className="mt-1 text-2xs leading-relaxed text-ink-soft">
-                Kịch bản tổng hợp Việt Nam, tách biệt với lô giao dịch vận hành.
-              </p>
-              <button type="button" onClick={() => setDataMode("operational")} className="fc-btn mt-2 w-full">
-                Quay lại dữ liệu vận hành
-              </button>
-            </div>
-          ) : (
-            <div className="rounded-[9px] border border-line bg-panel p-2.5">
-              <div className="text-3xs font-semibold uppercase tracking-[0.09em] text-ink-dim">Dữ liệu vận hành</div>
-              <p className="mt-1 text-2xs leading-relaxed text-ink-soft">{world.data?.limitation}</p>
-              <button type="button" onClick={() => setDataMode("simulation")} className="fc-btn mt-2 w-full">
-                Xem riêng mô phỏng ABM
-              </button>
-            </div>
-          )}
+        <aside className="flex flex-none flex-col gap-3.5 border-b border-line bg-side p-3.5 lg:min-w-[216px] lg:flex-[0_3_300px] lg:overflow-y-auto lg:border-b-0 lg:border-r">
+          <div className="rounded-[9px] border border-line bg-panel p-2.5">
+            <div className="text-3xs font-semibold uppercase tracking-[0.09em] text-ink-dim">Dữ liệu HI-Medium</div>
+            <p className="mt-1 text-2xs leading-relaxed text-ink-soft">{world.data?.limitation}</p>
+          </div>
           <div>
-            <Eyebrow className="mb-2">Chỉ số mô phỏng toàn cầu</Eyebrow>
+            <Eyebrow className="mb-2">Chỉ số release đang hoạt động</Eyebrow>
             <div className="grid grid-cols-2 gap-[7px]">
-              {stats.map((s) => (
-                <StatTile key={s.l} label={s.l} value={s.v} sub={s.d} valueColor={s.c} />
+              {stats.map((stat) => (
+                <StatTile key={stat.l} label={stat.l} value={stat.v} sub={stat.d} tone={stat.t} />
               ))}
             </div>
           </div>
@@ -303,50 +290,34 @@ export function WorldPage() {
             <Eyebrow className="mb-2">Các lớp dòng tiền</Eyebrow>
             <div className="flex flex-col gap-1">
               {CHANNELS.map((ch) => (
-                <button
-                  key={ch}
-                  type="button"
-                  onClick={() => setLayers((l) => ({ ...l, [ch]: !l[ch] }))}
-                  aria-pressed={layers[ch]}
-                  className="flex items-center gap-2.5 rounded-control px-2 py-1.5 text-base transition-colors hover:bg-elev"
-                >
-                  <span className="h-[9px] w-[9px] flex-none rounded-sm" style={{ background: CHANNEL[ch] }} />
+                <div key={ch} className="flex items-center gap-2.5 rounded-control px-2 py-1.5 text-body">
+                  <span className="h-[9px] w-[9px] flex-none rounded-sm" style={{ background: CHANNEL[ch] }} aria-hidden />
                   <span className="flex-1 text-left text-ink-mid">{CHANNEL_LABEL[ch]}</span>
                   {/* Công tắc mang màu của chính lớp đó, không phải màu accent
                       chung: sáu công tắc cùng một sắc teal thì chỉ nói được
                       "đang bật", còn ở đây chúng nói luôn "đang bật cái gì". */}
-                  <span
-                    className="relative h-[14px] w-[30px] flex-none rounded-full border border-line-strong transition-colors"
-                    style={{ background: layers[ch] ? `${CHANNEL[ch]}2E` : "transparent" }}
-                  >
-                    <span
-                      className="absolute top-[1.5px] h-[9px] w-[9px] rounded-full transition-[left]"
-                      style={{ left: layers[ch] ? 18 : 2, background: layers[ch] ? CHANNEL[ch] : C.inkDim }}
-                    />
-                  </span>
-                </button>
+                  <Switch
+                    size="sm"
+                    checked={layers[ch]}
+                    color={CHANNEL[ch]}
+                    label={`Lớp ${CHANNEL_LABEL[ch]}`}
+                    onChange={(next) => setLayers((current) => ({ ...current, [ch]: next }))}
+                  />
+                </div>
               ))}
             </div>
           </div>
 
           <div>
             <Eyebrow className="mb-2">Mức độ</Eyebrow>
-            <div className="flex gap-1">
-              {SEVERITIES.map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => setSev(s.key)}
-                  className={`flex-1 rounded-control border py-1 text-xs transition-colors ${
-                    sev === s.key
-                      ? "border-primary-line bg-primary-soft text-primary"
-                      : "border-line-strong/70 text-ink-soft hover:text-ink-hi"
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              label="Mức độ hành lang"
+              size="sm"
+              className="w-full"
+              value={sev}
+              onChange={setSev}
+              options={SEVERITIES.map((item) => ({ value: item.key, label: item.label }))}
+            />
           </div>
 
           {typologies.length > 0 && (
@@ -382,14 +353,18 @@ export function WorldPage() {
 
           <p className="border-t border-line-soft pt-2.5 text-2xs leading-relaxed text-ink-low">
             Kéo để xoay · cuộn để phóng · rê chuột lên cung để xem chi tiết · nhấp vào cung hoặc trung tâm để mở
-            bảng thanh tra · nháy đúp nền để đặt lại. Đây là dữ liệu tổng hợp từ mô phỏng ABM, không phải lô dữ liệu IBM.
+            bảng thanh tra · nháy đúp nền để đặt lại. Đây là rollup từ giao dịch HI-Medium đã được model chấm.
           </p>
         </aside>
 
         {/* --- Cột giữa: bản đồ --- */}
+        {/* Nền dưới bản đồ dùng chính bảng màu bề mặt bản đồ, nên khoảnh khắc
+            trước khi bộ dựng hình vẽ xong không loé lên một tông khác. */}
         <div
-          className="relative min-w-[390px] flex-[1_1_480px] overflow-hidden"
-          style={{ background: "radial-gradient(ellipse at 50% 42%,#0D1B26 0%,#080D12 72%)" }}
+          className="relative h-[420px] flex-none overflow-hidden lg:h-auto lg:min-w-[390px] lg:flex-[1_1_480px]"
+          style={{
+            background: `radial-gradient(ellipse at 50% 42%, ${mapSurface.land} 0%, ${mapSurface.space} 72%)`,
+          }}
         >
           <WorldMap
             data={mapData}
@@ -405,86 +380,62 @@ export function WorldPage() {
             onPickHub={setSelHub}
           />
 
-          <div className="absolute left-3.5 top-3 z-[4] flex items-center gap-2 rounded-chip border border-line bg-side/85 px-3 py-1 text-2xs backdrop-blur">
-            <PulseDot color={world.error ? C.risk : C.ok} />
-            <span className="font-mono tracking-[0.08em]" style={{ color: world.error ? C.risk : C.ok }}>
-              {world.error
-                ? "MẤT KẾT NỐI"
-                : world.loading
-                  ? "ĐANG TẢI"
-                  : dataMode === "simulation"
-                    ? "MÔ PHỎNG ABM"
-                    : "DỮ LIỆU VẬN HÀNH"}
+          <div className="absolute left-3.5 top-3 z-hud flex items-center gap-2 rounded-chip border border-line-strong bg-raised/85 px-3 py-1 text-meta backdrop-blur">
+            <PulseDot tone={world.error ? "risk" : "ok"} />
+            <span className={`font-mono tracking-[0.08em] ${world.error ? "text-risk-soft" : "text-ok-soft"}`}>
+              {world.error ? "MẤT KẾT NỐI" : world.loading ? "ĐANG TẢI" : "HI-MEDIUM · CURRENCY-NATIVE"}
             </span>
           </div>
 
-          <div className="absolute right-3 top-2.5 z-[4] flex items-center gap-1.5">
-            <div className="flex gap-0.5 rounded-control border border-line bg-side/85 p-0.5 backdrop-blur">
-              {(["map", "globe"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMode(m)}
-                  className={`rounded-[6px] px-2.5 py-1 text-xs transition-colors ${
-                    mode === m ? "bg-primary-soft text-primary" : "text-ink-soft hover:text-ink-hi"
-                  }`}
-                >
-                  {m === "map" ? "2D" : "3D"}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-0.5 rounded-control border border-line bg-side/85 p-0.5 backdrop-blur">
-              {TOP_N.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setTopN(n)}
-                  className={`rounded-[6px] px-2 py-1 text-xs transition-colors ${
-                    topN === n ? "bg-primary-soft text-primary" : "text-ink-soft hover:text-ink-hi"
-                  }`}
-                >
-                  Top {n}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setHideNormal((v) => !v)}
+          {/* Bộ chọn phép chiếu. Chỉ báo trượt giữa hai lựa chọn thay vì mỗi
+              nút tự bật nền của mình — cùng ngôn ngữ với tab và cửa sổ thời
+              gian ở header, và nó nói rằng đây là một trục chứ không phải hai
+              chế độ rời rạc. */}
+          <div className="absolute right-3 top-2.5 z-hud flex items-center gap-1.5">
+            <SegmentedControl
+              label="Phép chiếu bản đồ"
+              size="sm"
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: "map", label: "Bản đồ" },
+                { value: "globe", label: "Quả cầu" },
+              ]}
+              className="bg-raised/85 backdrop-blur"
+            />
+            <SegmentedControl
+              label="Số hành lang hiển thị"
+              size="sm"
+              value={String(topN)}
+              onChange={(value) => setTopN(Number(value))}
+              options={TOP_N.map((n) => ({ value: String(n), label: `Top ${n}` }))}
+              className="bg-raised/85 backdrop-blur"
+            />
+            <Button
+              size="sm"
+              variant={hideNormal ? "primary" : "secondary"}
+              onClick={() => setHideNormal((value) => !value)}
               title="Chỉ hiện dòng tiền đáng ngờ"
-              className={`rounded-control border px-2.5 py-1 text-xs backdrop-blur transition-colors ${
-                hideNormal
-                  ? "border-primary-line bg-primary-soft text-primary"
-                  : "border-line-strong bg-side/85 text-ink-soft hover:text-ink-hi"
-              }`}
+              className={hideNormal ? "" : "bg-raised/85 backdrop-blur"}
             >
               Chỉ đáng ngờ
-            </button>
+            </Button>
           </div>
 
           {selected && (
-            <div className="absolute left-1/2 top-3 z-[4] flex -translate-x-1/2 animate-up items-center gap-2.5 rounded-[10px] border border-risk/30 bg-side/90 px-3 py-1.5 text-sm backdrop-blur">
-              <b>
+            <div className="absolute left-1/2 top-3 z-hud flex -translate-x-1/2 animate-up items-center gap-2.5 rounded-panel border border-line-strong bg-raised/90 px-3 py-1.5 text-data backdrop-blur">
+              <b className="text-ink-hi">
                 {hubNameVi(selected.source_name)} → {hubNameVi(selected.target_name)}
               </b>
-              <span
-                className="font-mono"
-                style={{ color: selected.risk_score >= 80 ? C.risk : C.warn }}
-              >
-                risk {selected.risk_score}
-              </span>
-              <span className="font-mono text-ink-soft">{usd(selected.volume_usd)}</span>
-              <button
-                type="button"
-                onClick={() => setSelFlow(null)}
-                aria-label="Bỏ chọn hành lang"
-                className="text-ink-low hover:text-ink-hi"
-              >
-                ✕
-              </button>
+              <Badge tone={getRiskTone(selected.risk_score)} icon={false} className="font-mono">
+                rủi ro {selected.risk_score}
+              </Badge>
+              <span className="font-mono text-ink-soft">{nativeAmount(selected.amount_native, selected.currency)}</span>
+              <IconButton size="sm" label="Bỏ chọn hành lang" icon={<span aria-hidden>✕</span>} onClick={() => setSelFlow(null)} />
             </div>
           )}
 
-          <div className="absolute bottom-2.5 left-3 z-[4] flex flex-col gap-[3px] rounded-[9px] border border-line bg-side/85 px-2.5 py-2 text-2xs text-ink-soft backdrop-blur">
+          <div className="absolute bottom-2.5 left-3 z-hud flex flex-col gap-[3px] rounded-control border border-line-strong bg-raised/85 px-2.5 py-2 text-meta text-ink-soft backdrop-blur">
             <div className="flex max-w-[300px] flex-wrap gap-2.5">
               {CHANNELS.map((ch) => (
                 <span key={ch}>
@@ -494,94 +445,88 @@ export function WorldPage() {
             </div>
             <div className="flex flex-wrap gap-2.5 border-t border-line-soft pt-1 text-ink-low">
               <span>nét đứt = bình thường</span>
-              <span style={{ color: C.warnSoft }}>nét liền = đáng ngờ</span>
-              <span style={{ color: C.riskSoft }}>đỏ + hạt = critical</span>
+              <span className="text-warn-soft">nét liền = đáng ngờ</span>
+              <span className="text-risk-soft">đỏ + hạt = nghiêm trọng</span>
             </div>
           </div>
         </div>
 
         {/* --- Cột phải: inspector --- */}
-        <aside className="flex min-h-0 min-w-[248px] flex-[0_4_360px] flex-col overflow-y-auto border-l border-line bg-side">
+        <aside className="flex min-h-0 flex-none flex-col border-t border-line bg-side lg:min-w-[248px] lg:flex-[0_4_360px] lg:overflow-y-auto lg:border-l lg:border-t-0">
+          {/* Bảng thanh tra sống độc lập với bộ dựng hình: đổi 2D↔3D không đụng
+              tới nó, còn đổi thực thể đang xem thì nội dung trượt vào lại. */}
           {(selected || selectedHub) && (
-            <div className="animate-up border-b border-line p-3.5">
+            <Inspector animateKey={selected?.id ?? selectedHub?.id ?? null} className="border-b border-line p-3.5">
               <div className="flex items-center gap-2">
-                <span
-                  className="flex-none rounded-[5px] border px-1.5 py-px font-mono text-3xs tracking-[0.06em]"
-                  style={{ color: C.primary, borderColor: `${C.primary}55` }}
-                >
+                <Badge tone="primary" icon={false} variant="outline" className="font-mono tracking-[0.06em]">
                   {selected ? "HÀNH LANG" : "TRUNG TÂM"}
-                </span>
-                <div className="truncate-1 flex-1 text-xl font-semibold">
-                  {selected ? `${hubNameVi(selected.source_name)} → ${hubNameVi(selected.target_name)}` : hubNameVi(selectedHub!.name)}
+                </Badge>
+                <div className="truncate-1 flex-1 text-h3 font-semibold text-ink-hi">
+                  {selected
+                    ? `${hubNameVi(selected.source_name)} → ${hubNameVi(selected.target_name)}`
+                    : hubNameVi(selectedHub!.name)}
                 </div>
-                <button
-                  type="button"
+                <IconButton
+                  size="sm"
+                  label="Đóng bảng thanh tra"
+                  icon={<span aria-hidden>✕</span>}
                   onClick={() => {
                     setSelFlow(null);
                     setSelHub(null);
                   }}
-                  aria-label="Đóng bảng thanh tra"
-                  className="flex-none text-ink-low hover:text-ink-hi"
-                >
-                  ✕
-                </button>
+                />
               </div>
-              <div className="my-1 font-mono text-2xs text-ink-low">
+              <div className="my-1 font-mono text-meta text-ink-low">
                 {selected ? `${selected.id} · ${selected.currency}` : `${selectedHub!.id} · ${selectedHub!.country}`}
               </div>
 
               <div className="mb-3 grid grid-cols-2 gap-[7px]">
                 {(selected
                   ? [
-                      { l: "Khối lượng", v: usd(selected.volume_usd), c: C.inkHi },
-                      { l: "Giao dịch", v: int(selected.txn_count), c: C.inkHi },
-                      {
-                        l: "Điểm rủi ro",
-                        v: String(selected.risk_score),
-                        c: selected.risk_score >= 80 ? C.risk : C.warn,
-                      },
-                      { l: "Cảnh báo", v: String(selected.alert_count), c: C.risk },
-                      { l: "Kênh", v: CHANNEL_LABEL[selected.channel], c: CHANNEL[selected.channel] },
-                      { l: "Nhóm hành vi", v: selected.typology_hint ?? "—", c: C.inkSoft },
+                      { l: "Giá trị gốc", v: nativeAmount(selected.amount_native, selected.currency), t: "neutral" as Tone },
+                      { l: "Giao dịch", v: int(selected.txn_count), t: "neutral" as Tone },
+                      { l: "Điểm rủi ro", v: String(selected.risk_score), t: getRiskTone(selected.risk_score) },
+                      { l: "Cảnh báo", v: String(selected.alert_count), t: "risk" as Tone },
+                      { l: "Kênh", v: CHANNEL_LABEL[selected.channel], t: "info" as Tone },
+                      { l: "Nhóm hành vi", v: selected.typology_hint ?? "—", t: "neutral" as Tone },
                     ]
                   : [
-                      { l: "Khối lượng", v: usd(selectedHub!.volume_usd), c: C.inkHi },
-                      { l: "Thực thể", v: int(selectedHub!.entities), c: C.inkHi },
-                      { l: "Vào / Ra", v: `${selectedHub!.inbound} / ${selectedHub!.outbound}`, c: C.info },
-                      { l: "Cảnh báo", v: String(selectedHub!.alerts), c: C.risk },
-                      { l: "Rủi ro cao nhất", v: String(selectedHub!.risk_score), c: C.warn },
-                      { l: "Rủi ro pháp lý", v: riskRatingLabel(selectedHub!.jurisdiction_risk), c: C.agent },
+                      { l: "Hoạt động", v: int(selectedHub!.inbound + selectedHub!.outbound), t: "neutral" as Tone },
+                      { l: "Thực thể", v: int(selectedHub!.entities), t: "neutral" as Tone },
+                      { l: "Vào / Ra", v: `${selectedHub!.inbound} / ${selectedHub!.outbound}`, t: "info" as Tone },
+                      { l: "Cảnh báo", v: String(selectedHub!.alerts), t: "risk" as Tone },
+                      { l: "Rủi ro cao nhất", v: String(selectedHub!.risk_score), t: getRiskTone(selectedHub!.risk_score) },
+                      {
+                        l: "Rủi ro pháp lý",
+                        v: riskRatingLabel(selectedHub!.jurisdiction_risk),
+                        t: "agent" as Tone,
+                      },
                     ]
-                ).map((r) => (
-                  <div key={r.l} className="min-w-0 rounded-[9px] bg-panel px-2.5 py-1.5">
-                    <div className="truncate-1 text-3xs text-ink-low">{r.l}</div>
-                    <div className="truncate-1 font-mono text-md font-semibold" style={{ color: r.c }}>
-                      {r.v}
-                    </div>
-                  </div>
+                ).map((row) => (
+                  <StatTile key={row.l} label={row.l} value={row.v} tone={row.t} />
                 ))}
               </div>
 
               <div className="flex gap-2">
                 <Link
                   to="/cases"
-                  className="flex-[1.2] rounded-control border border-primary-line bg-primary-soft py-1.5 text-center text-base font-semibold text-primary transition-colors hover:bg-primary/25"
+                  className="flex-[1.2] rounded-control border border-primary/30 bg-primary-soft py-1.5 text-center text-body font-semibold text-primary transition-colors hover:bg-primary/20"
                 >
                   Mở cuộc điều tra
                 </Link>
                 <Link
                   to="/network"
-                  className="flex-1 rounded-control border border-line-strong py-1.5 text-center text-base text-ink-mid transition-colors hover:border-line-strong/60"
+                  className="flex-1 rounded-control border border-line-strong py-1.5 text-center text-body text-ink-mid transition-colors hover:border-line-emphasis hover:text-ink-hi"
                 >
-                  Xem network
+                  Xem đồ thị mạng lưới
                 </Link>
               </div>
-            </div>
+            </Inspector>
           )}
 
           <div className="flex items-center gap-2 px-3.5 pb-1.5 pt-3">
-            <PulseDot color={C.risk} size={6} />
-            <span className="text-sm font-semibold">Hành lang rủi ro cao</span>
+            <PulseDot tone="risk" size={6} />
+            <span className="text-body font-semibold text-ink-hi">Hành lang rủi ro cao</span>
           </div>
           <div className="flex flex-col gap-[3px] px-2.5 pb-1.5">
             {[...(world.data?.flows ?? [])]
@@ -601,10 +546,9 @@ export function WorldPage() {
                   <span className="truncate-1 flex-1 text-ink-mid">
                     {hubNameVi(f.source_name)} → {hubNameVi(f.target_name)}
                   </span>
-                  <b
-                    className="tabular flex-none font-mono text-xs"
-                    style={{ color: f.risk_score >= 80 ? C.risk : C.warn }}
-                  >
+                  <b className={`tabular flex-none font-mono text-data ${
+                    f.risk_score >= 80 ? "text-risk-soft" : "text-warn-soft"
+                  }`}>
                     {f.risk_score}
                   </b>
                 </button>
@@ -612,11 +556,11 @@ export function WorldPage() {
           </div>
 
           <div className="flex items-center gap-2 border-t border-line-soft px-3.5 pb-1.5 pt-2">
-            <span className="text-sm font-semibold">Trung tâm theo khối lượng</span>
+            <span className="text-body font-semibold text-ink-hi">Trung tâm theo hoạt động</span>
           </div>
           <div className="flex flex-col gap-[3px] px-2.5 pb-3">
             {[...(world.data?.hubs ?? [])]
-              .sort((a, b) => b.volume_usd - a.volume_usd)
+              .sort((a, b) => b.inbound + b.outbound - (a.inbound + a.outbound))
               .map((h) => (
                 <button
                   key={h.id}
@@ -628,7 +572,7 @@ export function WorldPage() {
                   className="flex items-center gap-2 rounded-[7px] px-1.5 py-1.5 text-left text-sm transition-colors hover:bg-elev"
                 >
                   <span className="truncate-1 flex-1 text-ink-mid">{hubNameVi(h.name)}</span>
-                  <span className="tabular flex-none font-mono text-2xs text-ink-low">{usd(h.volume_usd)}</span>
+                  <span className="tabular flex-none font-mono text-2xs text-ink-low">{int(h.inbound + h.outbound)} GD</span>
                 </button>
               ))}
           </div>
@@ -641,28 +585,20 @@ export function WorldPage() {
         style={{ height: bottomOpen ? 172 : 45 }}
       >
         <div className="flex items-center gap-2.5 border-b border-line-soft px-3.5 py-2">
-          <button
-            type="button"
-            onClick={() => setPaused((v) => !v)}
-            aria-label={paused ? "Chạy tiếp" : "Tạm dừng"}
-            className="grid h-7 w-7 place-items-center rounded-control border border-primary-line bg-primary-soft text-primary transition-colors hover:bg-primary/25"
-          >
-            {paused ? <Play size={11} /> : <Pause size={11} />}
-          </button>
-          <div className="flex gap-0.5 rounded-control border border-line bg-sunken p-0.5">
-            {SPEEDS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSpeed(s)}
-                className={`rounded-[6px] px-2 py-[3px] font-mono text-xs transition-colors ${
-                  speed === s ? "bg-primary-soft text-primary" : "text-ink-soft hover:text-ink-hi"
-                }`}
-              >
-                {s}×
-              </button>
-            ))}
-          </div>
+          <IconButton
+            size="sm"
+            active
+            label={paused ? "Chạy tiếp" : "Tạm dừng"}
+            icon={paused ? <Play size={11} /> : <Pause size={11} />}
+            onClick={() => setPaused((value) => !value)}
+          />
+          <SegmentedControl
+            label="Tốc độ phát lại"
+            size="sm"
+            value={String(speed)}
+            onChange={(value) => setSpeed(Number(value))}
+            options={SPEEDS.map((value) => ({ value: String(value), label: `${value}×` }))}
+          />
           <input
             type="range"
             min={0}
@@ -673,31 +609,30 @@ export function WorldPage() {
             aria-label="Thanh trượt thời gian"
             className="min-w-[120px] flex-1 accent-info"
           />
-          <span className="tabular w-[92px] flex-none text-right font-mono text-2xs text-ink-soft">
+          <span className="tabular w-[92px] flex-none text-right font-mono text-meta text-ink-soft">
             {replayT >= 100 ? "thời gian thực" : `phát lại ${replayT.toFixed(0)}%`}
           </span>
-          <button
-            type="button"
-            onClick={() => setBottomOpen((v) => !v)}
-            aria-label={bottomOpen ? "Thu gọn dải phân tích" : "Mở dải phân tích"}
-            className="grid h-[26px] w-7 place-items-center rounded-control border border-line-strong/70 text-ink-soft transition-colors hover:text-ink-hi"
-          >
-            <Maximize2 size={11} />
-          </button>
+          <IconButton
+            size="sm"
+            variant="secondary"
+            label={bottomOpen ? "Thu gọn dải phân tích" : "Mở dải phân tích"}
+            icon={<Maximize2 size={11} />}
+            onClick={() => setBottomOpen((value) => !value)}
+          />
         </div>
 
         {bottomOpen && (
           <div className="flex min-h-0 flex-1 overflow-x-auto">
             <div className="min-w-[190px] flex-[1.3_1_210px] px-2 pt-2">
-              <div className="px-2 pb-0.5 text-2xs text-ink-low">Cơ cấu theo kênh (triệu USD)</div>
+              <div className="px-2 pb-0.5 text-meta text-ink-low">Cơ cấu theo kênh (số giao dịch)</div>
               <Chart spec={channelMixSpec} height={108} />
             </div>
             <div className="min-w-[225px] flex-[1.2_1_230px] border-l border-line-soft px-2 pt-2">
-              <div className="px-1 pb-0.5 text-2xs text-ink-low">Xếp hạng hành lang (triệu USD)</div>
+              <div className="px-1 pb-0.5 text-meta text-ink-low">Xếp hạng hành lang (số giao dịch)</div>
               <Chart spec={corridorRankSpec} height={108} />
             </div>
             <div className="min-w-[190px] flex-[1.3_1_210px] border-l border-line-soft px-2 pt-2">
-              <div className="px-1 pb-0.5 text-2xs text-ink-low">Rủi ro cao nhất theo kênh</div>
+              <div className="px-1 pb-0.5 text-meta text-ink-low">Rủi ro cao nhất theo kênh</div>
               <Chart spec={riskByChannelSpec} height={108} />
             </div>
           </div>

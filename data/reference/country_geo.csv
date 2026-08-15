@@ -1,5 +1,6 @@
-# Toạ độ đại diện của quốc gia, dùng để vẽ bản đồ World Monitor.
-# Là tâm địa lý gần đúng, không phải thủ đô và không mang ý nghĩa nghiệp vụ.
+# Toạ độ đại diện dùng để vẽ bản đồ World Monitor. Mã quốc gia dùng tâm địa lý
+# gần đúng; `ZZ` là neo kỹ thuật giữa Thái Bình Dương cho VASP chưa rõ pháp vực,
+# không phải quốc gia và không mang ý nghĩa nghiệp vụ.
 country_code,name,lat,lon
 AU,Australia,-25.274,133.775
 AT,Austria,47.516,14.550
@@ -34,3 +35,4 @@ SA,Saudi Arabia,23.886,45.079
 SI,Slovenia,46.151,14.995
 SK,Slovakia,48.669,19.699
 US,United States,37.090,-95.713
+ZZ,Unknown VASP jurisdiction,0.000,-160.000

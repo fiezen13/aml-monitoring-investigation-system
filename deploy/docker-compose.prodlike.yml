@@ -6,7 +6,7 @@
 # So với staging, siết thêm:
 #   * Giới hạn tài nguyên, để một truy vấn đồ thị chạy loạn không kéo sập cả máy
 #   * Xoay vòng log, để đĩa không đầy sau hai tuần
-#   * APP_ENV=production, khiến script seed TỪ CHỐI xoá dữ liệu
+#   * Không có fixture seed; dữ liệu nghiệp vụ chỉ đến từ LI-Small
 
 services:
   postgres:
@@ -34,12 +34,8 @@ services:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
 
-  seed:
+  migrate:
     restart: "no"
-    environment:
-      # APP_ENV=production làm hàm wipe() trong scripts/seed_data.py từ chối
-      # chạy. Dữ liệu ở môi trường này không được xoá bằng một lệnh lỡ tay.
-      APP_ENV: production
 
   api:
     restart: always

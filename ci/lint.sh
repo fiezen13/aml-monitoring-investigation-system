@@ -16,6 +16,11 @@ $PY -m ruff check src tests scripts || die "ruff check không đạt"
 ok "ruff check"
 group_end
 
+group_start "observability config"
+$PY scripts/validate_observability.py || die "Cấu hình observability không hợp lệ"
+ok "observability config"
+group_end
+
 group_start "ruff format --check"
 $PY -m ruff format --check src tests scripts \
     || die "Mã chưa đúng định dạng. Chạy: make format"

@@ -1,6 +1,6 @@
 import type { NodeSingular, StylesheetStyle } from "cytoscape";
 
-import { C } from "../../../design/palette";
+import { cytoscapeTheme as T } from "../../../design/adapters/cytoscapeTheme";
 
 /**
  * Luật thị giác của đồ thị điều tra.
@@ -41,24 +41,24 @@ export function buildStylesheet(): StylesheetStyle[] {
     {
       selector: "node",
       style: {
-        "background-color": C.elev,
+        "background-color": T.node.fill,
         "border-width": 1.5,
-        "border-color": C.lineStrong,
+        "border-color": T.node.border,
         width: (n: NodeSingular) => TIER_SIZE[(n.data("tier") as number) ?? 3] ?? 22,
         height: (n: NodeSingular) => TIER_SIZE[(n.data("tier") as number) ?? 3] ?? 22,
         shape: "ellipse",
         label: "",
-        "font-family": "Geist, Inter, system-ui, sans-serif",
+        "font-family": T.font.sans,
         "font-size": 11,
         "font-weight": 500,
-        color: C.inkMid,
+        color: T.node.label,
         "text-valign": "bottom",
         "text-margin-y": 5,
         "text-max-width": "96px",
         "text-wrap": "ellipsis",
         "overlay-opacity": 0,
         "transition-property": "opacity, border-color, background-color, border-width",
-        "transition-duration": 140,
+        "transition-duration": T.transitionMs,
       },
     },
 
@@ -84,18 +84,18 @@ export function buildStylesheet(): StylesheetStyle[] {
     // ---------------------------------------------------------------
     {
       selector: "node.risk-warn",
-      style: { "border-color": C.warn, "background-color": "#221B0E", "border-width": 2 },
+      style: { "border-color": T.tone.warn, "background-color": T.node.fillWarn, "border-width": 2 },
     },
     {
       selector: "node.risk-crit",
-      style: { "border-color": C.risk, "background-color": "#2A1116", "border-width": 2.5 },
+      style: { "border-color": T.tone.crit, "background-color": T.node.fillCrit, "border-width": 2.5 },
     },
     // Hard negative: thực thể hợp pháp cố ý đưa vào để đo dương tính giả. Phải
     // nhìn ra được nó *không* thuộc mạch chính, nếu không analyst sẽ điều tra
     // nhầm và bộ đo mất ý nghĩa.
     {
       selector: "node.negative",
-      style: { "border-style": "dotted", "border-color": C.inkDim, "background-color": C.sunken },
+      style: { "border-style": "dotted", "border-color": T.tone.muted, "background-color": T.node.fillMuted },
     },
 
     // Cụm đang thu gọn: một khối, kèm số thành viên. Không phải hộp nét đứt to
@@ -106,13 +106,13 @@ export function buildStylesheet(): StylesheetStyle[] {
         shape: "round-rectangle",
         width: 58,
         height: 40,
-        "background-color": C.panel,
-        "border-color": C.lineStrong,
+        "background-color": T.node.cluster,
+        "border-color": T.node.border,
         "border-width": 1.5,
         label: "data(clusterLabel)",
         "text-valign": "bottom",
         "font-size": 10,
-        color: C.inkSoft,
+        color: T.node.label,
       },
     },
     {
@@ -126,9 +126,9 @@ export function buildStylesheet(): StylesheetStyle[] {
       selector: "node.cluster-parent",
       style: {
         shape: "round-rectangle",
-        "background-color": C.side,
+        "background-color": T.node.clusterParent,
         "background-opacity": 0.5,
-        "border-color": C.line,
+        "border-color": T.edge.base,
         "border-width": 1,
         "border-style": "dashed",
         label: "data(clusterLabel)",
@@ -137,7 +137,7 @@ export function buildStylesheet(): StylesheetStyle[] {
         "text-margin-y": -4,
         "font-size": 9.5,
         "font-weight": 600,
-        color: C.inkDim,
+        color: T.tone.muted,
         padding: "18px",
       },
     },
@@ -149,19 +149,19 @@ export function buildStylesheet(): StylesheetStyle[] {
     { selector: "node.labelled", style: { label: "data(short)" } },
     {
       selector: "node.hovered, node.selected",
-      style: { label: "data(label)", color: C.inkHi, "font-weight": 600, "z-index": 30 },
+      style: { label: "data(label)", color: T.node.labelActive, "font-weight": 600, "z-index": 30 },
     },
     {
       selector: "node.selected",
       style: {
-        "border-color": C.primary,
+        "border-color": T.tone.selected,
         "border-width": 3,
-        "background-color": "#0C2620",
+        "background-color": T.node.fillSelected,
       },
     },
     // Đỉnh nằm trên đường tiền đang xem: viền đỏ nhưng KHÔNG to thêm, để không
     // cạnh tranh với đỉnh đang chọn.
-    { selector: "node.on-path", style: { "border-color": C.risk, "border-width": 2.5 } },
+    { selector: "node.on-path", style: { "border-color": T.tone.crit, "border-width": 2.5 } },
 
     // ---------------------------------------------------------------
     // Cạnh
@@ -170,45 +170,45 @@ export function buildStylesheet(): StylesheetStyle[] {
       selector: "edge",
       style: {
         width: 1,
-        "line-color": C.line,
+        "line-color": T.edge.base,
         "curve-style": "bezier",
         "control-point-step-size": 28,
         // Mũi tên nhỏ — hướng tiền phải đọc được, không phải phải hét lên (§24).
         "target-arrow-shape": "triangle",
-        "target-arrow-color": C.line,
+        "target-arrow-color": T.edge.base,
         "arrow-scale": 0.6,
         opacity: 0.35,
         label: "",
-        "font-family": "JetBrains Mono, ui-monospace, monospace",
+        "font-family": T.font.mono,
         "font-size": 9.5,
-        color: C.inkSoft,
-        "text-background-color": C.app,
+        color: T.node.label,
+        "text-background-color": T.edge.labelBackground,
         "text-background-opacity": 0.85,
         "text-background-padding": "2px",
         "text-rotation": "autorotate",
         "transition-property": "opacity, line-color, width",
-        "transition-duration": 140,
+        "transition-duration": T.transitionMs,
       },
     },
     // Cạnh dòng tiền nổi hơn cạnh cấu trúc (sở hữu, thiết bị) — đây là thứ tự
     // ưu tiên §21: dòng tiền chính trên, quan hệ thường dưới.
     {
       selector: "edge.money",
-      style: { width: 1.6, "line-color": "#2B4358", "target-arrow-color": "#2B4358", opacity: 0.55 },
+      style: { width: 1.6, "line-color": T.edge.money, "target-arrow-color": T.edge.money, opacity: 0.55 },
     },
     // Cạnh suy luận: nét đứt. Analyst phải phân biệt được "quan sát thấy" với
     // "suy ra" mà không cần bấm vào.
     { selector: "edge.inferred", style: { "line-style": "dashed" } },
-    { selector: "edge.risk-warn", style: { "line-color": C.warn, "target-arrow-color": C.warn, opacity: 0.75 } },
-    { selector: "edge.risk-crit", style: { "line-color": C.risk, "target-arrow-color": C.risk, opacity: 0.9, width: 2.2 } },
+    { selector: "edge.risk-warn", style: { "line-color": T.tone.warn, "target-arrow-color": T.tone.warn, opacity: 0.75 } },
+    { selector: "edge.risk-crit", style: { "line-color": T.tone.crit, "target-arrow-color": T.tone.crit, opacity: 0.9, width: 2.2 } },
 
     // Nhãn cạnh CHỈ khi được chọn hoặc nằm trên đường tiền đang xem (§18).
     {
       selector: "edge.selected, edge.on-path",
       style: {
         label: "data(edgeLabel)",
-        "line-color": C.primary,
-        "target-arrow-color": C.primary,
+        "line-color": T.tone.selected,
+        "target-arrow-color": T.tone.selected,
         width: 2.4,
         opacity: 1,
         "z-index": 30,
@@ -216,7 +216,7 @@ export function buildStylesheet(): StylesheetStyle[] {
     },
     {
       selector: "edge.on-path",
-      style: { "line-color": C.risk, "target-arrow-color": C.risk },
+      style: { "line-color": T.tone.crit, "target-arrow-color": T.tone.crit },
     },
     { selector: "edge.hovered", style: { opacity: 0.95, width: 2.4 } },
 
@@ -227,7 +227,7 @@ export function buildStylesheet(): StylesheetStyle[] {
       selector: "edge.evidence-gap",
       style: {
         "line-style": "dotted",
-        "line-color": C.inkDim,
+        "line-color": T.tone.muted,
         "target-arrow-shape": "none",
         width: 1.2,
         opacity: 0.4,

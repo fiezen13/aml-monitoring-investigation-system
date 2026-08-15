@@ -3,10 +3,10 @@ import { useState } from "react";
 import { api, type ApiSetting } from "../api/client";
 import { formatDateTime } from "../api/format";
 import { useApi } from "../api/useApi";
+import { PageShell } from "../components/ui";
 import { Panel } from "../components/common/Panel";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
 import { Tooltip } from "../components/common/Tooltip";
-import { PageHeader } from "../components/layout/PageHeader";
 import { useApp } from "../context/AppContext";
 
 function displayValue(setting: ApiSetting): string {
@@ -50,9 +50,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[980px] space-y-3">
-      <PageHeader title="Cấu hình hệ thống" subtitle="Tham số bộ máy rủi ro, ngưỡng cảnh báo và kênh thông báo nội bộ." />
-
+    <PageShell subtitle="Tham số bộ máy rủi ro, ngưỡng cảnh báo và kênh thông báo nội bộ.">
       {settingsQuery.loading && <Panel><LoadingSkeleton rows={5} /></Panel>}
       {settingsQuery.error && <Panel><ErrorState detail={settingsQuery.error} onRetry={settingsQuery.reload} /></Panel>}
       {!settingsQuery.loading && !settingsQuery.error && (
@@ -64,8 +62,8 @@ export function SettingsPage() {
                 <tbody>{thresholds.map((setting) => (
                   <tr key={setting.code} className="border-b border-line/60 last:border-0">
                     <td className="tabular px-4 py-2.5 text-2xs text-ink-low">{setting.code}</td>
-                    <td className="px-4 py-2.5 text-[13px] text-ink-hi">{setting.label}</td>
-                    <td className="tabular px-4 py-2.5 text-[13px] font-semibold text-ink-hi">{displayValue(setting)} <span className="text-2xs font-normal text-ink-low">{setting.unit}</span></td>
+                    <td className="px-4 py-2.5 text-body text-ink-hi">{setting.label}</td>
+                    <td className="tabular px-4 py-2.5 text-body font-semibold text-ink-hi">{displayValue(setting)} <span className="text-2xs font-normal text-ink-low">{setting.unit}</span></td>
                     <td className="px-4 py-2.5 text-2xs text-ink-mid">{setting.source}</td>
                     <td className="tabular px-4 py-2.5 text-2xs text-ink-low">{formatDateTime(setting.updated_at)}</td>
                     <td className="px-4 py-2.5"><Tooltip content={canEdit ? "Thay đổi cần lý do và ghi vào nhật ký kiểm toán" : "Chỉ Quản trị viên hoặc MLRO được chỉnh bộ máy rủi ro"}><button type="button" disabled={!canEdit || saving === setting.code} onClick={() => edit(setting)} className="rounded-control border border-line px-2.5 py-1 text-2xs font-medium text-ink-hi hover:border-line-emphasis disabled:cursor-not-allowed disabled:opacity-40">{saving === setting.code ? "Đang lưu" : "Chỉnh"}</button></Tooltip></td>
@@ -77,15 +75,15 @@ export function SettingsPage() {
 
           <div className="grid gap-3 md:grid-cols-2">
             <Panel title="Thông báo nội bộ">
-              {notification ? <label className="flex items-start gap-2.5 text-[13px] text-ink-mid"><input type="checkbox" checked={notification.value === "true"} disabled={!canEdit || saving === notification.code} onChange={(event) => void save(notification, String(event.target.checked), "Cập nhật kênh thông báo nội bộ")} className="mt-0.5 accent-[#00B2A9]" /><span>{notification.label}.<span className="mt-1 block text-2xs text-ink-low">Không tồn tại kênh thông báo nào tới khách hàng đang bị điều tra (NT6).</span></span></label> : <EmptyState detail="Chưa có cấu hình thông báo." />}
+              {notification ? <label className="flex items-start gap-2.5 text-body text-ink-mid"><input type="checkbox" checked={notification.value === "true"} disabled={!canEdit || saving === notification.code} onChange={(event) => void save(notification, String(event.target.checked), "Cập nhật kênh thông báo nội bộ")} className="mt-0.5 accent-primary" /><span>{notification.label}.<span className="mt-1 block text-2xs text-ink-low">Không tồn tại kênh thông báo nào tới khách hàng đang bị điều tra (NT6).</span></span></label> : <EmptyState detail="Chưa có cấu hình thông báo." />}
             </Panel>
 
             <Panel title="Phiên bản danh sách đối chiếu">
-              {versions.length ? <dl className="space-y-2.5 text-[13px]">{versions.slice(0, 4).map((version) => <div key={version.watchlist_version_id} className="flex items-center justify-between gap-3"><dt className="text-ink-mid">{version.provider}</dt><dd className="text-right"><span className="tabular block font-medium text-ink-hi">{version.watchlist_version_id}</span><span className="tabular block text-2xs text-ink-low">{formatDateTime(version.published_at)}</span></dd></div>)}</dl> : <EmptyState detail="Chưa nạp phiên bản danh sách đối chiếu." />}
+              {versions.length ? <dl className="space-y-2.5 text-body">{versions.slice(0, 4).map((version) => <div key={version.watchlist_version_id} className="flex items-center justify-between gap-3"><dt className="text-ink-mid">{version.provider}</dt><dd className="text-right"><span className="tabular block font-medium text-ink-hi">{version.watchlist_version_id}</span><span className="tabular block text-2xs text-ink-low">{formatDateTime(version.published_at)}</span></dd></div>)}</dl> : <EmptyState detail="Chưa nạp phiên bản danh sách đối chiếu." />}
             </Panel>
           </div>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -86,10 +86,9 @@ services:
       # volume có tên cho workspace thì đường dẫn hai bên khác nhau, daemon
       # mount phải một thư mục không tồn tại, và nó lặng lẽ tạo thư mục rỗng.
       #
-      # Hậu quả cụ thể đã gặp: PostgreSQL khởi động với
-      # /docker-entrypoint-initdb.d rỗng, không có bảng nào được tạo, container
-      # vẫn báo healthy. Chỉ vì scripts/seed_data.py có bước kiểm tra lược đồ
-      # nên lỗi mới lộ ra thay vì thành một cơ sở dữ liệu rỗng chạy tiếp.
+      # Hậu quả cụ thể: PostgreSQL có thể khởi động với
+      # /docker-entrypoint-initdb.d rỗng. CI phải chạy migrate/schema check
+      # tường minh trước khi kiểm thử.
       #
       # Thư mục này phải tồn tại trên máy chủ và thuộc uid 1000:
       #     sudo mkdir -p /home/jenkins/agent && sudo chown -R 1000:1000 /home/jenkins

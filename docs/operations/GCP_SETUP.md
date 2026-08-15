@@ -284,9 +284,8 @@ container `postgres` không dựng, và ba service ứng dụng nhận đúng `D
 Thứ tự này quan trọng và ngược với trực giác.
 
 Với container `postgres`, lược đồ tự dựng lúc khởi tạo volume nên không ai phải nghĩ tới nó. Cloud
-SQL bắt đầu **rỗng hoàn toàn**. Mà dịch vụ `seed` chạy `check_schema()` trước khi nạp dữ liệu, và
-`api` với `worker` chỉ khởi động khi `seed` thoát với mã 0 — nên dựng stack trên một cơ sở dữ liệu
-rỗng sẽ dừng ở `seed` và cả stack không lên.
+SQL bắt đầu **rỗng hoàn toàn**. Dịch vụ `migrate` phải áp lược đồ thành công trước khi `api` và
+`worker` khởi động; bước này không sinh dữ liệu nghiệp vụ.
 
 Đó là hành vi đúng, cố ý: hỏng lược đồ biến thành *"cả stack không lên"* chứ không phải *"mọi thứ
 xanh, lỗi 500 lúc bấm vào"*. Nhưng nó có nghĩa là lược đồ phải đi trước.
@@ -296,7 +295,7 @@ Nạp bằng image ứng dụng đã build, không cần cài Python trên VM:
 ```bash
 docker compose -f docker-compose.yml -f deploy/docker-compose.vm.yml \
                -f deploy/docker-compose.cloudsql.yml \
-    run --rm --no-deps seed python scripts/migrate.py
+    run --rm --no-deps migrate python scripts/migrate.py
 ```
 
 Lệnh đó áp `001`, `002`, `004`, `005` — **nhưng không áp `003_agent_readonly_role.sh`**, vì đó là
@@ -309,7 +308,7 @@ nhãn"* (ND1/RD1) không được cưỡng chế. `migrate.py` **cảnh báo to*
 ```bash
 docker compose -f docker-compose.yml -f deploy/docker-compose.vm.yml \
                -f deploy/docker-compose.cloudsql.yml \
-    run --rm --no-deps --entrypoint bash seed -c '
+    run --rm --no-deps --entrypoint bash migrate -c '
       apt-get update -qq && apt-get install -y -qq postgresql-client >/dev/null
       PGHOST=$(python -c "import os,urllib.parse as u; print(u.urlparse(os.environ[\"DATABASE_URL\"].replace(\"+psycopg\",\"\")).hostname)")
       PGPASSWORD=$(python -c "import os,urllib.parse as u; print(u.urlparse(os.environ[\"DATABASE_URL\"].replace(\"+psycopg\",\"\")).password)")
@@ -317,8 +316,8 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.vm.yml \
       PGHOST=$PGHOST PGPASSWORD=$PGPASSWORD bash db/init/003_agent_readonly_role.sh'
 ```
 
-**Mốc kiểm tra:** `... run --rm --no-deps seed python scripts/migrate.py --status` hiện cả 5 file ở
-trạng thái `đã áp`, gồm cả dòng `003_agent_readonly_role.sh`.
+**Mốc kiểm tra:** `... run --rm --no-deps migrate python scripts/migrate.py --status` hiện toàn bộ
+file SQL ở trạng thái `đã áp`, cùng dòng `003_agent_readonly_role.sh`.
 
 ---
 
@@ -333,7 +332,7 @@ bash deploy/vm-deploy.sh
 Script kiểm tra trước khi dựng: `DATABASE_URL` có tồn tại không, có lỡ trỏ vào `@postgres:` không,
 và có thiếu `?sslmode=require` không.
 
-**Mốc kiểm tra:** `docker compose ps` **không** có dòng nào tên `postgres`, và `seed` thoát mã 0.
+**Mốc kiểm tra:** `docker compose ps` **không** có dòng nào tên `postgres`, và `migrate` thoát mã 0.
 
 ---
 

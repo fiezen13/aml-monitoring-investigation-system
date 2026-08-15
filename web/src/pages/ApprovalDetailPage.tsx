@@ -2,6 +2,7 @@ import { Building2, CheckCircle2, FileDown, Network, ShieldCheck } from "lucide-
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { PageShell } from "../components/ui";
 import { StatusBadge } from "../components/common/Badges";
 import { Panel } from "../components/common/Panel";
 import { ReasonModal } from "../components/common/ReasonModal";
@@ -23,7 +24,7 @@ export function ApprovalDetailPage() {
   const [rejectOpen, setRejectOpen] = useState(false);
 
   if (!sarQuery.data) {
-    return <div className="p-6 text-[13px] text-ink-mid">{sarQuery.error ?? "Đang tải hồ sơ SAR từ PostgreSQL..."}</div>;
+    return <div className="p-6 text-body text-ink-mid">{sarQuery.error ?? "Đang tải hồ sơ SAR từ PostgreSQL..."}</div>;
   }
   const sar = sarQuery.data;
   const detail = {
@@ -61,7 +62,7 @@ export function ApprovalDetailPage() {
         : "";
 
   return (
-    <div className="mx-auto max-w-[1180px]">
+    <PageShell>
       <Breadcrumb
         items={[
           { label: "Phê duyệt SAR", to: "/approvals" },
@@ -69,7 +70,7 @@ export function ApprovalDetailPage() {
         ]}
       />
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="tabular text-[20px] font-bold text-ink-hi">{detail.sar_id}</h1>
+        <h1 className="tabular text-h2 font-bold text-ink-hi">{detail.sar_id}</h1>
         {isApproved ? (
           <StatusBadge tone="ok" label="ĐÃ PHÊ DUYỆT" />
         ) : status === "REJECTED" ? (
@@ -84,7 +85,7 @@ export function ApprovalDetailPage() {
                 type="button"
                 disabled={!canApprove}
                 onClick={() => setApproveOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-control bg-primary px-3 py-1.5 text-[13px] font-semibold text-app hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 rounded-control bg-primary px-3 py-1.5 text-body font-semibold text-app hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <CheckCircle2 size={14} aria-hidden />
                 Phê duyệt
@@ -95,7 +96,7 @@ export function ApprovalDetailPage() {
             <button
               type="button"
               onClick={() => setRejectOpen(true)}
-              className="rounded-control border border-line px-3 py-1.5 text-[13px] font-medium text-ink-hi hover:border-risk/50 hover:text-risk"
+              className="rounded-control border border-line px-3 py-1.5 text-body font-medium text-ink-hi hover:border-risk/50 hover:text-risk"
             >
               Từ chối
             </button>
@@ -119,7 +120,7 @@ export function ApprovalDetailPage() {
                   pushToast({ tone: "error", title: "Không xuất được hồ sơ", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
                 }
               }}
-              className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-[13px] font-medium text-ink-hi disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-body font-medium text-ink-hi disabled:cursor-not-allowed disabled:opacity-40"
             >
               <FileDown size={14} aria-hidden />
               Xuất hồ sơ
@@ -129,7 +130,7 @@ export function ApprovalDetailPage() {
       </div>
 
       {isSelfApproval && isPending && (
-        <div className="mb-3 flex items-center gap-2 rounded-panel border border-warn/40 bg-warn/10 px-3 py-2.5 text-[13px] text-warn">
+        <div className="mb-3 flex items-center gap-2 rounded-panel border border-warn/40 bg-warn/10 px-3 py-2.5 text-body text-warn">
           <ShieldCheck size={14} aria-hidden />
           Bạn là người gửi báo cáo này — theo nguyên tắc bốn mắt, hãy chuyển sang tài khoản
           MLRO (Đàm Minh Tuấn) qua menu tài khoản để phê duyệt.
@@ -148,7 +149,7 @@ export function ApprovalDetailPage() {
                 <div className="text-2xs font-semibold uppercase tracking-wider text-ink-low">
                   Loại nghi vấn
                 </div>
-                <p className="mt-1 text-[13px] text-ink-hi">{detail.suspicionType}</p>
+                <p className="mt-1 text-body text-ink-hi">{detail.suspicionType}</p>
               </div>
               <div>
                 <div className="text-2xs font-semibold uppercase tracking-wider text-ink-low">
@@ -163,7 +164,7 @@ export function ApprovalDetailPage() {
               <div className="text-2xs font-semibold uppercase tracking-wider text-ink-low">
                 Tóm tắt hành vi
               </div>
-              <p className="mt-1.5 rounded-control border border-line bg-elev p-3 text-[13px] leading-relaxed text-ink-mid">
+              <p className="mt-1.5 rounded-control border border-line bg-elev p-3 text-body leading-relaxed text-ink-mid">
                 {detail.behaviourSummary}
               </p>
             </div>
@@ -188,12 +189,12 @@ export function ApprovalDetailPage() {
                   <tbody>
                     {detail.transactions.map((t) => (
                       <tr key={t.transaction_id} className="border-b border-line/60 last:border-0">
-                        <td className="tabular px-3 py-2 text-[13px] font-medium text-info">
+                        <td className="tabular px-3 py-2 text-body font-medium text-info">
                           {t.transaction_id}
                         </td>
-                        <td className="tabular px-3 py-2 text-[13px] text-ink-mid">{t.time}</td>
-                        <td className="tabular px-3 py-2 text-[13px] text-ink-hi">{t.amount}</td>
-                        <td className="px-3 py-2 text-[13px] text-ink-mid">{t.location}</td>
+                        <td className="tabular px-3 py-2 text-body text-ink-mid">{t.time}</td>
+                        <td className="tabular px-3 py-2 text-body text-ink-hi">{t.amount}</td>
+                        <td className="px-3 py-2 text-body text-ink-mid">{t.location}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -211,7 +212,7 @@ export function ApprovalDetailPage() {
                 <Building2 size={18} aria-hidden />
               </span>
               <div>
-                <div className="text-[13px] font-bold text-ink-hi">{detail.subject.name}</div>
+                <div className="text-body font-bold text-ink-hi">{detail.subject.name}</div>
                 <div className="tabular text-2xs text-ink-low">{detail.subject.taxCode}</div>
               </div>
             </div>
@@ -244,7 +245,7 @@ export function ApprovalDetailPage() {
             }
           >
             <div className="flex flex-col items-center rounded-control border border-line bg-elev py-5">
-              <span className="tabular text-[26px] font-bold text-ok">
+              <span className="tabular text-h1 font-bold text-ok">
                 {detail.networkConfidence}%
               </span>
               <span className="text-2xs uppercase tracking-wider text-ink-low">
@@ -312,6 +313,6 @@ export function ApprovalDetailPage() {
           }
         }}
       />
-    </div>
+    </PageShell>
   );
 }

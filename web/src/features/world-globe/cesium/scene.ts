@@ -19,6 +19,8 @@ import {
 
 import "cesium/Build/Cesium/Widgets/widgets.css";
 
+import { atmosphere, imageryTone, mapSurface } from "../../../design/adapters/mapTheme";
+
 /** Độ cao camera cho khung nhìn toàn cầu ban đầu, tính bằng mét. */
 // 18.500 km cho quả cầu chiếm khoảng 70% chiều cao khung bản đồ — đủ để đọc
 // là hình cầu mà vẫn còn khoảng trống quanh rìa.
@@ -63,10 +65,10 @@ function offlineImagery(): Promise<TileMapServiceImageryProvider> {
 function applyDarkTone(viewer: Viewer): void {
   const layer = viewer.imageryLayers.get(0);
   if (!layer) return;
-  layer.brightness = 0.62;
-  layer.saturation = 0.55;
-  layer.contrast = 1.08;
-  layer.gamma = 1.12;
+  layer.brightness = imageryTone.brightness;
+  layer.saturation = imageryTone.saturation;
+  layer.contrast = imageryTone.contrast;
+  layer.gamma = imageryTone.gamma;
 }
 
 async function attachImagery(viewer: Viewer, token: string | undefined): Promise<ImagerySource> {
@@ -103,6 +105,12 @@ export async function createScene(container: HTMLElement, token?: string): Promi
     // Bảng chi tiết là component React; để Cesium tự chọn thực thể sẽ sinh ra
     // hai nguồn sự thật cho cùng một trạng thái.
     scene3DOnly: false,
+    // Tắt hộp thoại lỗi của Cesium. Khi không có WebGL — GPU nằm trong danh
+    // sách chặn, phiên remote desktop, máy ảo không tăng tốc phần cứng — nó tự
+    // chèn một hộp nền trắng chữ tiếng Anh vào giữa bảng điều khiển tối. Lỗi ấy
+    // đã có đường xử lý riêng ở CesiumGlobe với đúng tông màu và đúng tiếng
+    // Việt; hai thông báo cho cùng một sự cố thì một cái là thừa.
+    showRenderLoopErrors: false,
     // Ảnh nền do attachImagery() gắn, để tránh Viewer tự gọi ion khi khởi tạo.
     baseLayer: false,
   });
@@ -111,10 +119,18 @@ export async function createScene(container: HTMLElement, token?: string): Promi
   applyDarkTone(viewer);
 
   const { scene } = viewer;
-  scene.backgroundColor = Color.fromCssColorString("#080D12");
-  if (scene.skyAtmosphere) scene.skyAtmosphere.show = true;
+  scene.backgroundColor = Color.fromCssColorString(mapSurface.space);
+  if (scene.skyAtmosphere) {
+    scene.skyAtmosphere.show = true;
+    // Kéo bầu khí quyển về đúng tông lạnh của bản đồ 2D. Mặc định của Cesium là
+    // một vành xanh dương sáng — đẹp trong ứng dụng địa cầu, nhưng ở đây nó là
+    // vật thể sáng nhất màn hình và hút mắt khỏi hành lang giao dịch.
+    scene.skyAtmosphere.hueShift = atmosphere.hueShift;
+    scene.skyAtmosphere.saturationShift = atmosphere.saturationShift;
+    scene.skyAtmosphere.brightnessShift = atmosphere.brightnessShift;
+  }
   scene.globe.showGroundAtmosphere = true;
-  scene.globe.baseColor = Color.fromCssColorString("#08111C");
+  scene.globe.baseColor = Color.fromCssColorString(mapSurface.globeBase);
   // Tắt chiếu sáng theo mặt trời: nửa quả cầu chìm trong đêm là không dùng được
   // cho một màn hình giám sát trực ban 24/7.
   scene.globe.enableLighting = false;

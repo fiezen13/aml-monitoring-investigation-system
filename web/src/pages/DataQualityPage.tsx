@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { conf, int } from "../api/fcFormat";
 import { formatDateTime } from "../api/format";
 import { useApi } from "../api/useApi";
+import { ErrorState, PageShell } from "../components/ui";
 import { type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
 import { Chip, Empty, KpiCard, Panel, ProgressBar, ScreenTitle, Skeleton } from "../components/fc/primitives";
@@ -142,7 +143,7 @@ export function DataQualityPage() {
   }, [obs]);
 
   return (
-    <div className="flex animate-up flex-col gap-3.5 p-4">
+    <PageShell variant="dense">
       <ScreenTitle
         title="Chất lượng dữ liệu"
         meta="Dữ liệu có sạch không, và mô hình có được phép nhìn thấy nó tại thời điểm ra quyết định không"
@@ -210,7 +211,8 @@ export function DataQualityPage() {
               <span>Trạng thái</span>
             </div>
             {checks.loading && <Skeleton rows={6} />}
-            {!checks.loading && !rows.length && <Empty text="Chưa có kết quả kiểm tra nào" />}
+            {checks.error && <ErrorState detail={checks.error} onRetry={checks.reload} />}
+            {!checks.loading && !checks.error && !rows.length && <Empty text="Chưa có kết quả kiểm tra nào" />}
             {rows.map((r) => (
               <div
                 key={r.id}
@@ -252,7 +254,13 @@ export function DataQualityPage() {
                 <span>Nội dung</span>
               </div>
               {observations.loading && <Skeleton rows={6} />}
-              {!observations.loading && !obs.length && <Empty text="Chưa có nhật ký mở quyền nào" />}
+              {observations.error && <ErrorState detail={observations.error} onRetry={observations.reload} />}
+              {!observations.loading && !observations.error && !obs.length && (
+                <Empty
+                  text="Chưa có nhật ký mở quyền nào"
+                  hint="Release scoring hiện tại chưa phát sinh bằng chứng điều tra hoặc hồ sơ pháp lý."
+                />
+              )}
               {obs.map((o) => (
                 <div
                   key={o.id}
@@ -297,6 +305,10 @@ export function DataQualityPage() {
       {tab === "sources" && (
         <div className="flex flex-col gap-2.5">
           {sources.loading && <Skeleton rows={4} />}
+          {sources.error && <ErrorState detail={sources.error} onRetry={sources.reload} />}
+          {!sources.loading && !sources.error && !(sources.data ?? []).length && (
+            <Empty text="Chưa có nguồn dữ liệu nào được đăng ký" />
+          )}
           {(sources.data ?? []).map((s) => (
             <Panel key={s.source_id}>
               <div className="flex flex-wrap items-start gap-3">
@@ -331,6 +343,6 @@ export function DataQualityPage() {
           ))}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

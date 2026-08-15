@@ -56,7 +56,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--window",
         default="7d",
-        choices=("1d", "7d", "14d"),
+        choices=("1d", "7d"),
         help="Cửa sổ đặc trưng (mặc định: 7d)",
     )
     p.add_argument("--processed-dir", default=str(PROCESSED_DIR), help="Thu muc feature/model artifacts")

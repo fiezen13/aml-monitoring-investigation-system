@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { LayoutKey } from "../types/graph.types";
+import type { GraphComponent } from "../utils/graphComponents";
 
 const LAYOUTS: [LayoutKey, string][] = [
   ["flow", "Luồng điều tra"],
@@ -19,7 +20,10 @@ interface Props {
   nodeCount: number;
   edgeCount: number;
   search: string;
+  networks: GraphComponent[];
+  activeNetworkId: string | null;
   onSearch: (v: string) => void;
+  onNetwork: (id: string) => void;
   onLayout: (l: LayoutKey) => void;
   onFit: () => void;
   onExpandHop: (hops: number) => void;
@@ -78,7 +82,10 @@ export function GraphToolbar({
   nodeCount,
   edgeCount,
   search,
+  networks,
+  activeNetworkId,
   onSearch,
+  onNetwork,
   onLayout,
   onFit,
   onExpandHop,
@@ -94,12 +101,26 @@ export function GraphToolbar({
 
   return (
     <div className="relative flex items-center gap-1.5 border-b border-line bg-side px-3 py-1.5">
+      <select
+        value={activeNetworkId ?? ""}
+        onChange={(event) => onNetwork(event.target.value)}
+        aria-label="Chọn mạng lưới giao dịch"
+        title="Mỗi lựa chọn là một connected component độc lập"
+        className="w-64 rounded-control border border-primary-line bg-primary-soft px-2 py-1 text-2xs font-medium text-primary outline-none focus:border-primary"
+      >
+        {networks.map((network) => (
+          <option key={network.id} value={network.id}>
+            {network.label} · {network.nodeCount} đỉnh/{network.edgeCount} cạnh
+          </option>
+        ))}
+      </select>
+
       <input
         value={search}
         onChange={(e) => onSearch(e.target.value)}
         placeholder="Tìm đỉnh (tên, mã, tài khoản…)"
         aria-label="Tìm đỉnh trong đồ thị"
-        className="w-52 rounded-control border border-line bg-sunken px-2.5 py-1 text-2xs text-ink-mid outline-none placeholder:text-ink-dim focus:border-primary-line"
+        className="w-44 rounded-control border border-line bg-sunken px-2.5 py-1 text-2xs text-ink-mid outline-none placeholder:text-ink-dim focus:border-primary-line"
       />
 
       <select

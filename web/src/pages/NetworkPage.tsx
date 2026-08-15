@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { reactFlowTheme } from "../design/adapters/reactFlowTheme";
 
 import { ReasonModal } from "../components/common/ReasonModal";
 import { api } from "../api/client";
@@ -106,14 +107,14 @@ function NetworkCanvas({ entities, relationships, onSelect }: { entities: Networ
         label: e.label,
         animated: true,
         style: {
-          stroke: "#EF4444",
+          stroke: reactFlowTheme.risk,
           strokeWidth: 1.5,
           strokeDasharray: "6 4",
         },
-        labelStyle: { fill: "#F1F5F9", fontSize: 10, fontWeight: 700 },
+        labelStyle: { fill: reactFlowTheme.node.text, fontSize: 10, fontWeight: 700 },
         labelBgStyle: {
-          fill: "#EF4444",
-          fillOpacity: 0.85,
+          fill: reactFlowTheme.edge.labelBackground,
+          fillOpacity: 0.92,
         },
         labelBgPadding: [6, 3] as [number, number],
         labelBgBorderRadius: 3,
@@ -134,14 +135,14 @@ function NetworkCanvas({ entities, relationships, onSelect }: { entities: Networ
         nodesDraggable
         nodesConnectable={false}
       >
-        <Background color="rgba(148,163,184,0.12)" gap={26} />
+        <Background color={reactFlowTheme.grid} gap={26} />
         <MiniMap
           pannable
           className="!bottom-3 !right-3 !h-24 !w-36 rounded-panel border border-line !bg-side"
           nodeColor={(n) =>
-            (n.data as FlowNodeData).entity.risk === "primary" ? "#00B2A9" : "#EF4444"
+            (n.data as FlowNodeData).entity.risk === "primary" ? reactFlowTheme.focus : reactFlowTheme.risk
           }
-          maskColor="rgba(7,20,34,0.7)"
+          maskColor="var(--surface-scrim)"
         />
       </ReactFlow>
 
@@ -206,7 +207,7 @@ export function NetworkPage() {
   const [sarModal, setSarModal] = useState(false);
 
   if (!networkQuery.data) {
-    return <div className="p-6 text-[13px] text-ink-mid">{networkQuery.error ?? "Đang dựng mạng lưới từ giao dịch..."}</div>;
+    return <div className="p-6 text-body text-ink-mid">{networkQuery.error ?? "Đang dựng mạng lưới từ giao dịch..."}</div>;
   }
   const network = networkQuery.data;
   const selected = network.nodes.find((n) => n.id === selectedId) ?? network.nodes[0];
@@ -245,23 +246,23 @@ export function NetworkPage() {
             </button>
           </div>
           <div className="space-y-4 p-4">
-            <h2 className="text-[17px] font-bold text-ink-hi">{selected.label}</h2>
+            <h2 className="text-h3 font-bold text-ink-hi">{selected.label}</h2>
 
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-control border border-line bg-elev p-2.5">
                 <div className="text-2xs uppercase tracking-wide text-ink-low">Điểm rủi ro</div>
-                <div className="tabular mt-0.5 text-[18px] font-bold text-risk">
+                <div className="tabular mt-0.5 text-h2 font-bold text-risk">
                   {network.risk_score}/100
                 </div>
               </div>
               <div className="rounded-control border border-line bg-elev p-2.5">
                 <div className="text-2xs uppercase tracking-wide text-ink-low">Tổng giao dịch (30 ngày)</div>
-                <div className="tabular mt-0.5 text-[18px] font-bold text-ink-hi">{totalAmount.toLocaleString("vi-VN")}</div>
+                <div className="tabular mt-0.5 text-h2 font-bold text-ink-hi">{totalAmount.toLocaleString("vi-VN")}</div>
               </div>
             </div>
 
             <div className="rounded-panel border border-primary/25 bg-primary-soft p-3">
-              <div className="flex items-center gap-1.5 text-[13px] font-semibold text-primary">
+              <div className="flex items-center gap-1.5 text-body font-semibold text-primary">
                 ✦ Phân tích AI Copilot
               </div>
               <p className="mt-1.5 text-2xs leading-relaxed text-ink-mid">
@@ -281,7 +282,7 @@ export function NetworkPage() {
             </div>
 
             <div>
-              <div className="mb-2 text-[13px] font-semibold text-ink-hi">
+              <div className="mb-2 text-body font-semibold text-ink-hi">
                 Mối quan hệ liên quan
               </div>
               <div className="space-y-1.5">
@@ -293,7 +294,7 @@ export function NetworkPage() {
                     className="flex w-full items-center justify-between rounded-control border border-line bg-elev px-3 py-2 text-left hover:border-line-emphasis"
                   >
                     <div>
-                      <div className="text-[13px] font-medium text-ink-hi">{r.label}</div>
+                      <div className="text-body font-medium text-ink-hi">{r.label}</div>
                       <div className="text-2xs text-ink-low">{r.sublabel}</div>
                     </div>
                     <span className="text-ink-low">›</span>
@@ -304,7 +305,7 @@ export function NetworkPage() {
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[13px] font-semibold text-ink-hi">
+                <span className="text-body font-semibold text-ink-hi">
                   Lịch sử Giao dịch Gần đây
                 </span>
                 <button type="button" className="text-2xs font-medium text-primary hover:underline">
@@ -328,7 +329,7 @@ export function NetworkPage() {
             <button
               type="button"
               onClick={() => setSarModal(true)}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-control bg-primary py-2.5 text-[14px] font-semibold text-app hover:bg-primary-hover"
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-control bg-primary py-2.5 text-body-lg font-semibold text-app hover:bg-primary-hover"
             >
               <Flag size={14} aria-hidden />
               Gửi Báo cáo SAR Ngay
@@ -336,7 +337,7 @@ export function NetworkPage() {
             <button
               type="button"
               onClick={() => navigate(`/cases/${network.case_id}`)}
-              className="w-full py-1.5 text-[13px] font-medium text-ink-mid hover:text-ink-hi"
+              className="w-full py-1.5 text-body font-medium text-ink-mid hover:text-ink-hi"
             >
               Mở rộng điều tra vụ việc
             </button>

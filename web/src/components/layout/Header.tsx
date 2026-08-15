@@ -1,21 +1,29 @@
-import { Bell, Search } from "lucide-react";
+import { Bell, Menu, Search } from "lucide-react";
 import { useState } from "react";
 
 import { useApp } from "../../context/AppContext";
 import { useConsole, WINDOW_LABEL, type TimeWindow } from "../../context/ConsoleContext";
-import { PulseDot } from "../fc/primitives";
+import { TEXT } from "../../design/typography";
+import { Badge, IconButton, Popover, PulseDot, SegmentedControl, Select } from "../ui";
 
 interface Props {
-  /** Đường dẫn hiển thị của màn hình hiện tại. */
+  /** Tên màn hình hiện tại. Đây là chỗ DUY NHẤT hiển thị nó. */
   crumb?: string;
-  /** Số cảnh báo mức critical, hiện ở chuông thông báo. */
+  /** Số cảnh báo mức nghiêm trọng, hiện ở chuông thông báo. */
   criticalCount?: number;
+  /** Chỉ có ở khung hẹp, nơi sidebar là lớp phủ. */
+  onOpenNav?: () => void;
 }
 
 const WORLDS = ["FIN-07 Chính", "FIN-07 Mô phỏng sức chịu đựng"];
-const WINDOWS: TimeWindow[] = ["1h", "24h", "7d", "30d"];
+const WINDOWS: { value: TimeWindow; label: string }[] = [
+  { value: "1h", label: "1h" },
+  { value: "24h", label: "24h" },
+  { value: "7d", label: "7d" },
+  { value: "30d", label: "30d" },
+];
 
-export function Header({ crumb, criticalCount = 0 }: Props) {
+export function Header({ crumb, criticalCount = 0, onOpenNav }: Props) {
   const { currentUser } = useApp();
   const { window: win, setWindow, world, setWorld, setPaletteOpen } = useConsole();
   const [bellOpen, setBellOpen] = useState(false);
@@ -23,92 +31,102 @@ export function Header({ crumb, criticalCount = 0 }: Props) {
   const initials = (currentUser?.name ?? "")
     .split(" ")
     .slice(-2)
-    .map((w) => w[0])
+    .map((word) => word[0])
     .join("");
 
   return (
-    <header className="flex h-14 flex-none items-center gap-2.5 border-b border-line-soft bg-side px-4">
-      <div className="truncate-1 flex-none text-xl font-semibold text-ink-hi">{crumb}</div>
+    <header className="flex h-14 flex-none items-center gap-2 border-b border-line-soft bg-side px-3 lg:px-4">
+      {onOpenNav && (
+        <IconButton label="Mở thanh điều hướng" icon={<Menu size={17} />} onClick={onOpenNav} size="sm" />
+      )}
+
+      <h1 className={`truncate-1 flex-none ${TEXT.h3}`}>{crumb}</h1>
 
       <button
         type="button"
         onClick={() => setPaletteOpen(true)}
-        className="fc-input flex h-8 min-w-[110px] flex-[0_1_280px] items-center gap-2 overflow-hidden py-0 text-ink-low"
+        className="ml-1 flex h-8 min-w-0 flex-[0_1_300px] items-center gap-2 overflow-hidden rounded-control border border-line-strong bg-sunken px-2.5 text-ink-low transition-colors hover:border-line-emphasis hover:text-ink-mid"
       >
         <Search size={13} className="flex-none" aria-hidden />
-        <span className="truncate-1 flex-1 text-left text-base">Tìm thực thể, vụ việc, cảnh báo…</span>
-        <span className="flex-none rounded-[5px] border border-line-strong px-1.5 font-mono text-3xs">⌘K</span>
+        <span className="truncate-1 flex-1 text-left text-data">Tìm thực thể, vụ việc, cảnh báo…</span>
+        <span className="hidden flex-none rounded-sm border border-line-strong px-1.5 font-mono text-micro sm:block">
+          ⌘K
+        </span>
       </button>
 
       <div className="flex-1" />
 
-      <select
+      {/* Môi trường mô phỏng lùi xuống dưới 1280px: nó đổi rất hiếm, còn cửa sổ
+          thời gian thì analyst chạm liên tục. */}
+      <Select
         aria-label="Thế giới mô phỏng"
         value={world}
-        onChange={(e) => setWorld(e.target.value)}
-        className="fc-input h-8 py-0 text-base"
+        onChange={(event) => setWorld(event.target.value)}
+        className="hidden w-[210px] xl:block"
       >
-        {WORLDS.map((w) => (
-          <option key={w} value={w}>
-            Môi trường: {w}
+        {WORLDS.map((name) => (
+          <option key={name} value={name}>
+            Môi trường: {name}
           </option>
         ))}
-      </select>
+      </Select>
 
-      <select
-        aria-label="Cửa sổ thời gian"
+      <SegmentedControl
+        label="Cửa sổ thời gian"
+        size="sm"
         value={win}
-        onChange={(e) => setWindow(e.target.value as TimeWindow)}
-        className="fc-input h-8 py-0 text-base"
-      >
-        {WINDOWS.map((w) => (
-          <option key={w} value={w}>
-            {WINDOW_LABEL[w]}
-          </option>
-        ))}
-      </select>
+        onChange={setWindow}
+        options={WINDOWS}
+        className="hidden sm:inline-flex"
+      />
 
       {/* Nhãn này không phải trang trí: toàn bộ dữ liệu trong console là tổng
           hợp, và người xem phải biết điều đó ở mọi màn hình. */}
-      <span className="whitespace-nowrap rounded-control bg-warn/12 px-2 py-[3px] font-mono text-3xs tracking-[0.08em] text-warn-soft">
+      <Badge tone="warn" icon={false} className="font-mono tracking-[0.08em]" title="Bản trình diễn khái niệm">
         POC
-      </span>
+      </Badge>
 
       <div
         title="Trạng thái luồng dữ liệu"
-        className="flex items-center gap-1.5 whitespace-nowrap text-2xs text-ink-soft"
+        className="hidden items-center gap-1.5 whitespace-nowrap text-meta text-ink-soft lg:flex"
       >
         <PulseDot />
         Đang hoạt động
       </div>
 
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setBellOpen((v) => !v)}
-          aria-label="Thông báo"
-          aria-expanded={bellOpen}
-          className="relative p-1 text-ink-soft transition-colors hover:text-ink-hi"
-        >
-          <Bell size={17} strokeWidth={1.8} />
-          {criticalCount > 0 && (
-            <span className="absolute right-[3px] top-[2px] h-[7px] w-[7px] rounded-full border-[1.5px] border-side bg-risk" aria-hidden />
-          )}
-        </button>
-        {bellOpen && (
-          <div className="absolute right-0 top-full z-40 mt-1.5 w-72 rounded-panel border border-line-strong bg-elev p-3 shadow-2xl">
-            <div className="fc-eyebrow mb-2">Thông báo nội bộ</div>
-            <p className="text-xs leading-relaxed text-ink-mid">
-              {criticalCount} cảnh báo đang ở mức nghiêm trọng trong cửa sổ {WINDOW_LABEL[win]}. Thông báo chỉ phát trong
-              nội bộ — hệ thống không có kênh nào gửi tới chủ thể đang bị rà soát.
-            </p>
-          </div>
-        )}
-      </div>
+      <Popover
+        open={bellOpen}
+        onClose={() => setBellOpen(false)}
+        align="right"
+        width={288}
+        trigger={
+          <button
+            type="button"
+            onClick={() => setBellOpen((open) => !open)}
+            aria-label={`Thông báo${criticalCount > 0 ? ` — ${criticalCount} cảnh báo nghiêm trọng` : ""}`}
+            aria-expanded={bellOpen}
+            className="relative grid h-8 w-8 place-items-center rounded-control text-ink-soft transition-colors hover:bg-elev hover:text-ink-hi"
+          >
+            <Bell size={17} strokeWidth={1.8} />
+            {criticalCount > 0 && (
+              <span
+                className="absolute right-1.5 top-1.5 h-[7px] w-[7px] rounded-full border-[1.5px] border-side bg-risk"
+                aria-hidden
+              />
+            )}
+          </button>
+        }
+      >
+        <div className={`${TEXT.eyebrow} mb-2`}>Thông báo nội bộ</div>
+        <p className="text-meta leading-relaxed text-ink-mid">
+          {criticalCount} cảnh báo đang ở mức nghiêm trọng trong cửa sổ {WINDOW_LABEL[win]}. Thông báo chỉ phát trong
+          nội bộ — hệ thống không có kênh nào gửi tới chủ thể đang bị rà soát.
+        </p>
+      </Popover>
 
       <div
         title={`${currentUser?.name} · ${currentUser?.roleLabel}`}
-        className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full border border-line-strong bg-elev text-2xs font-semibold text-ink-mid"
+        className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full border border-line-strong bg-elev text-meta font-semibold text-ink-mid"
       >
         {initials}
       </div>

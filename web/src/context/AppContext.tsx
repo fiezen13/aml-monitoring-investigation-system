@@ -29,14 +29,31 @@ interface AppState {
 
 const AppContext = createContext<AppState | null>(null);
 const SESSION_USER_KEY = "fin07.session.user";
+const GRAFANA_SESSION_COOKIE = "fin07_session";
 let toastSeq = 0;
+
+function syncGrafanaSession(token: string | null): void {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  if (token) {
+    document.cookie = `${GRAFANA_SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; SameSite=Strict${secure}`;
+  } else {
+    document.cookie = `${GRAFANA_SESSION_COOKIE}=; Path=/; SameSite=Strict; Max-Age=0${secure}`;
+  }
+}
 
 function readStoredUser(): User | null {
   try {
     const raw = window.sessionStorage.getItem(SESSION_USER_KEY);
     const token = window.sessionStorage.getItem(SESSION_TOKEN_KEY);
-    return raw && token ? (JSON.parse(raw) as User) : null;
+    if (!raw || !token) {
+      syncGrafanaSession(null);
+      return null;
+    }
+    const user = JSON.parse(raw) as User;
+    syncGrafanaSession(token);
+    return user;
   } catch {
+    syncGrafanaSession(null);
     return null;
   }
 }
@@ -58,6 +75,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearLocalSession = useCallback(() => {
     window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
     window.sessionStorage.removeItem(SESSION_USER_KEY);
+    syncGrafanaSession(null);
     setCurrentUser(null);
   }, []);
 
@@ -78,6 +96,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const result = await api.login(email, password);
     window.sessionStorage.setItem(SESSION_TOKEN_KEY, result.token);
     window.sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(result.user));
+    syncGrafanaSession(result.token);
     setCurrentUser(result.user);
     return result.user;
   }, []);

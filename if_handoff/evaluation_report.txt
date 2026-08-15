@@ -1,0 +1,47 @@
+best_thresh=0.07948469452684015
+scores=data\processed\if_scores_v1.parquet
+model_window=7d
+label_def=window_strict (as_of - 7d, as_of]
+precision_at_k=[50, 100, 500, 1000]
+
+================================================================
+VALIDATION @ best_thresh (target Recall>=80%)
+================================================================
+Metric                      Value
+----------------------------------
+Threshold                  0.0795
+N accounts                 704619
+N positive                   6098
+N alerts                   544764
+Precision                  0.0090
+Recall                     0.8001
+F1-Score                   0.0177
+ROC-AUC                    0.5260
+PR-AUC                     0.0191
+FPR                        0.7729
+Precision@50               0.8000
+Precision@100              0.5900
+Precision@500              0.1420
+Precision@1000             0.0790
+================================================================
+
+================================================================
+TEST @ best_thresh=0.0795
+================================================================
+Metric                      Value
+----------------------------------
+Threshold                  0.0795
+N accounts                3701921
+N positive                  18423
+N alerts                  2475687
+Precision                  0.0062
+Recall                     0.8388
+F1-Score                   0.0124
+ROC-AUC                    0.6239
+PR-AUC                     0.0155
+FPR                        0.6679
+Precision@50               1.0000
+Precision@100              1.0000
+Precision@500              0.3060
+Precision@1000             0.1590
+================================================================

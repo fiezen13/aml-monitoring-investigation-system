@@ -34,7 +34,7 @@ export function DropdownMenu({
         aria-expanded={open}
         className={
           buttonClassName ||
-          "inline-flex items-center gap-1.5 rounded-control border border-line bg-elev px-2.5 py-1.5 text-[13px] font-medium text-ink-hi hover:border-line-emphasis"
+          "inline-flex items-center gap-1.5 rounded-control border border-line bg-elev px-2.5 py-1.5 text-body font-medium text-ink-hi hover:border-line-emphasis"
         }
       >
         {label}
@@ -57,7 +57,7 @@ export function DropdownMenu({
                 setOpen(false);
                 item.onSelect?.();
               }}
-              className="block w-full px-3 py-1.5 text-left text-[13px] text-ink-mid hover:bg-panel hover:text-ink-hi disabled:cursor-not-allowed disabled:opacity-40"
+              className="block w-full px-3 py-1.5 text-left text-body text-ink-mid hover:bg-panel hover:text-ink-hi disabled:cursor-not-allowed disabled:opacity-40"
             >
               {item.label}
             </button>

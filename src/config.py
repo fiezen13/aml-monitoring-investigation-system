@@ -25,7 +25,24 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, ge=1, le=65535)
     app_host: str = "0.0.0.0"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: Literal["json", "text"] = "json"
     cors_origins: str = "http://localhost:5173"
+
+    # OpenTelemetry. Disabled by default so `docker compose up` remains
+    # independent from the optional observability profile.
+    otel_enabled: bool = False
+    otel_service_name: str = "fin07-backend"
+    otel_service_version: str = "1.0.0"
+    otel_service_instance_id: str = ""
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+    otel_exporter_otlp_protocol: Literal["grpc", "http/protobuf"] = "grpc"
+    otel_resource_attributes: str = ""
+    otel_traces_sampler: Literal["always_on", "always_off", "parentbased_traceidratio"] = "parentbased_traceidratio"
+    otel_traces_sampler_arg: float = Field(default=1.0, ge=0.0, le=1.0)
+    otel_metric_export_interval_ms: int = Field(default=15000, ge=1000, le=300000)
+    capture_genai_content: bool = False
+    git_commit_sha: str = ""
+    build_version: str = ""
 
     # Google Gemini reasoning layer. `mock` is reserved for CI/development;
     # production agent execution uses the official Google Gen AI SDK.
@@ -57,11 +74,6 @@ class Settings(BaseSettings):
     worker_heartbeat_key: str = "fin07:worker:heartbeat"
     worker_heartbeat_ttl: int = Field(default=30, ge=5, le=600)
 
-    # Dữ liệu mẫu
-    seed_value: int = 20260728
-    seed_customers: int = Field(default=48, ge=4, le=5000)
-    seed_days: int = Field(default=90, ge=7, le=730)
-
     # Vector Store
     chroma_persist_dir: str = "./data/chroma"
 
@@ -69,6 +81,8 @@ class Settings(BaseSettings):
     def validate_gemini_runtime(self) -> Self:
         if self.app_env == "production" and self.llm_mode != "gemini":
             raise ValueError("LLM_MODE=gemini is required in production")
+        if self.app_env == "production" and self.capture_genai_content:
+            raise ValueError("CAPTURE_GENAI_CONTENT is forbidden in production")
         if self.llm_mode != "gemini":
             return self
         if not self.google_api_key:

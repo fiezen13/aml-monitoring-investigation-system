@@ -73,11 +73,6 @@ pipeline {
             defaultValue: false,
             description: 'Chỉ build và kiểm thử, không triển khai. Dùng khi cần kiểm tra nhanh một nhánh.'
         )
-        booleanParam(
-            name: 'FORCE_RESEED',
-            defaultValue: false,
-            description: 'Nạp lại dữ liệu mẫu trên staging, XOÁ dữ liệu hiện có. Không có tác dụng trên production-like.'
-        )
     }
 
     stages {
@@ -224,30 +219,6 @@ pipeline {
                         docker logout "$REGISTRY"
                     '''
                 }
-            }
-        }
-
-        stage('Nạp lại dữ liệu mẫu staging') {
-            when {
-                allOf {
-                    branch 'develop'
-                    expression { params.FORCE_RESEED }
-                    expression { !params.SKIP_DEPLOY }
-                }
-            }
-            steps {
-                sh '''
-                    set -eu
-                    # Viết bằng if chứ không phải `[ ... ] && export ...`:
-                    # dưới `set -e`, dạng && trả về mã khác 0 khi điều kiện sai
-                    # và giết luôn cả script.
-                    if [ -n "${STAGING_DOCKER_CONTEXT:-}" ]; then
-                        export DOCKER_CONTEXT="$STAGING_DOCKER_CONTEXT"
-                    fi
-                    docker compose -p fin07-staging \
-                        -f docker-compose.yml -f deploy/docker-compose.staging.yml \
-                        run --rm seed python scripts/seed_data.py --force
-                '''
             }
         }
 

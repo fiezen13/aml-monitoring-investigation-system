@@ -19,13 +19,14 @@ chạy ngoài Docker.
 docker compose up
 ```
 
-Đó là toàn bộ. Lệnh này dựng năm dịch vụ và một tác vụ nạp dữ liệu:
+Lệnh này dựng năm dịch vụ và một tác vụ nâng lược đồ. PostgreSQL phải có batch
+LI-Small đã nạp nếu muốn console hiển thị dữ liệu nghiệp vụ:
 
 | Dịch vụ | Vai trò | Cổng | Xanh khi |
 |---|---|---|---|
 | `postgres` | PostgreSQL 16, lược đồ nạp từ `db/init/` | 5432 | `pg_isready` qua TCP |
 | `redis` | Hàng đợi tác vụ | 6379 | `redis-cli ping` |
-| `seed` | Nạp dữ liệu mẫu rồi thoát | — | thoát với mã 0 |
+| `migrate` | Áp migration còn thiếu rồi thoát | — | thoát với mã 0 |
 | `api` | FastAPI | 8000 | `/health/ready` trả 200 |
 | `worker` | Tiêu thụ hàng đợi | — | nhịp tim trong Redis còn hạn |
 | `web` | Console React qua nginx | 5173 | `/healthz` trả 200 |
@@ -48,14 +49,13 @@ Không có `sleep` ở bất kỳ đâu. Mỗi bước chờ healthcheck của b
 
 ```
 postgres ─┐
-          ├─→ seed (chạy một lần, thoát 0) ─→ api ──→ web
-redis ────┘                                └─→ worker
+          ├─→ migrate (chạy một lần, thoát 0) ─→ api ──→ web
+redis ────┘                                   └─→ worker
 ```
 
-Điểm đáng chú ý: `api` và `worker` chờ `seed` **thoát thành công**, nên không
-tồn tại khoảnh khắc nào giao diện mở ra mà cơ sở dữ liệu còn rỗng. Nếu lược đồ
-hỏng, `seed` thoát khác 0 và cả stack không lên — hỏng thành ồn ào thay vì
-thành lỗi 500 lúc ai đó bấm vào.
+`api` và `worker` chờ `migrate` **thoát thành công**. Bước này chỉ nâng lược đồ,
+không sinh hoặc ghi đè dữ liệu nghiệp vụ. Nếu lược đồ hỏng, cả stack không lên
+thay vì trả lỗi 500 muộn khi người dùng mở giao diện.
 
 ## 4. Việc thường làm
 
@@ -64,28 +64,17 @@ make help          # danh sách lệnh
 make up            # dựng và chờ mọi healthcheck xanh
 make health        # trạng thái sức khoẻ từng container
 make logs          # theo dõi log
-make seed          # nạp lại dữ liệu mẫu
 make db-shell      # mở psql
 make down          # dừng, giữ dữ liệu
 make db-reset      # xoá volume và dựng lại lược đồ từ đầu
 ```
 
-## 5. Dữ liệu mẫu
+## 5. Dữ liệu LI-Small
 
-`scripts/seed_data.py` sinh dữ liệu tổng hợp: khách hàng theo bốn nguyên mẫu,
-giao dịch trong 90 ngày, và các kịch bản rửa tiền T01–T05, T10 được cài có chủ
-đích, kèm cảnh báo, vụ việc, bằng chứng và một hồ sơ đang chờ duyệt.
-
-Cùng `SEED_VALUE` cho ra cùng dữ liệu, kể cả mốc thời gian (ND5):
-
-```bash
-make seed-verify   # in vân tay; chạy hai lần phải giống nhau
-```
-
-**Đây không phải dataset đánh giá.** Việc nạp IBM LI-Small (7 triệu giao dịch,
-tỷ lệ rửa tiền ~0,05%) là hạng mục của Hiển ở Sprint 1 theo FIN-07-DAT-001.
-Tỷ lệ nhãn trong fixture này được đặt cao hơn thực tế để mỗi màn hình đều có
-dữ liệu nhìn thấy được.
+Ứng dụng không còn đường sinh dữ liệu demo. Dữ liệu vận hành duy nhất là IBM
+AML LI-Small được chuẩn hoá thành CSV Behaviour, nạp qua batch runner, sau đó
+bổ sung địa lý ngân hàng bằng `scripts/load_bank_geography.py`. `db-reset` chỉ
+tạo lại lược đồ; sau lệnh đó phải nạp lại LI-Small trước khi dùng console.
 
 ## 6. Những ràng buộc đã cưỡng chế ở tầng dữ liệu
 

@@ -13,7 +13,7 @@ interface SARStatementProps {
 export function SARStatement({ statement, onOpenEvidence }: SARStatementProps) {
   return (
     <div className="rounded-control border border-line bg-elev p-3">
-      <p className="text-[13px] leading-relaxed text-ink-hi">{statement.text}</p>
+      <p className="text-body leading-relaxed text-ink-hi">{statement.text}</p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {statement.evidenceIds.map((id) => (
           <EvidenceChip key={id} evidenceId={id} onOpen={onOpenEvidence} />

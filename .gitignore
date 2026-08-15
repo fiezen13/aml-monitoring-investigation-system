@@ -20,6 +20,8 @@ env/
 # IDE
 .vscode/
 .idea/
+.metals/
+.claude/settings.local.json
 *.swp
 *.swo
 *~
@@ -29,7 +31,7 @@ env/
 Thumbs.db
 
 # Data (never commit large data)
-data/
+data/*
 # `artifacts/*` chứ không phải `artifacts/`: git không đi vào một thư mục đã bị
 # loại, nên viết `artifacts/` thì mọi ngoại lệ bên dưới đều vô hiệu.
 artifacts/*
@@ -45,16 +47,18 @@ simulation_output/
 *.sqlite3
 
 # Graph handoff payloads distributed through Drive (checksums in manifest).
-# Chỉ bỏ qua payload lớn; manifest/checksum nhỏ vẫn phải được commit.
-/graph_handoff/graph_features_v1.parquet
-/graph_handoff/graph_account_modeling_v1.parquet
-/graph_handoff/graph_evidence_v1.jsonl
+# Git chỉ giữ model nhỏ, manifest và đặc tả; mọi bảng/evidence đều ở ngoài Git.
+/graph_handoff/*.parquet
+/graph_handoff/*.jsonl
+
+# Isolation Forest handoff payloads copied from Drive. Keep the compact model,
+# manifest and documentation reviewable; tables stay outside Git and are
+# verified by checksum before a fusion release.
+/if_handoff/*.parquet
 
 # Bộ dữ liệu IBM AML nặng từ hàng trăm megabyte tới hàng chục gigabyte và
 # tải về từ Kaggle, không commit. Nhưng thư mục và hướng dẫn đặt file thì
 # phải có sẵn, nếu không người mới sẽ không biết đặt file vào đâu.
-!data/
-data/*
 !data/README.md
 !data/raw/
 data/raw/*
@@ -99,10 +103,6 @@ node_modules/
 out/
 .nuxt/
 
-# Build
-*.pyc
-*.pyo
-
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
@@ -115,6 +115,7 @@ jenkins/.env
 .image-tags
 pytest-report.xml
 .gstack/
+.github/modernize/
 
 # Artifact của công cụ thiết kế trong docs/design/prototype/.
 #
@@ -138,3 +139,8 @@ infra/terraform/*.tfstate.*
 infra/terraform/*.tfvars
 !infra/terraform/*.tfvars.example
 infra/terraform/crash.log
+
+# MEGA-PNA checkpoints and per-edge scores are reproducible, machine-specific
+# benchmark artifacts. Commit the compact JSON reports, not model/data payloads.
+/models/mega-pna/**/*.pt
+/models/mega-pna/**/*.parquet

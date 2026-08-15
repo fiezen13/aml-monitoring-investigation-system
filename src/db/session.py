@@ -1,4 +1,4 @@
-"""Kết nối PostgreSQL dùng chung cho API, worker và script seed."""
+"""Kết nối PostgreSQL dùng chung cho API, worker và script vận hành."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager

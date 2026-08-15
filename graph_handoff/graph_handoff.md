@@ -35,15 +35,16 @@ hay `test` theo mốc thời gian đã đóng băng.
 | `graph_account_modeling_v1.parquet` | Bảng nối đặc trưng đồ thị, hit/count detector và target current-window. |
 | `graph_histgb_v1.joblib` | Mô hình HistGradientBoosting v1 đã fit trên train. |
 | `graph_scores_v1.parquet` | Điểm mô hình cho các dòng train/val/test, kèm khóa nối, split và hit detector chính. |
-| `graph_account_baseline_v1.json` | Cấu hình, giao thức và số liệu baseline đã đóng băng. |
+| `reports/graph_account_baseline_v1.json` | Cấu hình, giao thức và số liệu baseline đã đóng băng; bản chuẩn chỉ giữ trong `reports/`. |
 | `graph_pipeline_manifest_v2.json` | Manifest về phiên bản, checksum, số dòng và trạng thái kiểm tra. |
 | `graph_feature_spec.md` | Mô tả ngắn các cột đặc trưng canonical. |
 
-Ba tệp dữ liệu lớn được giữ trong thư mục local nhưng không đưa vào Git để
-tránh vượt giới hạn kích thước file của GitHub: `graph_features_v1.parquet`,
-`graph_account_modeling_v1.parquet` và `graph_evidence_v1.jsonl`. Hãy đặt các
-tệp này từ Drive vào đúng thư mục `graph_handoff/`, sau đó đối chiếu SHA-256
-trong `graph_pipeline_manifest_v2.json` trước khi tích hợp.
+Năm payload dữ liệu được giữ local nhưng không đưa vào Git:
+`graph_features_v1.parquet`, `graph_detection_v1.parquet`,
+`graph_evidence_v1.jsonl`, `graph_account_modeling_v1.parquet` và
+`graph_scores_v1.parquet`. Hãy đặt chúng từ Drive vào đúng thư mục
+`graph_handoff/`, sau đó đối chiếu SHA-256 trong
+`graph_pipeline_manifest_v2.json` trước khi tích hợp.
 
 ## Mô hình và cách tích hợp
 

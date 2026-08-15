@@ -27,7 +27,7 @@ export function AgentTimeline({ steps }: { steps: CaseTimelineStep[] }) {
             )}
           </span>
           <div
-            className={`text-[13px] font-semibold ${
+            className={`text-body font-semibold ${
               step.status === "pending" ? "text-ink-low" : "text-ink-hi"
             }`}
           >
