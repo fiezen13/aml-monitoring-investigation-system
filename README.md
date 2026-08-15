@@ -1,284 +1,363 @@
-# FIN-07 — Nền tảng phòng, chống rửa tiền Level 1 cho ngân hàng
+# FIN-07 — AML Operations Console
 
-Console giám sát và điều tra rửa tiền, xây theo *Kiến trúc chi tiết nền tảng AML Level 1 cho ngân
-hàng* (v1.0, 05/08/2026). Level 1 nghĩa là: vận hành **trong ranh giới dữ liệu và quyền truy cập
-của một ngân hàng**, không phụ thuộc dữ liệu Nhà nước hay dữ liệu xuyên biên giới.
+FIN-07 là console giám sát và điều tra phòng, chống rửa tiền Level 1. Bản demo hiện tại phục vụ
+release `fin07_currency_native_policy_edge_v1` trên IBM AML HI-Medium, giữ nguyên amount và
+currency gốc, không cộng hoặc quy đổi tĩnh nhiều loại tiền thành USD.
+
+- Console: <http://localhost:5173>
+- API docs: <http://localhost:8000/docs>
+- Health check: <http://localhost:8000/health/ready>
+- Bản triển khai: <https://amlmonitoring.site/>
+
+## Chạy lần đầu với dữ liệu đầy đủ
+
+`git pull` chỉ tải mã nguồn, model và báo cáo nhỏ. PostgreSQL dump chứa 5,8 triệu giao dịch không
+nằm trong Git; thành viên phải tải riêng từ Google Drive rồi restore theo hướng dẫn dưới đây.
+
+### 1. Yêu cầu máy
+
+- Git.
+- Docker Desktop hoặc Docker Engine có Compose v2.
+- Ít nhất 12 GB dung lượng đĩa trống cho image, dump và PostgreSQL sau restore.
+- Khuyến nghị từ 8 GB RAM.
+- Các cổng mặc định chưa bị chiếm: `5173`, `8000`, `5432`, `6379`.
+
+Không cần cài Python hoặc Node nếu chỉ chạy bằng Docker. `.env` cũng không bắt buộc trong môi
+trường development.
+
+### 2. Lấy code mới nhất
 
 ```bash
-docker compose up
+git clone https://github.com/AI20K-Build-Phase-Cohort-3/P-022.git
+cd P-022
+git switch develop
+git pull --ff-only origin develop
 ```
 
-- Console — <http://localhost:5173>
-- API docs — <http://localhost:8000/docs>
-- Bản chạy thật — <https://amlmonitoring.site/>
+Nếu đã clone repo trước đó:
 
-Không cần tạo `.env`, không cần cài Python hay Node. Chỉ cần Docker.
+```bash
+cd P-022
+git switch develop
+git pull --ff-only origin develop
+```
 
----
+### 3. Tải PostgreSQL dump
 
-## 1. Trạng thái thật của từng phần
+Mở thư mục handoff:
 
-Bảng này là thứ cần đọc trước tiên. Một tài liệu mô tả năng lực chưa tồn tại như thể đã chạy còn tệ
-hơn không có tài liệu.
+**[FIN-07 data handoff trên Google Drive](https://drive.google.com/drive/folders/1UEPEPSYW7ytWu0V8ke7vx1K5lP41lVPh?hl=vi)**
 
-| Thành phần | Trạng thái | Ở đâu |
-|---|---|---|
-| Console 22 màn hình (React + Vite) | **ĐANG CHẠY** — mọi trang gọi API thật | `web/` |
-| API FastAPI, 40 endpoint | **ĐANG CHẠY** | `src/api/` |
-| Máy trạng thái vụ việc + worker nền | **ĐANG CHẠY** — chuyển trạng thái tất định, dừng ở chỗ cần người duyệt | `src/domain.py`, `src/worker/` |
-| Nhật ký kiểm toán bất biến, phê duyệt ghi một lần | **ĐANG CHẠY** — cưỡng chế bằng trigger PostgreSQL | `db/init/002` |
-| Cách ly nhãn khỏi vai trò agent | **ĐANG CHẠY** — cưỡng chế bằng quyền PostgreSQL | `db/init/003` |
-| Đường ống CSV → Kafka → Flink → HDFS | **ĐANG CHẠY** — profile `aml`, không chạy mặc định | `src/aml/`, `flink/` |
-| Bộ dữ liệu huấn luyện và đánh giá | **IBM AML công khai** — nguồn duy nhất của mọi con số hiệu năng | `data/raw/ibm-aml/` |
-| Hợp đồng dữ liệu, sự kiện, tool | **ĐÃ ĐỊNH NGHĨA**, phần lớn chưa có bên hiện thực | `contracts/` |
-| Detection Engine | **BEHAVIOUR + GRAPH + FUSION OFFLINE ĐÃ CHẠY**; bundle và điểm hợp nhất có checksum | `src/fusion/`, `scripts/build_fusion_release.py` |
-| Feature platform, entity resolution | **CHƯA CÓ** | `services/feature-platform/` |
-| Explainable AI Investigation | **ĐANG CHẠY** — 3 agent có giới hạn, 7 tool tất định, evidence/trace bền vững, human review | `src/investigation/` |
+Tải đúng hai file:
 
-Ba agent AML dùng Google Gemini qua official `google-genai` SDK. Không dùng OpenAI, Anthropic hoặc
-local LLM. CI/dev dùng `LLM_MODE=mock`; runtime thật cần cấu hình server-side:
+```text
+fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump
+fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256
+```
+
+Đặt chúng vào:
+
+```text
+P-022/artifacts/db/
+```
+
+Cấu trúc đúng sau khi tải:
+
+```text
+P-022/
+├── artifacts/
+│   └── db/
+│       ├── fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump
+│       └── fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256
+├── docker-compose.yml
+└── README.md
+```
+
+Dump có kích thước `436.514.448` bytes, SHA-256:
+
+```text
+5e2de5b536fd9e1f61974ae1d9227d74eb369ce2c32f2ef752cd36a6bb788c96
+```
+
+### 4. Kiểm tra checksum
+
+macOS:
+
+```bash
+cd artifacts/db
+shasum -a 256 -c fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256
+cd ../..
+```
+
+Linux:
+
+```bash
+cd artifacts/db
+sha256sum -c fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256
+cd ../..
+```
+
+Kết quả bắt buộc:
+
+```text
+fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump: OK
+```
+
+Không restore nếu checksum sai. Hãy xóa bản tải lỗi và tải lại từ Drive.
+
+### 5. Khởi động PostgreSQL và restore
+
+> `pg_restore --clean` thay toàn bộ dữ liệu nghiệp vụ hiện có trong database `fin07`. Nếu máy đã
+> có dữ liệu cần giữ, hãy tạo backup riêng trước khi chạy.
+
+Dừng các tiến trình có thể đang đọc database, rồi bật PostgreSQL:
+
+```bash
+docker compose stop api worker web
+docker compose up -d --wait postgres
+```
+
+Restore dump bằng `pg_restore` bên trong container, vì vậy máy host không cần cài PostgreSQL CLI:
+
+```bash
+docker compose exec -T postgres pg_restore \
+  -U fin07 \
+  -d fin07 \
+  --clean \
+  --if-exists \
+  --exit-on-error \
+  --no-owner \
+  --no-privileges \
+  < artifacts/db/fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump
+```
+
+Lệnh không in tiến độ trong lúc chạy. Hãy chờ tới khi terminal trả prompt và exit code bằng `0`.
+Dump loại trừ `app_session`, nên không mang token đăng nhập từ máy tạo dump sang máy khác.
+
+### 6. Khởi động toàn bộ stack
+
+```bash
+docker compose up -d --build --wait
+docker compose ps
+```
+
+Các service `postgres`, `redis`, `api`, `worker`, `web` phải có trạng thái `healthy`. Service
+`migrate` chạy xong rồi `Exited (0)` là bình thường.
+
+### 7. Kiểm tra dữ liệu sau restore
+
+```bash
+docker compose exec -T postgres psql -U fin07 -d fin07 -Atc "
+SELECT 'transactions=' || count(*) FROM transaction;
+SELECT 'scores=' || count(*) FROM transaction_model_score;
+SELECT 'alerts=' || count(*) FROM alert;
+SELECT 'release=' || release_id FROM edge_model_release WHERE status='active';
+SELECT 'country_hubs=' || count(*) FROM edge_country_hub;
+SELECT 'country_flows=' || count(*) FROM edge_country_flow;
+"
+```
+
+Kết quả chuẩn:
+
+```text
+transactions=5866610
+scores=5866610
+alerts=6541
+release=REL-EDGE-039b4b0fd5fb669a
+country_hubs=34
+country_flows=1289
+```
+
+Kiểm tra API:
+
+```bash
+curl -fsS http://localhost:8000/health/ready
+curl -fsS 'http://localhost:8000/api/v1/alerts/page?page=1&page_size=1'
+curl -fsS 'http://localhost:8000/api/v1/fc/graph?limit=20'
+```
+
+Sau đó mở <http://localhost:5173>. Tài khoản mặc định được điền sẵn trên màn hình đăng nhập:
+
+```text
+Email:    hung.nq@velrix.vn
+Password: demo-password
+```
+
+## Dữ liệu hiển thị trên console
+
+Sau khi restore đúng dump, các màn chính có dữ liệu:
+
+| Màn hình | Dữ liệu |
+|---|---|
+| Dashboard | Population, alert rate, top alerts và active release |
+| Trung tâm cảnh báo | 6.541 cảnh báo, phân trang 50 dòng và tìm kiếm trên PostgreSQL |
+| Tra cứu giao dịch | 5.866.610 giao dịch, amount/currency gốc và model score |
+| World Monitor | 34 country hubs và 1.289 country/currency corridors |
+| Network Graph | Tách từng connected component, không trộn mạng độc lập trên cùng canvas |
+| Crypto | Giao dịch Bitcoin trong IBM ledger; không giả là dữ liệu on-chain |
+| Models / Benchmarks | Release currency-native, threshold và kết quả 5 seed |
+| Data Quality | Kiểm tra coverage, validity và danh mục nguồn |
+
+Cases, SAR/Approvals và Agent Runs chỉ có dữ liệu sau khi chuyên viên thực hiện workflow. Console
+không tạo case, kết luận điều tra hoặc dữ liệu on-chain giả để lấp màn hình.
+
+## Lệnh vận hành thường dùng
+
+```bash
+# Xem trạng thái
+docker compose ps
+
+# Theo dõi log API và worker
+docker compose logs -f api worker
+
+# Build lại sau khi pull code mới
+docker compose up -d --build --wait
+
+# Dừng stack nhưng giữ PostgreSQL volume
+docker compose down
+
+# Chạy kiểm thử và lint
+make check
+
+# Xem toàn bộ lệnh Makefile
+make help
+```
+
+Không chạy `docker compose down -v` hoặc xóa volume `fin07_postgres_data` nếu chưa có backup; hai
+thao tác đó xóa database đã restore.
+
+## Xử lý sự cố
+
+### UI mở được nhưng không có cảnh báo/giao dịch
+
+Kiểm tra active release và số dòng:
+
+```bash
+docker compose exec -T postgres psql -U fin07 -d fin07 -Atc "
+SELECT count(*) FROM transaction;
+SELECT release_id, status FROM edge_model_release;
+"
+```
+
+Nếu transaction bằng `0`, dump chưa được restore hoặc restore nhầm database.
+
+### `pg_restore` báo database đang được sử dụng
+
+```bash
+docker compose stop api worker web
+```
+
+Sau đó chạy lại lệnh restore. Không cần dừng container `postgres`.
+
+### Cổng đã bị chiếm
+
+Đổi cổng trong `.env`, ví dụ:
 
 ```env
-LLM_MODE=gemini
-GOOGLE_API_KEY=<server-side secret>
-GEMINI_MODEL=gemini-3.1-flash-lite
+WEB_PORT=5174
+API_PORT=8001
+POSTGRES_PORT=5433
+REDIS_PORT=6380
 ```
 
-Cả Supervisor, Explanation và Critic bị khóa vào `gemini-3.1-flash-lite`; cấu hình model khác bị
-từ chối ngay khi nạp settings. API key không được gửi tới React.
-
-Stack không tự sinh dữ liệu mẫu. Console chỉ đọc batch IBM AML LI-Small đã hoàn tất gần nhất;
-đường Behaviour nhận CSV canonical không nhãn, chạy Isolation Forest và lưu detection/alert vào
-PostgreSQL. Xem [`contracts/ingestion/README.md`](contracts/ingestion/README.md).
-Release fusion 7 ngày kết hợp model IF của Hường và Graph của Hiển bằng percentile train-only,
-không đưa model tham chiếu có giám sát khác vào đường quyết định. Xem
-[`docs/ml/FIN-07-FUSION-001.md`](docs/ml/FIN-07-FUSION-001.md).
-Không có dữ liệu khách hàng thật nào được commit trong repo.
-
----
-
-## 2. Kiến trúc
-
-Tài liệu kiến trúc chuẩn là PDF trong [`docs/architecture/`](docs/architecture/) — sáu mặt phẳng,
-mô hình thực thể, contract, ma trận phê duyệt agent, lộ trình Level 1.
-
-> **Cần bổ sung:** `Kien_truc_chi_tiet_AML_Level1_Ngan_hang.pdf` hiện **chưa được commit** vào repo.
-> Nó là nguồn sự thật của mọi quyết định thiết kế nên phải nằm trong repo, không chỉ trong chat.
-
-Sáu mặt phẳng và chỗ đặt code: xem [`services/README.md`](services/README.md).
-
-Bốn ranh giới quan trọng nhất, và chúng được cưỡng chế ở tầng nào:
-
-| Ranh giới | Cưỡng chế ở đâu |
-|---|---|
-| LLM không nằm trên đường quyết định đồng bộ | Agent chạy bất đồng bộ qua hàng đợi Redis |
-| Agent không đọc được nhãn / ground truth | Quyền PostgreSQL (`db/init/003`) |
-| Nhật ký và bằng chứng chỉ ghi thêm | Trigger PostgreSQL (`db/init/002`) |
-| Mọi khẳng định của agent phải có bằng chứng | JSON Schema (`contracts/agent/`, `minItems: 1`) |
-
----
-
-## 3. Cấu trúc repo
-
-```
-contracts/          Hợp đồng dữ liệu, sự kiện, tool — NGUỒN SỰ THẬT DUY NHẤT về hình dạng dữ liệu
-  common/           $defs dùng chung
-  events/           Envelope CloudEvents + payload từng topic Kafka
-  canonical/        Thực thể vùng GOLD
-  agent/            Tool call, agent state, structured output
-  registry/         Typology registry
-  ingestion/        Hợp đồng đường ống IBM AML — phần ĐANG CHẠY
-
-src/                Backend Python
-  api/              FastAPI: routes.py (quy trình AML) + fc_routes.py (màn hình Financial City)
-  worker/           Worker nền, máy trạng thái vụ việc
-  aml/              Producer phát lại CSV → Kafka
-  fusion/           Bundle IF + Graph, percentile calibration và score fusion giải thích được
-  agents/           Khung mẫu LangGraph (chưa hiện thực)
-  domain.py         Máy trạng thái và từ vựng nghiệp vụ dùng chung
-
-services/           Nhà chờ sẵn cho các thành phần chưa viết (detection, feature, agent runtime)
-flink/              Job Flink nạp dữ liệu vào HDFS
-web/                Console React + Vite + TypeScript
-db/init/            Lược đồ SQL đánh số, chạy tuần tự khi PostgreSQL khởi tạo
-scripts/            Vận hành: migrate, chuẩn bị/nạp LI-Small, thao tác AML
-models/             Model release nhỏ, có phiên bản; payload dữ liệu lớn nằm ngoài Git
-ci/ deploy/ jenkins/  CI/CD và triển khai
-docs/
-  architecture/     Kiến trúc chuẩn (PDF) và kiến trúc production
-  operations/       Runbook, CI/CD, triển khai VM
-  ml/               Đặc tả huấn luyện, đặc trưng, EDA, kiến trúc ML/Agent
-  adr/              Quyết định kiến trúc
-tests/              pytest, chia theo module
-```
-
----
-
-## 4. Chạy
-
-### Toàn bộ hệ thống
+Sau đó chạy lại:
 
 ```bash
-docker compose up -d --wait     # postgres, redis, migrate, api, worker, web
-make help                       # danh sách lệnh
+docker compose up -d --build --wait
 ```
 
-### Đường ống nạp dữ liệu AML
-
-Nằm sau profile `aml`, **không** chạy cùng `docker compose up` (nặng ~4 GB RAM):
+### Web vẫn hiện bundle cũ
 
 ```bash
-make aml-up                 # Kafka + Kafka UI + HDFS + Flink, tạo topic
-make aml-submit             # nộp job Flink
-make aml-producer-sample    # phát 1.000 giao dịch đầu
-make aml-smoke              # kiểm tra khói đầu–cuối, không cần tải gì từ Kaggle
+docker compose up -d --build web
 ```
 
-Chi tiết, kèm ba cái bẫy hay gặp khi chạy lần đầu:
-[`contracts/ingestion/README.md`](contracts/ingestion/README.md).
+Sau đó hard refresh trình duyệt (`Cmd+Shift+R` trên macOS, `Ctrl+Shift+R` trên Windows/Linux).
 
-Kafka UI <http://localhost:8082> · Flink UI <http://localhost:8081> · HDFS UI <http://localhost:9870>
+### Google Drive không cho tải
 
-### Dựng release hợp nhất IF + Graph
+Người quản lý folder phải bật quyền xem/tải cho thành viên hoặc chế độ “Anyone with the link”.
+Không upload dataset, dump hoặc credential vào Git để thay thế.
 
-Đặt payload lớn đúng trong `if_handoff/` và `graph_handoff/`; checksum nguồn đã khóa ở
-`configs/fusion/if_graph_v1.json`. Sau đó chạy:
-
-```bash
-python scripts/build_fusion_release.py
-```
-
-Kết quả gồm một runtime bundle `models/fin07_if_graph_fusion_v1.joblib`, bảng điểm canonical
-`data/processed/fusion_scores_v1.parquet`, và báo cáo kiểm định
-`reports/fusion_release_v1.json`.
-
-### Phát triển ngoài Docker
+## Phát triển ngoài Docker
 
 ```bash
 docker compose up -d postgres redis
-python3.11 -m venv .venv && source .venv/bin/activate
+
+python3.11 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements-dev.txt
-cp .env.example .env            # đổi host trong DATABASE_URL thành localhost
-make run                        # API
-make worker                     # worker, cửa sổ khác
-cd web && npm install && npm run dev
+cp .env.example .env
+
+make run       # API
+make worker    # chạy ở terminal khác
+
+cd web
+npm ci
+npm run dev
 ```
 
----
+Trong `.env`, đổi host của `DATABASE_URL` từ `postgres` thành `localhost` khi API chạy trực tiếp
+trên máy host.
 
-## 5. Kiểm thử
+## Kiểm thử
 
 ```bash
-make check                      # lint + toàn bộ test — chạy trước khi mở PR
-make contracts-check            # chỉ kiểm chứng hợp đồng dữ liệu
-cd web && npm run typecheck && npm run build
-cd flink/aml-ingestion && mvn -B test
+make check
+make contracts-check
+
+cd web
+npm run typecheck
+npm test -- --run
+npm run build
 ```
 
-Kiểm thử tích hợp dùng PostgreSQL và Redis **thật**, không mock: các ràng buộc quan trọng nhất nằm
-ở tầng cơ sở dữ liệu, và mock một cơ sở dữ liệu rồi kiểm tra mock không chứng minh được gì.
+## Cấu trúc chính
 
----
-
-## 6. Hợp đồng dữ liệu — đọc trước khi viết code mới
-
-Mọi thành phần đọc/ghi dữ liệu phải bám vào một schema trong [`contracts/`](contracts/README.md).
-Không thành phần nào được tự định nghĩa lại một cấu trúc đã có ở đó.
-
-Bảy quy ước bắt buộc (chi tiết trong `contracts/README.md`): `schema_version` bắt buộc; thời gian
-tách bạch `event_time`/`ingestion_time`/`posting_time`/`available_from`; số tiền là chuỗi thập phân;
-mọi khẳng định có `evidence_refs`; mọi liên kết suy luận có `confidence` và `provenance`;
-`additionalProperties: false`; không có trường nhãn ẩn.
-
-Thay đổi phá vỡ tương thích phải tạo version mới, giữ nguyên bản cũ, và có kế hoạch chuyển đổi.
-
----
-
-## 7. Sở hữu
-
-| Người | Phạm vi |
-|---|---|
-| Bảo | Kiến trúc, hạ tầng, CI/CD, `contracts/`, `db/init/`, `flink/` |
-| Hưng | `web/` |
-| Tin Tin | `src/api/`, `src/models/`, `src/worker/` |
-| Hiển | `src/agents/`, `services/agent-runtime/` |
-
-Chi tiết ở [`.github/CODEOWNERS`](.github/CODEOWNERS) và [`WORKLOG.md`](WORKLOG.md).
-Quy trình làm việc: [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
----
-
-## 8. An toàn dữ liệu
-
-- Toàn bộ dữ liệu trong repo là **tổng hợp từ mô phỏng**. Không dữ liệu khách hàng thật.
-- Bí mật đọc từ biến môi trường; `.env` không bao giờ commit. Xem [`SECURITY.md`](SECURITY.md).
-- Bộ dữ liệu IBM AML không commit (250 MB – 10 GB) — xem `data/raw/ibm-aml/README.md`.
-- Phạm vi khẳng định: bộ dữ liệu này đủ để dựng PoC và benchmark có căn cứ, **chưa đủ** để khẳng
-  định mô hình sẵn sàng triển khai sản xuất. Việc đó cần hiệu chỉnh và kiểm định trên dữ liệu thật
-  đã được bảo vệ tại một tổ chức có thẩm quyền.
-
----
-
-## 9. Dữ liệu và Graph pipeline
-
-Transaction và pattern data sử dụng **IBM Transactions for AML — LI-Small** từ Kaggle:
-[`ealtman2019/ibm-transactions-for-anti-money-laundering-aml`](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml),
-theo giấy phép CDLA-Sharing-1.0. Đặt các file tại `data/raw/ibm-aml/`:
-
-- `LI-Small_Trans.csv`
-- `LI-Small_Patterns.txt`
-
-```bash
-pip install -r requirements.txt
-
-# Task 1 — ETL transactions + accounts → DuckDB
-python3 scripts/run_task1_etl.py \
-  --raw data/raw/ibm-aml/LI-Small_Trans.csv \
-  --db data/processed/aml.duckdb \
-  --seed 42
-
-# Task 2 — pattern inventory + typology coverage (T01–T10)
-python3 scripts/run_task2_typology.py \
-  --patterns data/raw/ibm-aml/LI-Small_Patterns.txt \
-  --catalog docs/reference/typology_mapping_catalog_v1.json \
-  --out-dir data/processed
+```text
+src/api/            FastAPI routes
+src/worker/         Worker nền và workflow
+src/models/         Feature contract và model runtime
+src/fusion/         IF + Graph fusion
+src/mega_pna/       MEGA-PNA implementation
+web/                React + Vite console
+db/init/            PostgreSQL schema và migrations
+scripts/            Training, scoring, release loader và vận hành
+models/             Model joblib nhỏ được version hóa
+reports/            Benchmark/manifest nhỏ được version hóa
+contracts/          Data/event/tool contracts
+docs/               Kiến trúc, ML và runbook chuyên sâu
+artifacts/          Dump và artifact lớn, bị loại khỏi Git
 ```
 
-Task 1 tạo DuckDB với bảng `transaction`, `account`, cùng `dq_report.json` và
-`split_cutoffs.json`. Task 2 tạo `ibm_pattern_instances.json`,
-`typology_mapping_catalog.json`, `typology_coverage.json` và
-`typology_coverage.md`. Chi tiết schema: [`docs/task2_schema.md`](docs/task2_schema.md).
+## Quy tắc dữ liệu và model
 
-Huấn luyện Behaviour Isolation Forest cửa sổ 7 ngày:
+- Không commit `.env`, credential, raw IBM AML, DuckDB, score parquet hoặc PostgreSQL dump.
+- Amount Paid/Received và Payment/Receiving Currency được giữ nguyên.
+- Chuẩn hóa theo currency chỉ fit trên train; không dùng static FX trong model.
+- Chỉ quy đổi USD cho luật nghiệp vụ/pháp lý có nguồn tỷ giá và đúng `as_of_ts`.
+- Model score dùng để xếp hàng ưu tiên, không phải xác suất rửa tiền hay kết luận pháp lý.
+- Agent không được đọc ground-truth label; mọi kết luận cần bằng chứng và human review.
 
-```bash
-make behavior-train
-```
+Xem thêm [`SECURITY.md`](SECURITY.md), [`contracts/README.md`](contracts/README.md) và
+[`docs/ml/CURRENCY_NATIVE_EDGE_MVP.md`](docs/ml/CURRENCY_NATIVE_EDGE_MVP.md).
 
-Quy trình, artifact và giới hạn của LI-Small được mô tả tại
-[`docs/ml/FIN-07-BEHAVIOR-7D.md`](docs/ml/FIN-07-BEHAVIOR-7D.md).
-
----
-
-## 10. Tài liệu
+## Tài liệu chuyên sâu
 
 | Tài liệu | Nội dung |
 |---|---|
-| [`docs/architecture/`](docs/architecture/) | Kiến trúc chuẩn (PDF) |
-| [`docs/architecture/PRODUCTION_ARCHITECTURE.md`](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Từ máy cá nhân tới production: hiện trạng, kiến trúc đích, khoảng cách |
-| [`contracts/README.md`](contracts/README.md) | Hợp đồng dữ liệu và quy tắc thay đổi |
-| [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
-| [`docs/operations/CICD.md`](docs/operations/CICD.md) | Cổng chặn merge và pipeline giao hàng |
-| [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai lên VM sau Caddy + TLS |
-| [`docs/operations/GCP_SETUP.md`](docs/operations/GCP_SETUP.md) | Dựng hạ tầng GCP từng bước: gcloud, VM, Terraform, DNS, Cloud SQL |
-| [`infra/terraform/README.md`](infra/terraform/README.md) | Hạ tầng GCP dưới dạng mã: IP tĩnh, tường lửa, Cloud SQL |
-| [`.env.example`](.env.example) | Toàn bộ biến môi trường, kèm giải thích |
-| [`docs/ml/`](docs/ml/) | Đặc tả huấn luyện, đặc trưng và kiến trúc ML/Agent |
-| [`docs/adr/`](docs/adr/) | Quyết định kiến trúc |
+| [`docs/architecture/PRODUCTION_ARCHITECTURE.md`](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Kiến trúc triển khai production |
+| [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Vận hành và xử lý sự cố |
+| [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai VM |
+| [`docs/operations/CICD.md`](docs/operations/CICD.md) | CI/CD và merge gates |
+| [`docs/ml/CURRENCY_NATIVE_EDGE_MVP.md`](docs/ml/CURRENCY_NATIVE_EDGE_MVP.md) | Release đang phục vụ UI |
+| [`docs/ml/FIN-07-FUSION-001.md`](docs/ml/FIN-07-FUSION-001.md) | Fusion IF + Graph |
+| [`docs/ml/FIN-07-ML-004_Ke_hoach_MEGA_PNA.md`](docs/ml/FIN-07-ML-004_Ke_hoach_MEGA_PNA.md) | Kế hoạch MEGA-PNA |
+| [`docs/ml/MEGA_PNA_RUNBOOK.md`](docs/ml/MEGA_PNA_RUNBOOK.md) | Huấn luyện và benchmark MEGA-PNA |
+| [`contracts/ingestion/README.md`](contracts/ingestion/README.md) | Kafka/Flink/HDFS ingestion tùy chọn |
+| [`data/raw/ibm-aml/README.md`](data/raw/ibm-aml/README.md) | Nguồn và cách tải raw IBM AML |
 
----
+## License
 
-## 11. Giấy phép
-
-Mã nguồn sử dụng giấy phép MIT. Bộ dữ liệu IBM AML tiếp tục tuân theo
+Mã nguồn dùng giấy phép MIT. IBM AML là dữ liệu tổng hợp và tiếp tục tuân theo
 CDLA-Sharing-1.0.
