@@ -1,7 +1,9 @@
 # Công cụ phát triển và kiểm thử. Không được cài vào image production.
 -r requirements.txt
 
-ruff>=0.8.0
+# CI formatting is deliberately deterministic; formatter output changed across
+# the former open-ended range and could fail unchanged branches after a release.
+ruff==0.16.0
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
 pytest-cov>=6.0.0

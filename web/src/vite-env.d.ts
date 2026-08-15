@@ -10,6 +10,7 @@ interface ImportMetaEnv {
    */
   readonly VITE_CESIUM_ION_TOKEN?: string;
   readonly VITE_API_TARGET?: string;
+  readonly VITE_GRAFANA_TARGET?: string;
 }
 
 interface ImportMeta {

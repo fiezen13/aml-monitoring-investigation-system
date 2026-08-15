@@ -59,7 +59,7 @@ NEEDED_COLS = {
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Emit IF scores as aml.detection.result.v1")
     p.add_argument("--scores", type=Path, default=DEFAULT_SCORES)
-    p.add_argument("--window", default="7d", choices=("1d", "7d", "14d"))
+    p.add_argument("--window", default="7d", choices=("1d", "7d"))
     p.add_argument(
         "--threshold",
         type=float,

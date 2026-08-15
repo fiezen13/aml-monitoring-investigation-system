@@ -44,7 +44,7 @@ Slovenia Bank,SI,parsed,false
 Spain Bank,ES,parsed,false
 Switzerland Bank,CH,parsed,false
 UK Bank,GB,parsed,false
-Crytpo Bank,,unknown,true
+Crytpo Bank,ZZ,assigned,true
 #
 # ---------------------------------------------------------------------
 # Căn cứ cho `assigned`
@@ -73,8 +73,9 @@ Crytpo Bank,,unknown,true
 # loại hình. Quy tắc này nằm trong scripts/load_bank_geography.py, không liệt kê
 # 468 dòng ở đây.
 #
-# `Crytpo Bank` để `unknown`. Nó là sàn tài sản mã hoá — 99,95% giao dịch của
-# tài khoản thuộc ngân hàng này dùng Bitcoin, và chúng chiếm 90,8% toàn bộ
-# Bitcoin trong bộ dữ liệu. Một sàn crypto không có pháp vực nào được nêu trong
-# dữ liệu, và đó là sự thật đáng hiển thị chứ không phải lỗ hổng cần lấp.
+# `Crytpo Bank` dùng mã kỹ thuật `ZZ`, không phải mã một quốc gia thật. Nó là
+# sàn tài sản mã hoá — 99,95% giao dịch của tài khoản thuộc ngân hàng này dùng
+# Bitcoin, và chúng chiếm 90,8% toàn bộ Bitcoin trong bộ dữ liệu. IBM không nêu
+# pháp vực, nên `ZZ` chỉ giúp giữ đủ tài khoản trên bản đồ; tuyệt đối không được
+# diễn giải thành quốc gia hay mức rủi ro pháp vực.
 # ---------------------------------------------------------------------

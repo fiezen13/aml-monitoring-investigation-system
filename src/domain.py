@@ -7,7 +7,7 @@ diện không có cách nào hiển thị vụ việc đang ở đâu trong quy 
 Nguồn: FIN-07-ARC-001 Hình 4 (máy trạng thái), FIN-07-BUS-001 (typology).
 """
 
-# Nhãn typology T01–T10. Giữ khớp TYPOLOGY_TITLES trong scripts/seed_data.py.
+# Nhãn typology T01–T10 dùng chung cho alert/case từ LI-Small.
 TYPOLOGY_LABELS: dict[str, str] = {
     "T01": "Chia nhỏ giao dịch dưới ngưỡng báo cáo",
     "T02": "Tài khoản trung chuyển trong mạng lưới",

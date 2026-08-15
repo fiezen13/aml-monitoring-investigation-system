@@ -24,7 +24,7 @@ export function ValidationPanel({ status, issues, onFix }: ValidationPanelProps)
     >
       <header className="flex items-center justify-between border-b border-line px-4 py-3">
         <div>
-          <div className="text-[13px] font-semibold text-ink-hi">Trạng thái kiểm chứng</div>
+          <div className="text-body font-semibold text-ink-hi">Trạng thái kiểm chứng</div>
           <div className="mt-0.5 text-2xs text-ink-mid">
             {status === "DRAFT" && "Trạng thái: Chưa chạy kiểm chứng"}
             {status === "VALIDATION_FAILED" &&
@@ -42,7 +42,7 @@ export function ValidationPanel({ status, issues, onFix }: ValidationPanelProps)
       </header>
       <div className="space-y-2 p-4">
         {ranAndPassed && issues.length === 0 && (
-          <div className="flex items-center gap-2 rounded-control border border-ok/30 bg-ok/10 px-3 py-2 text-[13px] text-ok">
+          <div className="flex items-center gap-2 rounded-control border border-ok/30 bg-ok/10 px-3 py-2 text-body text-ok">
             <CheckCircle2 size={14} aria-hidden />
             Toàn bộ nhận định đều có bằng chứng, số liệu khớp công cụ tính toán.
           </div>
@@ -57,7 +57,7 @@ export function ValidationPanel({ status, issues, onFix }: ValidationPanelProps)
             }`}
           >
             <div
-              className={`flex items-center gap-1.5 text-[13px] font-semibold ${
+              className={`flex items-center gap-1.5 text-body font-semibold ${
                 issue.severity === "error" ? "text-risk" : "text-warn"
               }`}
             >

@@ -52,7 +52,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Manifest of accounts with complete history; only these are scored",
     )
-    parser.add_argument("--window", choices=("1d", "7d", "14d"), default="7d")
+    parser.add_argument("--window", choices=("1d", "7d"), default="7d")
     parser.add_argument("--threshold", type=float, default=0.70)
     parser.add_argument("--top-k", type=int, default=100, help="Maximum triggered alerts to create")
     parser.add_argument("--typology", default="T02", help="Candidate typology T01..T10")

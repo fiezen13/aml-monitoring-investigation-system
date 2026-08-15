@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api/client";
 import { auditEventLabel } from "../api/format";
 import { useApi } from "../api/useApi";
+import { PageShell } from "../components/ui";
 import { AuditFeed } from "../components/common/AuditFeed";
 import { Panel } from "../components/common/Panel";
 import { SearchInput } from "../components/common/SearchInput";
@@ -55,7 +56,7 @@ export function AuditPage() {
   }, [events, search]);
 
   return (
-    <div className="mx-auto max-w-[980px]">
+    <PageShell>
       <PageHeader
         title="Nhật ký kiểm toán"
         subtitle="Nhật ký bất biến của mọi hành động trong hệ thống — vụ việc phải tái dựng được khi thanh tra hỏi."
@@ -115,6 +116,6 @@ export function AuditPage() {
             ))}
         </div>
       </Panel>
-    </div>
+    </PageShell>
   );
 }

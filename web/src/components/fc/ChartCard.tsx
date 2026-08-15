@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { SERIES } from "../../design/palette";
+import { SERIES } from "../../design/visualization";
+import { TEXT } from "../../design/typography";
 import { Chart, type ChartSpec } from "./Chart";
 
 /**
@@ -144,14 +145,14 @@ export function ChartCard({
       ref={cardRef}
       className={
         full
-          ? "fixed inset-6 z-[90] overflow-auto rounded-panel border border-line bg-panel shadow-[0_30px_90px_rgba(0,0,0,0.65)]"
+          ? "fixed inset-6 z-modal overflow-auto rounded-panel border border-line bg-panel shadow-modal"
           : "overflow-hidden rounded-panel border border-line bg-panel"
       }
     >
-      <div className="flex flex-wrap items-start gap-2 px-3.5 pb-1.5 pt-3">
+      <div className="flex flex-wrap items-start gap-2 px-4 pb-2 pt-3">
         <div className="min-w-0 flex-1">
-          <div className="text-md font-semibold leading-tight text-ink-hi">{title}</div>
-          {subtitle && <div className="mt-px text-2xs text-ink-low">{subtitle}</div>}
+          <div className={TEXT.h3}>{title}</div>
+          {subtitle && <div className="mt-0.5 text-meta text-ink-low">{subtitle}</div>}
         </div>
         <div className="flex flex-none gap-1">
           {tools.map((t) => {
@@ -203,7 +204,7 @@ export function ChartCard({
             >
               <span
                 className="inline-block h-2 w-2 rounded-sm"
-                style={{ background: hidden[i] ? "#33465A" : it.color }}
+                style={{ background: hidden[i] ? "var(--line-emphasis)" : it.color }}
               />
               {it.name}
             </button>
@@ -229,7 +230,7 @@ export function ChartCard({
             )}
             {state === "empty" && (
               <div className="text-sm leading-relaxed text-ink-low">
-                <div className="mb-1 text-lg text-[#33465A]">◌</div>
+                <div className="mb-1 text-body-lg text-line-emphasis">◌</div>
                 Không có dữ liệu trong khoảng đã chọn
                 <br />
                 <span className="text-2xs text-ink-dim">Thử mở rộng cửa sổ thời gian hoặc bỏ bớt bộ lọc</span>
@@ -268,7 +269,7 @@ export function ChartCard({
                       <td
                         key={j}
                         className={`tabular whitespace-nowrap border-b border-line-faint px-2 py-1 ${
-                          j ? "text-[#D4E3EE]" : "text-ink-soft"
+                          j ? "text-ink-hi" : "text-ink-soft"
                         }`}
                       >
                         {v}

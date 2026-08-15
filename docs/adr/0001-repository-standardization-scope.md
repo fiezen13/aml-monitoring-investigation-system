@@ -17,10 +17,10 @@ Một yêu cầu chuẩn hoá repository toàn diện (15 phase) được đưa 
 Audit đầy đủ (đã gỡ khỏi cây làm việc sau khi hoàn tất; xem lịch sử git) phát hiện:
 
 - Team thật, theo `WORKLOG.md`, là **Bảo/Hưng/Tin Tin/Hiển** — không có ai tên Hường.
-- Không có hai workstream ML độc lập nào tồn tại trong code. Chỉ có một bộ sinh dữ liệu ABM
-  (`scripts/seed_data.py`, do Bảo viết) và một agent LangGraph còn ở dạng khung mẫu chưa hiện
-  thực (`src/agents/`, do Hiển sở hữu theo kế hoạch, chưa bắt đầu).
-- Repo thật là một backend monolith (một image dùng chung cho api/worker/seed/producer) + một SPA +
+- Tại thời điểm ADR được viết, chưa có hai workstream ML độc lập; agent LangGraph vẫn ở dạng khung
+  mẫu. Bộ sinh dữ liệu demo được nhắc trong lịch sử này đã bị loại bỏ sau khi LI-Small và hai model
+  chính thức hoàn thành.
+- Repo thật là một backend monolith (một image dùng chung cho api/worker/migrate/producer) + một SPA +
   một pipeline ingestion tách biệt qua Docker Compose profile — không phải nhiều service độc lập.
   Cấu trúc hiện tại (`src/`, `web/`, `flink/`, `db/`, `scripts/`) đã hợp lý và có tài liệu tốt.
 

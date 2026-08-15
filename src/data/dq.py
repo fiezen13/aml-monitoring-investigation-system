@@ -9,9 +9,12 @@ import pandas as pd
 
 from src.data.schemas import (
     LI_SMALL_ACCOUNT_TOLERANCE,
-    LI_SMALL_EXPECTED_ACCOUNTS,
+    LI_SMALL_EXPECTED_ACTIVE_ACCOUNTS,
+    LI_SMALL_EXPECTED_ACTIVE_TRANSACTIONS,
+    LI_SMALL_EXPECTED_RAW_TRANSACTIONS,
     LI_SMALL_LAUNDERING_RATE_MAX,
     LI_SMALL_LAUNDERING_RATE_MIN,
+    LI_SMALL_TRANSACTION_TOLERANCE,
 )
 from src.data.split import assert_time_split_valid
 
@@ -42,7 +45,8 @@ def run_dq(
 ) -> dict:
     """
     Return a DQ report. Raises DataQualityError on hard failures.
-    Soft checks (account count ~705K, laundering rate) warn unless strict_li_small_stats.
+    Soft checks (post-filter active account count, laundering rate) warn unless
+    strict_li_small_stats.
     """
     report: dict = {"ok": True, "hard_failures": [], "warnings": [], "metrics": {}}
 
@@ -58,6 +62,23 @@ def run_dq(
         report["hard_failures"].append(
             f"Row identity failed: n_loaded({n_loaded}) + n_self_loops({n_self}) != n_raw({n_raw})"
         )
+
+    # Strict source identity uses the raw row population; downstream model
+    # completeness uses the post-self-loop population. Checking both catches a
+    # truncated source as well as a broken filtering step.
+    transaction_populations = (
+        ("Raw transaction", n_raw, LI_SMALL_EXPECTED_RAW_TRANSACTIONS),
+        ("Active transaction", n_loaded, LI_SMALL_EXPECTED_ACTIVE_TRANSACTIONS),
+    )
+    for label, observed, expected in transaction_populations:
+        lo = expected * (1 - LI_SMALL_TRANSACTION_TOLERANCE)
+        hi = expected * (1 + LI_SMALL_TRANSACTION_TOLERANCE)
+        if observed and not (lo <= observed <= hi):
+            msg = f"{label} count {observed} outside expected ~{expected} ±{LI_SMALL_TRANSACTION_TOLERANCE:.0%}"
+            if strict_li_small_stats:
+                report["hard_failures"].append(msg)
+            else:
+                report["warnings"].append(msg)
 
     # Sum of originals: loaded + self_loops == raw file totals (relative float tolerance)
     paid_recon = etl_stats["sum_amount_paid_orig"] + etl_stats["sum_amount_paid_self_loops"]
@@ -96,15 +117,18 @@ def run_dq(
             else:
                 report["warnings"].append(msg)
 
-    # Account count vs published
+    # Active account count after the canonical self-loop filter. The published
+    # 705,907 figure is the raw endpoint population and is not comparable to
+    # this post-filter account dimension.
     n_accounts = len(accounts)
     report["metrics"]["n_accounts"] = n_accounts
-    lo = LI_SMALL_EXPECTED_ACCOUNTS * (1 - LI_SMALL_ACCOUNT_TOLERANCE)
-    hi = LI_SMALL_EXPECTED_ACCOUNTS * (1 + LI_SMALL_ACCOUNT_TOLERANCE)
+    report["metrics"]["account_population"] = "active_endpoints_after_self_loop_filter"
+    lo = LI_SMALL_EXPECTED_ACTIVE_ACCOUNTS * (1 - LI_SMALL_ACCOUNT_TOLERANCE)
+    hi = LI_SMALL_EXPECTED_ACTIVE_ACCOUNTS * (1 + LI_SMALL_ACCOUNT_TOLERANCE)
     if n_accounts and not (lo <= n_accounts <= hi):
         msg = (
-            f"Account count {n_accounts} outside expected "
-            f"~{LI_SMALL_EXPECTED_ACCOUNTS} ±{LI_SMALL_ACCOUNT_TOLERANCE:.0%}"
+            f"Active account count {n_accounts} outside expected post-filter "
+            f"~{LI_SMALL_EXPECTED_ACTIVE_ACCOUNTS} ±{LI_SMALL_ACCOUNT_TOLERANCE:.0%}"
         )
         if strict_li_small_stats:
             report["hard_failures"].append(msg)

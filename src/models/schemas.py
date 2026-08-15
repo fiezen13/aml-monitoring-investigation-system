@@ -80,6 +80,17 @@ class AlertOut(BaseModel):
     factor_count: int
 
 
+class AlertPageOut(BaseModel):
+    """Một trang cảnh báo; `total` luôn là tổng sau bộ lọc, không phải cỡ trang."""
+
+    rows: list[AlertOut]
+    total: int
+    page: int
+    page_size: int = Field(alias="pageSize")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class TransactionOut(BaseModel):
     transaction_id: int
     occurred_at: datetime
@@ -241,7 +252,7 @@ class InternalAlertCreate(BaseModel):
     reasons: list[InternalAlertReasonIn] = Field(..., min_length=3)
     alert_id: str | None = Field(default=None, max_length=64)
     as_of_ts: datetime | None = None
-    window: str = Field(default="7d", pattern=r"^(1d|7d|14d)$")
+    window: str = Field(default="7d", pattern=r"^(1d|7d)$")
     model_version: str = Field(default="if_baseline_7d_v1", max_length=64)
 
 

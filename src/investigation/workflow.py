@@ -15,6 +15,9 @@ from src.investigation.prompts import get_prompt
 from src.investigation.repository import InvestigationRepository
 from src.investigation.schemas import InvestigationStatus, ValidationResult, WorkflowState
 from src.investigation.tools import InvestigationTools, timed_execute
+from src.observability.metrics import METRICS, attrs
+from src.observability.operations import AgentObservation, ToolObservation
+from src.observability.redaction import stable_fingerprint
 
 logger = logging.getLogger("fin07.investigation")
 
@@ -58,6 +61,7 @@ class InvestigationWorkflow:
         tool_count = state.tool_call_count
         service: GeminiService | None = self.gemini_service
         owns_service = service is None
+        repeated_calls: dict[str, int] = {}
 
         try:
             service = service or get_gemini_service(self.settings)
@@ -79,7 +83,11 @@ class InvestigationWorkflow:
                 )
                 self._trace_gemini_request(investigation_id, supervisor.name, service)
                 try:
-                    plan_result = await supervisor.plan(alert=alert, evidence=evidence, validation=last_validation)
+                    with AgentObservation(supervisor.name, iteration) as agent_observation:
+                        plan_result = await supervisor.plan(alert=alert, evidence=evidence, validation=last_validation)
+                        agent_observation.set_attribute(
+                            "aml.agent.open_question_count", len(plan_result.output.open_questions)
+                        )
                 except GeminiServiceError as exc:
                     self.repository.finish_agent_run(
                         supervisor_run, {}, status=self._run_error_status(exc), error_type=type(exc).__name__
@@ -90,6 +98,8 @@ class InvestigationWorkflow:
                 self._trace_gemini_response(investigation_id, supervisor.name, plan_result.metadata)
                 remaining = max(0, self.settings.max_tool_calls - tool_count)
                 plan.decisions = plan.decisions[:remaining]
+                METRICS.supervisor_tool_calls.record(len(plan.decisions))
+                METRICS.supervisor_open_questions.record(len(plan.open_questions))
                 self.repository.add_trace(
                     investigation_id,
                     agent=supervisor.name,
@@ -103,6 +113,19 @@ class InvestigationWorkflow:
                 tools = InvestigationTools(self.session, self.repository, investigation_id)
                 for decision in plan.decisions:
                     arguments = decision.arguments.model_dump(mode="json", exclude_none=True)
+                    fingerprint = stable_fingerprint({"tool": decision.tool, "arguments": arguments})
+                    repeated_calls[fingerprint] = repeated_calls.get(fingerprint, 0) + 1
+                    if repeated_calls[fingerprint] > 1:
+                        logger.warning(
+                            "agent repeated identical tool call",
+                            extra={
+                                "investigation_id": investigation_id,
+                                "agent": supervisor.name,
+                                "tool": decision.tool,
+                                "argument_fingerprint": fingerprint,
+                                "repeat_count": repeated_calls[fingerprint],
+                            },
+                        )
                     self.repository.add_trace(
                         investigation_id,
                         agent=supervisor.name,
@@ -114,7 +137,12 @@ class InvestigationWorkflow:
                     started_at = datetime.now(UTC)
                     started_monotonic = time.monotonic()
                     try:
-                        execution, started_at, duration_ms = timed_execute(tools, decision.tool, arguments)
+                        with ToolObservation(supervisor.name, decision.tool) as tool_observation:
+                            execution, started_at, duration_ms = timed_execute(tools, decision.tool, arguments)
+                            tool_observation.status = (
+                                "success" if execution.status == "SUCCEEDED" else execution.status.lower()
+                            )
+                            tool_observation.result_count = 1 if execution.evidence else 0
                         tool_count += 1
                         output_ref = execution.evidence.evidence_id if execution.evidence else None
                         call_id = self.repository.record_tool_call(
@@ -193,13 +221,25 @@ class InvestigationWorkflow:
                 )
                 self._trace_gemini_request(investigation_id, explanation_agent.name, service)
                 try:
-                    explanation_result = await explanation_agent.explain(alert, evidence)
+                    with AgentObservation(explanation_agent.name, iteration) as agent_observation:
+                        explanation_result = await explanation_agent.explain(alert, evidence)
+                        agent_observation.set_attribute(
+                            "aml.explanation.claim_count", len(explanation_result.output.claims)
+                        )
                 except GeminiServiceError as exc:
                     self.repository.finish_agent_run(
                         explanation_run, {}, status=self._run_error_status(exc), error_type=type(exc).__name__
                     )
                     raise
                 last_explanation = explanation_result.output
+                METRICS.explanation_claim_count.record(len(last_explanation.claims))
+                METRICS.explanation_fact_count.record(len(last_explanation.facts))
+                METRICS.explanation_inference_count.record(len(last_explanation.inferences))
+                evidence_ref_count = sum(len(claim.evidence_refs) for claim in last_explanation.claims)
+                METRICS.explanation_evidence_refs_per_claim.record(
+                    evidence_ref_count / max(len(last_explanation.claims), 1)
+                )
+                METRICS.explanation_missing_count.record(len(last_explanation.missing_information))
                 explanation_id = self.repository.save_explanation(investigation_id, last_explanation, validated=False)
                 self.repository.finish_agent_run(
                     explanation_run, last_explanation, metadata=explanation_result.metadata
@@ -224,14 +264,31 @@ class InvestigationWorkflow:
                     prompt_version=get_prompt(critic.name).version,
                 )
                 self._trace_gemini_request(investigation_id, critic.name, service)
+                critic_started = time.monotonic()
                 try:
-                    critic_result = await critic.validate(last_explanation, evidence)
+                    with AgentObservation(critic.name, iteration) as agent_observation:
+                        critic_result = await critic.validate(last_explanation, evidence)
+                        agent_observation.set_attribute("aml.validation.status", critic_result.output.status)
+                        agent_observation.set_attribute("aml.validation.issue_count", len(critic_result.output.issues))
                 except GeminiServiceError as exc:
                     self.repository.finish_agent_run(
                         critic_run, {}, status=self._run_error_status(exc), error_type=type(exc).__name__
                     )
                     raise
                 last_validation = critic_result.output
+                METRICS.critic_duration.record(time.monotonic() - critic_started)
+                METRICS.critic_validations.add(1, attrs(status=last_validation.status.lower()))
+                issue_map = {
+                    "UNSUPPORTED_CLAIM": "unsupported_claim",
+                    "MISSING_EVIDENCE": "missing_evidence",
+                    "MISSING_SOURCE_RECORD": "missing_evidence",
+                    "CONTRADICTION": "contradiction",
+                    "INVALID_SCORE_CONTRIBUTION": "invalid_score",
+                    "INVALID_TYPOLOGY": "invalid_typology",
+                }
+                for issue in last_validation.issues:
+                    issue_type = getattr(issue.type, "value", issue.type)
+                    METRICS.critic_issues.add(1, attrs(issue_type=issue_map.get(str(issue_type), "other")))
                 validation_id = self.repository.save_validation(
                     investigation_id, critic_run, iteration, last_validation
                 )
@@ -252,6 +309,7 @@ class InvestigationWorkflow:
                 )
 
                 if last_validation.status == "PASS":
+                    METRICS.agent_iterations.record(iteration, attrs(status="pass"))
                     validated_id = self.repository.save_explanation(investigation_id, last_explanation, validated=True)
                     self.repository.update_state(
                         investigation_id,
@@ -277,9 +335,21 @@ class InvestigationWorkflow:
                     return
 
                 if tool_count >= self.settings.max_tool_calls:
+                    METRICS.supervisor_limit_reached.add(1, attrs(limit="tool_calls"))
+                    logger.warning(
+                        "agent workflow reached tool-call limit",
+                        extra={
+                            "investigation_id": investigation_id,
+                            "tool_call_count": tool_count,
+                            "configured_limit": self.settings.max_tool_calls,
+                        },
+                    )
                     break
 
             final_status = InvestigationStatus.INSUFFICIENT_EVIDENCE
+            METRICS.agent_iterations.record(self.settings.max_agent_iterations, attrs(status="limit_or_insufficient"))
+            if tool_count < self.settings.max_tool_calls:
+                METRICS.supervisor_limit_reached.add(1, attrs(limit="iterations"))
             self.repository.update_state(
                 investigation_id,
                 status=final_status,

@@ -1,4 +1,5 @@
-.PHONY: help up down restart logs ps health seed seed-verify db-reset db-shell redis-shell behavior-batch \
+.PHONY: help up down restart logs ps health db-reset db-shell redis-shell behavior-batch behavior-train \
+        train-fusion load-fusion load-edge-release \
         migrate migrate-status \
         build run worker test test-unit contracts-check lint format typecheck check clean \
         aml-up aml-down aml-status aml-topics aml-fixture aml-producer-sample aml-producer-run \
@@ -42,17 +43,11 @@ health:  ## Trạng thái sức khoẻ từng container
 
 # --- Dữ liệu ---------------------------------------------------------
 
-seed:  ## Nạp lại dữ liệu mẫu (xoá dữ liệu hiện có)
-	$(COMPOSE) run --rm seed python scripts/seed_data.py --force
-
-seed-verify:  ## In vân tay dữ liệu mẫu, không ghi cơ sở dữ liệu
-	$(COMPOSE) run --rm seed python scripts/seed_data.py --verify
-
 migrate:  ## Áp các file lược đồ trong db/init còn thiếu (giữ nguyên dữ liệu)
-	$(COMPOSE) run --rm seed python scripts/migrate.py
+	$(COMPOSE) run --rm migrate python scripts/migrate.py
 
 migrate-status:  ## Liệt kê file lược đồ nào đã áp, file nào còn chờ
-	$(COMPOSE) run --rm seed python scripts/migrate.py --status
+	$(COMPOSE) run --rm migrate python scripts/migrate.py --status
 
 db-reset:  ## Xoá volume PostgreSQL và dựng lại từ db/init (mất toàn bộ dữ liệu)
 	$(COMPOSE) down -v
@@ -72,6 +67,22 @@ behavior-batch:  ## Chạy Behaviour ML PoC; FILE=transactions.csv trong data/ba
 		--window "$${BEHAVIOR_WINDOW:-7d}" \
 		--threshold "$${BEHAVIOR_THRESHOLD:-0.70}" \
 		--top-k "$${BEHAVIOR_TOP_K:-100}"
+
+behavior-train:  ## Huấn luyện + đánh giá Isolation Forest rolling 7d trên DuckDB full
+	python scripts/train_behavior_7d.py \
+		--db data/processed/aml.duckdb \
+		--output-dir data/processed/behavior-7d \
+		--reports-dir reports/behavior-7d \
+		--require-full-li-small
+
+train-fusion:  ## Retrain IF + Graph, chọn champion trên validation và tạo fusion v2
+	.venv/bin/python scripts/train_fusion_v2.py
+
+load-fusion:  ## Nạp LI-Small + kết quả champion fusion v2 vào PostgreSQL (idempotent)
+	.venv/bin/python scripts/load_fusion_release.py
+
+load-edge-release:  ## Nạp currency-native HI-Medium release vào PostgreSQL rỗng
+	.venv/bin/python scripts/load_currency_native_edge_release.py
 
 # --- Chạy ngoài Docker -----------------------------------------------
 
@@ -179,29 +190,31 @@ aml-patterns:  ## Chép *_Patterns.txt lên HDFS, nguyên trạng
 aml-smoke:  ## Kiểm tra khói đầu–cuối bằng file mẫu
 	./scripts/aml/smoke_test.sh
 
-# --- Giám sát (Prometheus + Grafana) ---------------------------------
+# --- Observability correlated (OTel + Prometheus + Loki + Jaeger) -----
 #
 # Profile `obs`, không chạy cùng `make up`. Cổng bind vào 127.0.0.1 nên
 # không ra Internet. Hướng dẫn đầy đủ: docs/operations/MONITORING.md
 
 OBS := $(COMPOSE) --profile obs
 
-obs-up:  ## Dựng Prometheus, Grafana và các exporter
-	$(OBS) up -d --wait prometheus grafana node-exporter redis-exporter postgres-exporter
+obs-up:  ## Dựng core app và full correlated observability stack
+	OTEL_ENABLED=true $(OBS) up -d --build --wait
 	@echo ""
-	@echo "  Grafana     http://localhost:$${GRAFANA_PORT:-3000}   (admin / $${GRAFANA_ADMIN_PASSWORD:-admin})"
+	@echo "  Cockpit     http://localhost:$${WEB_PORT:-5173}/models   (đăng nhập FIN-07)"
+	@echo "  Grafana     http://localhost:$${GRAFANA_PORT:-3000}   (admin trực tiếp)"
 	@echo "  Prometheus  http://localhost:$${PROMETHEUS_PORT:-9090}"
+	@echo "  Jaeger      http://localhost:$${JAEGER_UI_PORT:-16686}"
 
-obs-down:  ## Dừng cụm giám sát, giữ dữ liệu đã thu
-	$(OBS) stop prometheus grafana node-exporter redis-exporter postgres-exporter
+obs-down:  ## Dừng cụm observability, giữ dữ liệu đã thu
+	$(OBS) stop prometheus grafana loki jaeger otel-collector cadvisor node-exporter redis-exporter postgres-exporter
 
 obs-status:  ## Mục tiêu nào Prometheus đang scrape được
 	@curl -s http://localhost:$${PROMETHEUS_PORT:-9090}/api/v1/targets \
 		| python3 -c "import json,sys; [print('  %-18s %-28s %s' % (t['labels']['job'], t['labels']['instance'], t['health'])) for t in json.load(sys.stdin)['data']['activeTargets']]" \
 		2>/dev/null || echo "  Prometheus chưa chạy — make obs-up"
 
-obs-logs:  ## Log của Prometheus và Grafana
-	$(OBS) logs -f --tail=100 prometheus grafana
+obs-logs:  ## Log của telemetry gateway và backends
+	$(OBS) logs -f --tail=100 otel-collector prometheus loki jaeger grafana
 
 obs-reload:  ## Nạp lại cấu hình Prometheus, không khởi động lại container
 	@curl -fsS -X POST http://localhost:$${PROMETHEUS_PORT:-9090}/-/reload && echo "  Đã nạp lại cấu hình"

@@ -63,15 +63,117 @@ def account_to_bank_name(accounts_csv: Path) -> dict[str, str]:
     return mapping
 
 
+def refresh_operational_geography(session) -> dict[str, int]:
+    """Rebuild currency-native World Monitor rollups for the active edge release."""
+    release_id = session.execute(
+        text(
+            """SELECT release_id FROM edge_model_release
+                WHERE status='active' LIMIT 1"""
+        )
+    ).scalar_one_or_none()
+    if release_id is None:
+        return {"rollup_hubs": 0, "rollup_flows": 0}
+    rollup_schema = session.execute(
+        text("SELECT to_regclass('public.edge_country_flow') IS NOT NULL")
+    ).scalar_one()
+    if not rollup_schema:
+        raise RuntimeError("Thiếu migration 014; chạy `make migrate` rồi nạp geography lại")
+
+    session.execute(text("DELETE FROM edge_country_flow WHERE release_id=:release"), {"release": release_id})
+    session.execute(text("DELETE FROM edge_country_hub WHERE release_id=:release"), {"release": release_id})
+    session.execute(
+        text(
+            """
+            INSERT INTO edge_country_hub (
+              release_id, country_code, entities, inbound, outbound, alerts, risk_score
+            )
+            WITH acct AS (
+              SELECT a.account_key, b.country_code
+                FROM account a JOIN bank b ON b.bank_code=a.bank_code
+               WHERE b.country_code IS NOT NULL
+            ),
+            edge AS (
+              SELECT af.country_code src, ad.country_code dst
+                FROM transaction t
+                JOIN transaction_model_score s USING (transaction_id)
+                JOIN acct af ON af.account_key=t.from_account_key
+                JOIN acct ad ON ad.account_key=t.to_account_key
+               WHERE s.release_id=:release
+            ),
+            outb AS (SELECT src cc, count(*) n FROM edge GROUP BY 1),
+            inb  AS (SELECT dst cc, count(*) n FROM edge GROUP BY 1),
+            ent  AS (SELECT country_code cc, count(*) n FROM acct GROUP BY 1),
+            alr  AS (
+              SELECT ac.country_code cc, count(*) n, avg(al.risk_score) r
+                FROM alert al JOIN transaction_model_score s ON s.transaction_id=al.transaction_id
+                JOIN acct ac ON ac.account_key=al.account_key
+               WHERE s.release_id=:release
+               GROUP BY 1
+            )
+            SELECT :batch, ent.cc, ent.n, coalesce(inb.n,0), coalesce(outb.n,0),
+                   coalesce(alr.n,0), coalesce(round(alr.r),0)
+              FROM ent
+              LEFT JOIN inb ON inb.cc=ent.cc
+              LEFT JOIN outb ON outb.cc=ent.cc
+              LEFT JOIN alr ON alr.cc=ent.cc
+            """
+        ),
+        {"batch": release_id, "release": release_id},
+    )
+    session.execute(
+        text(
+            """
+            INSERT INTO edge_country_flow (
+              release_id, source_country_code, target_country_code, currency,
+              channel, txn_count, amount_native, first_seen, last_seen,
+              alert_count, risk_score
+            )
+            WITH acct AS (
+              SELECT a.account_key, b.country_code, b.is_vasp
+                FROM account a JOIN bank b ON b.bank_code=a.bank_code
+               WHERE b.country_code IS NOT NULL
+            ),
+            edge AS (
+              SELECT af.country_code src, ad.country_code dst,
+                     CASE WHEN af.is_vasp OR ad.is_vasp THEN 'vasp' ELSE 'bank' END channel,
+                     t.amount, t.currency, t.occurred_at, s.triggered, s.model_score
+                FROM transaction t
+                JOIN transaction_model_score s USING (transaction_id)
+                JOIN acct af ON af.account_key=t.from_account_key
+                JOIN acct ad ON ad.account_key=t.to_account_key
+               WHERE s.release_id=:release AND af.country_code<>ad.country_code
+            )
+            SELECT :batch, e.src, e.dst, e.currency,
+                   e.channel, count(*), sum(e.amount),
+                   min(e.occurred_at), max(e.occurred_at),
+                   count(*) FILTER (WHERE e.triggered),
+                   round((max(e.model_score)*100)::numeric,2)
+              FROM edge e
+             GROUP BY e.src,e.dst,e.currency,e.channel
+            """
+        ),
+        {"batch": release_id, "release": release_id},
+    )
+    hubs = int(
+        session.execute(
+            text("SELECT count(*) FROM edge_country_hub WHERE release_id=:release"), {"release": release_id}
+        ).scalar_one()
+    )
+    flows = int(
+        session.execute(
+            text("SELECT count(*) FROM edge_country_flow WHERE release_id=:release"), {"release": release_id}
+        ).scalar_one()
+    )
+    return {"rollup_hubs": hubs, "rollup_flows": flows}
+
+
 def run(accounts_csv: Path) -> dict[str, object]:
     by_account = account_to_bank_name(accounts_csv)
     lookup = load_lookup()
     counters: Counter[str] = Counter()
 
     with get_session() as session:
-        rows = (
-            session.execute(text("SELECT DISTINCT bank_code, account_number FROM account")).mappings().all()
-        )
+        rows = session.execute(text("SELECT DISTINCT bank_code, account_number FROM account")).mappings().all()
         if not rows:
             raise RuntimeError("Bảng account rỗng — nạp giao dịch trước khi chạy script này")
 
@@ -150,12 +252,15 @@ def run(accounts_csv: Path) -> dict[str, object]:
             )
         ).scalar_one()
 
+        rollup = refresh_operational_geography(session)
+
     return {
         "accounts_csv": str(accounts_csv),
         "banks_written": len(params),
         "countries_written": len(geo),
         "account_coverage": round(float(covered), 4),
         "country_without_coordinates": sorted(missing),
+        **rollup,
         **{key: counters[key] for key in sorted(counters)},
     }
 

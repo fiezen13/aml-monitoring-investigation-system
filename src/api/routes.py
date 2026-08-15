@@ -2,9 +2,10 @@ import hashlib
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Query
+from opentelemetry import trace
 from sqlalchemy import text
 
 from src.agents.graph import agent
@@ -31,6 +32,7 @@ from src.investigation.schemas import (
 from src.models.schemas import (
     AlertDetailOut,
     AlertOut,
+    AlertPageOut,
     AlertReasonOut,
     ApprovalDecisionRequest,
     AuditEventOut,
@@ -308,7 +310,7 @@ def _build_timeline(current: str, reached_at: dict[str, object]) -> list[CaseTim
     """Dựng dòng thời gian điều tra từ trạng thái hiện tại.
 
     Vụ việc đứng ở đâu trên chuỗi thì mọi bước trước đó coi như đã xong, kể
-    cả khi nhật ký không có dòng chuyển trạng thái tương ứng — dữ liệu seed
+    cả khi nhật ký không có dòng chuyển trạng thái tương ứng — dữ liệu cũ
     đặt thẳng trạng thái ban đầu mà không đi qua worker.
     """
     try:
@@ -392,9 +394,6 @@ async def list_alerts(
     status: str | None = Query(default=None, description="open | grouped | closed"),
     typology_code: str | None = Query(default=None, description="Mã typology T01–T10"),
     min_risk: float = Query(default=0, ge=0, le=100, description="Ngưỡng điểm rủi ro tối thiểu"),
-    source: Literal["operational", "all"] = Query(
-        default="operational", description="operational = batch Behaviour hoàn tất gần nhất; all = gồm cả seed"
-    ),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[AlertOut]:
     """Hàng đợi cảnh báo, xếp theo điểm rủi ro giảm dần."""
@@ -404,18 +403,10 @@ async def list_alerts(
          WHERE (CAST(:status AS text) IS NULL OR al.status = CAST(:status AS text))
            AND (CAST(:typology_code AS text) IS NULL OR al.typology_code = CAST(:typology_code AS text))
            AND al.risk_score >= :min_risk
-           AND (
-                :source = 'all'
-                OR EXISTS (
-                    SELECT 1
-                      FROM detection_result d
-                     WHERE d.alert_id = al.alert_id
-                       AND d.batch_id = (
-                           SELECT batch_id FROM behavior_batch
-                            WHERE status = 'completed'
-                            ORDER BY completed_at DESC NULLS LAST LIMIT 1
-                       )
-                )
+           AND EXISTS (
+               SELECT 1 FROM transaction_model_score s
+               JOIN edge_model_release r USING (release_id)
+                WHERE r.status='active' AND s.transaction_id=al.transaction_id
            )
          ORDER BY al.risk_score DESC, al.created_at DESC
          LIMIT :limit
@@ -429,7 +420,6 @@ async def list_alerts(
                     "status": status,
                     "typology_code": typology_code,
                     "min_risk": min_risk,
-                    "source": source,
                     "limit": limit,
                 },
             )
@@ -437,6 +427,78 @@ async def list_alerts(
             .all()
         )
     return [_alert_out(dict(row)) for row in rows]
+
+
+@router.get("/alerts/page", response_model=AlertPageOut)
+async def list_alerts_page(
+    status: str | None = Query(default=None, description="open | grouped | closed"),
+    typology_code: str | None = Query(default=None, description="Mã typology T01–T10"),
+    min_risk: float = Query(default=0, ge=0, le=100),
+    q: str | None = Query(default=None, max_length=160),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=10, le=200),
+) -> AlertPageOut:
+    """Hàng đợi cảnh báo phân trang trên DB, bao phủ toàn bộ active release."""
+    where = """
+         WHERE (CAST(:status AS text) IS NULL OR al.status = CAST(:status AS text))
+           AND (CAST(:typology_code AS text) IS NULL OR al.typology_code = CAST(:typology_code AS text))
+           AND al.risk_score >= :min_risk
+           AND (
+               CAST(:q AS text) IS NULL
+               OR al.alert_id ILIKE :q_like
+               OR ac.account_key ILIKE :q_like
+               OR ac.customer_id ILIKE :q_like
+               OR c.occupation ILIKE :q_like
+           )
+           AND EXISTS (
+               SELECT 1 FROM transaction_model_score s
+               JOIN edge_model_release r USING (release_id)
+                WHERE r.status='active' AND s.transaction_id=al.transaction_id
+           )
+    """
+    clean_q = q.strip() if q and q.strip() else None
+    params = {
+        "status": status,
+        "typology_code": typology_code,
+        "min_risk": min_risk,
+        "q": clean_q,
+        "q_like": f"%{clean_q}%" if clean_q else None,
+        "limit": page_size,
+        "offset": (page - 1) * page_size,
+    }
+    with get_session() as session:
+        total = session.execute(
+            text(
+                """SELECT count(*)
+                     FROM alert al
+                     JOIN account ac ON ac.account_key = al.account_key
+                     JOIN customer c ON c.customer_id = ac.customer_id
+                """
+                + where
+            ),
+            params,
+        ).scalar_one()
+        rows = (
+            session.execute(
+                text(
+                    _ALERT_SELECT
+                    + where
+                    + """
+                     ORDER BY al.risk_score DESC, al.created_at DESC, al.alert_id
+                     LIMIT :limit OFFSET :offset
+                    """
+                ),
+                params,
+            )
+            .mappings()
+            .all()
+        )
+    return AlertPageOut(
+        rows=[_alert_out(dict(row)) for row in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/alerts/{alert_id}", response_model=AlertDetailOut)
@@ -572,71 +634,55 @@ async def list_audit(
 
 
 @router.get("/dashboard", response_model=DashboardOut)
-async def dashboard(
-    source: Literal["operational", "all"] = Query(
-        default="operational", description="operational = batch Behaviour hoàn tất gần nhất; all = gồm cả seed"
-    ),
-) -> DashboardOut:
+async def dashboard() -> DashboardOut:
     """Số liệu Trung tâm Điều hành — đếm thật, không cứng hoá con số nào."""
     with get_session() as session:
         counts = (
             session.execute(
                 text(
                     """WITH latest AS (
-                           SELECT batch_id, source_name
-                             FROM behavior_batch
-                            WHERE status = 'completed'
-                            ORDER BY completed_at DESC NULLS LAST
-                            LIMIT 1
+                           SELECT release_id, dataset, transaction_rows, triggered_rows
+                             FROM edge_model_release
+                            WHERE status = 'active' LIMIT 1
                        )
                        SELECT
                          -- "Chưa xử lý" là mọi cảnh báo chưa đóng, không chỉ cái chưa gom
                          -- vào vụ việc: một cảnh báo `grouped` vẫn đang chờ người xử lý.
                          (SELECT count(*) FROM alert al
                            WHERE status <> 'closed'
-                             AND (:source = 'all' OR EXISTS (
-                                 SELECT 1 FROM detection_result d
-                                  WHERE d.alert_id = al.alert_id
-                                    AND d.batch_id = (SELECT batch_id FROM latest))))          AS open_alerts,
+                             AND EXISTS (
+                                 SELECT 1 FROM transaction_model_score s
+                                  WHERE s.transaction_id=al.transaction_id
+                                    AND s.release_id=(SELECT release_id FROM latest)))          AS open_alerts,
                          (SELECT count(*) FROM alert al
                            WHERE risk_score >= 80
-                             AND (:source = 'all' OR EXISTS (
-                                 SELECT 1 FROM detection_result d
-                                  WHERE d.alert_id = al.alert_id
-                                    AND d.batch_id = (SELECT batch_id FROM latest))))          AS high_risk_alerts,
+                             AND EXISTS (
+                                 SELECT 1 FROM transaction_model_score s
+                                  WHERE s.transaction_id=al.transaction_id
+                                    AND s.release_id=(SELECT release_id FROM latest)))          AS high_risk_alerts,
                          (SELECT count(*) FROM aml_case
                            WHERE state NOT IN ('XuatHoSo', 'DongKhongBaoCao')
-                             AND (:source = 'all' OR EXISTS (
-                                 SELECT 1 FROM alert al JOIN detection_result d USING (alert_id)
-                                  WHERE al.case_id = aml_case.case_id
-                                    AND d.batch_id = (SELECT batch_id FROM latest))))          AS cases_investigating,
+                             AND EXISTS (
+                                 SELECT 1 FROM alert al
+                                  WHERE al.case_id = aml_case.case_id))                         AS cases_investigating,
                          (SELECT count(*) FROM approval ap
                            JOIN sar_draft sd USING (sar_draft_id)
                            WHERE ap.decision = 'pending'
-                             AND (:source = 'all' OR EXISTS (
-                                 SELECT 1 FROM alert al JOIN detection_result d USING (alert_id)
-                                  WHERE al.case_id = sd.case_id
-                                    AND d.batch_id = (SELECT batch_id FROM latest))))          AS sar_pending,
+                             AND EXISTS (
+                                 SELECT 1 FROM alert al WHERE al.case_id = sd.case_id))         AS sar_pending,
                          (SELECT coalesce(avg(risk_score), 0) FROM alert al
-                           WHERE :source = 'all' OR EXISTS (
-                               SELECT 1 FROM detection_result d
-                                WHERE d.alert_id = al.alert_id
-                                  AND d.batch_id = (SELECT batch_id FROM latest)))             AS avg_risk_score,
-                         (SELECT batch_id FROM latest)                                         AS latest_batch_id,
-                         (SELECT source_name FROM latest)                                      AS latest_source_name,
-                         (SELECT count(*) FROM transaction
-                           WHERE behavior_batch_id = (SELECT batch_id FROM latest))             AS transactions_analyzed,
-                         (SELECT count(*) FROM detection_result
-                           WHERE batch_id = (SELECT batch_id FROM latest))                      AS subjects_analyzed,
-                         (SELECT count(*) FROM detection_result
-                           WHERE batch_id = (SELECT batch_id FROM latest) AND NOT triggered)    AS subjects_below_threshold,
-                         (SELECT count(*) FROM detection_result
-                           WHERE batch_id = (SELECT batch_id FROM latest) AND triggered)        AS subjects_triggered,
-                         (SELECT count(*) FROM detection_result
-                           WHERE batch_id = (SELECT batch_id FROM latest) AND alert_id IS NOT NULL)
-                                                                                               AS batch_alerts_created"""
+                           WHERE EXISTS (
+                               SELECT 1 FROM transaction_model_score s
+                                WHERE s.transaction_id=al.transaction_id
+                                  AND s.release_id=(SELECT release_id FROM latest)))            AS avg_risk_score,
+                         (SELECT release_id FROM latest)                                        AS latest_batch_id,
+                         (SELECT dataset FROM latest)                                           AS latest_source_name,
+                         (SELECT transaction_rows FROM latest)                                  AS transactions_analyzed,
+                         (SELECT transaction_rows FROM latest)                                  AS subjects_analyzed,
+                         (SELECT transaction_rows-triggered_rows FROM latest)                   AS subjects_below_threshold,
+                         (SELECT triggered_rows FROM latest)                                    AS subjects_triggered,
+                         (SELECT triggered_rows FROM latest)                                    AS batch_alerts_created"""
                 ),
-                {"source": source},
             )
             .mappings()
             .one()
@@ -647,19 +693,14 @@ async def dashboard(
                 text(
                     """SELECT typology_code, count(*) AS alert_count
                          FROM alert al
-                        WHERE :source = 'all' OR EXISTS (
-                            SELECT 1 FROM detection_result d
-                             WHERE d.alert_id = al.alert_id
-                               AND d.batch_id = (
-                                   SELECT batch_id FROM behavior_batch
-                                    WHERE status = 'completed'
-                                    ORDER BY completed_at DESC NULLS LAST LIMIT 1
-                               )
+                        WHERE EXISTS (
+                            SELECT 1 FROM transaction_model_score s
+                            JOIN edge_model_release r USING (release_id)
+                             WHERE r.status='active' AND s.transaction_id=al.transaction_id
                         )
                         GROUP BY typology_code
                         ORDER BY count(*) DESC, typology_code"""
                 ),
-                {"source": source},
             )
             .mappings()
             .all()
@@ -669,18 +710,13 @@ async def dashboard(
             session.execute(
                 text(
                     _ALERT_SELECT
-                    + """ WHERE :source = 'all' OR EXISTS (
-                            SELECT 1 FROM detection_result d
-                             WHERE d.alert_id = al.alert_id
-                               AND d.batch_id = (
-                                   SELECT batch_id FROM behavior_batch
-                                    WHERE status = 'completed'
-                                    ORDER BY completed_at DESC NULLS LAST LIMIT 1
-                               )
+                    + """ WHERE EXISTS (
+                            SELECT 1 FROM transaction_model_score s
+                            JOIN edge_model_release r USING (release_id)
+                             WHERE r.status='active' AND s.transaction_id=al.transaction_id
                         )
                         ORDER BY al.risk_score DESC, al.created_at DESC LIMIT 5"""
                 ),
-                {"source": source},
             )
             .mappings()
             .all()
@@ -768,6 +804,12 @@ async def investigate_alert(alert_id: str, authorization: str | None = Header(de
                 completed=True,
             )
         raise HTTPException(status_code=503, detail="Không thể giao tác vụ điều tra cho worker") from exc
+    span = trace.get_current_span()
+    if span.is_recording():
+        span.set_attribute("aml.alert.id", investigation.alert_id)
+        span.set_attribute("aml.case.id", investigation.case_id)
+        span.set_attribute("aml.investigation.id", investigation.investigation_id)
+        span.set_attribute("messaging.message.id", job_id)
     return InvestigationStartOut(
         investigation_id=investigation.investigation_id,
         alert_id=investigation.alert_id,
@@ -868,12 +910,18 @@ async def review_investigation(
         raise HTTPException(status_code=403, detail="Vai trò này không được rà soát phiên điều tra")
     try:
         with get_session() as session:
-            return InvestigationRepository(session).review(
+            reviewed = InvestigationRepository(session).review(
                 investigation_id,
                 user_id=user["user_id"],
                 decision=request.decision,
                 reason=request.reason,
             )
+            span = trace.get_current_span()
+            if span.is_recording():
+                span.set_attribute("aml.investigation.id", investigation_id)
+                span.set_attribute("aml.case.id", reviewed.case_id)
+                span.set_attribute("aml.human_review.decision", request.decision)
+            return reviewed
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

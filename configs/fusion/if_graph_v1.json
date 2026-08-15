@@ -1,0 +1,63 @@
+{
+  "schema_version": "fin07.fusion.config.v1",
+  "fusion_version": "if_graph_fusion_v1",
+  "window": "7d",
+  "artifacts": {
+    "isolation_forest_model": {
+      "path": "if_handoff/isolation_forest_model_7d.joblib",
+      "sha256": "660500cd2935327664b1a20b2beda06ad7731ea68866edb94263a8b2d4633179"
+    },
+    "isolation_forest_scores": {
+      "path": "if_handoff/if_scores_v1.parquet",
+      "sha256": "f4a787681fae5b66f35820a4a78e54f65b8a84f0d6c416e7761755cc6df92c70"
+    },
+    "isolation_forest_train_features": {
+      "path": "if_handoff/features_train_7d.parquet",
+      "sha256": "d910213e23fd20b0b012649939868af20132c6d53c55f2f16789e7b6c5490af9"
+    },
+    "isolation_forest_val_features": {
+      "path": "if_handoff/features_val_7d.parquet",
+      "sha256": "415f837b54d141e82745a125930acd8b9be1f2be8ca5115de0e5b17f70b7bb76"
+    },
+    "isolation_forest_test_features": {
+      "path": "if_handoff/features_test_7d.parquet",
+      "sha256": "e2db9d189fd7249dd1eff3fe1d0eb5b31cd5b0dd5889603ab0250690d9b77463"
+    },
+    "graph_model": {
+      "path": "graph_handoff/graph_histgb_v1.joblib",
+      "sha256": "746fe2de6c192c1d02e15273c6f7eca36077d23b6ff4d0cac59ac64d3b90c799"
+    },
+    "graph_scores": {
+      "path": "graph_handoff/graph_scores_v1.parquet",
+      "sha256": "e7698c5083ff6b943da1a63338fe5b6f8e9eb5dd613f13fcf598196c88361e96"
+    },
+    "graph_modeling": {
+      "path": "graph_handoff/graph_account_modeling_v1.parquet",
+      "sha256": "441308cf54c767cf98178aea7ee5e5b3104a522d78d596e8dbd095c60a803fc3"
+    }
+  },
+  "timestamp_alignment": {
+    "canonical_semantics": "[as_of_ts - 7 days, as_of_ts)",
+    "isolation_forest_offset_seconds": 1,
+    "reason": "IF handoff uses 23:59:59 while Graph uses the next UTC midnight"
+  },
+  "normalization": {
+    "method": "train_quantile_grid",
+    "quantile_count": 4097
+  },
+  "weights": {
+    "isolation_forest": 0.5,
+    "graph": 0.5
+  },
+  "weight_selection": {
+    "method": "validation_grid",
+    "step": 0.05,
+    "minimum_component_weight": 0.1,
+    "objective": "maximize_f1_within_alert_budget"
+  },
+  "missing_component_policy": "renormalize_available_weights",
+  "validation": {
+    "alert_budget_rate": 0.01,
+    "precision_k": 1000
+  }
+}

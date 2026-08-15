@@ -1,9 +1,8 @@
 # Security Policy — FIN-07
 
-FIN-07 là hệ thống demo/PoC cho chương trình AI20K Build Phase, mô phỏng một console giám sát AML
-ngân hàng. Toàn bộ dữ liệu trong stack mặc định (`docker compose up`) là dữ liệu tổng hợp
-(`scripts/seed_data.py`) — không có khách hàng thật, không có danh sách
-trừng phạt thật. Xem tài liệu kiến trúc trong `docs/architecture/` mục 8 để biết
+FIN-07 là hệ thống demo/PoC cho chương trình AI20K Build Phase. Dữ liệu nghiệp vụ duy nhất là
+IBM AML LI-Small công khai; stack mặc định không tự nạp fixture và không chứa khách hàng thật.
+Xem tài liệu kiến trúc trong `docs/architecture/` mục 8 để biết
 đầy đủ các biện pháp bảo mật đã hiện thực.
 
 ## Báo cáo lỗ hổng

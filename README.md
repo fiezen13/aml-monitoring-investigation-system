@@ -31,7 +31,7 @@ hơn không có tài liệu.
 | Đường ống CSV → Kafka → Flink → HDFS | **ĐANG CHẠY** — profile `aml`, không chạy mặc định | `src/aml/`, `flink/` |
 | Bộ dữ liệu huấn luyện và đánh giá | **IBM AML công khai** — nguồn duy nhất của mọi con số hiệu năng | `data/raw/ibm-aml/` |
 | Hợp đồng dữ liệu, sự kiện, tool | **ĐÃ ĐỊNH NGHĨA**, phần lớn chưa có bên hiện thực | `contracts/` |
-| Detection Engine | **BEHAVIOUR ML BATCH PoC ĐÃ CHẠY**; graph/fusion runtime chưa có | `src/behavior/`, `scripts/run_behavior_batch.py` |
+| Detection Engine | **BEHAVIOUR + GRAPH + FUSION OFFLINE ĐÃ CHẠY**; bundle và điểm hợp nhất có checksum | `src/fusion/`, `scripts/build_fusion_release.py` |
 | Feature platform, entity resolution | **CHƯA CÓ** | `services/feature-platform/` |
 | Explainable AI Investigation | **ĐANG CHẠY** — 3 agent có giới hạn, 7 tool tất định, evidence/trace bền vững, human review | `src/investigation/` |
 
@@ -47,9 +47,12 @@ GEMINI_MODEL=gemini-3.1-flash-lite
 Cả Supervisor, Explanation và Critic bị khóa vào `gemini-3.1-flash-lite`; cấu hình model khác bị
 từ chối ngay khi nạp settings. API key không được gửi tới React.
 
-Stack mặc định vẫn hiển thị điểm seed từ luật/heuristic trong `scripts/seed_data.py`. Đường Behaviour
-batch có thể nhận CSV canonical không nhãn, chạy Isolation Forest và lưu detection/alert thật vào
-PostgreSQL; xem [`contracts/ingestion/README.md`](contracts/ingestion/README.md).
+Stack không tự sinh dữ liệu mẫu. Console chỉ đọc batch IBM AML LI-Small đã hoàn tất gần nhất;
+đường Behaviour nhận CSV canonical không nhãn, chạy Isolation Forest và lưu detection/alert vào
+PostgreSQL. Xem [`contracts/ingestion/README.md`](contracts/ingestion/README.md).
+Release fusion 7 ngày kết hợp model IF của Hường và Graph của Hiển bằng percentile train-only,
+không đưa model tham chiếu có giám sát khác vào đường quyết định. Xem
+[`docs/ml/FIN-07-FUSION-001.md`](docs/ml/FIN-07-FUSION-001.md).
 Không có dữ liệu khách hàng thật nào được commit trong repo.
 
 ---
@@ -90,6 +93,7 @@ src/                Backend Python
   api/              FastAPI: routes.py (quy trình AML) + fc_routes.py (màn hình Financial City)
   worker/           Worker nền, máy trạng thái vụ việc
   aml/              Producer phát lại CSV → Kafka
+  fusion/           Bundle IF + Graph, percentile calibration và score fusion giải thích được
   agents/           Khung mẫu LangGraph (chưa hiện thực)
   domain.py         Máy trạng thái và từ vựng nghiệp vụ dùng chung
 
@@ -97,7 +101,8 @@ services/           Nhà chờ sẵn cho các thành phần chưa viết (detect
 flink/              Job Flink nạp dữ liệu vào HDFS
 web/                Console React + Vite + TypeScript
 db/init/            Lược đồ SQL đánh số, chạy tuần tự khi PostgreSQL khởi tạo
-scripts/            Vận hành: seed, migrate, thao tác AML
+scripts/            Vận hành: migrate, chuẩn bị/nạp LI-Small, thao tác AML
+models/             Model release nhỏ, có phiên bản; payload dữ liệu lớn nằm ngoài Git
 ci/ deploy/ jenkins/  CI/CD và triển khai
 docs/
   architecture/     Kiến trúc chuẩn (PDF) và kiến trúc production
@@ -114,7 +119,7 @@ tests/              pytest, chia theo module
 ### Toàn bộ hệ thống
 
 ```bash
-docker compose up -d --wait     # postgres, redis, seed, api, worker, web
+docker compose up -d --wait     # postgres, redis, migrate, api, worker, web
 make help                       # danh sách lệnh
 ```
 
@@ -133,6 +138,19 @@ Chi tiết, kèm ba cái bẫy hay gặp khi chạy lần đầu:
 [`contracts/ingestion/README.md`](contracts/ingestion/README.md).
 
 Kafka UI <http://localhost:8082> · Flink UI <http://localhost:8081> · HDFS UI <http://localhost:9870>
+
+### Dựng release hợp nhất IF + Graph
+
+Đặt payload lớn đúng trong `if_handoff/` và `graph_handoff/`; checksum nguồn đã khóa ở
+`configs/fusion/if_graph_v1.json`. Sau đó chạy:
+
+```bash
+python scripts/build_fusion_release.py
+```
+
+Kết quả gồm một runtime bundle `models/fin07_if_graph_fusion_v1.joblib`, bảng điểm canonical
+`data/processed/fusion_scores_v1.parquet`, và báo cáo kiểm định
+`reports/fusion_release_v1.json`.
 
 ### Phát triển ngoài Docker
 
@@ -231,6 +249,15 @@ Task 1 tạo DuckDB với bảng `transaction`, `account`, cùng `dq_report.json
 `typology_mapping_catalog.json`, `typology_coverage.json` và
 `typology_coverage.md`. Chi tiết schema: [`docs/task2_schema.md`](docs/task2_schema.md).
 
+Huấn luyện Behaviour Isolation Forest cửa sổ 7 ngày:
+
+```bash
+make behavior-train
+```
+
+Quy trình, artifact và giới hạn của LI-Small được mô tả tại
+[`docs/ml/FIN-07-BEHAVIOR-7D.md`](docs/ml/FIN-07-BEHAVIOR-7D.md).
+
 ---
 
 ## 10. Tài liệu
@@ -253,5 +280,5 @@ Task 1 tạo DuckDB với bảng `transaction`, `account`, cùng `dq_report.json
 
 ## 11. Giấy phép
 
-Mã nguồn sử dụng giấy phép MIT. Dữ liệu mẫu IBM AML tiếp tục tuân theo
+Mã nguồn sử dụng giấy phép MIT. Bộ dữ liệu IBM AML tiếp tục tuân theo
 CDLA-Sharing-1.0.

@@ -46,7 +46,7 @@ DEFAULT_FEATURE_COLS = [
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate IF scores + anomalous feature explanations")
-    p.add_argument("--window", default="7d", choices=("1d", "7d", "14d"))
+    p.add_argument("--window", default="7d", choices=("1d", "7d"))
     p.add_argument(
         "--model",
         default=None,

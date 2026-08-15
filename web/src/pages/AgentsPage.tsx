@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { conf, duration, int } from "../api/fcFormat";
 import { formatDateTime } from "../api/format";
 import { useApi } from "../api/useApi";
+import { ErrorState, PageShell } from "../components/ui";
 import { Chip, Empty, KpiCard, Panel, ScreenTitle, Skeleton } from "../components/fc/primitives";
 import { C } from "../design/palette";
 
@@ -93,7 +94,7 @@ export function AgentsPage() {
   const blockedTotal = rows.reduce((s, r) => s + (r.status === "failed" ? 1 : 0), 0);
 
   return (
-    <div className="flex animate-up flex-col gap-3.5 p-4">
+    <PageShell variant="dense">
       <ScreenTitle title="Các lượt chạy tác tử AI" meta="Mọi kết luận của tác tử đều phải qua người có thẩm quyền" />
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
@@ -123,8 +124,12 @@ export function AgentsPage() {
             <span>Trạng thái</span>
           </div>
           {runs.loading && <Skeleton rows={4} />}
-          {!runs.loading && !rows.length && (
-            <Empty text="Chưa có lượt chạy tác tử nào" hint="Chạy scripts/abm_generate.py để sinh dữ liệu" />
+          {runs.error && <ErrorState detail={runs.error} onRetry={runs.reload} />}
+          {!runs.loading && !runs.error && !rows.length && (
+            <Empty
+              text="Chưa có lượt điều tra tác tử nào"
+              hint="Tác tử chỉ chạy sau khi chuyên viên mở quy trình điều tra; release mô hình không tự tạo kết luận."
+            />
           )}
           {rows.map((r) => (
             <div
@@ -147,7 +152,7 @@ export function AgentsPage() {
           ))}
         </div>
       </Panel>
-    </div>
+    </PageShell>
   );
 }
 
@@ -158,7 +163,7 @@ export function AgentRunPage() {
   const r = run.data;
 
   return (
-    <div className="flex animate-up flex-col gap-3.5 p-4">
+    <PageShell variant="dense">
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => navigate("/agents")} className="text-base text-ink-soft hover:text-ink-hi">
           ← Các lượt chạy tác tử
@@ -243,6 +248,6 @@ export function AgentRunPage() {
           </Panel>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

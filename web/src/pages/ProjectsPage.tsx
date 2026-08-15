@@ -2,6 +2,7 @@ import { api } from "../api/client";
 import { shortAddr, usd } from "../api/fcFormat";
 import { formatDate } from "../api/format";
 import { useApi } from "../api/useApi";
+import { ErrorState, PageShell } from "../components/ui";
 import { Chip, Empty, Panel, ProgressBar, RiskScore, ScreenTitle, Skeleton } from "../components/fc/primitives";
 import { C } from "../design/palette";
 
@@ -36,15 +37,19 @@ export function ProjectsPage() {
   const projects = data.data ?? [];
 
   return (
-    <div className="flex animate-up flex-col gap-3.5 p-4">
+    <PageShell variant="dense">
       <ScreenTitle
         title="Rủi ro dự án"
         meta="Đặc trưng quan sát công khai của dự án token — dùng để xếp thứ tự rà soát, không phải để kết luận"
       />
 
       {data.loading && <Skeleton rows={4} />}
-      {!data.loading && !projects.length && (
-        <Empty text="Chưa có dự án nào được theo dõi" hint="Chạy scripts/abm_generate.py để sinh dữ liệu" />
+      {data.error && <ErrorState detail={data.error} onRetry={data.reload} />}
+      {!data.loading && !data.error && !projects.length && (
+        <Empty
+          text="HI-Medium không cung cấp dữ liệu dự án token"
+          hint="Cần nguồn hợp đồng, holder và thanh khoản on-chain riêng; hệ thống không suy diễn từ giao dịch ngân hàng."
+        />
       )}
 
       <div className="flex flex-col gap-3">
@@ -144,7 +149,7 @@ export function ProjectsPage() {
           </p>
         </Panel>
       )}
-    </div>
+    </PageShell>
   );
 }
 

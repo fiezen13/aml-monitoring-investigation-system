@@ -64,20 +64,6 @@ fi
 
 export APP_ENV=test
 
-group_start "Nạp dữ liệu mẫu"
-$PY scripts/seed_data.py
-group_end
-
-# ND5 — cùng seed phải cho cùng dữ liệu. Lệch nghĩa là còn nguồn ngẫu nhiên
-# chưa cố định, và khi đó mọi con số so sánh giữa hai lần chạy đều vô nghĩa.
-group_start "Kiểm chứng tính tái lập của dữ liệu mẫu"
-first=$($PY scripts/seed_data.py --verify | grep '^fingerprint=')
-second=$($PY scripts/seed_data.py --verify | grep '^fingerprint=')
-log "$first"
-[ "$first" = "$second" ] || die "Cùng seed cho ra hai tập dữ liệu khác nhau"
-ok "Dữ liệu mẫu tái lập được"
-group_end
-
 group_start "pytest"
 $PY -m pytest --cov=src --cov-report=term-missing --cov-report=xml --junitxml=pytest-report.xml
 group_end

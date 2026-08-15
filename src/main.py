@@ -3,27 +3,27 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from src.api.fc_routes import router as fc_router
 from src.api.routes import router
 from src.config import get_settings
 from src.db import session as db
-from src.investigation.llm import gemini_is_configured
+from src.investigation.llm import gemini_health_snapshot, gemini_is_configured
 from src.models.schemas import HealthOut, ReadyOut
+from src.observability.http import ObservabilityMiddleware
+from src.observability.telemetry import initialize_observability, instrument_fastapi
 from src.services import queue
 
 logger = logging.getLogger("fin07.api")
 
 settings = get_settings()
+initialize_observability(settings)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logging.basicConfig(
-        level=settings.log_level,
-        format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
-    )
     logger.info("Khởi động %s ở chế độ %s", settings.app_name, settings.app_env)
     yield
     logger.info("Đang tắt")
@@ -43,6 +43,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ObservabilityMiddleware)
 
 app.include_router(router, prefix="/api/v1")
 # Màn hình "Thành phố tài chính" — đọc schema `fc` do ABM sinh ra.
@@ -50,6 +51,7 @@ app.include_router(fc_router, prefix="/api/v1")
 
 
 @app.get("/health", response_model=HealthOut)
+@app.get("/health/live", response_model=HealthOut)
 async def health() -> HealthOut:
     """Liveness — tiến trình còn sống. Không chạm phụ thuộc ngoài."""
     return HealthOut(status="ok", env=settings.app_env, gemini_configured=gemini_is_configured(settings))
@@ -80,3 +82,18 @@ async def ready() -> JSONResponse:
         **checks,
     )
     return JSONResponse(status_code=200 if healthy else 503, content=body.model_dump())
+
+
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics() -> Response:
+    """Local diagnostic/scrape endpoint; the primary path remains OTLP."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/health/gemini")
+async def gemini_health() -> dict:
+    """Cached provider diagnostic; never calls Gemini and never exposes a key."""
+    return gemini_health_snapshot(settings)
+
+
+instrument_fastapi(app)

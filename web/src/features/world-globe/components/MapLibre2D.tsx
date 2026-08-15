@@ -1,6 +1,6 @@
 import { Map as MapLibreMap, setWorkerUrl, type MapGeoJSONFeature, type MapMouseEvent } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -21,8 +21,20 @@ setWorkerUrl(workerUrl);
 
 import type { MapData } from "../../../components/fc/WorldMap";
 import { buildScene, type FilterState } from "../adapters/toCesium";
-import { applySelection, installLayers, INTERACTIVE_LAYERS, NODE_LAYERS, updateData } from "../maplibre/layers";
+import {
+  applySelection,
+  FIRST_NODE_LAYER,
+  installLayers,
+  INTERACTIVE_LAYERS,
+  NODE_LAYERS,
+  updateData,
+} from "../maplibre/layers";
 import { darkBasemapStyle, WORLD_BOUNDS } from "../maplibre/style";
+import { FlowLayer } from "../maplibre/flowLayer";
+import { buildFlowSpecs } from "../adapters/flowSpec";
+import { worldFlowClock } from "../state/flowClock";
+import { useReduced } from "../../../design/motion";
+import type { WorldCamera, WorldRendererHandle } from "../state/worldView";
 
 interface Props {
   data: MapData | null;
@@ -35,6 +47,8 @@ interface Props {
   selectedHub: string | null;
   onPickFlow: (id: string | null) => void;
   onPickHub: (id: string | null) => void;
+  /** Khung nhìn ban đầu, lấy từ quả cầu ngay trước khi chuyển về bản dẹt. */
+  initialCamera?: WorldCamera;
 }
 
 interface Hovered {
@@ -50,20 +64,26 @@ interface Hovered {
  * Không phải bản dẹt của quả cầu: 3D phục vụ nhận thức toàn cảnh, còn đây phục
  * vụ chuyên viên đọc hành lang — nền tối tối giản, tín hiệu AML nổi lên trên.
  */
-export function MapLibre2D({
-  data,
-  layers,
-  sev,
-  typ,
-  topN,
-  hideNormal,
-  selectedFlow,
-  selectedHub,
-  onPickFlow,
-  onPickHub,
-}: Props) {
+export const MapLibre2D = forwardRef<WorldRendererHandle, Props>(function MapLibre2D(
+  {
+    data,
+    layers,
+    sev,
+    typ,
+    topN,
+    hideNormal,
+    selectedFlow,
+    selectedHub,
+    onPickFlow,
+    onPickHub,
+    initialCamera,
+  },
+  ref,
+) {
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const flowRef = useRef<FlowLayer | null>(null);
+  const reduced = useReduced();
   const [ready, setReady] = useState(false);
   const [hovered, setHovered] = useState<Hovered | null>(null);
   const [fault, setFault] = useState<string | null>(null);
@@ -71,6 +91,70 @@ export function MapLibre2D({
   // Giữ callback trong ref để việc WorldPage render lại không tháo lắp handler.
   const pickRef = useRef({ onPickFlow, onPickHub });
   pickRef.current = { onPickFlow, onPickHub };
+  const initialCameraRef = useRef(initialCamera);
+  initialCameraRef.current = initialCamera;
+
+  /**
+   * Bộ dựng hình đã lên hình được hay chưa.
+   *
+   * Không phải chuyện thừa: `new MapLibreMap()` trả về một đối tượng ngay cả
+   * khi nó không lấy được context WebGL2 (GPU nằm trong danh sách chặn của
+   * trình duyệt, phiên remote desktop, máy ảo không tăng tốc phần cứng). Đối
+   * tượng đó tồn tại nhưng rỗng ruột, và `resize()` trên nó ném lỗi. Nếu handle
+   * gọi thẳng thì cả màn Giám sát địa lý sập thay vì hiện thông báo lỗi và để
+   * phần còn lại của bảng điều khiển chạy tiếp.
+   */
+  const healthyRef = useRef(false);
+
+  /** Handle không được phép làm sập trang gọi nó. */
+  const guard = (label: string, action: () => void) => {
+    if (!healthyRef.current) return;
+    try {
+      action();
+    } catch (err) {
+      healthyRef.current = false;
+      console.error(`[map2d] ${label} thất bại:`, err);
+    }
+  };
+
+  useImperativeHandle(
+    ref,
+    (): WorldRendererHandle => ({
+      getCamera() {
+        const map = mapRef.current;
+        if (!map || !healthyRef.current) return null;
+        try {
+          const center = map.getCenter();
+          return { longitude: center.lng, latitude: center.lat, zoom: map.getZoom() };
+        } catch {
+          return null;
+        }
+      },
+      setCamera(camera) {
+        // `jumpTo` chứ không `flyTo`: khung nhìn này được đặt trong lúc lớp phủ
+        // chuyển cảnh còn che, và một chuyến bay 2 giây bên dưới lớp mờ chỉ làm
+        // bản đồ hiện ra khi đang giữa đường.
+        guard("setCamera", () =>
+          mapRef.current?.jumpTo({ center: [camera.longitude, camera.latitude], zoom: camera.zoom }),
+        );
+      },
+      setActive(active) {
+        guard("setActive", () => {
+          const map = mapRef.current;
+          if (!map) return;
+          if (active) {
+            map.resize();
+            map.triggerRepaint();
+          } else {
+            // MapLibre không vẽ khi rảnh, nhưng có thể đang giữa một animation
+            // camera; dừng lại để nó không chạy tiếp phía sau quả cầu.
+            map.stop();
+          }
+        });
+      },
+    }),
+    [],
+  );
 
   const filter = useMemo<FilterState>(
     () => ({ layers, severity: sev, typology: typ, topN, suspiciousOnly: hideNormal }),
@@ -106,6 +190,7 @@ export function MapLibre2D({
     map.on("error", (event) => {
       const err = event?.error ?? event;
       console.error("[map2d] lỗi MapLibre:", err);
+      healthyRef.current = false;
       setFault(err instanceof Error ? err.message : String(err));
     });
 
@@ -121,10 +206,22 @@ export function MapLibre2D({
       installed = true;
       try {
         installLayers(map);
-        map.fitBounds(WORLD_BOUNDS, { padding: 12, animate: false });
+        // Vệt dòng tiền nằm trên hành lang nhưng dưới node: một trung tâm rủi
+        // ro không bao giờ được bị vệt sáng đi ngang che mất.
+        const flow = new FlowLayer();
+        flowRef.current = flow;
+        map.addLayer(flow, map.getLayer(FIRST_NODE_LAYER) ? FIRST_NODE_LAYER : undefined);
+        healthyRef.current = true;
+        const start = initialCameraRef.current;
+        if (start) {
+          map.jumpTo({ center: [start.longitude, start.latitude], zoom: start.zoom });
+        } else {
+          map.fitBounds(WORLD_BOUNDS, { padding: 12, animate: false });
+        }
         setReady(true);
       } catch (err) {
         installed = false;
+        healthyRef.current = false;
         console.error("[map2d] không cài được lớp AML:", err);
         setFault(err instanceof Error ? err.message : String(err));
       }
@@ -183,9 +280,16 @@ export function MapLibre2D({
 
     return () => {
       mapRef.current = null;
+      flowRef.current = null;
+      healthyRef.current = false;
       // `remove()` gỡ cả listener lẫn context WebGL; thiếu nó thì mỗi lần đổi
-      // 2D↔3D rò rỉ một context và Chrome sẽ từ chối cấp cái tiếp theo.
-      map.remove();
+      // 2D↔3D rò rỉ một context và Chrome sẽ từ chối cấp cái tiếp theo. Bọc
+      // try/catch vì chính `remove()` cũng ném khi map chưa dựng được painter.
+      try {
+        map.remove();
+      } catch (err) {
+        console.error("[map2d] không dọn được map:", err);
+      }
     };
   }, []);
 
@@ -195,6 +299,41 @@ export function MapLibre2D({
     updateData(map, scene);
     applySelection(map, selectedFlow, selectedHub);
   }, [ready, scene, selectedFlow, selectedHub]);
+
+  /**
+   * Dựng lại hình học của vệt dòng tiền.
+   *
+   * Chỉ chạy khi tập hành lang hoặc lựa chọn đổi — không phải mỗi khung hình.
+   * Đồng hồ dòng chảy không bị đụng tới, nên đổi bộ lọc hay bấm Top 50 không
+   * làm mọi gói tiền nhảy về vạch xuất phát.
+   */
+  useEffect(() => {
+    if (!ready || !flowRef.current) return;
+    const specs = buildFlowSpecs(scene.routes, {
+      selectedFlowId: selectedFlow,
+      reducedMotion: reduced,
+    });
+    flowRef.current.setRoutes(scene.routes, specs);
+    mapRef.current?.triggerRepaint();
+  }, [ready, scene, selectedFlow, reduced]);
+
+  /**
+   * Nhịp vẽ.
+   *
+   * MapLibre chỉ vẽ lại khi có gì đó đổi, nên phải chủ động yêu cầu khung hình
+   * mới. Yêu cầu ấy đến từ đồng hồ dùng chung của World chứ không từ một
+   * `requestAnimationFrame` riêng của bản đồ — cả màn hình chỉ có đúng một vòng
+   * lặp, và quả cầu 3D đọc chung con số thời gian đó.
+   *
+   * Khi người dùng yêu cầu giảm chuyển động thì không đăng ký gì cả: đường nền
+   * vẫn vẽ đủ, chỉ không có gói nào chạy.
+   */
+  useEffect(() => {
+    if (!ready || reduced) return;
+    return worldFlowClock.subscribe(() => {
+      mapRef.current?.triggerRepaint();
+    });
+  }, [ready, reduced]);
 
   // Khung bản đồ nằm trong layout flex; ResizeObserver để canvas bám theo khi
   // dải phân tích phía dưới thu gọn hoặc cửa sổ đổi kích thước.
@@ -209,23 +348,31 @@ export function MapLibre2D({
 
   return (
     <div className="absolute inset-0">
-      <div ref={hostRef} className="absolute inset-0" data-testid="maplibre-host" />
+      {/* `h-full w-full` chứ không chỉ `absolute inset-0`: maplibre-gl.css đặt
+          `.maplibregl-map { position: relative }` với cùng độ đặc hiệu như lớp
+          `.absolute` của Tailwind, nên thứ tự file quyết định ai thắng. Từ khi
+          các route nặng được tách thành chunk riêng, CSS của MapLibre nạp sau
+          bundle chính và thắng — container mất `position:absolute`, `inset-0`
+          hết tác dụng, chiều cao co về 0 và bản đồ biến mất mà không một lỗi
+          nào được ném ra. Đặt kích thước tường minh thì đúng ở cả hai chiều
+          thắng thua. */}
+      <div ref={hostRef} className="absolute inset-0 h-full w-full" data-testid="maplibre-host" />
 
       {!ready && !fault && (
-        <div className="pointer-events-none absolute inset-0 grid place-items-center text-2xs text-ink-low">
+        <div className="pointer-events-none absolute inset-0 grid place-items-center text-meta text-ink-low">
           Đang dựng bản đồ điều tra…
         </div>
       )}
 
       {fault && (
-        <div className="absolute inset-x-3 top-3 z-[6] rounded-control border border-risk/40 bg-risk/10 p-2 text-2xs text-risk-soft">
+        <div className="absolute inset-x-3 top-3 z-hud rounded-control border border-risk/40 bg-risk/10 p-2 text-meta text-risk-soft">
           Bản đồ 2D lỗi: <span className="font-mono">{fault}</span>
         </div>
       )}
 
       {hovered && (
         <div
-          className="pointer-events-none absolute z-[5] max-w-[220px] rounded-control border border-line bg-side/95 px-2.5 py-1.5 text-2xs shadow-lg backdrop-blur"
+          className="pointer-events-none absolute z-hud max-w-[220px] rounded-control border border-line-strong bg-raised/95 px-2.5 py-1.5 text-meta shadow-popover backdrop-blur"
           style={{ left: hovered.x + 12, top: hovered.y + 12 }}
         >
           <div className="font-semibold text-ink-hi">{hovered.title}</div>
@@ -238,7 +385,7 @@ export function MapLibre2D({
       )}
     </div>
   );
-}
+});
 
 function severityLabel(severity: string): string {
   return severity === "crit" ? "Nghiêm trọng" : severity === "warn" ? "Đáng ngờ" : "Bình thường";

@@ -75,9 +75,7 @@ class _Accepted(NamedTuple):
     occurred_at: datetime
 
 
-def _accept(
-    values: list[str], *, currency_name: str, counters: Counter[str]
-) -> _Accepted | None:
+def _accept(values: list[str], *, currency_name: str, counters: Counter[str]) -> _Accepted | None:
     """Apply the batch's admission rules to one source row.
 
     Shared by both passes so the account census counts exactly the rows the
@@ -216,9 +214,7 @@ def prepare(
         currency_name=currency_name,
     )
     if not selected:
-        raise RuntimeError(
-            "no account met --min-active-days/--min-transactions; lower them or raise --scan-limit"
-        )
+        raise RuntimeError("no account met --min-active-days/--min-transactions; lower them or raise --scan-limit")
 
     output.parent.mkdir(parents=True, exist_ok=True)
     # Only the selected accounts carry a complete history; their counterparties

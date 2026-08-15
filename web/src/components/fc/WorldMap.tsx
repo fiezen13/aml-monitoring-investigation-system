@@ -1,5 +1,4 @@
-import { CesiumGlobe } from "../../features/world-globe/components/CesiumGlobe";
-import { MapLibre2D } from "../../features/world-globe/components/MapLibre2D";
+import { WorldViewport } from "../../features/world-globe/components/WorldViewport";
 
 export interface MapHub {
   id: string;
@@ -26,6 +25,11 @@ export interface MapFlow {
   tlon: number;
   /** Kênh: bank | p2p | vasp | chain | gamb | proj */
   ch: string;
+  /**
+   * Khối lượng dạng số, USD. Khác `vol` vốn đã được định dạng để hiển thị.
+   * Bề rộng đường dòng tiền lấy từ đây, nên nó phải là số chứ không phải chuỗi.
+   */
+  volUsd?: number;
   /** Mức độ: ok | warn | crit */
   risk: string;
   vol: string;
@@ -64,8 +68,9 @@ interface Props {
 /**
  * Bản đồ dòng tiền toàn cầu — 2D hoặc quả cầu 3D, cùng một bộ dữ liệu.
  *
- * Lớp mỏng giữ nguyên hợp đồng props cũ để WorldPage không phải đổi, còn phần
- * dựng hình do Cesium đảm nhiệm.
+ * Lớp mỏng giữ hợp đồng props cũ; toàn bộ việc điều phối hai bộ dựng hình và
+ * chuyển cảnh giữa chúng nằm ở `WorldViewport`. File này chỉ còn là nơi khai
+ * báo hình dạng dữ liệu mà cả hai bộ dựng hình cùng đọc.
  */
 export function WorldMap({
   data,
@@ -80,20 +85,19 @@ export function WorldMap({
   onPickFlow,
   onPickHub,
 }: Props) {
-  // Hai renderer, một bộ dữ liệu và một bộ state. 3D là Cesium cho nhận thức
-  // toàn cảnh; 2D là MapLibre cho điều tra — nền tối tối giản, không ảnh vệ tinh.
-  // Cả hai đọc cùng adapter nên luật rủi ro và luật lọc không bị nhân đôi.
-  const shared = {
-    data,
-    layers,
-    sev,
-    typ,
-    topN,
-    hideNormal,
-    selectedFlow,
-    selectedHub,
-    onPickFlow,
-    onPickHub,
-  };
-  return mode === "globe" ? <CesiumGlobe mode="globe" {...shared} /> : <MapLibre2D {...shared} />;
+  return (
+    <WorldViewport
+      data={data}
+      mode={mode}
+      layers={layers}
+      sev={sev}
+      typ={typ}
+      topN={topN}
+      hideNormal={hideNormal}
+      selectedFlow={selectedFlow}
+      selectedHub={selectedHub}
+      onPickFlow={onPickFlow}
+      onPickHub={onPickHub}
+    />
+  );
 }

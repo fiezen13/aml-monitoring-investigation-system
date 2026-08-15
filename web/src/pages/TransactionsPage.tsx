@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { int } from "../api/fcFormat";
 import { formatDateTime } from "../api/format";
 import { useApi } from "../api/useApi";
+import { PageShell } from "../components/ui";
 import { Empty, Panel, ScreenTitle, Skeleton } from "../components/fc/primitives";
 
 /**
@@ -13,15 +14,16 @@ import { Empty, Panel, ScreenTitle, Skeleton } from "../components/fc/primitives
  * giao dịch là bảng lớn nhất của hệ thống và sẽ còn lớn nữa.
  */
 
-const COLS = "72px 150px 150px 150px 110px 70px 100px 1fr";
-const CHANNELS = ["all", "transfer", "cash", "card", "wire"];
+const COLS = "190px 145px 150px 150px 160px 160px 90px 96px";
+const CHANNELS = ["all", "CHEQUE", "CREDIT_CARD", "ACH", "CASH", "WIRE", "BITCOIN"];
 const PAGE_SIZE = 50;
 
 export function TransactionsPage() {
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState("all");
   const [minAmount, setMinAmount] = useState("");
-  const [source, setSource] = useState<"operational" | "all">("operational");
+  const [minScore, setMinScore] = useState("");
+  const [decision, setDecision] = useState("all");
   const [page, setPage] = useState(1);
 
   // `q` và `minAmount` đi thẳng vào deps: mỗi ký tự là một lượt gọi. Với bảng
@@ -33,36 +35,25 @@ export function TransactionsPage() {
         q: q.trim() || undefined,
         channel: channel === "all" ? undefined : channel,
         min_amount: minAmount ? Number(minAmount) : undefined,
-        source,
+        min_score: minScore ? Number(minScore) / 100 : undefined,
+        triggered: decision === "all" ? undefined : decision === "alert",
         page,
         page_size: PAGE_SIZE,
       }),
-    [q, channel, minAmount, source, page],
+    [q, channel, minAmount, minScore, decision, page],
   );
 
   const total = data.data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="flex animate-up flex-col gap-3 p-4">
+    <PageShell variant="dense">
       <ScreenTitle
         title="Tra cứu giao dịch"
         meta={`${int(total)} giao dịch khớp bộ lọc · trang ${page}/${pageCount}`}
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={source}
-          onChange={(e) => {
-            setSource(e.target.value as "operational" | "all");
-            setPage(1);
-          }}
-          aria-label="Nguồn dữ liệu"
-          className="fc-input"
-        >
-          <option value="operational">Nguồn: lô dữ liệu hiện tại</option>
-          <option value="all">Nguồn: tất cả (gồm dữ liệu mẫu)</option>
-        </select>
         <input
           value={q}
           onChange={(e) => {
@@ -91,21 +82,47 @@ export function TransactionsPage() {
         <input
           value={minAmount}
           onChange={(e) => {
-            setMinAmount(e.target.value.replace(/\D/g, ""));
+            setMinAmount(e.target.value.replace(/[^\d.]/g, ""));
             setPage(1);
           }}
           placeholder="Số tiền tối thiểu"
-          inputMode="numeric"
+          inputMode="decimal"
           aria-label="Số tiền tối thiểu"
           className="fc-input w-[150px]"
         />
-        {(q || channel !== "all" || minAmount) && (
+        <input
+          value={minScore}
+          onChange={(e) => {
+            setMinScore(e.target.value.replace(/[^\d.]/g, ""));
+            setPage(1);
+          }}
+          placeholder="Điểm tối thiểu (%)"
+          inputMode="decimal"
+          aria-label="Điểm mô hình tối thiểu"
+          className="fc-input w-[160px]"
+        />
+        <select
+          value={decision}
+          onChange={(e) => {
+            setDecision(e.target.value);
+            setPage(1);
+          }}
+          aria-label="Kết quả mô hình"
+          className="fc-input"
+        >
+          <option value="all">Kết quả: tất cả</option>
+          <option value="alert">Vượt ngưỡng</option>
+          <option value="below">Dưới ngưỡng</option>
+        </select>
+        {(q || channel !== "all" || minAmount || minScore || decision !== "all") && (
           <button
             type="button"
             onClick={() => {
               setQ("");
               setChannel("all");
               setMinAmount("");
+              setMinScore("");
+              setDecision("all");
               setPage(1);
             }}
             className="fc-btn"
@@ -116,19 +133,19 @@ export function TransactionsPage() {
       </div>
 
       <Panel bodyClassName="overflow-x-auto px-0">
-        <div className="min-w-[900px]">
+        <div className="min-w-[1240px]">
           <div
             className="sticky top-0 grid gap-2 border-b border-line bg-panel px-3 py-2 text-3xs uppercase tracking-[0.07em] text-ink-low"
             style={{ gridTemplateColumns: COLS }}
           >
-            <span>Mã giao dịch</span>
+            <span>Mã nguồn</span>
             <span>Thời điểm</span>
             <span>Từ tài khoản</span>
             <span>Đến tài khoản</span>
-            <span className="text-right">Số tiền</span>
-            <span>Tiền tệ</span>
+            <span className="text-right">Amount Paid</span>
+            <span className="text-right">Amount Received</span>
             <span>Kênh</span>
-            <span>Nội dung</span>
+            <span className="text-right">Điểm model</span>
           </div>
 
           {data.loading && <Skeleton rows={8} />}
@@ -143,19 +160,26 @@ export function TransactionsPage() {
               className="grid items-center gap-2 border-b border-line-faint px-3 py-[7px] text-base transition-colors hover:bg-elev"
               style={{ gridTemplateColumns: COLS }}
             >
-              <span className="font-mono text-2xs text-ink-low">{r.id}</span>
+              <span className="truncate-1 font-mono text-2xs text-ink-low" title={r.source_id ?? String(r.id)}>
+                {r.source_id ?? r.id}
+              </span>
               <span className="text-xs text-ink-soft">{formatDateTime(r.occurred_at)}</span>
               <span className="truncate-1 font-mono text-xs">{r.from_account}</span>
               <span className="truncate-1 font-mono text-xs">{r.to_account}</span>
-              <span className="tabular text-right font-mono text-xs">
-                {r.amount.toLocaleString("vi-VN", { maximumFractionDigits: 2 })}
+              <span className="tabular text-right font-mono text-xs" title="Giá trị gốc; không quy đổi USD">
+                {r.amount.toLocaleString("vi-VN", { maximumFractionDigits: 8 })} {r.currency}
               </span>
-              <span className="text-xs text-ink-soft">{r.currency}</span>
+              <span className="tabular text-right font-mono text-xs" title="Giá trị nhận gốc; không quy đổi USD">
+                {r.amount_received?.toLocaleString("vi-VN", { maximumFractionDigits: 8 }) ?? "—"}{" "}
+                {r.receiving_currency ?? ""}
+              </span>
               <span className="text-xs text-ink-soft">{r.channel}</span>
-              {/* Nội dung do người dùng cuối nhập — hiển thị như dữ liệu thuần,
-                  không bao giờ diễn giải như chỉ dẫn (ARC-001 mục 5.2). */}
-              <span className="truncate-1 text-xs text-ink-low" title={r.remarks}>
-                {r.remarks || "—"}
+              <span
+                className={`tabular text-right font-mono text-xs ${r.triggered ? "text-risk-soft" : "text-ink-soft"}`}
+                title={r.threshold == null ? undefined : `Ngưỡng ${(r.threshold * 100).toFixed(4)}%`}
+              >
+                {r.model_score == null ? "—" : `${(r.model_score * 100).toFixed(4)}%`}
+                {r.triggered ? " · ALERT" : ""}
               </span>
             </div>
           ))}
@@ -183,6 +207,6 @@ export function TransactionsPage() {
           </button>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -101,9 +101,7 @@ def _observed_signals(grouped: dict[EvidenceType, list[EvidenceEnvelope]]) -> di
             signals["short_dwell_time"] = dwell <= SHORT_DWELL_HOURS
             signals["short_duration"] = signals["short_dwell_time"]
         if observed["inflow_amount"] > 0:
-            signals["value_retention"] = (
-                observed["outflow_amount"] < RETAINED_OUTFLOW_RATIO * observed["inflow_amount"]
-            )
+            signals["value_retention"] = observed["outflow_amount"] < RETAINED_OUTFLOW_RATIO * observed["inflow_amount"]
 
     for item in grouped.get(EvidenceType.GRAPH_PATTERN, []):
         pattern = str(item.payload.get("pattern") or "").upper()
@@ -138,7 +136,11 @@ def _summary(
     primary = branch.get(drivers[0].source, "bằng chứng hiện có") if drivers else "bằng chứng hiện có"
 
     observed = next(
-        (item.payload["observed"] for item in grouped.get(EvidenceType.BEHAVIOR_FEATURE, []) if item.payload.get("observed")),
+        (
+            item.payload["observed"]
+            for item in grouped.get(EvidenceType.BEHAVIOR_FEATURE, [])
+            if item.payload.get("observed")
+        ),
         None,
     )
     if not observed or not (observed["incoming_count"] or observed["outgoing_count"]):
@@ -611,7 +613,9 @@ class ExplanationAgent:
 
         graph_items = grouped.get(EvidenceType.GRAPH_PATTERN, [])
         if alert["detector"] == "graph" and not graph_items:
-            missing.append("Chưa có bằng chứng có cấu trúc từ bộ phát hiện đồ thị; không khẳng định mẫu hình đồ thị nào.")
+            missing.append(
+                "Chưa có bằng chứng có cấu trúc từ bộ phát hiện đồ thị; không khẳng định mẫu hình đồ thị nào."
+            )
         for item in graph_items:
             pattern = item.payload.get("pattern")
             if not pattern:
@@ -669,8 +673,7 @@ class ExplanationAgent:
 
             if matched:
                 status = (
-                    f"khớp {len(matched)} trên {len(expected)} tín hiệu đặc trưng của nhóm này "
-                    f"({', '.join(matched)})"
+                    f"khớp {len(matched)} trên {len(expected)} tín hiệu đặc trưng của nhóm này ({', '.join(matched)})"
                 )
             else:
                 status = "chưa khớp tín hiệu đặc trưng nào của nhóm này"
@@ -785,9 +788,7 @@ class EvidenceCriticAgent:
         return GeminiCallResult(output=combined, metadata=result.metadata)
 
     @staticmethod
-    def _is_refuted(
-        issue: ValidationIssue, explanation: Explanation, evidence: list[EvidenceEnvelope]
-    ) -> bool:
+    def _is_refuted(issue: ValidationIssue, explanation: Explanation, evidence: list[EvidenceEnvelope]) -> bool:
         """Drop a critic objection the evidence ledger positively disproves.
 
         The critic may only ever be a second opinion on top of the ledger. Left

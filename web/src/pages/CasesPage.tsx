@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { api, num } from "../api/client";
 import { caseStateLabel, formatDateTime, priorityLabel } from "../api/format";
 import { useApi } from "../api/useApi";
+import { PageShell } from "../components/ui";
 import { RiskBadge, StatusBadge } from "../components/common/Badges";
 import { Panel } from "../components/common/Panel";
 import { SearchInput } from "../components/common/SearchInput";
@@ -101,7 +102,7 @@ export function CasesPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1280px]">
+    <PageShell>
       <PageHeader
         title="Hồ sơ vụ việc"
         subtitle="Cảnh báo được gom theo chủ thể thành vụ việc; mỗi vụ việc đi qua máy trạng thái 12 bước."
@@ -158,6 +159,6 @@ export function CasesPage() {
             />
           ))}
       </Panel>
-    </div>
+    </PageShell>
   );
 }

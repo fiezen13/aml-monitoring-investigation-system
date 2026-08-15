@@ -41,12 +41,13 @@ def test_a_name_with_no_signal_stays_unknown_rather_than_guessing(lookup):
     assert decided.country_source == "unknown"
 
 
-def test_the_crypto_venue_is_flagged_and_left_without_a_country(lookup):
+def test_the_crypto_venue_uses_the_non_country_vasp_anchor(lookup):
     # 99,95% giao dịch của ngân hàng này dùng Bitcoin. Không có pháp vực nào
     # được nêu trong dữ liệu, và đó là điều đáng hiển thị chứ không phải lấp.
     decided = resolve("Crytpo Bank #7", lookup)
     assert decided.is_vasp is True
-    assert decided.country_code is None
+    assert decided.country_code == "ZZ"
+    assert decided.country_source == "assigned"
 
 
 def test_brand_family_rescues_the_bare_bank_suffix(lookup):

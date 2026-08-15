@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../../../api/client";
 import { useApi } from "../../../api/useApi";
 import type { GraphModel } from "../types/graph.types";
 import { buildModel } from "../utils/graphHierarchy";
+import { splitGraphComponents } from "../utils/graphComponents";
 
 /**
  * Tải đồ thị và dựng mô hình một lần duy nhất.
@@ -14,11 +15,27 @@ import { buildModel } from "../utils/graphHierarchy";
  */
 export function useGraphModel(limit = 600) {
   const state = useApi(() => api.entityGraph(limit), [limit]);
+  const [activeComponentId, setActiveComponentId] = useState<string | null>(null);
+
+  const components = useMemo(() => (state.data ? splitGraphComponents(state.data) : []), [state.data]);
+  const selected = components.find((component) => component.id === activeComponentId) ?? components[0] ?? null;
+
+  useEffect(() => {
+    if (selected && selected.id !== activeComponentId) setActiveComponentId(selected.id);
+  }, [selected, activeComponentId]);
 
   const model: GraphModel | null = useMemo(() => {
-    if (!state.data?.nodes.length) return null;
-    return buildModel(state.data);
-  }, [state.data]);
+    if (!selected?.graph.nodes.length) return null;
+    return buildModel(selected.graph);
+  }, [selected]);
 
-  return { model, loading: state.loading, error: state.error, reload: state.reload };
+  return {
+    model,
+    components,
+    activeComponentId: selected?.id ?? null,
+    setActiveComponentId,
+    loading: state.loading,
+    error: state.error,
+    reload: state.reload,
+  };
 }

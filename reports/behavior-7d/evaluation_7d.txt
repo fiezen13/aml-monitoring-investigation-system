@@ -1,0 +1,47 @@
+best_thresh=0.18737509535439478
+scores=/Users/nguyenbao/P-022/data/processed/behavior-7d/if_scores_7d.parquet
+model_window=7d
+label_def=window_strict (as_of - 7d, as_of]
+precision_at_k=[50, 100, 500, 1000]
+
+================================================================
+VALIDATION @ best_thresh (target Recall>=80%)
+================================================================
+Metric                      Value
+----------------------------------
+Threshold                  0.1874
+N accounts                1120541
+N positive                   6745
+N alerts                   647679
+Precision                  0.0083
+Recall                     0.8000
+F1-Score                   0.0165
+ROC-AUC                    0.6287
+PR-AUC                     0.0134
+FPR                        0.5767
+Precision@50               0.6000
+Precision@100              0.3000
+Precision@500              0.0740
+Precision@1000             0.0450
+================================================================
+
+================================================================
+TEST @ best_thresh=0.1874
+================================================================
+Metric                      Value
+----------------------------------
+Threshold                  0.1874
+N accounts                4278901
+N positive                  23882
+N alerts                  2027441
+Precision                  0.0082
+Recall                     0.6994
+F1-Score                   0.0163
+ROC-AUC                    0.6376
+PR-AUC                     0.0139
+FPR                        0.4726
+Precision@50               1.0000
+Precision@100              0.9500
+Precision@500              0.2580
+Precision@1000             0.1390
+================================================================

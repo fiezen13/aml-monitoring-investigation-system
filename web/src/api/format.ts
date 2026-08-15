@@ -26,7 +26,7 @@ export function formatDate(iso: string | null | undefined): string {
   return DATE_ONLY.format(new Date(iso));
 }
 
-/** "3 phút trước". Dữ liệu seed nằm ở 2026 nên khoảng cách có thể âm — khi
+/** "3 phút trước". Dữ liệu lịch sử có thể nằm sau đồng hồ máy — khi
  *  đó hiển thị mốc tuyệt đối thay vì "trong -2 ngày nữa". */
 export function formatRelative(iso: string | null | undefined): string {
   if (!iso) return "—";

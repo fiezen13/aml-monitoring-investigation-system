@@ -1,0 +1,267 @@
+{
+  "schema_version": "fin07.ring_benchmark.v1",
+  "created_at": "2026-08-14T11:49:10.246133+00:00",
+  "database": "data/processed/aml.duckdb",
+  "policy_compliant": false,
+  "n_features": 36,
+  "pattern_file": {
+    "path": "data/raw/ibm-aml/LI-Small-Patterns.txt",
+    "blocks_begun": 117,
+    "blocks_closed": 117,
+    "dropped_incomplete": 0,
+    "malformed_lines": 0
+  },
+  "note": "A ring counts as caught when at least one of its transactions is alerted.",
+  "transaction_level": {
+    "units": 1223740,
+    "positives": 838,
+    "operating_points": [
+      {
+        "alerts": 100,
+        "caught": 85,
+        "missed": 753,
+        "recall": 0.1014,
+        "precision": 0.85
+      },
+      {
+        "alerts": 250,
+        "caught": 140,
+        "missed": 698,
+        "recall": 0.1671,
+        "precision": 0.56
+      },
+      {
+        "alerts": 500,
+        "caught": 175,
+        "missed": 663,
+        "recall": 0.2088,
+        "precision": 0.35
+      },
+      {
+        "alerts": 1000,
+        "caught": 218,
+        "missed": 620,
+        "recall": 0.2601,
+        "precision": 0.218
+      },
+      {
+        "alerts": 2500,
+        "caught": 271,
+        "missed": 567,
+        "recall": 0.3234,
+        "precision": 0.1084
+      },
+      {
+        "alerts": 5000,
+        "caught": 332,
+        "missed": 506,
+        "recall": 0.3962,
+        "precision": 0.0664
+      },
+      {
+        "alerts": 12239,
+        "caught": 441,
+        "missed": 397,
+        "recall": 0.5263,
+        "precision": 0.036
+      },
+      {
+        "alerts": 25000,
+        "caught": 560,
+        "missed": 278,
+        "recall": 0.6683,
+        "precision": 0.0224
+      },
+      {
+        "alerts": 50000,
+        "caught": 647,
+        "missed": 191,
+        "recall": 0.7721,
+        "precision": 0.0129
+      }
+    ]
+  },
+  "account_level": {
+    "units": 484484,
+    "positives": 1284,
+    "operating_points": [
+      {
+        "alerts": 100,
+        "caught": 93,
+        "missed": 1191,
+        "recall": 0.0724,
+        "precision": 0.93
+      },
+      {
+        "alerts": 250,
+        "caught": 167,
+        "missed": 1117,
+        "recall": 0.1301,
+        "precision": 0.668
+      },
+      {
+        "alerts": 500,
+        "caught": 204,
+        "missed": 1080,
+        "recall": 0.1589,
+        "precision": 0.408
+      },
+      {
+        "alerts": 1000,
+        "caught": 272,
+        "missed": 1012,
+        "recall": 0.2118,
+        "precision": 0.272
+      },
+      {
+        "alerts": 2500,
+        "caught": 375,
+        "missed": 909,
+        "recall": 0.2921,
+        "precision": 0.15
+      },
+      {
+        "alerts": 5000,
+        "caught": 479,
+        "missed": 805,
+        "recall": 0.3731,
+        "precision": 0.0958
+      },
+      {
+        "alerts": 12239,
+        "caught": 707,
+        "missed": 577,
+        "recall": 0.5506,
+        "precision": 0.0578
+      },
+      {
+        "alerts": 25000,
+        "caught": 921,
+        "missed": 363,
+        "recall": 0.7173,
+        "precision": 0.0368
+      },
+      {
+        "alerts": 50000,
+        "caught": 1107,
+        "missed": 177,
+        "recall": 0.8621,
+        "precision": 0.0221
+      }
+    ]
+  },
+  "ring_level": {
+    "rings_in_file": 117,
+    "rings_present_in_test": 56,
+    "member_transactions_matched": 318,
+    "match_rate": 0.3109,
+    "median_transactions_per_ring_in_test": 3.5,
+    "operating_points": [
+      {
+        "alerts": 100,
+        "rings_caught": 30,
+        "rings_missed": 26,
+        "ring_recall": 0.5357
+      },
+      {
+        "alerts": 250,
+        "rings_caught": 37,
+        "rings_missed": 19,
+        "ring_recall": 0.6607
+      },
+      {
+        "alerts": 500,
+        "rings_caught": 40,
+        "rings_missed": 16,
+        "ring_recall": 0.7143
+      },
+      {
+        "alerts": 1000,
+        "rings_caught": 43,
+        "rings_missed": 13,
+        "ring_recall": 0.7679
+      },
+      {
+        "alerts": 2500,
+        "rings_caught": 49,
+        "rings_missed": 7,
+        "ring_recall": 0.875
+      },
+      {
+        "alerts": 5000,
+        "rings_caught": 50,
+        "rings_missed": 6,
+        "ring_recall": 0.8929
+      },
+      {
+        "alerts": 12239,
+        "rings_caught": 52,
+        "rings_missed": 4,
+        "ring_recall": 0.9286
+      },
+      {
+        "alerts": 25000,
+        "rings_caught": 54,
+        "rings_missed": 2,
+        "ring_recall": 0.9643
+      },
+      {
+        "alerts": 50000,
+        "rings_caught": 54,
+        "rings_missed": 2,
+        "ring_recall": 0.9643
+      }
+    ],
+    "by_pattern_type_at_5000_alerts": [
+      {
+        "pattern_type": "CYCLE",
+        "rings": 8,
+        "caught_at_5000_alerts": 7,
+        "recall": 0.875
+      },
+      {
+        "pattern_type": "FAN-OUT",
+        "rings": 8,
+        "caught_at_5000_alerts": 8,
+        "recall": 1.0
+      },
+      {
+        "pattern_type": "GATHER-SCATTER",
+        "rings": 8,
+        "caught_at_5000_alerts": 7,
+        "recall": 0.875
+      },
+      {
+        "pattern_type": "SCATTER-GATHER",
+        "rings": 8,
+        "caught_at_5000_alerts": 6,
+        "recall": 0.75
+      },
+      {
+        "pattern_type": "BIPARTITE",
+        "rings": 7,
+        "caught_at_5000_alerts": 7,
+        "recall": 1.0
+      },
+      {
+        "pattern_type": "RANDOM",
+        "rings": 7,
+        "caught_at_5000_alerts": 7,
+        "recall": 1.0
+      },
+      {
+        "pattern_type": "STACK",
+        "rings": 6,
+        "caught_at_5000_alerts": 5,
+        "recall": 0.8333
+      },
+      {
+        "pattern_type": "FAN-IN",
+        "rings": 4,
+        "caught_at_5000_alerts": 3,
+        "recall": 0.75
+      }
+    ]
+  },
+  "seconds": 414.6
+}

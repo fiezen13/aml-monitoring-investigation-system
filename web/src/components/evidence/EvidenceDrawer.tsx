@@ -33,7 +33,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
       >
         <header className="flex items-start justify-between border-b border-line px-4 py-3">
           <div>
-            <h2 className="text-[15px] font-bold text-ink-hi">Ngăn bằng chứng</h2>
+            <h2 className="text-h3 font-bold text-ink-hi">Ngăn bằng chứng</h2>
             <p className="text-2xs text-ink-mid">Bằng chứng kỹ thuật số</p>
           </div>
           <div className="flex items-center gap-2">
@@ -81,8 +81,8 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
           </div>
 
           <div>
-            <h3 className="text-[14px] font-bold text-ink-hi">{evidence.title}</h3>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-mid">
+            <h3 className="text-body-lg font-bold text-ink-hi">{evidence.title}</h3>
+            <p className="mt-1.5 text-body leading-relaxed text-ink-mid">
               {evidence.description}
             </p>
             <p className="mt-2 text-2xs text-ink-low">
@@ -120,7 +120,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
                   className="flex w-full items-center justify-between rounded-control border border-line bg-elev px-3 py-2 text-left hover:border-line-emphasis"
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-[13px] font-medium text-ink-hi">
+                    <div className="truncate text-body font-medium text-ink-hi">
                       {other.title}
                     </div>
                     <div className="tabular text-2xs text-ink-low">
@@ -144,7 +144,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
                 detail: "Giao diện không tự tạo dữ liệu chứng minh.",
               })
             }
-            className="flex w-full items-center justify-center gap-1.5 rounded-control bg-primary py-2 text-[13px] font-semibold text-app hover:bg-primary-hover"
+            className="flex w-full items-center justify-center gap-1.5 rounded-control bg-primary py-2 text-body font-semibold text-app hover:bg-primary-hover"
           >
             <Plus size={14} aria-hidden />
             Thêm bằng chứng mới

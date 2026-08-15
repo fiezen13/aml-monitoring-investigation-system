@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { conf, int, shortAddr, usd } from "../api/fcFormat";
 import { formatDateTime } from "../api/format";
 import { useApi } from "../api/useApi";
+import { ErrorState, PageShell } from "../components/ui";
 import { type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
 import { Chip, Empty, KpiCard, Panel, ScreenTitle, Skeleton } from "../components/fc/primitives";
@@ -48,7 +49,12 @@ const TRANSFER_KIND_LABEL: Record<string, string> = {
   bridge: "Chuyển qua cầu nối",
   mint: "Phát hành",
   burn: "Tiêu huỷ",
+  ledger: "Giao dịch Bitcoin trong sổ IBM",
 };
+
+function nativeAmount(value: number, asset: string): string {
+  return `${value.toLocaleString("vi-VN", { maximumFractionDigits: 8 })} ${asset}`;
+}
 
 export function CryptoPage() {
   const data = useApi(() => api.crypto(300), []);
@@ -56,12 +62,19 @@ export function CryptoPage() {
 
   const transfers = data.data?.transfers ?? [];
   const exposures = data.data?.exposures ?? [];
+  const ledgerMode = data.data?.source_mode === "ledger";
 
   const kpis = useMemo(() => {
     const lowConfidence = transfers.filter((t) => (t.link_confidence ?? 1) < 0.7).length;
     const indirect = exposures.filter((e) => e.exposure_kind === "indirect").length;
+    const nativeTotal = transfers.reduce((sum, transfer) => sum + transfer.amount, 0);
     return [
-      { label: "Tổng giá trị trên chuỗi", value: usd(data.data?.total_usd ?? 0), color: C.inkHi, delta: `${transfers.length} giao dịch` },
+      {
+        label: ledgerMode ? "Giá trị Bitcoin gốc (top kết quả)" : "Tổng giá trị trên chuỗi",
+        value: ledgerMode ? nativeAmount(nativeTotal, "Bitcoin") : usd(data.data?.total_usd ?? 0),
+        color: C.inkHi,
+        delta: `${transfers.length} giao dịch`,
+      },
       { label: "Địa chỉ có phơi nhiễm", value: new Set(exposures.map((e) => e.address)).size, color: C.warn, delta: `${indirect} gián tiếp` },
       {
         label: "Liên kết độ tin cậy thấp",
@@ -78,25 +91,25 @@ export function CryptoPage() {
         delta: "trên nhãn phơi nhiễm",
       },
     ];
-  }, [data.data, transfers, exposures]);
+  }, [data.data, transfers, exposures, ledgerMode]);
 
   const volumeSpec = useMemo<ChartSpec | null>(() => {
     if (!transfers.length) return null;
     const byDay = new Map<string, number>();
     for (const t of transfers) {
       const key = new Date(t.block_time).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
-      byDay.set(key, (byDay.get(key) ?? 0) + t.amount_usd);
+      byDay.set(key, (byDay.get(key) ?? 0) + (ledgerMode ? t.amount : (t.amount_usd ?? 0)));
     }
     const labels = [...byDay.keys()].reverse();
     return {
       type: "area",
       labels,
-      series: [{ name: "Giá trị (USD)", data: labels.map((l) => Math.round(byDay.get(l)!)), color: C.primary, fill: true }],
+      series: [{ name: ledgerMode ? "Bitcoin gốc" : "Giá trị (USD)", data: labels.map((l) => byDay.get(l)!), color: C.primary, fill: true }],
     };
-  }, [transfers]);
+  }, [transfers, ledgerMode]);
 
   const confidenceSpec = useMemo<ChartSpec | null>(() => {
-    if (!transfers.length) return null;
+    if (!transfers.length || ledgerMode) return null;
     // Phân bố độ tin cậy của liên kết bank↔chain. Khối lượng dồn ở khoảng
     // giữa nghĩa là phần lớn kết nối chỉ là ứng viên, không phải bằng chứng.
     const buckets = [0, 0, 0, 0, 0];
@@ -116,7 +129,7 @@ export function CryptoPage() {
         },
       ],
     };
-  }, [transfers]);
+  }, [transfers, ledgerMode]);
 
   const serviceSpec = useMemo<ChartSpec | null>(() => {
     if (!exposures.length) return null;
@@ -133,11 +146,15 @@ export function CryptoPage() {
   }, [exposures]);
 
   return (
-    <div className="flex animate-up flex-col gap-3.5 p-4">
+    <PageShell variant="dense">
       <ScreenTitle
         title="Truy vết tài sản mã hoá"
-        meta="Dữ liệu trên chuỗi là quan sát chắc chắn; việc gán dịch vụ và nối với chân ngân hàng là suy luận có xác suất"
+        meta={ledgerMode
+          ? "HI-Medium chỉ cung cấp giao dịch Bitcoin trong sổ tổng hợp; không có block, địa chỉ ví hay dữ liệu on-chain"
+          : "Dữ liệu trên chuỗi là quan sát chắc chắn; việc gán dịch vụ và nối với chân ngân hàng là suy luận có xác suất"}
       />
+
+      {data.error && <ErrorState detail={data.error} onRetry={data.reload} />}
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
         {data.loading
@@ -148,7 +165,7 @@ export function CryptoPage() {
       <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))" }}>
         <ChartCard
           title="Giá trị chuyển theo ngày"
-          subtitle="Tổng USD quy đổi tại thời điểm khối"
+          subtitle={ledgerMode ? "Giữ nguyên đơn vị Bitcoin; không quy đổi USD" : "Tổng USD quy đổi tại thời điểm khối"}
           spec={volumeSpec}
           state={data.loading ? "loading" : volumeSpec ? "ok" : "empty"}
         />
@@ -172,7 +189,7 @@ export function CryptoPage() {
       <div className="flex gap-1.5">
         {(
           [
-            ["transfers", `Giao dịch trên chuỗi (${transfers.length})`],
+            ["transfers", `${ledgerMode ? "Bitcoin ledger" : "Giao dịch trên chuỗi"} (${transfers.length})`],
             ["exposures", `Nhãn phơi nhiễm (${exposures.length})`],
           ] as const
         ).map(([key, label]) => (
@@ -202,12 +219,12 @@ export function CryptoPage() {
               <span>Từ địa chỉ</span>
               <span>Đến địa chỉ</span>
               <span>Tài sản</span>
-              <span className="text-right">Giá trị USD</span>
+              <span className="text-right">{ledgerMode ? "Giá trị gốc" : "Giá trị USD"}</span>
               <span>Loại</span>
               <span>Độ tin cậy</span>
             </div>
             {data.loading && <Skeleton rows={8} />}
-            {!data.loading && !transfers.length && <Empty text="Chưa có giao dịch trên chuỗi nào" hint="Chạy scripts/abm_generate.py để sinh dữ liệu" />}
+            {!data.loading && !data.error && !transfers.length && <Empty text="HI-Medium không có giao dịch Bitcoin trong release đang phục vụ" />}
             {transfers.map((t) => (
               <div
                 key={t.id}
@@ -224,7 +241,9 @@ export function CryptoPage() {
                   {shortAddr(t.to_address)}
                 </span>
                 <span className="text-xs text-ink-soft">{t.asset}</span>
-                <span className="tabular text-right font-mono text-xs">{usd(t.amount_usd)}</span>
+                <span className="tabular text-right font-mono text-xs">
+                  {ledgerMode ? nativeAmount(t.amount, t.asset) : usd(t.amount_usd ?? 0)}
+                </span>
                 <span className="text-xs text-ink-soft">{TRANSFER_KIND_LABEL[t.kind] ?? t.kind}</span>
                 <span
                   className="tabular font-mono text-xs"
@@ -251,7 +270,12 @@ export function CryptoPage() {
               <span>Nguồn · hiệu lực từ</span>
             </div>
             {data.loading && <Skeleton rows={6} />}
-            {!data.loading && !exposures.length && <Empty text="Chưa có nhãn phơi nhiễm nào" />}
+            {!data.loading && !data.error && !exposures.length && (
+              <Empty
+                text="Chưa có nhãn phơi nhiễm nào"
+                hint={ledgerMode ? "HI-Medium không chứa nhãn địa chỉ hoặc dịch vụ on-chain." : undefined}
+              />
+            )}
             {exposures.map((e) => (
               <div
                 key={`${e.address}-${e.service_id}`}
@@ -293,6 +317,6 @@ export function CryptoPage() {
           hiện toàn diện.
         </p>
       </Panel>
-    </div>
+    </PageShell>
   );
 }

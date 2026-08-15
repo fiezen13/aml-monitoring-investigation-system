@@ -44,7 +44,7 @@ export function ReasonModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-control border border-line px-3 py-1.5 text-[13px] font-medium text-ink-mid hover:text-ink-hi"
+            className="rounded-control border border-line px-3 py-1.5 text-body font-medium text-ink-mid hover:text-ink-hi"
           >
             Hủy
           </button>
@@ -57,14 +57,14 @@ export function ReasonModal({
                 ? undefined
                 : `Lý do phải có tối thiểu ${minLength} ký tự — ghi vào audit trail, không sửa lại được`
             }
-            className="rounded-control bg-primary px-3 py-1.5 text-[13px] font-semibold text-app hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-control bg-primary px-3 py-1.5 text-body font-semibold text-app hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             {confirmLabel}
           </button>
         </>
       }
     >
-      <p className="mb-3 text-[13px] text-ink-mid">{description}</p>
+      <p className="mb-3 text-body text-ink-mid">{description}</p>
       <label className="mb-1 block text-2xs font-semibold uppercase tracking-wide text-ink-mid">
         Lý do (bắt buộc, tối thiểu {minLength} ký tự)
       </label>
@@ -72,7 +72,7 @@ export function ReasonModal({
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         rows={4}
-        className="w-full rounded-control border border-line bg-elev p-2.5 text-[13px] text-ink-hi placeholder:text-ink-low focus:border-primary/50 focus:outline-none"
+        className="w-full rounded-control border border-line bg-elev p-2.5 text-body text-ink-hi placeholder:text-ink-low focus:border-primary/50 focus:outline-none"
         placeholder="Căn cứ nghiệp vụ cho quyết định này..."
       />
       <div className="tabular mt-1 text-right text-2xs text-ink-low">

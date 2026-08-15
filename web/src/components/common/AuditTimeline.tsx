@@ -22,7 +22,7 @@ export function AuditTimeline({ events }: { events: AuditEvent[] }) {
             }`}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] font-semibold text-ink-hi">
+            <span className="text-body font-semibold text-ink-hi">
               {auditEventLabel(event.action)}
             </span>
             <span className="tabular text-2xs text-ink-low">{event.time}</span>
@@ -35,7 +35,7 @@ export function AuditTimeline({ events }: { events: AuditEvent[] }) {
             {" → "}
             <span className="tabular">{event.target}</span>
           </div>
-          <p className="mt-1 text-[13px] leading-relaxed text-ink-mid">{event.detail}</p>
+          <p className="mt-1 text-body leading-relaxed text-ink-mid">{event.detail}</p>
           {(event.stateBefore || event.stateAfter) && (
             <div className="mt-1.5 flex items-center gap-1.5">
               {event.stateBefore && <StatusBadge tone="muted" label={event.stateBefore} />}

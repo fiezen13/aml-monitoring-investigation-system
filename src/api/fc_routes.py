@@ -27,6 +27,7 @@ from src.models.fc_schemas import (
     CryptoOut,
     CryptoTransferOut,
     DataQualityOut,
+    EdgeModelReleaseOut,
     ExposureOut,
     FlowOut,
     GraphEdgeOut,
@@ -80,28 +81,24 @@ async def nav_counts() -> NavCountsOut:
         row = (
             session.execute(
                 text(
-                    """WITH latest AS (
-                           SELECT batch_id FROM behavior_batch
-                            WHERE status = 'completed'
-                            ORDER BY completed_at DESC NULLS LAST LIMIT 1
+                    """WITH active_release AS (
+                           SELECT release_id FROM edge_model_release
+                            WHERE status = 'active' LIMIT 1
                        )
                        SELECT
                          (SELECT count(*) FROM alert al
                            WHERE status <> 'closed' AND EXISTS (
-                               SELECT 1 FROM detection_result d
-                                WHERE d.alert_id = al.alert_id
-                                  AND d.batch_id = (SELECT batch_id FROM latest)))  AS alerts,
+                               SELECT 1 FROM transaction_model_score s
+                                WHERE s.transaction_id = al.transaction_id
+                                  AND s.release_id = (SELECT release_id FROM active_release))) AS alerts,
                          (SELECT count(*) FROM approval ap
                            JOIN sar_draft sd USING (sar_draft_id)
-                           WHERE ap.decision = 'pending' AND EXISTS (
-                               SELECT 1 FROM alert al JOIN detection_result d USING (alert_id)
-                                WHERE al.case_id = sd.case_id
-                                  AND d.batch_id = (SELECT batch_id FROM latest)))  AS approvals,
+                           WHERE ap.decision = 'pending') AS approvals,
                          (SELECT count(*) FROM alert al
                            WHERE status <> 'closed' AND risk_score >= 80 AND EXISTS (
-                               SELECT 1 FROM detection_result d
-                                WHERE d.alert_id = al.alert_id
-                                  AND d.batch_id = (SELECT batch_id FROM latest)))  AS critical"""
+                               SELECT 1 FROM transaction_model_score s
+                                WHERE s.transaction_id = al.transaction_id
+                                  AND s.release_id = (SELECT release_id FROM active_release))) AS critical"""
                 )
             )
             .mappings()
@@ -125,13 +122,9 @@ async def search(q: str = Query(min_length=2, max_length=64)) -> list[SearchHitO
                 """SELECT alert_id, typology_code FROM alert
                     WHERE lower(alert_id) LIKE :like
                       AND EXISTS (
-                          SELECT 1 FROM detection_result d
-                           WHERE d.alert_id = alert.alert_id
-                             AND d.batch_id = (
-                                 SELECT batch_id FROM behavior_batch
-                                  WHERE status = 'completed'
-                                  ORDER BY completed_at DESC NULLS LAST LIMIT 1
-                             )
+                          SELECT 1 FROM transaction_model_score s
+                          JOIN edge_model_release r USING (release_id)
+                           WHERE r.status='active' AND s.transaction_id=alert.transaction_id
                       )
                     ORDER BY risk_score DESC LIMIT 5"""
             ),
@@ -150,15 +143,7 @@ async def search(q: str = Query(min_length=2, max_length=64)) -> list[SearchHitO
             text(
                 """SELECT case_id, title FROM aml_case
                     WHERE (lower(case_id) LIKE :like OR lower(title) LIKE :like)
-                      AND EXISTS (
-                          SELECT 1 FROM alert al JOIN detection_result d USING (alert_id)
-                           WHERE al.case_id = aml_case.case_id
-                             AND d.batch_id = (
-                                 SELECT batch_id FROM behavior_batch
-                                  WHERE status = 'completed'
-                                  ORDER BY completed_at DESC NULLS LAST LIMIT 1
-                             )
-                      )
+                      AND EXISTS (SELECT 1 FROM alert al WHERE al.case_id = aml_case.case_id)
                     ORDER BY risk_score DESC LIMIT 5"""
             ),
             {"like": like},
@@ -186,15 +171,6 @@ class _Geography(NamedTuple):
     limitation: str | None
 
 
-# Tài khoản kèm quốc gia, dùng lại ở cả hai truy vấn bên dưới. Không có khoá
-# ngoại giữa `account` và `bank`, nên đây là INNER JOIN có chủ đích: tài khoản
-# chưa biết ngân hàng thì không lên bản đồ, và phần thiếu được nêu ở `limitation`.
-_ACCOUNT_COUNTRY = """
-    SELECT a.account_key, b.country_code, b.is_vasp
-      FROM account a JOIN bank b ON b.bank_code = a.bank_code
-     WHERE b.country_code IS NOT NULL
-"""
-
 _MAX_FLOWS = 300
 
 
@@ -214,87 +190,49 @@ def _operational_geography(session: Any) -> _Geography:
             ),
         )
 
+    release_id = session.execute(
+        text(
+            """SELECT release_id FROM edge_model_release WHERE status='active' LIMIT 1"""
+        )
+    ).scalar_one_or_none()
+    if release_id is None:
+        return _Geography(hubs=[], flows=[], limitation="Chưa có edge-model release đang hoạt động.")
+
     hub_rows = (
         session.execute(
             text(
-                f"""
-                WITH acct AS ({_ACCOUNT_COUNTRY}),
-                edge AS (
-                    SELECT af.country_code AS src, ad.country_code AS dst, t.amount
-                      FROM transaction t
-                      JOIN acct af ON af.account_key = t.from_account_key
-                      JOIN acct ad ON ad.account_key = t.to_account_key
-                ),
-                outb AS (SELECT src AS cc, count(*) AS n, sum(amount) AS v FROM edge GROUP BY 1),
-                inb  AS (SELECT dst AS cc, count(*) AS n, sum(amount) AS v FROM edge GROUP BY 1),
-                ent  AS (SELECT country_code AS cc, count(*) AS n FROM acct GROUP BY 1),
-                alr  AS (
-                    SELECT ac.country_code AS cc, count(*) AS n, avg(al.risk_score) AS r
-                      FROM alert al JOIN acct ac ON ac.account_key = al.account_key
-                     GROUP BY 1
-                )
-                SELECT g.country_code, g.name, g.lat, g.lon,
-                       ent.n AS entities,
-                       coalesce(inb.n, 0) AS inbound,
-                       coalesce(outb.n, 0) AS outbound,
-                       coalesce(inb.v, 0) + coalesce(outb.v, 0) AS volume_usd,
-                       coalesce(alr.n, 0) AS alerts,
-                       coalesce(round(alr.r), 0) AS risk_score
-                  FROM country_geo g
-                  JOIN ent  ON ent.cc  = g.country_code
-                  LEFT JOIN inb  ON inb.cc  = g.country_code
-                  LEFT JOIN outb ON outb.cc = g.country_code
-                  LEFT JOIN alr  ON alr.cc  = g.country_code
-                 ORDER BY volume_usd DESC
-                """
-            )
+                """SELECT g.country_code, g.name, g.lat, g.lon,
+                          r.entities, r.inbound, r.outbound,
+                          r.alerts, r.risk_score
+                     FROM edge_country_hub r
+                     JOIN country_geo g USING (country_code)
+                    WHERE r.release_id=:release
+                    ORDER BY r.inbound+r.outbound DESC"""
+            ),
+            {"release": release_id},
         )
         .mappings()
         .all()
     )
+    if not hub_rows:
+        return _Geography(
+            hubs=[],
+            flows=[],
+            limitation="Chưa dựng geography rollup; chạy lại scripts/load_bank_geography.py.",
+        )
 
     flow_rows = (
         session.execute(
             text(
-                f"""
-                WITH acct AS ({_ACCOUNT_COUNTRY}),
-                edge AS (
-                    -- `channel` của giao diện là loại kênh dòng tiền
-                    -- (bank/p2p/vasp/chain/gamb/proj), không phải hình thức
-                    -- thanh toán. Bộ IBM chỉ có ACH/Cash/Cheque/Credit Card/Wire
-                    -- — đều là kênh ngân hàng; trả nguyên giá trị đó ra thì bản
-                    -- đồ 3D tra bảng màu không thấy và ném lỗi.
-                    SELECT af.country_code AS src, ad.country_code AS dst,
-                           CASE WHEN af.is_vasp OR ad.is_vasp THEN 'vasp' ELSE 'bank' END AS channel,
-                           t.from_account_key, t.amount, t.currency, t.occurred_at
-                      FROM transaction t
-                      JOIN acct af ON af.account_key = t.from_account_key
-                      JOIN acct ad ON ad.account_key = t.to_account_key
-                     WHERE af.country_code <> ad.country_code
-                ),
-                alr AS (
-                    SELECT e.src, e.dst, e.currency,
-                           count(DISTINCT al.alert_id) AS n,
-                           coalesce(round(avg(al.risk_score)), 0) AS r
-                      FROM edge e JOIN alert al ON al.account_key = e.from_account_key
-                     GROUP BY 1, 2, 3
-                )
-                SELECT e.src, e.dst, e.currency,
-                       mode() WITHIN GROUP (ORDER BY e.channel) AS channel,
-                       count(*) AS txn_count,
-                       sum(e.amount) AS volume_usd,
-                       min(e.occurred_at) AS first_seen,
-                       max(e.occurred_at) AS last_seen,
-                       coalesce(max(alr.n), 0) AS alert_count,
-                       coalesce(max(alr.r), 0) AS risk_score
-                  FROM edge e
-                  LEFT JOIN alr ON alr.src = e.src AND alr.dst = e.dst AND alr.currency = e.currency
-                 GROUP BY e.src, e.dst, e.currency
-                 ORDER BY txn_count DESC
-                 LIMIT :limit
-                """
+                """SELECT source_country_code AS src, target_country_code AS dst,
+                          currency, channel, txn_count, amount_native,
+                          first_seen, last_seen, alert_count, risk_score
+                     FROM edge_country_flow
+                    WHERE release_id=:release
+                    ORDER BY alert_count DESC, txn_count DESC
+                    LIMIT :limit"""
             ),
-            {"limit": _MAX_FLOWS},
+            {"release": release_id, "limit": _MAX_FLOWS},
         )
         .mappings()
         .all()
@@ -328,7 +266,7 @@ def _operational_geography(session: Any) -> _Geography:
             jurisdiction_risk="unknown",
             inbound=int(row["inbound"]),
             outbound=int(row["outbound"]),
-            volume_usd=float(row["volume_usd"]),
+            volume_usd=0,
             alerts=int(row["alerts"]),
             entities=int(row["entities"]),
             risk_score=int(row["risk_score"]),
@@ -349,10 +287,11 @@ def _operational_geography(session: Any) -> _Geography:
             tlon=coords[row["dst"]][1],
             channel=row["channel"],
             currency=row["currency"],
-            volume_usd=float(row["volume_usd"]),
+            amount_native=float(row["amount_native"]),
+            volume_usd=0,
             txn_count=int(row["txn_count"]),
             risk_score=int(row["risk_score"]),
-            typology_hint=None,
+            typology_hint="T02" if int(row["alert_count"]) > 0 else None,
             alert_count=int(row["alert_count"]),
             first_seen=row["first_seen"],
             last_seen=row["last_seen"],
@@ -373,163 +312,33 @@ def _operational_geography(session: Any) -> _Geography:
 
 
 @router.get("/world", response_model=WorldOut)
-async def world(mode: Literal["operational", "simulation"] = "operational") -> WorldOut:
-    """Trung tâm tài chính và hành lang dòng tiền.
-
-    Mặc định chỉ trả dữ liệu vận hành. Batch Behaviour hiện có bank/account ID
-    nhưng không có country code hay toạ độ, vì vậy API công bố giới hạn và trả
-    bản đồ rỗng thay vì ghép nhầm dữ liệu mô phỏng Việt Nam. Chế độ simulation
-    phải được yêu cầu tường minh.
-    """
+async def world() -> WorldOut:
+    """Currency-native geographic rollup for the active HI-Medium release."""
     with get_session() as session:
-        if mode == "operational":
-            batch = (
-                session.execute(
-                    text(
-                        """SELECT b.batch_id, b.source_name,
-                                  count(t.transaction_id) AS transaction_count
-                             FROM behavior_batch b
-                             LEFT JOIN transaction t ON t.behavior_batch_id = b.batch_id
-                            WHERE b.status = 'completed'
-                            GROUP BY b.batch_id, b.source_name, b.completed_at
-                            ORDER BY b.completed_at DESC NULLS LAST
-                            LIMIT 1"""
-                    )
+        batch = (
+            session.execute(
+                text(
+                    """SELECT release_id AS batch_id, dataset AS source_name,
+                              transaction_rows AS transaction_count
+                         FROM edge_model_release
+                        WHERE status='active' LIMIT 1"""
                 )
-                .mappings()
-                .first()
-            )
-            geography = _operational_geography(session)
-            return WorldOut(
-                hubs=geography.hubs,
-                flows=geography.flows,
-                simulation_id=None,
-                scenario_package=None,
-                data_mode="operational",
-                source_id=batch["batch_id"] if batch else None,
-                source_name=batch["source_name"] if batch else None,
-                transaction_count=int(batch["transaction_count"]) if batch else 0,
-                geography_available=bool(geography.hubs),
-                limitation=(
-                    geography.limitation
-                    if batch
-                    else "Chưa có batch giao dịch vận hành hoàn tất."
-                ),
-            )
-
-        sim = _current_simulation(session)
-        if not sim:
-            return WorldOut(
-                hubs=[],
-                flows=[],
-                simulation_id=None,
-                scenario_package=None,
-                data_mode="simulation",
-                source_id=None,
-                source_name=None,
-                transaction_count=0,
-                geography_available=False,
-                limitation="Chưa có lần chạy mô phỏng ABM.",
-            )
-
-        flows = (
-            session.execute(
-                text(
-                    """SELECT c.corridor_id, c.source_hub_id, c.target_hub_id,
-                              s.name AS source_name, t.name AS target_name,
-                              s.lat AS slat, s.lon AS slon, t.lat AS tlat, t.lon AS tlon,
-                              c.channel, c.currency, c.volume_usd, c.txn_count,
-                              c.risk_score, c.typology_hint, c.alert_count,
-                              c.first_seen, c.last_seen
-                         FROM fc.corridor_flow c
-                         JOIN fc.hub s ON s.hub_id = c.source_hub_id
-                         JOIN fc.hub t ON t.hub_id = c.target_hub_id
-                        WHERE c.simulation_id = :sid
-                        ORDER BY c.risk_score DESC, c.volume_usd DESC"""
-                ),
-                {"sid": sim["simulation_id"]},
             )
             .mappings()
-            .all()
+            .first()
         )
-
-        hubs = (
-            session.execute(
-                text(
-                    """SELECT h.hub_id, h.name, h.country_code, h.lat, h.lon, h.jurisdiction_risk,
-                              (SELECT count(*) FROM fc.corridor_flow f
-                                WHERE f.target_hub_id = h.hub_id AND f.simulation_id = :sid) AS inbound,
-                              (SELECT count(*) FROM fc.corridor_flow f
-                                WHERE f.source_hub_id = h.hub_id AND f.simulation_id = :sid) AS outbound,
-                              (SELECT coalesce(sum(f.volume_usd), 0) FROM fc.corridor_flow f
-                                WHERE (f.source_hub_id = h.hub_id OR f.target_hub_id = h.hub_id)
-                                  AND f.simulation_id = :sid) AS volume_usd,
-                              (SELECT coalesce(sum(f.alert_count), 0) FROM fc.corridor_flow f
-                                WHERE (f.source_hub_id = h.hub_id OR f.target_hub_id = h.hub_id)
-                                  AND f.simulation_id = :sid) AS alerts,
-                              (SELECT count(*) FROM fc.entity e
-                                WHERE e.hub_id = h.hub_id AND e.simulation_id = :sid) AS entities,
-                              (SELECT coalesce(max(f.risk_score), 0) FROM fc.corridor_flow f
-                                WHERE (f.source_hub_id = h.hub_id OR f.target_hub_id = h.hub_id)
-                                  AND f.simulation_id = :sid) AS risk_score
-                         FROM fc.hub h
-                        ORDER BY volume_usd DESC"""
-                ),
-                {"sid": sim["simulation_id"]},
-            )
-            .mappings()
-            .all()
-        )
-
+        geography = _operational_geography(session)
     return WorldOut(
-        simulation_id=sim["simulation_id"],
-        scenario_package=sim["scenario_package"],
-        data_mode="simulation",
-        source_id=sim["simulation_id"],
-        source_name=sim["scenario_package"],
-        transaction_count=sum(int(f["txn_count"]) for f in flows),
-        geography_available=True,
-        limitation="Dữ liệu địa lý do mô phỏng ABM sinh, không phải giao dịch của batch vận hành.",
-        hubs=[
-            HubOut(
-                id=h["hub_id"],
-                name=h["name"],
-                country=h["country_code"],
-                lat=_f(h["lat"]),
-                lon=_f(h["lon"]),
-                jurisdiction_risk=h["jurisdiction_risk"],
-                inbound=h["inbound"],
-                outbound=h["outbound"],
-                volume_usd=_f(h["volume_usd"]),
-                alerts=h["alerts"],
-                entities=h["entities"],
-                risk_score=h["risk_score"],
-            )
-            for h in hubs
-        ],
-        flows=[
-            FlowOut(
-                id=f["corridor_id"],
-                source_hub=f["source_hub_id"],
-                target_hub=f["target_hub_id"],
-                source_name=f["source_name"],
-                target_name=f["target_name"],
-                slat=_f(f["slat"]),
-                slon=_f(f["slon"]),
-                tlat=_f(f["tlat"]),
-                tlon=_f(f["tlon"]),
-                channel=f["channel"],
-                currency=f["currency"],
-                volume_usd=_f(f["volume_usd"]),
-                txn_count=f["txn_count"],
-                risk_score=f["risk_score"],
-                typology_hint=f["typology_hint"],
-                alert_count=f["alert_count"],
-                first_seen=f["first_seen"],
-                last_seen=f["last_seen"],
-            )
-            for f in flows
-        ],
+        hubs=geography.hubs,
+        flows=geography.flows,
+        simulation_id=None,
+        scenario_package=None,
+        data_mode="operational",
+        source_id=batch["batch_id"] if batch else None,
+        source_name=batch["source_name"] if batch else None,
+        transaction_count=int(batch["transaction_count"]) if batch else 0,
+        geography_available=bool(geography.hubs),
+        limitation=(geography.limitation if batch else "Chưa có edge-model release đang hoạt động."),
     )
 
 
@@ -609,6 +418,120 @@ def _edge_transaction_metrics(session: Session, sim_id: str) -> dict[tuple[str, 
     return out
 
 
+def _operational_transaction_graph(session: Session, limit: int) -> GraphOut:
+    """Bounded alert-centred graph built from scored HI-Medium transactions."""
+    seed_limit = max(10, min(100, limit // 4))
+    seed_rows = (
+        session.execute(
+            text(
+                """SELECT al.account_key, max(al.risk_score) AS risk_score
+                     FROM alert al
+                     JOIN transaction_model_score s ON s.transaction_id=al.transaction_id
+                     JOIN edge_model_release r USING (release_id)
+                    WHERE r.status='active'
+                    GROUP BY al.account_key
+                    ORDER BY max(al.risk_score) DESC, al.account_key
+                    LIMIT :lim"""
+            ),
+            {"lim": seed_limit},
+        )
+        .mappings()
+        .all()
+    )
+    if not seed_rows:
+        return GraphOut(nodes=[], edges=[])
+    seeds = [row["account_key"] for row in seed_rows]
+    seed_risk = {row["account_key"]: int(round(_f(row["risk_score"]))) for row in seed_rows}
+    rows = (
+        session.execute(
+            text(
+                """SELECT t.transaction_id, t.occurred_at, t.from_account_key,
+                          t.to_account_key, t.amount, t.currency, t.channel,
+                          s.model_score
+                     FROM transaction t
+                     JOIN transaction_model_score s USING (transaction_id)
+                     JOIN edge_model_release r USING (release_id)
+                    WHERE r.status='active'
+                      AND (t.from_account_key=ANY(:seeds) OR t.to_account_key=ANY(:seeds))
+                    ORDER BY s.triggered DESC, s.model_score DESC, t.occurred_at DESC
+                    LIMIT :lim"""
+            ),
+            {"seeds": seeds, "lim": limit * 8},
+        )
+        .mappings()
+        .all()
+    )
+
+    node_data: dict[str, dict[str, Any]] = {}
+    edge_data: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        source = row["from_account_key"]
+        target = row["to_account_key"]
+        new_nodes = {source, target} - node_data.keys()
+        if len(node_data) + len(new_nodes) > limit:
+            continue
+        when = row["occurred_at"]
+        risk = int(round(_f(row["model_score"]) * 100))
+        for account_key in (source, target):
+            current = node_data.get(account_key)
+            if current is None:
+                node_data[account_key] = {"first": when, "last": when, "risk": seed_risk.get(account_key, risk)}
+            else:
+                current["first"] = min(current["first"], when)
+                current["last"] = max(current["last"], when)
+                current["risk"] = max(current["risk"], seed_risk.get(account_key, risk))
+        edge = edge_data.setdefault(
+            (source, target),
+            {
+                "count": 0,
+                "amounts": {},
+                "first": when,
+                "last": when,
+                "risk": risk,
+            },
+        )
+        edge["count"] += 1
+        edge["amounts"][row["currency"]] = edge["amounts"].get(row["currency"], 0.0) + _f(row["amount"])
+        edge["first"] = min(edge["first"], when)
+        edge["last"] = max(edge["last"], when)
+        edge["risk"] = max(edge["risk"], risk)
+
+    return GraphOut(
+        nodes=[
+            GraphNodeOut(
+                id=account_key,
+                type="account",
+                label=account_key,
+                sub=("Tài khoản có cảnh báo model" if account_key in seed_risk else "Tài khoản đối tác giao dịch"),
+                risk=values["risk"],
+                first=values["first"],
+                last=values["last"],
+                hub=account_key.split(":", 1)[0],
+                negative=False,
+            )
+            for account_key, values in node_data.items()
+        ],
+        edges=[
+            GraphEdgeOut(
+                id=f"TX|{source}|{target}",
+                s=source,
+                t=target,
+                kind="transfer",
+                label=f"{values['count']:,} giao dịch · rủi ro {values['risk']}",
+                amt=None,
+                inferred=False,
+                conf=1.0,
+                logic="Cạnh quan sát trực tiếp từ sổ giao dịch HI-Medium; số tiền được giữ riêng theo currency.",
+                known_from=values["first"],
+                tx_count=values["count"],
+                amounts_by_currency=values["amounts"],
+                tx_first_seen=values["first"],
+                tx_last_seen=values["last"],
+            )
+            for (source, target), values in edge_data.items()
+        ],
+    )
+
 
 @router.get("/fc/graph", response_model=GraphOut)
 async def entity_graph(
@@ -618,7 +541,7 @@ async def entity_graph(
     with get_session() as session:
         sim = _current_simulation(session)
         if not sim:
-            return GraphOut(nodes=[], edges=[])
+            return _operational_transaction_graph(session, limit)
 
         nodes = (
             session.execute(
@@ -756,7 +679,7 @@ async def edge_transactions(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
     min_amount: float = Query(default=0, ge=0),
-    currency: str = Query(default="all", max_length=8),
+    currency: str = Query(default="all", max_length=64),
 ) -> TxPageOut:
     """Những giao dịch thật nằm sau một cạnh quan hệ.
 
@@ -773,7 +696,77 @@ async def edge_transactions(
     with get_session() as session:
         sim = _current_simulation(session)
         if not sim:
-            raise HTTPException(status_code=404, detail="Chưa có lần chạy mô phỏng nào.")
+            parts = edge_id.split("|", 2)
+            if len(parts) != 3 or parts[0] != "TX":
+                raise HTTPException(status_code=404, detail=f"Không có cạnh giao dịch {edge_id}.")
+            source, target = parts[1], parts[2]
+            where = ["t.from_account_key=:source", "t.to_account_key=:target", "r.status='active'"]
+            params: dict[str, Any] = {
+                "source": source,
+                "target": target,
+                "limit": page_size,
+                "offset": (page - 1) * page_size,
+            }
+            if min_amount > 0:
+                where.append("t.amount >= :min_amount")
+                params["min_amount"] = min_amount
+            if currency != "all":
+                where.append("t.currency = :currency")
+                params["currency"] = currency
+            clause = " AND ".join(where)
+            total = session.execute(
+                text(
+                    f"""SELECT count(*) FROM transaction t
+                          JOIN transaction_model_score s USING (transaction_id)
+                          JOIN edge_model_release r USING (release_id)
+                         WHERE {clause}"""  # noqa: S608
+                ),
+                params,
+            ).scalar_one()
+            rows = (
+                session.execute(
+                    text(
+                        f"""SELECT t.transaction_id, t.source_transaction_id, t.occurred_at,
+                                   t.from_account_key, t.to_account_key, t.amount, t.currency,
+                                   t.amount_received, t.receiving_currency, t.channel, t.remarks,
+                                   s.model_score, s.threshold, s.triggered, r.model_version
+                              FROM transaction t
+                              JOIN transaction_model_score s USING (transaction_id)
+                              JOIN edge_model_release r USING (release_id)
+                             WHERE {clause}
+                             ORDER BY t.occurred_at DESC
+                             LIMIT :limit OFFSET :offset"""  # noqa: S608
+                    ),
+                    params,
+                )
+                .mappings()
+                .all()
+            )
+            return TxPageOut(
+                rows=[
+                    TxRowOut(
+                        id=row["transaction_id"],
+                        source_id=row["source_transaction_id"],
+                        occurred_at=row["occurred_at"],
+                        from_account=row["from_account_key"],
+                        to_account=row["to_account_key"],
+                        amount=_f(row["amount"]),
+                        currency=row["currency"],
+                        amount_received=_f(row["amount_received"]),
+                        receiving_currency=row["receiving_currency"],
+                        channel=row["channel"],
+                        remarks=row["remarks"],
+                        model_score=_f(row["model_score"]),
+                        threshold=_f(row["threshold"]),
+                        triggered=row["triggered"],
+                        model_version=row["model_version"],
+                    )
+                    for row in rows
+                ],
+                total=total,
+                page=page,
+                page_size=page_size,
+            )
 
         rel = (
             session.execute(
@@ -864,7 +857,64 @@ async def node_transactions(
     with get_session() as session:
         sim = _current_simulation(session)
         if not sim:
-            raise HTTPException(status_code=404, detail="Chưa có lần chạy mô phỏng nào.")
+            key = session.execute(
+                text("SELECT account_key FROM account WHERE account_key=:key"), {"key": node_id}
+            ).scalar_one_or_none()
+            if key is None:
+                raise HTTPException(status_code=404, detail=f"Không có tài khoản {node_id}.")
+            if direction == "in":
+                clause = "t.to_account_key = :key"
+            elif direction == "out":
+                clause = "t.from_account_key = :key"
+            else:
+                clause = "(t.from_account_key = :key OR t.to_account_key = :key)"
+            params = {"key": key, "limit": page_size, "offset": (page - 1) * page_size}
+            total = session.execute(
+                text(f"SELECT count(*) FROM transaction t WHERE {clause}"), params  # noqa: S608
+            ).scalar_one()
+            rows = (
+                session.execute(
+                    text(
+                        f"""SELECT t.transaction_id, t.source_transaction_id, t.occurred_at,
+                                   t.from_account_key, t.to_account_key, t.amount, t.currency,
+                                   t.amount_received, t.receiving_currency, t.channel, t.remarks,
+                                   s.model_score, s.threshold, s.triggered, r.model_version
+                              FROM transaction t
+                              JOIN transaction_model_score s USING (transaction_id)
+                              JOIN edge_model_release r USING (release_id)
+                             WHERE r.status='active' AND {clause}
+                             ORDER BY t.occurred_at DESC LIMIT :limit OFFSET :offset"""  # noqa: S608
+                    ),
+                    params,
+                )
+                .mappings()
+                .all()
+            )
+            return TxPageOut(
+                rows=[
+                    TxRowOut(
+                        id=row["transaction_id"],
+                        source_id=row["source_transaction_id"],
+                        occurred_at=row["occurred_at"],
+                        from_account=row["from_account_key"],
+                        to_account=row["to_account_key"],
+                        amount=_f(row["amount"]),
+                        currency=row["currency"],
+                        amount_received=_f(row["amount_received"]),
+                        receiving_currency=row["receiving_currency"],
+                        channel=row["channel"],
+                        remarks=row["remarks"],
+                        model_score=_f(row["model_score"]),
+                        threshold=_f(row["threshold"]),
+                        triggered=row["triggered"],
+                        model_version=row["model_version"],
+                    )
+                    for row in rows
+                ],
+                total=total,
+                page=page,
+                page_size=page_size,
+            )
 
         key = session.execute(
             text(
@@ -937,7 +987,46 @@ async def crypto(limit: int = Query(default=200, le=1000)) -> CryptoOut:
     with get_session() as session:
         sim = _current_simulation(session)
         if not sim:
-            return CryptoOut(transfers=[], exposures=[], total_usd=0)
+            rows = (
+                session.execute(
+                    text(
+                        """SELECT t.transaction_id, t.source_transaction_id, t.occurred_at,
+                                  t.from_account_key, t.to_account_key, t.amount, t.currency
+                             FROM transaction t
+                             JOIN transaction_model_score s USING (transaction_id)
+                             JOIN edge_model_release r USING (release_id)
+                            WHERE r.status='active'
+                              AND (t.currency='Bitcoin' OR t.receiving_currency='Bitcoin'
+                                   OR t.channel='BITCOIN')
+                            ORDER BY s.model_score DESC, t.occurred_at DESC
+                            LIMIT :lim"""
+                    ),
+                    {"lim": limit},
+                )
+                .mappings()
+                .all()
+            )
+            return CryptoOut(
+                transfers=[
+                    CryptoTransferOut(
+                        id=f"LEDGER-{row['transaction_id']}",
+                        chain="IBM AML synthetic ledger",
+                        tx_hash=row["source_transaction_id"] or str(row["transaction_id"]),
+                        from_address=row["from_account_key"],
+                        to_address=row["to_account_key"],
+                        asset=row["currency"],
+                        amount=_f(row["amount"]),
+                        amount_usd=None,
+                        block_time=row["occurred_at"],
+                        kind="ledger",
+                        link_confidence=None,
+                    )
+                    for row in rows
+                ],
+                exposures=[],
+                total_usd=0,
+                source_mode="ledger",
+            )
 
         transfers = (
             session.execute(
@@ -1221,6 +1310,32 @@ async def model_monitor() -> list[ModelMonitorOut]:
     ]
 
 
+@router.get("/fc/edge-model/release", response_model=EdgeModelReleaseOut)
+async def edge_model_release() -> EdgeModelReleaseOut:
+    """Audited metadata for the release currently served by the console."""
+    with get_session() as session:
+        row = (
+            session.execute(
+                text(
+                    """SELECT release_id, model_version, dataset, split,
+                              model_sha256, scores_sha256, source_database_sha256,
+                              threshold, transaction_rows, positive_rows, triggered_rows,
+                              feature_count, benchmark, policy, status, trained_at, activated_at
+                         FROM edge_model_release
+                        WHERE status='active'
+                        LIMIT 1"""
+                )
+            )
+            .mappings()
+            .first()
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Chưa có currency-native model release đang hoạt động")
+    values = dict(row)
+    values["threshold"] = _f(values["threshold"])
+    return EdgeModelReleaseOut(**values)
+
+
 @router.get("/fc/data-quality", response_model=list[DataQualityOut])
 async def data_quality() -> list[DataQualityOut]:
     with get_session() as session:
@@ -1322,7 +1437,9 @@ async def transactions(
     q: str = Query(default="", max_length=64),
     channel: str = Query(default="all", max_length=32),
     min_amount: float = Query(default=0, ge=0),
-    source: Literal["operational", "all"] = Query(default="operational"),
+    min_score: float = Query(default=0, ge=0, le=1),
+    currency: str = Query(default="all", max_length=64),
+    triggered: bool | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> TxPageOut:
@@ -1331,11 +1448,14 @@ async def transactions(
     Đếm tổng bằng một truy vấn riêng thay vì `count(*) OVER ()`: trên bảng vài
     triệu dòng, window function buộc phải quét hết ngay cả khi chỉ lấy 50 dòng.
     """
-    where = ["1 = 1"]
+    where = ["r.status = 'active'"]
     params: dict[str, Any] = {"limit": page_size, "offset": (page - 1) * page_size}
 
     if q:
-        where.append("(t.from_account_key ILIKE :q OR t.to_account_key ILIKE :q OR t.remarks ILIKE :q)")
+        where.append(
+            "(t.source_transaction_id ILIKE :q OR t.from_account_key ILIKE :q "
+            "OR t.to_account_key ILIKE :q OR t.remarks ILIKE :q)"
+        )
         params["q"] = f"%{q}%"
     if channel != "all":
         where.append("t.channel = :channel")
@@ -1343,29 +1463,47 @@ async def transactions(
     if min_amount > 0:
         where.append("t.amount >= :min_amount")
         params["min_amount"] = min_amount
-    if source == "operational":
-        where.append(
-            """t.behavior_batch_id = (
-                   SELECT batch_id FROM behavior_batch
-                    WHERE status = 'completed'
-                    ORDER BY completed_at DESC NULLS LAST LIMIT 1
-               )"""
-        )
-
+    if min_score > 0:
+        where.append("s.model_score >= :min_score")
+        params["min_score"] = min_score
+    if currency != "all":
+        where.append("(t.currency = :currency OR t.receiving_currency = :currency)")
+        params["currency"] = currency
+    if triggered is not None:
+        where.append("s.triggered = :triggered")
+        params["triggered"] = triggered
     clause = " AND ".join(where)
+    has_filters = bool(
+        q or channel != "all" or min_amount > 0 or min_score > 0 or currency != "all" or triggered is not None
+    )
 
     with get_session() as session:
-        total = session.execute(
-            text(f"SELECT count(*) FROM transaction t WHERE {clause}"),  # noqa: S608 — clause dựng từ hằng số
-            params,
-        ).scalar_one()
+        if has_filters:
+            total = session.execute(
+                text(
+                    f"""SELECT count(*)
+                           FROM transaction t
+                           JOIN transaction_model_score s USING (transaction_id)
+                           JOIN edge_model_release r USING (release_id)
+                          WHERE {clause}"""  # noqa: S608
+                ),
+                params,
+            ).scalar_one()
+        else:
+            total = session.execute(
+                text("SELECT transaction_rows FROM edge_model_release WHERE status='active' LIMIT 1")
+            ).scalar_one_or_none() or 0
 
         rows = (
             session.execute(
                 text(
-                    f"""SELECT t.transaction_id, t.occurred_at, t.from_account_key, t.to_account_key,
-                               t.amount, t.currency, t.channel, t.remarks
+                    f"""SELECT t.transaction_id, t.source_transaction_id, t.occurred_at,
+                               t.from_account_key, t.to_account_key, t.amount, t.currency,
+                               t.amount_received, t.receiving_currency, t.channel, t.remarks,
+                               s.model_score, s.threshold, s.triggered, r.model_version
                           FROM transaction t
+                          JOIN transaction_model_score s USING (transaction_id)
+                          JOIN edge_model_release r USING (release_id)
                          WHERE {clause}
                          ORDER BY t.occurred_at DESC
                          LIMIT :limit OFFSET :offset"""  # noqa: S608
@@ -1380,13 +1518,20 @@ async def transactions(
         rows=[
             TxRowOut(
                 id=r["transaction_id"],
+                source_id=r["source_transaction_id"],
                 occurred_at=r["occurred_at"],
                 from_account=r["from_account_key"],
                 to_account=r["to_account_key"],
                 amount=_f(r["amount"]),
                 currency=r["currency"],
+                amount_received=_f(r["amount_received"]),
+                receiving_currency=r["receiving_currency"],
                 channel=r["channel"],
                 remarks=r["remarks"],
+                model_score=_f(r["model_score"]),
+                threshold=_f(r["threshold"]),
+                triggered=r["triggered"],
+                model_version=r["model_version"],
             )
             for r in rows
         ],

@@ -136,9 +136,7 @@ def build(
         connection.execute("CREATE INDEX tx_from_idx ON transaction(from_account_key, occurred_at)")
         connection.execute("CREATE INDEX tx_to_idx ON transaction(to_account_key, occurred_at)")
         connection.execute("CREATE INDEX tx_split_idx ON transaction(split)")
-        by_split = dict(
-            connection.execute("SELECT split, count(*) FROM transaction GROUP BY split").fetchall()
-        )
+        by_split = dict(connection.execute("SELECT split, count(*) FROM transaction GROUP BY split").fetchall())
         positives = int(connection.execute("SELECT sum(label_laundering) FROM transaction").fetchone()[0] or 0)
         positive_accounts = int(
             connection.execute(

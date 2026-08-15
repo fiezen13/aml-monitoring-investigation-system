@@ -34,7 +34,7 @@ export function AuditFeed({ events }: { events: ApiAuditEvent[] }) {
             }`}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] font-semibold text-ink-hi">{auditEventLabel(event.event_type)}</span>
+            <span className="text-body font-semibold text-ink-hi">{auditEventLabel(event.event_type)}</span>
             <span className="tabular text-2xs text-ink-low">{formatDateTime(event.occurred_at)}</span>
           </div>
           <div className="mt-0.5 text-2xs text-ink-mid">

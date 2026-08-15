@@ -179,14 +179,14 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
               để biết vấn đề còn lại trước khi sử dụng.
             </p>
           )}
-          <p className="text-[13px] leading-relaxed text-ink-hi">{investigationTextVi(explanation.data.summary)}</p>
+          <p className="text-body leading-relaxed text-ink-hi">{investigationTextVi(explanation.data.summary)}</p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <ExplanationList title="DỮ KIỆN" items={explanation.data.claims.filter((claim) => claim.claim_type === "FACT")} />
             <ExplanationList title="SUY LUẬN" items={explanation.data.claims.filter((claim) => claim.claim_type === "INFERENCE")} />
             <TextList title="THÔNG TIN CÒN THIẾU" items={explanation.data.missing_information} />
             <div>
               <h4 className="mb-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">BƯỚC TIẾP THEO ĐƯỢC ĐỀ XUẤT</h4>
-              <p className="text-[13px] text-ink-hi">{recommendedActionLabel(explanation.data.recommended_action)}</p>
+              <p className="text-body text-ink-hi">{recommendedActionLabel(explanation.data.recommended_action)}</p>
               <p className="mt-1 text-2xs text-warn">Bắt buộc chuyên viên rà soát — không tự động thực hiện quyết định nghiệp vụ.</p>
             </div>
           </div>
@@ -209,7 +209,7 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
                   <div className="mt-2 border-t border-line pt-2 text-2xs text-ink-mid">
                     <div>Nguồn: {item.source}</div>
                     <div className="mt-1 break-all">SHA-256: {item.integrity.content_hash}</div>
-                    <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap rounded bg-app p-2 text-[10px] text-ink-mid">
+                    <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap rounded bg-app p-2 text-micro text-ink-mid">
                       {JSON.stringify(item.payload, null, 2)}
                     </pre>
                   </div>
@@ -289,7 +289,7 @@ function ExplanationList({ title, items }: { title: string; items: Array<{ claim
       <h4 className="mb-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">{title}</h4>
       {items.length === 0 ? <p className="text-2xs text-ink-low">Không có.</p> : (
         <ul className="space-y-2">
-          {items.map((item) => <li key={item.claim_id} className="text-[13px] text-ink-hi">{investigationTextVi(item.claim)}<div className="tabular text-2xs text-info">{item.evidence_refs.join(" · ")}</div></li>)}
+          {items.map((item) => <li key={item.claim_id} className="text-body text-ink-hi">{investigationTextVi(item.claim)}<div className="tabular text-2xs text-info">{item.evidence_refs.join(" · ")}</div></li>)}
         </ul>
       )}
     </div>
@@ -300,7 +300,7 @@ function TextList({ title, items }: { title: string; items: string[] }) {
   return (
     <div>
       <h4 className="mb-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">{title}</h4>
-      {items.length === 0 ? <p className="text-2xs text-ink-low">Không có.</p> : <ul className="space-y-1 text-[13px] text-ink-hi">{items.map((item) => <li key={item}>• {investigationTextVi(item)}</li>)}</ul>}
+      {items.length === 0 ? <p className="text-2xs text-ink-low">Không có.</p> : <ul className="space-y-1 text-body text-ink-hi">{items.map((item) => <li key={item}>• {investigationTextVi(item)}</li>)}</ul>}
     </div>
   );
 }

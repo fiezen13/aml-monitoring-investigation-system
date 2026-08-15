@@ -194,7 +194,7 @@ Mỗi mẫu = bộ ba:
 |------------|--------|
 | `account_key` | Tài khoản |
 | `as_of_ts` | Thời điểm chốt sổ |
-| `window` | Độ dài nhìn lùi (vd 1d / 7d / 14d) |
+| `window` | Độ dài nhìn lùi (`1d` hoặc `7d`) |
 
 Ví dụ: tài khoản `1:ACC001`, snapshot ngày `2022-09-09` (`as_of_ts = 2022-09-10T00:00:00Z`), window 7 ngày → vector feature → `anomaly_score`.
 
@@ -206,7 +206,7 @@ Với mỗi ngày snapshot `D` (UTC):
 
 ```text
 end_ts   = (D + 1 day) at 00:00:00 UTC
-start_ts = end_ts - W   # W = 1d / 7d / 14d tùy window
+start_ts = end_ts - W   # W = 1d / 7d tùy window
 ```
 
 | Field | Giá trị |
@@ -229,7 +229,7 @@ as_of_ts = 2022-09-10T00:00:00+00:00
 
 Baseline: chỉ tạo mẫu cho account có ≥ 1 giao dịch (gửi hoặc nhận) trong window.
 
-Window gợi ý: `1d`, `7d`, `14d` — **fusion với Graph khóa `7d`** cùng convention half-open.
+Behaviour hỗ trợ `1d` và `7d`; **fusion với Graph khóa `7d`** cùng convention half-open.
 
 Chiến lược khác (theo giờ, thưa ngày…): phải **một định nghĩa duy nhất**, ghi trong `feature_spec.md`, và không tạo sample “mỗi transaction một dòng” tùy hứng. **Không** lệch convention với Graph nếu vẫn join theo `as_of_ts`.
 
@@ -287,7 +287,7 @@ Chỉ liệt kê tên feature dễ hiểu lệch (`rapid_*`, `dwell`, `new_count
 Trước khi implement, tạo `docs/feature_spec.md` (hoặc path tương đương). Mỗi feature ghi:
 
 1. **Definition** — công thức / pseudo-code
-2. **Window** — 1d / 7d / 14d; lookback phụ nếu có
+2. **Window** — 1d / 7d; lookback phụ nếu có
 3. **Inputs** — cột Task 1
 4. **Edge cases** — chia 0, chỉ in/out, window rỗng, timestamp trùng
 5. **Transform** — `log1p` / clip hay không
@@ -361,7 +361,7 @@ Mỗi dòng = một lần chấm một account tại một `as_of_ts` + `window`
 |--------|----------|---------|
 | `account_key` | Có | Tài khoản |
 | `as_of_ts` | Có | Thời điểm chốt (UTC) |
-| `window` | Có | vd `1d`, `7d`, `14d` |
+| `window` | Có | `1d` hoặc `7d` |
 | các cột feature | Có | Vector hành vi (+ transform nếu có) |
 | `anomaly_score` | Có | Điểm bất thường — quy ước dưới |
 | `model_version` | Có | Version model + config + transform |

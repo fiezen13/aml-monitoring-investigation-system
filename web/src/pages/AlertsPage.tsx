@@ -1,72 +1,104 @@
 import { AlertTriangle, BellPlus, BrainCircuit, Gauge } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 
 import { api, num } from "../api/client";
 import { alertStatusLabel, detectorLabel, formatRelative, initials, profileValueLabel } from "../api/format";
 import { useApi } from "../api/useApi";
-import { RiskBadge, StatusBadge } from "../components/common/Badges";
-import { KPIStatCard } from "../components/common/KPIStatCard";
-import { Panel } from "../components/common/Panel";
-import { SearchInput } from "../components/common/SearchInput";
-import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
-import { DataTable, type Column } from "../components/tables/DataTable";
+import {
+  Badge,
+  Column,
+  DataTable,
+  MetricCard,
+  Panel,
+  PageShell,
+  ProgressBar,
+  RiskIndicator,
+  SearchInput,
+  Select,
+} from "../components/ui";
+import { ALERT_STATUS_TONE, DETECTOR_TONE } from "../design/semantic";
+import { getRiskLabel, getRiskTone, RISK_THRESHOLDS } from "../design/risk";
+import { toneColor } from "../design/semantic";
 import type { ApiAlert } from "../api/client";
+import { Pagination } from "../components/common/Pagination";
 
-const ALERT_STATUS_TONE: Record<string, "warn" | "muted" | "risk" | "ok"> = {
-  open: "risk",
-  grouped: "warn",
-  closed: "ok",
-};
-
-const DETECTOR_TONE: Record<string, "info" | "primary" | "muted"> = {
-  rule: "muted",
-  ml: "primary",
-  graph: "info",
-};
+/**
+ * Trung tâm cảnh báo.
+ *
+ * Dải phân bổ rủi ro trước đây dùng ngưỡng 75/50 và ba mã hex Tailwind mặc định
+ * (`#EF4444`, `#F59E0B`, `#22C55E`) không có trong bảng màu nào của hệ thống —
+ * nên cùng một cảnh báo 78 điểm hiện màu đỏ ở đây và màu hổ phách ở Tổng quan.
+ * Giờ cả ngưỡng lẫn màu đều đến từ `design/risk`.
+ */
 
 const RISK_BANDS = [
-  { name: "Cao (≥75)", color: "#EF4444", test: (s: number) => s >= 75 },
-  { name: "Trung bình (50–74)", color: "#F59E0B", test: (s: number) => s >= 50 && s < 75 },
-  { name: "Thấp (<50)", color: "#22C55E", test: (s: number) => s < 50 },
+  {
+    key: "critical",
+    name: `Nghiêm trọng (≥${RISK_THRESHOLDS.critical})`,
+    test: (score: number) => score >= RISK_THRESHOLDS.critical,
+  },
+  {
+    key: "high",
+    name: `Cao (${RISK_THRESHOLDS.high}–${RISK_THRESHOLDS.critical - 1})`,
+    test: (score: number) => score >= RISK_THRESHOLDS.high && score < RISK_THRESHOLDS.critical,
+  },
+  {
+    key: "medium",
+    name: `Trung bình (${RISK_THRESHOLDS.medium}–${RISK_THRESHOLDS.high - 1})`,
+    test: (score: number) => score >= RISK_THRESHOLDS.medium && score < RISK_THRESHOLDS.high,
+  },
+  {
+    key: "low",
+    name: `Thấp (<${RISK_THRESHOLDS.medium})`,
+    test: (score: number) => score < RISK_THRESHOLDS.medium,
+  },
 ];
 
 export function AlertsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [queryText, setQueryText] = useState("");
   const [typology, setTypology] = useState("");
-  const [source, setSource] = useState<"operational" | "all">("operational");
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setQueryText(search.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => setPage(1), [typology, queryText]);
 
   const alerts = useApi(
-    () => api.alerts({ typology_code: typology || undefined, source, limit: 200 }),
-    [typology, source],
+    () =>
+      api.alertsPage({
+        typology_code: typology || undefined,
+        q: queryText || undefined,
+        page,
+        page_size: pageSize,
+      }),
+    [typology, queryText, page],
   );
-  const dashboard = useApi(() => api.dashboard(source), [source]);
+  const dashboard = useApi(() => api.dashboard(), []);
 
-  const rows = alerts.data ?? [];
-
-  // Lọc theo từ khoá ở phía trình duyệt: tập cảnh báo trong một phiên điều
-  // tra nhỏ, một vòng gọi lại máy chủ cho mỗi ký tự gõ vào không đáng.
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (a) =>
-        a.alert_id.toLowerCase().includes(q) ||
-        a.customer_id.toLowerCase().includes(q) ||
-        a.account_key.toLowerCase().includes(q) ||
-        a.occupation.toLowerCase().includes(q) ||
-        a.typology_label.toLowerCase().includes(q),
-    );
-  }, [rows, search]);
+  const rows = alerts.data?.rows ?? [];
+  const total = alerts.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
   const riskDistribution = useMemo(
     () =>
-      RISK_BANDS.map((band) => ({
-        ...band,
-        value: rows.filter((a) => band.test(num(a.risk_score))).length,
-      })).filter((band) => band.value > 0),
+      RISK_BANDS.map((band) => {
+        // Lấy màu qua một điểm đại diện của dải, để dải và ô điểm trong bảng
+        // không thể lệch nhau: cả hai đều đi qua `getRiskTone`.
+        const sample = band.key === "critical" ? 90 : band.key === "high" ? 70 : band.key === "medium" ? 50 : 10;
+        return {
+          ...band,
+          color: toneColor(getRiskTone(sample)),
+          value: rows.filter((alert) => band.test(num(alert.risk_score))).length,
+        };
+      }).filter((band) => band.value > 0),
     [rows],
   );
 
@@ -74,19 +106,24 @@ export function AlertsPage() {
     {
       key: "alert_id",
       header: "Mã cảnh báo",
-      render: (a) => <span className="tabular font-medium text-info">{a.alert_id}</span>,
+      sortValue: (alert) => alert.alert_id,
+      // Mã cảnh báo là một chuỗi băm dài; để nó tự xuống dòng thì mỗi hàng cao
+      // gấp đôi và cột không còn quét dọc được bằng mắt.
+      render: (alert) => (
+        <span className="tabular whitespace-nowrap font-mono text-info-soft">{alert.alert_id}</span>
+      ),
     },
     {
       key: "subject",
       header: "Chủ thể",
-      render: (a) => (
+      render: (alert) => (
         <span className="inline-flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-elev text-2xs font-semibold text-ink-soft">
-            {initials(a.customer_id)}
+          <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-elev text-meta font-semibold text-ink-soft">
+            {initials(alert.customer_id)}
           </span>
-          <span>
-            <span className="tabular block text-[13px] text-ink-hi">{a.customer_id}</span>
-            <span className="block text-2xs text-ink-mid">{profileValueLabel(a.occupation)}</span>
+          <span className="min-w-0">
+            <span className="tabular block truncate font-mono text-data text-ink-hi">{alert.customer_id}</span>
+            <span className="block truncate text-meta text-ink-low">{profileValueLabel(alert.occupation)}</span>
           </span>
         </span>
       ),
@@ -94,81 +131,85 @@ export function AlertsPage() {
     {
       key: "account",
       header: "Tài khoản",
-      render: (a) => <span className="tabular text-ink-mid">{a.account_key}</span>,
+      render: (alert) => <span className="tabular font-mono text-ink-mid">{alert.account_key}</span>,
     },
     {
       key: "risk",
       header: "Điểm rủi ro",
-      render: (a) => <RiskBadge score={Math.round(num(a.risk_score))} />,
+      sortValue: (alert) => num(alert.risk_score),
+      render: (alert) => <RiskIndicator score={num(alert.risk_score)} variant="badge" />,
     },
     {
       key: "detector",
       header: "Bộ phát hiện",
-      render: (a) => <StatusBadge tone={DETECTOR_TONE[a.detector] ?? "muted"} label={detectorLabel(a.detector)} />,
+      render: (alert) => (
+        <Badge tone={DETECTOR_TONE[alert.detector] ?? "neutral"}>{detectorLabel(alert.detector)}</Badge>
+      ),
     },
     {
       key: "typology",
       header: "Nhóm hành vi",
-      render: (a) => (
-        <span className="text-ink-mid" title={`${a.typology_code} — gợi ý của hệ thống, cần con người rà soát`}>
-          {a.typology_label}
+      render: (alert) => (
+        <span
+          className="truncate-1 block max-w-[200px] text-ink-mid"
+          title={`${alert.typology_code} — ${alert.typology_label}. Gợi ý của hệ thống, cần con người rà soát.`}
+        >
+          {alert.typology_label}
         </span>
       ),
     },
     {
       key: "factors",
       header: "Yếu tố",
-      render: (a) => (
-        <span className="tabular text-ink-mid" title="NT7 — mỗi điểm rủi ro kèm tối thiểu ba yếu tố đóng góp">
-          {a.factor_count}
-        </span>
+      numeric: true,
+      sortValue: (alert) => alert.factor_count,
+      render: (alert) => (
+        <span title="NT7 — mỗi điểm rủi ro kèm tối thiểu ba yếu tố đóng góp">{alert.factor_count}</span>
       ),
     },
     {
       key: "status",
       header: "Trạng thái",
-      render: (a) => (
-        <StatusBadge tone={ALERT_STATUS_TONE[a.status] ?? "muted"} label={alertStatusLabel(a.status)} />
+      render: (alert) => (
+        <Badge tone={ALERT_STATUS_TONE[alert.status] ?? "neutral"}>{alertStatusLabel(alert.status)}</Badge>
       ),
     },
     {
       key: "created",
       header: "Phát sinh",
-      render: (a) => <span className="text-ink-mid">{formatRelative(a.created_at)}</span>,
-    },
-    {
-      key: "action",
-      header: "Hành động",
-      render: () => <span className="font-medium text-info-soft">Xem chi tiết</span>,
+      sortValue: (alert) => alert.created_at,
+      render: (alert) => <span className="text-ink-mid">{formatRelative(alert.created_at)}</span>,
     },
   ];
 
   const d = dashboard.data;
 
   return (
-    <div className="mx-auto max-w-[1280px] space-y-3">
+    <PageShell>
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <KPIStatCard
+        <MetricCard
           label="Cảnh báo chưa đóng"
-          value={d ? String(d.open_alerts) : "—"}
+          value={d ? d.open_alerts : "—"}
           icon={<BellPlus size={14} aria-hidden />}
           note="Đếm trực tiếp từ bảng cảnh báo"
         />
-        <KPIStatCard
-          label="Rủi ro cao (≥80)"
-          value={d ? String(d.high_risk_alerts) : "—"}
+        <MetricCard
+          label={`Rủi ro cao (≥${RISK_THRESHOLDS.critical})`}
+          value={d ? d.high_risk_alerts : "—"}
+          tone="risk"
           icon={<AlertTriangle size={14} aria-hidden />}
-          note="Ngưỡng điểm 80/100"
+          note={`Ngưỡng điểm ${RISK_THRESHOLDS.critical}/100`}
         />
-        <KPIStatCard
+        <MetricCard
           label="Điểm rủi ro trung bình"
           value={d ? d.avg_risk_score.toFixed(1) : "—"}
           icon={<Gauge size={14} aria-hidden />}
           note="Trung bình toàn bộ cảnh báo"
         />
-        <KPIStatCard
+        <MetricCard
           label="Vụ việc đang điều tra"
-          value={d ? String(d.cases_investigating) : "—"}
+          value={d ? d.cases_investigating : "—"}
+          tone="agent"
           icon={<BrainCircuit size={14} aria-hidden />}
           note="Chưa xuất hồ sơ, chưa đóng"
         />
@@ -176,78 +217,62 @@ export function AlertsPage() {
 
       <Panel
         padded={false}
-        title={
-          <div className="flex flex-wrap items-center gap-3">
-            <span>Hàng đợi cảnh báo</span>
+        title="Hàng đợi cảnh báo"
+        actions={
+          <>
             <SearchInput
               value={search}
               onChange={setSearch}
-              placeholder="Tìm mã cảnh báo, chủ thể, tài khoản, nhóm hành vi..."
-              className="w-72 font-normal"
+              placeholder="Tìm mã cảnh báo, chủ thể, tài khoản…"
+              className="w-64"
             />
-          </div>
-        }
-        action={
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-2xs text-ink-low">
-              Nguồn
-              <select
-                value={source}
-                onChange={(e) => {
-                  setSource(e.target.value as "operational" | "all");
-                  setTypology("");
-                }}
-                className="rounded-control border border-line bg-elev px-1.5 py-1 text-2xs text-ink-hi focus:outline-none"
-              >
-                <option value="operational">Lô dữ liệu hiện tại</option>
-                <option value="all">Tất cả nguồn (gồm dữ liệu mẫu)</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1.5 text-2xs text-ink-low">
-              Nhóm hành vi
-              <select
-                value={typology}
-                onChange={(e) => setTypology(e.target.value)}
-                className="rounded-control border border-line bg-elev px-1.5 py-1 text-2xs text-ink-hi focus:outline-none"
-              >
-                <option value="">Tất cả</option>
-                {(d?.typology_distribution ?? []).map((t) => (
-                  <option key={t.typology_code} value={t.typology_code}>
-                    {t.typology_code} — {t.typology_label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+            <Select
+              aria-label="Lọc theo nhóm hành vi"
+              value={typology}
+              onChange={(event) => setTypology(event.target.value)}
+              className="w-52"
+            >
+              <option value="">Tất cả nhóm hành vi</option>
+              {(d?.typology_distribution ?? []).map((item) => (
+                <option key={item.typology_code} value={item.typology_code}>
+                  {item.typology_code} — {item.typology_label}
+                </option>
+              ))}
+            </Select>
+          </>
         }
       >
-        {alerts.loading && <LoadingSkeleton rows={6} />}
-        {alerts.error && <ErrorState detail={alerts.error} onRetry={alerts.reload} />}
-        {!alerts.loading &&
-          !alerts.error &&
-          (filtered.length === 0 ? (
-            <EmptyState
-              detail={search ? `Không có cảnh báo nào khớp "${search}".` : "Chưa có cảnh báo nào trong hệ thống."}
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(alert) => alert.alert_id}
+          onRowClick={(alert) => navigate(`/alerts/${alert.alert_id}`)}
+          loading={alerts.loading}
+          error={alerts.error}
+          onRetry={alerts.reload}
+          minWidth={980}
+          emptyDetail={
+            queryText ? `Không có cảnh báo nào khớp “${queryText}”.` : "Chưa có cảnh báo nào trong hệ thống."
+          }
+          footer={
+            <Pagination
+              page={page}
+              pageCount={pageCount}
+              onChange={setPage}
+              summary={
+                total
+                  ? `Cảnh báo ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} trong tổng số ${total}`
+                  : "Không có cảnh báo"
+              }
             />
-          ) : (
-            <>
-              <DataTable
-                columns={columns}
-                rows={filtered}
-                rowKey={(a) => a.alert_id}
-                onRowClick={(a) => navigate(`/alerts/${a.alert_id}`)}
-              />
-              <div className="border-t border-line px-3 py-2 text-2xs text-ink-low">
-                Hiển thị {filtered.length} trong số {rows.length} cảnh báo
-              </div>
-            </>
-          ))}
+          }
+        />
       </Panel>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <Panel title="Phân bổ theo dải rủi ro">
+        <Panel title="Phân bổ rủi ro của trang hiện tại" subtitle={`Tối đa ${pageSize} cảnh báo · ngưỡng ${RISK_THRESHOLDS.critical}/${RISK_THRESHOLDS.high}/${RISK_THRESHOLDS.medium}`}>
           {riskDistribution.length === 0 ? (
-            <EmptyState title="Chưa có dữ liệu" detail="Không có cảnh báo nào để phân bổ." />
+            <p className="text-meta text-ink-low">Không có cảnh báo nào để phân bổ.</p>
           ) : (
             <div className="flex items-center gap-4">
               <div className="relative h-32 w-32 shrink-0">
@@ -262,22 +287,22 @@ export function AlertsPage() {
                       isAnimationActive={false}
                     >
                       {riskDistribution.map((band) => (
-                        <Cell key={band.name} fill={band.color} />
+                        <Cell key={band.key} fill={band.color} />
                       ))}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="tabular text-[18px] font-bold text-ink-hi">{rows.length}</span>
-                  <span className="text-2xs uppercase text-ink-low">Tổng</span>
+                  <span className="tabular font-mono text-h3 font-bold text-ink-hi">{rows.length}</span>
+                  <span className="text-micro uppercase tracking-wide text-ink-low">Tổng</span>
                 </div>
               </div>
-              <ul className="space-y-2 text-2xs">
+              <ul className="flex-1 space-y-2 text-meta">
                 {riskDistribution.map((band) => (
-                  <li key={band.name} className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: band.color }} aria-hidden />
-                    <span className="text-ink-mid">{band.name}</span>
-                    <span className="tabular font-semibold text-ink-hi">
+                  <li key={band.key} className="flex items-center gap-2">
+                    <span className="h-2 w-2 flex-none rounded-full" style={{ background: band.color }} aria-hidden />
+                    <span className="flex-1 text-ink-mid">{band.name}</span>
+                    <span className="tabular font-mono font-semibold text-ink-hi">
                       {band.value} ({Math.round((band.value / (rows.length || 1)) * 100)}%)
                     </span>
                   </li>
@@ -289,22 +314,21 @@ export function AlertsPage() {
 
         <Panel title="Phân bổ theo nhóm hành vi">
           {!d ? (
-            <LoadingSkeleton rows={4} />
+            <div className="h-24 animate-pulse rounded-control bg-elev/60" aria-hidden />
           ) : (
             <div className="space-y-3">
-              {d.typology_distribution.map((t) => (
-                <div key={t.typology_code}>
-                  <div className="mb-1 flex items-center justify-between text-2xs">
-                    <span className="text-ink-mid">
-                      <span className="tabular font-semibold text-ink-hi">{t.typology_code}</span> {t.typology_label}
+              {d.typology_distribution.map((typologyRow) => (
+                <div key={typologyRow.typology_code}>
+                  <div className="mb-1 flex items-center justify-between gap-3 text-meta">
+                    <span className="min-w-0 truncate text-ink-mid">
+                      <span className="tabular font-mono font-semibold text-ink-hi">{typologyRow.typology_code}</span>{" "}
+                      {typologyRow.typology_label}
                     </span>
-                    <span className="tabular font-semibold text-ink-hi">
-                      {t.alert_count} ({t.share_pct}%)
+                    <span className="tabular flex-none font-mono font-semibold text-ink-hi">
+                      {typologyRow.alert_count} ({typologyRow.share_pct}%)
                     </span>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded bg-elev">
-                    <div className="h-full rounded bg-primary" style={{ width: `${t.share_pct}%` }} />
-                  </div>
+                  <ProgressBar value={typologyRow.share_pct} tone="primary" />
                 </div>
               ))}
             </div>
@@ -312,10 +336,11 @@ export function AlertsPage() {
         </Panel>
       </div>
 
-      <p className="px-1 text-2xs text-ink-low">
-        Chủ thể được định danh bằng mã khách hàng và mô tả nghề nghiệp — lược đồ cố ý không lưu họ tên vì đây
-        là dữ liệu tổng hợp, không phải khách hàng thật.
+      <p className="text-meta leading-relaxed text-ink-low">
+        Chủ thể được định danh bằng mã khách hàng và mô tả nghề nghiệp — lược đồ cố ý không lưu họ tên vì đây là dữ
+        liệu tổng hợp, không phải khách hàng thật. Nhãn dải rủi ro (“{getRiskLabel(85)}”, “{getRiskLabel(65)}”…) dùng
+        đúng một thang với ô điểm trong bảng.
       </p>
-    </div>
+    </PageShell>
   );
 }

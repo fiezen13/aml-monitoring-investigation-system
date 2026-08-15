@@ -62,8 +62,14 @@ ACCOUNT_COLUMNS = (
 
 COMMON_CURRENCY = "USD"
 
-# Published LI-Small stats (NeurIPS AML dataset paper) — soft DQ band
-LI_SMALL_EXPECTED_ACCOUNTS = 705_000
+# Canonical counts for the checked-in LI-Small contract. Task 1 deliberately
+# removes self-loop transactions before building model inputs, so raw and
+# post-filter populations must remain separate in every DQ guard.
+LI_SMALL_EXPECTED_RAW_TRANSACTIONS = 6_924_049
+LI_SMALL_EXPECTED_ACTIVE_TRANSACTIONS = 6_119_572
+LI_SMALL_TRANSACTION_TOLERANCE = 0.01
+LI_SMALL_EXPECTED_RAW_ENDPOINT_ACCOUNTS = 705_907
+LI_SMALL_EXPECTED_ACTIVE_ACCOUNTS = 576_781
 LI_SMALL_ACCOUNT_TOLERANCE = 0.15
 LI_SMALL_EXPECTED_LAUNDERING_RATE = 0.0005
 LI_SMALL_LAUNDERING_RATE_MIN = 0.0001

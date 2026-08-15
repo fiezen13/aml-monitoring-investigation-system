@@ -1,12 +1,12 @@
 {
   "artifacts": {
-    "graph_detections": "/home/fiores/Documents/hien-selflearning/AI_in_Action_Labs/P-022/data/processed/graph_detection_v1.parquet",
-    "graph_detections_sha256": "33e951696fbfe019d37c09e528b4f9d1cee40b1333f03f44108b480d3fdda841",
-    "graph_features": "/home/fiores/Documents/hien-selflearning/AI_in_Action_Labs/P-022/data/processed/graph_features_v1.parquet",
-    "graph_features_sha256": "a2dcd7f1f7eccf5ccd4123c52d0ff08466622ead1ac3621c23134e311c77c9fe",
-    "input_db": "/home/fiores/Documents/hien-selflearning/AI_in_Action_Labs/P-022/data/processed/aml.duckdb",
-    "modeling_table": "/home/fiores/Documents/hien-selflearning/AI_in_Action_Labs/P-022/data/processed/graph_account_modeling_v1.parquet",
-    "modeling_table_sha256": "441308cf54c767cf98178aea7ee5e5b3104a522d78d596e8dbd095c60a803fc3"
+    "graph_detections": "data/processed/graph_detection_v1.parquet",
+    "graph_detections_sha256": "f2df03347d329a1bcfa174fce98597b3e5ae9c2cfd2f19a2245b4813cfe2bd62",
+    "graph_features": "data/processed/graph_features_v1.parquet",
+    "graph_features_sha256": "925cf3160597e402af38e1bbe30ba8f0aca2bbf84d09ab092340e21ae92ea0e4",
+    "input_db": "data/processed/aml.duckdb",
+    "modeling_table": "data/processed/graph_account_modeling_v1.parquet",
+    "modeling_table_sha256": "bc8f0a2244f95d36a18286bc1b09b8adda340195f80b6c7506949faaa63c1da5"
   },
   "baseline": {
     "feature_sets": {
@@ -75,201 +75,201 @@
       "graph_features_only": {
         "hist_gradient_boosting": {
           "feature_count": 10,
-          "fit_seconds": 3.9798447000011947,
+          "fit_seconds": 3.83287158299936,
           "test_metrics": {
-            "alert_rate": 0.008196964594413379,
-            "alerts": 35074,
-            "f1": 0.08236651061808807,
+            "alert_rate": 0.008440017658739942,
+            "alerts": 36114,
+            "f1": 0.081705447029802,
             "fixed_alert_budget": 42789,
             "fixed_alert_budget_rate": 0.009999997662951305,
             "positives": 23882,
-            "pr_auc": 0.02922537197625861,
-            "precision_at_k": 0.216,
+            "pr_auc": 0.03017727060572664,
+            "precision_at_k": 0.222,
             "precision_k": 1000,
-            "recall_at_fixed_alert_budget": 0.11468888702788711,
+            "recall_at_fixed_alert_budget": 0.1152332300477347,
             "rows": 4278901,
-            "threshold": 0.907873328364965,
-            "threshold_precision": 0.06922506700119747,
-            "threshold_recall": 0.10166652709153337
+            "threshold": 0.9124879205421785,
+            "threshold_precision": 0.06786841668051172,
+            "threshold_recall": 0.10262959551126372
           },
           "validation_metrics": {
-            "alert_rate": 0.00977385030980571,
-            "alerts": 10952,
-            "f1": 0.09368819573939087,
+            "alert_rate": 0.009973753749305023,
+            "alerts": 11176,
+            "f1": 0.09508397968863344,
             "fixed_alert_budget": 11205,
             "fixed_alert_budget_rate": 0.009999634105311631,
             "positives": 6745,
-            "pr_auc": 0.04044626241643049,
-            "precision_at_k": 0.167,
+            "pr_auc": 0.042193772460527273,
+            "precision_at_k": 0.178,
             "precision_k": 1000,
-            "recall_at_fixed_alert_budget": 0.12424017790956264,
+            "recall_at_fixed_alert_budget": 0.12631578947368421,
             "rows": 1120541,
-            "threshold": 0.907873328364965,
-            "threshold_precision": 0.07569393718042366,
-            "threshold_recall": 0.1229058561897702
+            "threshold": 0.9124879205421785,
+            "threshold_precision": 0.07623478883321402,
+            "threshold_recall": 0.12631578947368421
           },
           "validation_threshold_selection": {
-            "alert_rate": 0.00977385030980571,
-            "alerts": 10952,
-            "f1": 0.09368819573939087,
-            "precision": 0.07569393718042366,
-            "recall": 0.1229058561897702,
-            "threshold": 0.907873328364965
+            "alert_rate": 0.009973753749305023,
+            "alerts": 11176,
+            "f1": 0.09508397968863344,
+            "precision": 0.07623478883321402,
+            "recall": 0.12631578947368421,
+            "threshold": 0.9124879205421785
           }
         },
         "logistic_regression": {
           "feature_count": 10,
-          "fit_seconds": 4.690949644000284,
+          "fit_seconds": 1.488174166996032,
           "test_metrics": {
-            "alert_rate": 0.004485263856303289,
-            "alerts": 19192,
-            "f1": 0.07071551283837119,
+            "alert_rate": 0.004472410088478327,
+            "alerts": 19137,
+            "f1": 0.07066644970826845,
             "fixed_alert_budget": 42789,
             "fixed_alert_budget_rate": 0.009999997662951305,
             "positives": 23882,
-            "pr_auc": 0.03231343427035772,
-            "precision_at_k": 0.147,
+            "pr_auc": 0.030200965701839125,
+            "precision_at_k": 0.148,
             "precision_k": 1000,
-            "recall_at_fixed_alert_budget": 0.1198810819864333,
+            "recall_at_fixed_alert_budget": 0.11979733690645675,
             "rows": 4278901,
-            "threshold": 0.882547334642215,
-            "threshold_precision": 0.07935598165902459,
-            "threshold_recall": 0.06377187840214388
+            "threshold": 0.8827749490737915,
+            "threshold_precision": 0.07942728745362387,
+            "threshold_recall": 0.06364626078217905
           },
           "validation_metrics": {
-            "alert_rate": 0.008610126715577565,
-            "alerts": 9648,
-            "f1": 0.0788141279814555,
+            "alert_rate": 0.008544087186457256,
+            "alerts": 9574,
+            "f1": 0.07880384827501685,
             "fixed_alert_budget": 11205,
             "fixed_alert_budget_rate": 0.009999634105311631,
             "positives": 6745,
-            "pr_auc": 0.02606050699926033,
+            "pr_auc": 0.023294454597562464,
             "precision_at_k": 0.105,
             "precision_k": 1000,
             "recall_at_fixed_alert_budget": 0.1011119347664937,
             "rows": 1120541,
-            "threshold": 0.882547334642215,
-            "threshold_precision": 0.06695688225538972,
-            "threshold_recall": 0.09577464788732394
+            "threshold": 0.8827749490737915,
+            "threshold_precision": 0.06716106120743681,
+            "threshold_recall": 0.09532987398072647
           },
           "validation_threshold_selection": {
-            "alert_rate": 0.008610126715577565,
-            "alerts": 9648,
-            "f1": 0.0788141279814555,
-            "precision": 0.06695688225538972,
-            "recall": 0.09577464788732394,
-            "threshold": 0.882547334642215
+            "alert_rate": 0.008544087186457256,
+            "alerts": 9574,
+            "f1": 0.07880384827501685,
+            "precision": 0.06716106120743681,
+            "recall": 0.09532987398072647,
+            "threshold": 0.8827749490737915
           }
         }
       },
       "graph_plus_detector_features": {
         "hist_gradient_boosting": {
           "feature_count": 18,
-          "fit_seconds": 5.531698123000751,
+          "fit_seconds": 6.735060083010467,
           "test_metrics": {
-            "alert_rate": 0.008066557277207394,
-            "alerts": 34516,
-            "f1": 0.09222918593102504,
+            "alert_rate": 0.008160039225025305,
+            "alerts": 34916,
+            "f1": 0.09292833089560869,
             "fixed_alert_budget": 42789,
             "fixed_alert_budget_rate": 0.009999997662951305,
             "positives": 23882,
-            "pr_auc": 0.03127466201354691,
-            "precision_at_k": 0.198,
+            "pr_auc": 0.031694779069976135,
+            "precision_at_k": 0.207,
             "precision_k": 1000,
-            "recall_at_fixed_alert_budget": 0.13248471652290428,
+            "recall_at_fixed_alert_budget": 0.13177288334310358,
             "rows": 4278901,
-            "threshold": 0.9387660873737484,
-            "threshold_precision": 0.07802178699733457,
-            "threshold_recall": 0.11276275018842644
+            "threshold": 0.9376557203210181,
+            "threshold_precision": 0.07824493069080078,
+            "threshold_recall": 0.11439577924796918
           },
           "validation_metrics": {
-            "alert_rate": 0.00999427954889647,
-            "alerts": 11199,
-            "f1": 0.11335265269728043,
+            "alert_rate": 0.009945196115090836,
+            "alerts": 11144,
+            "f1": 0.11504276370954217,
             "fixed_alert_budget": 11205,
             "fixed_alert_budget_rate": 0.009999634105311631,
             "positives": 6745,
-            "pr_auc": 0.04672759476180904,
-            "precision_at_k": 0.211,
+            "pr_auc": 0.04932820305610974,
+            "precision_at_k": 0.229,
             "precision_k": 1000,
-            "recall_at_fixed_alert_budget": 0.1507783543365456,
+            "recall_at_fixed_alert_budget": 0.15285396590066716,
             "rows": 1120541,
-            "threshold": 0.9387660873737484,
-            "threshold_precision": 0.09081167961425127,
-            "threshold_recall": 0.1507783543365456
+            "threshold": 0.9376557203210181,
+            "threshold_precision": 0.09233668341708542,
+            "threshold_recall": 0.15255744996293552
           },
           "validation_threshold_selection": {
-            "alert_rate": 0.00999427954889647,
-            "alerts": 11199,
-            "f1": 0.11335265269728043,
-            "precision": 0.09081167961425127,
-            "recall": 0.1507783543365456,
-            "threshold": 0.9387660873737484
+            "alert_rate": 0.009945196115090836,
+            "alerts": 11144,
+            "f1": 0.11504276370954217,
+            "precision": 0.09233668341708542,
+            "recall": 0.15255744996293552,
+            "threshold": 0.9376557203210181
           }
         },
         "logistic_regression": {
           "feature_count": 18,
-          "fit_seconds": 6.921965075998742,
+          "fit_seconds": 2.6078993749979418,
           "test_metrics": {
-            "alert_rate": 0.0054838847638681056,
-            "alerts": 23465,
-            "f1": 0.07979386233552284,
+            "alert_rate": 0.0054890262709980904,
+            "alerts": 23487,
+            "f1": 0.07979902467858727,
             "fixed_alert_budget": 42789,
             "fixed_alert_budget_rate": 0.009999997662951305,
             "positives": 23882,
-            "pr_auc": 0.03473869777842159,
-            "precision_at_k": 0.145,
+            "pr_auc": 0.03271372364117279,
+            "precision_at_k": 0.149,
             "precision_k": 1000,
-            "recall_at_fixed_alert_budget": 0.1383049995812746,
+            "recall_at_fixed_alert_budget": 0.13838874466125115,
             "rows": 4278901,
-            "threshold": 0.9302588006006622,
-            "threshold_precision": 0.08050287662476029,
-            "threshold_recall": 0.07909722803785278
+            "threshold": 0.9302945137023926,
+            "threshold_precision": 0.08047004726018649,
+            "threshold_recall": 0.07913910057784106
           },
           "validation_metrics": {
-            "alert_rate": 0.009889865698800846,
-            "alerts": 11082,
-            "f1": 0.09726818870252989,
+            "alert_rate": 0.009892542977008428,
+            "alerts": 11085,
+            "f1": 0.09725182277061133,
             "fixed_alert_budget": 11205,
             "fixed_alert_budget_rate": 0.009999634105311631,
             "positives": 6745,
-            "pr_auc": 0.03104782859552248,
-            "precision_at_k": 0.098,
+            "pr_auc": 0.028147855600845734,
+            "precision_at_k": 0.099,
             "precision_k": 1000,
-            "recall_at_fixed_alert_budget": 0.12898443291326908,
+            "recall_at_fixed_alert_budget": 0.12883617494440325,
             "rows": 1120541,
-            "threshold": 0.9302588006006622,
-            "threshold_precision": 0.07823497563616676,
+            "threshold": 0.9302945137023926,
+            "threshold_precision": 0.07821380243572396,
             "threshold_recall": 0.1285396590066716
           },
           "validation_threshold_selection": {
-            "alert_rate": 0.009889865698800846,
-            "alerts": 11082,
-            "f1": 0.09726818870252989,
-            "precision": 0.07823497563616676,
+            "alert_rate": 0.009892542977008428,
+            "alerts": 11085,
+            "f1": 0.09725182277061133,
+            "precision": 0.07821380243572396,
             "recall": 0.1285396590066716,
-            "threshold": 0.9302588006006622
+            "threshold": 0.9302945137023926
           }
         }
       }
     },
     "runtime": {
       "duckdb": "1.5.5",
-      "numpy": "2.2.6",
-      "pandas": "2.3.2",
-      "python": "3.10.12",
-      "scikit_learn": "1.7.1"
+      "numpy": "2.5.2",
+      "pandas": "3.0.5",
+      "python": "3.14.2",
+      "scikit_learn": "1.9.0"
     },
     "selected_model_by_feature_set": {
       "graph_features_only": "hist_gradient_boosting",
       "graph_plus_detector_features": "hist_gradient_boosting"
     }
   },
-  "created_at": "2026-08-13T04:46:54.342985+00:00",
+  "created_at": "2026-08-14T02:53:58.064192+00:00",
   "modeling_table": {
     "modeling_schema_version": "graph_account_modeling_v1",
-    "output_path": "/home/fiores/Documents/hien-selflearning/AI_in_Action_Labs/P-022/data/processed/graph_account_modeling_v1.parquet",
-    "output_sha256": "441308cf54c767cf98178aea7ee5e5b3104a522d78d596e8dbd095c60a803fc3",
+    "output_path": "data/processed/graph_account_modeling_v1.parquet",
+    "output_sha256": "bc8f0a2244f95d36a18286bc1b09b8adda340195f80b6c7506949faaa63c1da5",
     "row_counts": {
       "test": {
         "negatives": 4255019,
@@ -331,6 +331,6 @@
     "total_rows": 7945706,
     "window_semantics": "start-inclusive/end-exclusive"
   },
-  "peak_rss_mb": 7319.546875,
-  "total_runtime_seconds": 40.04496626999935
+  "peak_rss_mb": 6316720.0,
+  "total_runtime_seconds": 24.904361916997004
 }

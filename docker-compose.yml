@@ -7,7 +7,7 @@
 # đó ghi đè (xem `env_file` bên dưới). Danh sách biến: .env.example.
 #
 # Thứ tự khởi động do healthcheck quyết định, không do sleep:
-#   postgres, redis  →  seed (chạy một lần rồi thoát)  →  api, worker  →  web
+#   postgres, redis  →  migrate (chạy một lần rồi thoát)  →  api, worker  →  web
 #
 # Luồng nạp dữ liệu AML (Kafka → Flink → HDFS) nằm trong profile `aml` và
 # **không** khởi động cùng lệnh trên. Nó nặng khoảng 4 GB RAM và chỉ cần khi
@@ -32,6 +32,7 @@ x-app-build: &app-build
 x-app-env: &app-env
   APP_ENV: ${APP_ENV:-development}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fin07}:${POSTGRES_PASSWORD:-fin07_dev_password}@postgres:5432/${POSTGRES_DB:-fin07}
   REDIS_URL: redis://redis:6379/0
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
@@ -46,9 +47,16 @@ x-app-env: &app-env
   MAX_GRAPH_NODES: ${MAX_GRAPH_NODES:-100}
   MAX_GRAPH_EDGES: ${MAX_GRAPH_EDGES:-250}
   INVESTIGATION_TX_LIMIT: ${INVESTIGATION_TX_LIMIT:-100}
-  SEED_VALUE: ${SEED_VALUE:-20260728}
-  SEED_CUSTOMERS: ${SEED_CUSTOMERS:-48}
-  SEED_DAYS: ${SEED_DAYS:-90}
+  OTEL_ENABLED: ${OTEL_ENABLED:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+  OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment.name=development}
+  OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+  OTEL_METRIC_EXPORT_INTERVAL_MS: ${OTEL_METRIC_EXPORT_INTERVAL_MS:-15000}
+  CAPTURE_GENAI_CONTENT: ${CAPTURE_GENAI_CONTENT:-false}
+  GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
+  BUILD_VERSION: ${BUILD_VERSION:-}
 
 # .env là tuỳ chọn: thiếu file thì dùng mặc định ở trên, có thì ghi đè.
 x-env-file: &env-file
@@ -77,7 +85,7 @@ services:
     healthcheck:
       # -h 127.0.0.1 là bắt buộc, không phải trang trí: trong lúc chạy các
       # script khởi tạo, entrypoint dựng một server tạm chỉ nghe unix socket.
-      # pg_isready qua socket sẽ báo xanh ngay lúc đó, và dịch vụ seed lao vào
+      # pg_isready qua socket sẽ báo xanh ngay lúc đó, và dịch vụ migrate lao vào
       # một cơ sở dữ liệu chưa có bảng nào. Hỏi qua TCP thì chỉ xanh khi server
       # thật đã lên.
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-fin07} -d ${POSTGRES_DB:-fin07}"]
@@ -105,14 +113,12 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------------------------
-  # Tác vụ một lần: nạp dữ liệu mẫu rồi thoát. api và worker chờ nó thoát
-  # với mã 0 mới khởi động, nên không có cửa sổ nào mà giao diện mở ra và
-  # rỗng không. Chạy lần hai không nạp trùng — script tự bỏ qua khi đã có
-  # dữ liệu.
-  seed:
+  # Tác vụ một lần: áp migration rồi thoát. Không nạp dữ liệu nghiệp vụ;
+  # LI-Small là nguồn duy nhất và được nạp bằng pipeline Behaviour/AML.
+  migrate:
     image: *app-image
     build: *app-build
-    command: ["python", "scripts/seed_data.py"]
+    command: ["python", "scripts/migrate.py"]
     environment: *app-env
     env_file: *env-file
     depends_on:
@@ -145,7 +151,10 @@ services:
     image: *app-image
     build: *app-build
     command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
-    environment: *app-env
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: ${OTEL_API_SERVICE_NAME:-fin07-backend}
+      OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-1.0.0}
     env_file: *env-file
     volumes:
       - app_data:/app/data
@@ -156,7 +165,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      seed:
+      migrate:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
@@ -173,7 +182,10 @@ services:
     image: *app-image
     build: *app-build
     command: ["python", "-m", "src.worker.main"]
-    environment: *app-env
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: ${OTEL_WORKER_SERVICE_NAME:-fin07-worker}
+      OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-1.0.0}
     env_file: *env-file
     volumes:
       - app_data:/app/data
@@ -182,7 +194,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      seed:
+      migrate:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-m", "src.worker.healthcheck"]
@@ -469,7 +481,7 @@ services:
 
   # -------------------------------------------------------------------
   # Producer phát lại CSV. Dùng chung image với api và worker — cùng mã
-  # nguồn, khác lệnh khởi động, đúng nguyên tắc đã áp dụng cho seed.
+  # nguồn, khác lệnh khởi động, đúng nguyên tắc một image nhiều tiến trình.
   #
   # Không chạy tự động cùng `up`: nạp dữ liệu là một hành động có chủ đích,
   # không phải hệ quả phụ của việc dựng hạ tầng. Chạy bằng:
@@ -506,7 +518,7 @@ services:
     restart: "no"
 
   # ===================================================================
-  # GIÁM SÁT — profile `obs`, không chạy cùng `docker compose up`
+  # GIÁM SÁT — profile `obs` / `observability`, không chạy cùng core stack.
   #
   # Prometheus thu thập, Grafana hiển thị, bốn exporter cung cấp số liệu.
   # Toàn bộ nằm ngoài đường phục vụ người dùng: tắt hết cụm này thì hệ
@@ -518,7 +530,7 @@ services:
 
   prometheus:
     image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.54.1}
-    profiles: ["obs"]
+    profiles: ["obs", "observability"]
     user: root
     environment:
       APP_ENV: ${APP_ENV:-development}
@@ -548,8 +560,8 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: ${GRAFANA_IMAGE:-grafana/grafana:11.3.1}
-    profiles: ["obs"]
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.1.0}
+    profiles: ["obs", "observability"]
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -560,7 +572,26 @@ services:
       # thống làm việc với dữ liệu ngân hàng, kể cả khi dữ liệu ấy là tổng hợp.
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Keep the local stack deterministic and air-gap friendly. The built-in
+      # Prometheus/Loki/Jaeger data sources need no catalog downloads.
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
       GF_DASHBOARDS_MIN_REFRESH_INTERVAL: "10s"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:5173/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_PROXY_ENABLED: "true"
+      GF_AUTH_PROXY_HEADER_NAME: X-WEBAUTH-USER
+      GF_AUTH_PROXY_HEADER_PROPERTY: username
+      GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
+      GF_AUTH_PROXY_SYNC_TTL: "0"
+      GF_AUTH_PROXY_HEADERS: "Role:X-WEBAUTH-ROLE"
+      GF_USERS_AUTO_ASSIGN_ORG: "true"
+      GF_USERS_AUTO_ASSIGN_ORG_ROLE: Viewer
+      # Cho Viewer dùng Explore để điều tra Loki/Jaeger nhưng không thể lưu
+      # thay đổi dashboard. Grafana OSS chưa có fixed data-sources-explorer
+      # role chi tiết như Enterprise/Cloud.
+      GF_USERS_VIEWERS_CAN_EDIT: "true"
+      GF_AUTH_DISABLE_SIGNOUT_MENU: "true"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -570,6 +601,10 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
+      loki:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health || exit 1"]
       interval: 15s
@@ -586,7 +621,7 @@ services:
   # container — nên pid: host và ba mount chỉ đọc bên dưới là bắt buộc.
   node-exporter:
     image: ${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.8.2}
-    profiles: ["obs"]
+    profiles: ["obs", "observability"]
     pid: host
     command:
       - --path.procfs=/host/proc
@@ -596,7 +631,10 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
-      - /:/host/root:ro,rslave
+      # `rslave` is useful on native Linux but Docker Desktop rejects it because
+      # its VM root is not a shared mount. Read-only rootfs keeps local startup
+      # portable; production Linux deployments may add `rslave` in an override.
+      - /:/host/root:ro
     deploy:
       resources:
         limits:
@@ -605,7 +643,7 @@ services:
 
   redis-exporter:
     image: ${REDIS_EXPORTER_IMAGE:-oliver006/redis_exporter:v1.62.0}
-    profiles: ["obs"]
+    profiles: ["obs", "observability"]
     environment:
       REDIS_ADDR: redis://redis:6379
     deploy:
@@ -618,13 +656,101 @@ services:
   # `+psycopg` trong DATABASE_URL của SQLAlchemy.
   postgres-exporter:
     image: ${POSTGRES_EXPORTER_IMAGE:-quay.io/prometheuscommunity/postgres-exporter:v0.15.0}
-    profiles: ["obs"]
+    profiles: ["obs", "observability"]
     environment:
       DATA_SOURCE_NAME: ${MONITORING_PG_DSN:-postgresql://fin07:fin07_dev_password@postgres:5432/fin07?sslmode=disable}
     deploy:
       resources:
         limits:
           memory: 96m
+    restart: unless-stopped
+
+  # Central gateway. Ingestion ports stay on the internal Compose network.
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.158.0}
+    profiles: ["obs", "observability"]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./monitoring/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol/config.yaml"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    restart: unless-stopped
+
+  loki:
+    image: ${LOKI_IMAGE:-grafana/loki:3.7.2}
+    profiles: ["obs", "observability"]
+    command: ["-config.file=/etc/loki/config.yaml", "-config.expand-env=true"]
+    environment:
+      LOKI_RETENTION: ${LOKI_RETENTION:-168h}
+    volumes:
+      - ./monitoring/loki/config.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+    healthcheck:
+      # Loki 3.7 image is distroless (no shell/wget). Validate the exact mounted
+      # config in-container; readiness is also scraped externally by Prometheus.
+      test: ["CMD", "/usr/bin/loki", "-config.file=/etc/loki/config.yaml", "-config.expand-env=true", "-verify-config=true"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    restart: unless-stopped
+
+  jaeger:
+    image: ${JAEGER_IMAGE:-cr.jaegertracing.io/jaegertracing/jaeger:2.20.0}
+    profiles: ["obs", "observability"]
+    ports:
+      - "127.0.0.1:${JAEGER_UI_PORT:-16686}:16686"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:13133/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    restart: unless-stopped
+
+  cadvisor:
+    image: ${CADVISOR_IMAGE:-gcr.io/cadvisor/cadvisor:v0.52.1}
+    profiles: ["obs", "observability"]
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 192m
     restart: unless-stopped
 
 volumes:
@@ -636,3 +762,4 @@ volumes:
   datanode_data:
   prometheus_data:
   grafana_data:
+  loki_data:

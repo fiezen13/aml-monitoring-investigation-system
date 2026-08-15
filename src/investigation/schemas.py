@@ -263,8 +263,8 @@ class ToolArguments(BaseModel):
     direction: Literal["in", "out"] | None = None
     limit: int | None = None
     cursor: str | None = None
-    window: Literal["1d", "7d", "14d", "30d", "90d"] | None = None
-    time_window: Literal["1d", "7d", "14d", "30d", "90d"] | None = None
+    window: Literal["1d", "7d", "30d", "90d"] | None = None
+    time_window: Literal["1d", "7d", "30d", "90d"] | None = None
     hops: int | None = None
     pattern: str | None = None
     typology_code: str | None = None

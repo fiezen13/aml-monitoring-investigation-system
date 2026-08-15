@@ -1,33 +1,32 @@
 import type { ReactNode } from "react";
 
+import { Panel as UiPanel } from "../ui/Panel";
+
+/**
+ * Lớp tương thích — `Panel` thật nằm ở `components/ui/Panel`.
+ *
+ * Bản này từng là một trong hai cách dựng thẻ nội dung trong repo (cách kia là
+ * `fc/primitives.Panel`), với padding, cỡ tiêu đề và đường kẻ khác nhau. Giữ
+ * nguyên chữ ký props để mười trang đang dùng nó không phải đổi cùng lúc, còn
+ * phần dựng hình thì đã là bản hợp nhất.
+ *
+ * @deprecated Import `Panel` từ `components/ui` cho code mới.
+ */
+
 interface PanelProps {
   title?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
   padded?: boolean;
+  /** Không còn tác dụng: độ nổi của thẻ giờ do tầng nền quyết định, không do prop. */
   elevated?: boolean;
 }
 
-export function Panel({
-  title,
-  action,
-  children,
-  className = "",
-  padded = true,
-  elevated = false,
-}: PanelProps) {
+export function Panel({ title, action, children, className = "", padded = true }: PanelProps) {
   return (
-    <section
-      className={`rounded-panel border border-line ${elevated ? "bg-elev" : "bg-panel"} ${className}`}
-    >
-      {(title || action) && (
-        <header className="flex items-center justify-between border-b border-line px-4 py-3">
-          <div className="text-[13px] font-semibold text-ink-hi">{title}</div>
-          {action}
-        </header>
-      )}
-      <div className={padded ? "p-4" : ""}>{children}</div>
-    </section>
+    <UiPanel title={title} actions={action} padded={padded} className={className}>
+      {children}
+    </UiPanel>
   );
 }

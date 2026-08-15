@@ -9,17 +9,16 @@
 
 | Thành viên | Công việc | Trạng thái | Kết quả | Thời gian |
 |---|---|---|---|---|
-| Bảo | Dựng toàn bộ hệ thống bằng một lệnh `docker compose up` | ✅ Done | 5 dịch vụ + tác vụ seed, mọi healthcheck xanh | 4h |
+| Bảo | Dựng toàn bộ hệ thống bằng một lệnh `docker compose up` | ✅ Done | 5 dịch vụ + tác vụ migration, mọi healthcheck xanh | 4h |
 | Bảo | Lược đồ cơ sở dữ liệu theo Hình 6 của ARC-001 | ✅ Done | `db/init/`, kèm ràng buộc bất biến ở tầng dữ liệu | — |
-| Bảo | Script sinh dữ liệu mẫu tái lập được | ✅ Done | `scripts/seed_data.py`, cài sẵn T01–T05 và T10 | — |
+| Bảo | Script dữ liệu mẫu (lịch sử, đã loại bỏ) | 🗑 Removed | Thay bằng batch IBM AML LI-Small | — |
 | Bảo | CI chặn merge trên mọi pull request | ✅ Done | `.github/workflows/ci.yml`, ~4–5 phút | 2h |
 | Bảo | Pipeline CD đầy đủ bằng Jenkins | ✅ Done | `Jenkinsfile`, `ci/`, `deploy/`, `jenkins/` | 3h |
 | Bảo | Tài liệu vận hành và bàn giao | ✅ Done | `docs/operations/RUNBOOK.md`, `docs/operations/CICD.md` | — |
 
-**Tổng kết ngày:** Hạ tầng đã sẵn sàng để Hưng và Tin Tin bắt đầu viết mã mà
-không phải dựng gì thêm. Máy mới chỉ cần Docker; clone repo, chạy một lệnh, có
-ngay database có dữ liệu, API chạy được, giao diện mở được. Chưa có máy chủ
-staging thật — xem mục "Việc còn tồn".
+**Tổng kết ngày (đã cập nhật):** Hạ tầng chạy bằng Docker; dữ liệu demo ban đầu
+đã được loại bỏ sau khi batch IBM AML LI-Small hoàn thành. Máy mới cần nạp
+LI-Small theo runbook để có dữ liệu trên console.
 
 ---
 
@@ -39,8 +38,8 @@ Xong. Mở:
 - Console — <http://localhost:5173>
 - API docs — <http://localhost:8000/docs>
 
-Dữ liệu mẫu đã có sẵn: 48 khách hàng, ~2.400 giao dịch, 5 vụ việc, một hồ sơ
-đang chờ duyệt. Không phải xin ai file dump.
+Stack không tự tạo dữ liệu nghiệp vụ. Nạp batch IBM AML LI-Small theo runbook
+trước khi kiểm tra các màn hình.
 
 Đọc tiếp: [docs/operations/RUNBOOK.md](docs/operations/RUNBOOK.md).
 
@@ -102,7 +101,7 @@ make worker               # worker, cửa sổ khác
 |---|---|
 | `src/agents/**` | Của anh hoàn toàn. Hiện là mã mẫu của template. |
 | `src/worker/main.py` → `HANDLERS` | Chỗ cắm agent điều tra vào worker. |
-| `scripts/seed_data.py` | Fixture demo, **không phải** dataset đánh giá. Việc nạp IBM LI-Small là hạng mục Sprint 1 của anh. Tỷ lệ nhãn ở đây cố ý cao hơn thực tế để màn hình nào cũng có dữ liệu. |
+| Dữ liệu vận hành | Chỉ dùng IBM AML LI-Small; fixture demo lịch sử đã được loại bỏ. |
 | Vai trò `fin07_agent` | Agent chỉ đọc được schema `agent`, **không** chạm được schema `label`. Không phải để làm khó — đó là cách chặn rò rỉ nhãn vào đặc trưng (RD1, mức Rất cao). Cần thêm trường thì thêm view vào `db/init/003_agent_readonly_role.sh` qua pull request. |
 
 ## 3. Quy ước làm việc

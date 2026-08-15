@@ -31,7 +31,7 @@ services:
   postgres:
     profiles: ["localdb-khong-dung-voi-cloudsql"]
 
-  seed:
+  migrate:
     depends_on: !override {}
     environment:
       DATABASE_URL: "${DATABASE_URL:?chua dat DATABASE_URL trong .env - lay bang lenh terraform output -raw database_url}"
@@ -40,7 +40,7 @@ services:
     depends_on: !override
       redis:
         condition: service_healthy
-      seed:
+      migrate:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: "${DATABASE_URL:?chua dat DATABASE_URL trong .env - lay bang lenh terraform output -raw database_url}"
@@ -49,7 +49,7 @@ services:
     depends_on: !override
       redis:
         condition: service_healthy
-      seed:
+      migrate:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: "${DATABASE_URL:?chua dat DATABASE_URL trong .env - lay bang lenh terraform output -raw database_url}"

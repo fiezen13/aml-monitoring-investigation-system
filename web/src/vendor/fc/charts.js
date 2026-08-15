@@ -3,7 +3,12 @@
    shared: tabular-number tooltip, legend data, zoom+brush, compare-period overlay, click cross-filter, ref lines, markers */
 (() => {
 if (customElements.get('fc-chart')) return;
-const PAL={grid:'rgba(133,173,209,0.06)',txt:'#91A2B1',mut:'#8397A8',cyan:'#20C7A7',blue:'#4B9EFF',amber:'#F0B44D',red:'#F45B69',green:'#4CC38A',purple:'#A78BFA'};
+// Bảng màu đọc từ biến CSS do src/design/adapters/canvasTheme.ts in ra :root.
+// Engine này là JS thuần nạp ngoài cây React nên không import token được; biến
+// CSS là điểm nối duy nhất không phải viết lại nó. Giá trị dự phòng giữ nguyên
+// bảng cũ để engine vẫn chạy nếu adapter chưa kịp cài (ví dụ trong test jsdom).
+const CSSV=(name,fallback)=>{ try{ const v=getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v||fallback; }catch(_){ return fallback; } };
+const PAL={grid:CSSV('--fc-grid','rgba(133,173,209,0.06)'),txt:CSSV('--fc-txt','#91A2B1'),mut:CSSV('--fc-mut','#8397A8'),cyan:CSSV('--fc-accent','#20C7A7'),blue:CSSV('--fc-blue','#4B9EFF'),amber:CSSV('--fc-amber','#F0B44D'),red:CSSV('--fc-red','#F45B69'),green:CSSV('--fc-green','#4CC38A'),purple:CSSV('--fc-purple','#A78BFA')};
 const SC=[PAL.blue,PAL.purple,PAL.green,PAL.amber,PAL.red,PAL.cyan];
 const MONO='"JetBrains Mono", monospace', SANS='Geist, sans-serif';
 function fmt(n,d){ if(n==null||isNaN(n)) return '—';

@@ -7,8 +7,8 @@ import { STAGE_INDEX } from "../types/graph.types";
  * Suy ra chặng, vai trò và mức ưu tiên thị giác cho từng thực thể.
  *
  * Backend không biết node nào là "mule" hay "tài khoản gom" — nó chỉ trả về
- * `entity_type`. Câu chuyện nghiệp vụ nằm ở tiền tố mã định danh do
- * `abm_generate.py` sinh ra, nên phần lớn việc ở đây là đọc tiền tố.
+ * `entity_type`. Với dữ liệu IBM AML có tiền tố mã định danh, phần lớn
+ * việc ở đây là đọc tiền tố đó.
  *
  * Có chủ đích để một tầng dự phòng theo topology: nếu dữ liệu đổi và tiền tố
  * không còn khớp, đồ thị vẫn xếp được thành các cột theo khoảng cách từ nguồn,

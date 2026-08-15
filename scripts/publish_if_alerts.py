@@ -71,7 +71,7 @@ FALLBACK_FEATURES = list(FEATURE_LABELS.keys())
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Publish top-K IF scores as ml alerts")
     p.add_argument("--scores", type=Path, default=DEFAULT_SCORES)
-    p.add_argument("--window", default="7d", choices=("1d", "7d", "14d"))
+    p.add_argument("--window", default="7d", choices=("1d", "7d"))
     p.add_argument("--top-k", type=int, default=100, help="So mau diem cao nhat de tao alert")
     p.add_argument("--typology", default=DEFAULT_TYPOLOGY, help="Typology ung vien (T01-T10)")
     p.add_argument(

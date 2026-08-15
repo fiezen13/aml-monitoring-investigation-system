@@ -24,7 +24,7 @@ export function ToastRegion() {
           >
             <Icon size={16} className="mt-0.5 shrink-0" aria-hidden />
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold text-ink-hi">
+              <div className="text-body font-semibold text-ink-hi">
                 {toast.title}
               </div>
               {toast.detail && (

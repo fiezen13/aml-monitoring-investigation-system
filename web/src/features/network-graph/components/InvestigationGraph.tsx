@@ -3,15 +3,14 @@ import type { Core as CyCore } from "cytoscape";
 import type { FcTxRow } from "../../../api/client";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
-import { Eyebrow, PulseDot } from "../../../components/fc/primitives";
-import { C } from "../../../design/palette";
+import { Eyebrow, Inspector, PulseDot } from "../../../components/ui";
 import { useEdgeTransactions, type TxScope } from "../hooks/useEdgeTransactions";
 import { useGraphModel } from "../hooks/useGraphModel";
 import { useGraphTimeline } from "../hooks/useGraphTimeline";
 import { useMoneyPaths } from "../hooks/useMoneyPaths";
 import { buildLeads } from "../utils/pathRanking";
 import { graphReducer, initialState } from "../stores/graph.store";
-import type { ZoomLevel } from "../types/graph.types";
+import type { GraphModel, ZoomLevel } from "../types/graph.types";
 import { activeClusters, buildRenderGraph, defaultCollapsed } from "../utils/graphClustering";
 import { findEvidenceGaps, investigationHealth } from "../utils/evidenceGaps";
 import type { FilterState } from "../utils/graphClustering";
@@ -53,7 +52,7 @@ function centerOn(cy: CyCore | null, id: string): void {
  * chạy lại layout, và đổi focus không làm chạy lại gì ngoài alpha.
  */
 export function InvestigationGraph() {
-  const { model, loading, error } = useGraphModel(600);
+  const { model, components, activeComponentId, setActiveComponentId, loading, error } = useGraphModel(600);
   const [state, dispatch] = useReducer(graphReducer, undefined, initialState);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("medium");
   const [fitNonce, setFitNonce] = useState(0);
@@ -74,13 +73,19 @@ export function InvestigationGraph() {
   // ghi chú ở prop `pathMode` của CytoscapeCanvas.
   const [pathMode, setPathMode] = useState(false);
   const [selectedTx, setSelectedTx] = useState<FcTxRow | null>(null);
-  const initedRef = useRef(false);
+  const modelRef = useRef<GraphModel | null>(null);
 
-  // Lần đầu có mô hình: thu gọn cụm theo preset mặc định.
+  // Mỗi khi chọn một connected component mới, xoá toàn bộ focus/đường tiền
+  // của mạng trước và dựng preset độc lập. Không được để highlight của mạng A
+  // tồn tại trên canvas của mạng B.
   useEffect(() => {
-    if (!model || initedRef.current) return;
-    initedRef.current = true;
-    dispatch({ type: "setCollapsed", collapsed: defaultCollapsed(model.clusters, "overview") });
+    if (!model || modelRef.current === model) return;
+    modelRef.current = model;
+    dispatch({ type: "preset", preset: "overview", collapsed: defaultCollapsed(model.clusters, "overview") });
+    setSelectedTx(null);
+    setPathMode(false);
+    setSearch("");
+    setFitNonce((nonce) => nonce + 1);
   }, [model]);
 
   // Mở hay thu một cụm làm hộp bao đổi hẳn kích thước, nên phải fit lại — nếu
@@ -374,7 +379,10 @@ export function InvestigationGraph() {
         nodeCount={graph.nodes.length}
         edgeCount={graph.edges.length}
         search={search}
+        networks={components}
+        activeNetworkId={activeComponentId}
         onSearch={handleSearch}
+        onNetwork={setActiveComponentId}
         onLayout={(l) => {
           dispatch({ type: "layout", layout: l });
           relayout();
@@ -466,7 +474,7 @@ export function InvestigationGraph() {
                   Chưa có dữ liệu đồ thị.
                   <br />
                   <span className="text-2xs text-ink-dim">
-                    Chạy scripts/abm_generate.py để sinh mạng lưới mô phỏng.
+                    Release đang hoạt động chưa có quan hệ giao dịch để dựng mạng lưới.
                   </span>
                 </div>
               </div>
@@ -509,8 +517,8 @@ export function InvestigationGraph() {
               onPlay={(on) => dispatch({ type: "timelinePlay", on })}
             />
 
-            <div className="pointer-events-none absolute right-3 top-3 z-[5] flex items-center gap-2 rounded-chip border border-line bg-side/85 px-3 py-1 text-2xs backdrop-blur">
-              <PulseDot color={state.perf ? C.warn : C.primary} />
+            <div className="pointer-events-none absolute right-3 top-3 z-hud flex items-center gap-2 rounded-chip border border-line-strong bg-raised/85 px-3 py-1 text-meta backdrop-blur">
+              <PulseDot tone={state.perf ? "warn" : "primary"} />
               <span className="font-mono tracking-[0.08em] text-primary">
                 {graph.nodes.length} đỉnh · {graph.edges.length} cạnh
               </span>
@@ -559,7 +567,11 @@ export function InvestigationGraph() {
           )}
         </div>
 
+        {/* Bảng thanh tra. Nội dung trượt vào lại mỗi khi đối tượng đang xem
+            đổi — đó là tín hiệu duy nhất cho biết cột bên phải vừa nói về một
+            thực thể khác, vì bố cục của nó thì không đổi. */}
         <aside className="flex min-h-0 w-[252px] flex-none flex-col overflow-y-auto border-l border-line bg-side p-2 2xl:w-[316px] 2xl:p-3">
+          <Inspector animateKey={selectedNode?.id ?? selectedEdge?.id ?? (selectedTx ? String(selectedTx.id) : null) ?? "overview"}>
           {model && health && !selectedNode && !selectedEdge && (
             <>
               <GraphTopologySummary
@@ -626,6 +638,7 @@ export function InvestigationGraph() {
           {model && selectedEdge && !selectedTx && (
             <EdgeInspector edge={selectedEdge} model={model} onClose={() => dispatch({ type: "clearFocus" })} />
           )}
+          </Inspector>
         </aside>
       </div>
     </div>

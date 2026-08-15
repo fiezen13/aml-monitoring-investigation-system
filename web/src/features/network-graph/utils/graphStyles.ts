@@ -1,11 +1,13 @@
 import { C } from "../../../design/palette";
+import { ENTITY_COLOR } from "../../../design/visualization";
 import type { LayerKey, PresetKey, Tier } from "../types/graph.types";
 
 /**
  * Bảng hình dạng, màu và kích thước của đồ thị.
  *
- * Canvas cần chuỗi màu thật nên mọi thứ ở đây lấy từ `palette.ts` chứ không từ
- * class Tailwind — hai nơi phải khớp, và `palette.ts` là nguồn duy nhất.
+ * Canvas cần chuỗi màu thật nên mọi thứ ở đây lấy từ design token chứ không từ
+ * class Tailwind. Màu theo loại thực thể đến từ `design/visualization` để đồ
+ * thị, bản đồ và chú giải cùng gọi một con người là một màu.
  */
 
 export type ShapeKind =
@@ -29,7 +31,7 @@ export interface TypeStyle {
 }
 
 export const TYPE_STYLE: Record<string, TypeStyle> = {
-  person: { color: "#38BDF8", shape: "circle", name: "Cá nhân", glyph: "P" },
+  person: { color: ENTITY_COLOR.person, shape: "circle", name: "Cá nhân", glyph: "P" },
   organisation: { color: C.agent, shape: "rrect", name: "Tổ chức", glyph: "O" },
   org: { color: C.agent, shape: "rrect", name: "Tổ chức", glyph: "O" },
   account: { color: C.info, shape: "rect", name: "Tài khoản", glyph: "A" },

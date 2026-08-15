@@ -2,24 +2,38 @@ import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api, num } from "../api/client";
-import { int, usd } from "../api/fcFormat";
+import { int } from "../api/fcFormat";
 import { alertStatusLabel, detectorLabel, formatRelative } from "../api/format";
 import { useApi } from "../api/useApi";
 import { Chart, type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
-import { Empty, KpiCard, Panel, PulseDot, RiskScore, ScreenTitle, Skeleton } from "../components/fc/primitives";
+import {
+  Badge,
+  CardSkeleton,
+  Column,
+  DataTable,
+  MetricCard,
+  Panel,
+  PageShell,
+  PulseDot,
+  RiskIndicator,
+} from "../components/ui";
+import { ALERT_STATUS_TONE, DETECTOR_TONE, type Tone } from "../design/semantic";
+import { SERIES, toneColor } from "../design";
 import { useConsole, WINDOW_LABEL } from "../context/ConsoleContext";
-import { C, SERIES } from "../design/palette";
+import type { ApiAlert } from "../api/client";
 
 /**
- * Tổng quan giám sát — màn hình mặc định.
+ * Tổng quan giám sát — màn hình mặc định và bản mẫu tham chiếu của hệ thiết kế.
  *
- * Bố cục theo prototype: hàng KPI trên cùng để liếc một cái là nắm tình hình,
- * rồi tới biểu đồ xu hướng, cuối cùng là hàng đợi ưu tiên — thứ analyst thực
- * sự phải làm gì đó với nó.
+ * Mọi trang khác nên đọc file này trước khi tự phát minh bố cục: hàng KPI dùng
+ * `MetricCard`, khối nội dung dùng `Panel`, bảng dùng `DataTable`, khoảng cách
+ * và bề rộng do `PageShell` quyết định. Không có `p-4` hay `max-w-[1280px]` viết
+ * tay ở đây, và không có một mã hex nào.
+ *
+ * Thứ tự đọc: hàng KPI để liếc một cái là nắm tình hình → biểu đồ xu hướng →
+ * hàng đợi ưu tiên, thứ analyst thực sự phải làm gì đó với nó.
  */
-
-const QUEUE_COLS = "112px minmax(140px,1fr) 150px 92px 84px 100px 110px";
 
 const BENCHMARK_LABEL: Record<string, string> = {
   precision_at_50: "Chính xác trong 50 cảnh báo đầu",
@@ -28,6 +42,12 @@ const BENCHMARK_LABEL: Record<string, string> = {
   detection_lead_time_days: "Thời gian phát hiện sớm",
   alert_to_case_conversion: "Cảnh báo thành vụ việc",
   evidence_coverage: "Độ phủ bằng chứng",
+  f1_mean_5_seeds: "F1 trung bình 5 seed",
+  f1_primary_seed: "F1 seed chính",
+  f1_sample_std_5_seeds: "Độ lệch chuẩn F1 qua 5 seed",
+  pr_auc_primary_seed: "PR-AUC seed chính",
+  precision_primary_seed: "Precision seed chính",
+  recall_primary_seed: "Recall seed chính",
 };
 
 export function DashboardPage() {
@@ -47,18 +67,38 @@ export function DashboardPage() {
       {
         label: "Giao dịch đã nạp",
         value: d.transactions_analyzed,
-        color: C.inkHi,
-        delta: d.latest_source_name ?? "chưa có lô dữ liệu",
+        tone: "neutral" as Tone,
+        note: d.latest_source_name ?? "chưa có lô dữ liệu",
       },
-      { label: "Dưới ngưỡng", value: d.subjects_below_threshold, color: C.ok, delta: `${normalPct}% ảnh chụp tài khoản` },
-      { label: "Vượt ngưỡng", value: d.subjects_triggered, color: C.warn, delta: `${triggeredPct}% ảnh chụp tài khoản` },
-      { label: "Cảnh báo từ lô dữ liệu", value: d.batch_alerts_created, color: C.risk, delta: "nhóm ưu tiên cần xem xét" },
-      { label: "Vụ việc đang xử lý", value: d.cases_investigating, color: C.agent, delta: "chưa kết luận" },
+      {
+        label: "Dưới ngưỡng",
+        value: d.subjects_below_threshold,
+        tone: "ok" as Tone,
+        note: `${normalPct}% giao dịch được chấm`,
+      },
+      {
+        label: "Vượt ngưỡng",
+        value: d.subjects_triggered,
+        tone: "warn" as Tone,
+        note: `${triggeredPct}% giao dịch được chấm`,
+      },
+      {
+        label: "Cảnh báo từ lô dữ liệu",
+        value: d.batch_alerts_created,
+        tone: "risk" as Tone,
+        note: "nhóm ưu tiên cần xem xét",
+      },
+      {
+        label: "Vụ việc đang xử lý",
+        value: d.cases_investigating,
+        tone: "agent" as Tone,
+        note: "chưa kết luận",
+      },
       {
         label: "Hàng lệnh worker",
         value: d.queue_depth,
-        color: d.worker_alive ? C.ok : C.risk,
-        delta: d.worker_alive ? "worker đang chạy" : "worker không phản hồi",
+        tone: (d.worker_alive ? "ok" : "risk") as Tone,
+        note: d.worker_alive ? "worker đang chạy" : "worker không phản hồi",
       },
     ];
   }, [d]);
@@ -68,20 +108,20 @@ export function DashboardPage() {
   const trendSpec = useMemo<ChartSpec | null>(() => {
     if (!d?.top_alerts?.length) return null;
     const buckets = new Map<string, { total: number; high: number }>();
-    for (const a of d.top_alerts) {
-      const key = new Date(a.created_at).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
-      const cur = buckets.get(key) ?? { total: 0, high: 0 };
-      cur.total += 1;
-      if (num(a.risk_score) >= 80) cur.high += 1;
-      buckets.set(key, cur);
+    for (const alert of d.top_alerts) {
+      const key = new Date(alert.created_at).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+      const current = buckets.get(key) ?? { total: 0, high: 0 };
+      current.total += 1;
+      if (num(alert.risk_score) >= 80) current.high += 1;
+      buckets.set(key, current);
     }
     const labels = [...buckets.keys()].reverse();
     return {
       type: "bars",
       labels,
       series: [
-        { name: "Tổng cảnh báo", data: labels.map((l) => buckets.get(l)!.total), color: C.info },
-        { name: "Rủi ro cao", data: labels.map((l) => buckets.get(l)!.high), color: C.risk },
+        { name: "Tổng cảnh báo", data: labels.map((l) => buckets.get(l)!.total), color: toneColor("info") },
+        { name: "Rủi ro cao", data: labels.map((l) => buckets.get(l)!.high), color: toneColor("risk") },
       ],
     };
   }, [d]);
@@ -90,10 +130,10 @@ export function DashboardPage() {
     if (!d?.typology_distribution?.length) return null;
     return {
       type: "donut",
-      items: d.typology_distribution.map((t, i) => ({
+      items: d.typology_distribution.map((t, index) => ({
         label: t.typology_code,
         value: t.alert_count,
-        color: SERIES[i % SERIES.length],
+        color: SERIES[index % SERIES.length],
       })),
     };
   }, [d]);
@@ -104,11 +144,11 @@ export function DashboardPage() {
     const top = [...flows].sort((a, b) => b.risk_score - a.risk_score).slice(0, 6);
     return {
       type: "hbars",
-      items: top.map((f) => ({
-        label: `${f.source_name} → ${f.target_name}`,
-        value: Math.round(f.volume_usd / 1e6),
-        color: f.risk_score >= 80 ? C.risk : f.risk_score >= 60 ? C.warn : C.ok,
-        sub: `${f.channel} · rủi ro ${f.risk_score}`,
+      items: top.map((flow) => ({
+        label: `${flow.source_name} → ${flow.target_name}`,
+        value: Math.round(flow.volume_usd / 1e6),
+        color: toneColor(flow.risk_score >= 80 ? "risk" : flow.risk_score >= 60 ? "warn" : "ok"),
+        sub: `${flow.channel} · rủi ro ${flow.risk_score}`,
       })),
     };
   }, [world.data]);
@@ -118,43 +158,94 @@ export function DashboardPage() {
     if (!rows?.length) return null;
     // Chỉ lấy chỉ số thang 0–1 để một trục chung còn có nghĩa; lead time tính
     // bằng ngày nên để riêng ở màn hình Benchmarks.
-    const ratio = rows.filter((r) => r.metric_value <= 1 && r.target_value != null);
+    const ratio = rows.filter((row) => row.metric_value <= 1 && row.target_value != null);
     if (!ratio.length) return null;
     return {
       type: "bars",
-      labels: ratio.map((r) => (BENCHMARK_LABEL[r.metric_name] ?? r.metric_name).slice(0, 24)),
+      labels: ratio.map((row) => (BENCHMARK_LABEL[row.metric_name] ?? row.metric_name).slice(0, 24)),
       series: [
-        { name: "Đạt được", data: ratio.map((r) => r.metric_value), color: C.primary },
-        { name: "Ngưỡng yêu cầu", data: ratio.map((r) => r.target_value!), color: C.inkDim },
+        { name: "Đạt được", data: ratio.map((row) => row.metric_value), color: toneColor("primary") },
+        { name: "Ngưỡng yêu cầu", data: ratio.map((row) => row.target_value!), color: toneColor("neutral") },
       ],
     };
   }, [benchmarks.data]);
 
-  return (
-    <div className="flex animate-up flex-col gap-3.5 p-4">
-      <ScreenTitle
-        title="Tổng quan giám sát"
-        meta={
-          <>
-            Cửa sổ {WINDOW_LABEL[win]} · lô dữ liệu hành vi {d?.latest_source_name ?? "chưa có nguồn"} · không dùng đồ thị/hợp nhất điểm
-          </>
-        }
-      />
+  const queueColumns: Column<ApiAlert>[] = [
+    {
+      key: "alert_id",
+      header: "Cảnh báo",
+      render: (alert) => (
+        <span className="tabular whitespace-nowrap font-mono text-data text-primary">{alert.alert_id}</span>
+      ),
+    },
+    {
+      key: "account",
+      header: "Tài khoản",
+      render: (alert) => <span className="truncate-1 tabular font-mono text-data">{alert.account_key}</span>,
+    },
+    {
+      key: "typology",
+      header: "Nhóm hành vi",
+      render: (alert) => (
+        <span className="truncate-1 block max-w-[180px] text-ink-soft" title={alert.typology_label}>
+          {alert.typology_label}
+        </span>
+      ),
+    },
+    {
+      key: "risk",
+      header: "Rủi ro",
+      sortValue: (alert) => num(alert.risk_score),
+      render: (alert) => <RiskIndicator score={num(alert.risk_score)} />,
+    },
+    {
+      key: "detector",
+      header: "Bộ phát hiện",
+      render: (alert) => (
+        <Badge tone={DETECTOR_TONE[alert.detector] ?? "neutral"} icon={false}>
+          {detectorLabel(alert.detector)}
+        </Badge>
+      ),
+    },
+    {
+      key: "created",
+      header: "Tạo lúc",
+      sortValue: (alert) => alert.created_at,
+      render: (alert) => <span className="text-ink-soft">{formatRelative(alert.created_at)}</span>,
+    },
+    {
+      key: "status",
+      header: "Trạng thái",
+      render: (alert) => (
+        <Badge tone={ALERT_STATUS_TONE[alert.status] ?? "neutral"}>{alertStatusLabel(alert.status)}</Badge>
+      ),
+    },
+  ];
 
+  return (
+    <PageShell
+      variant="dense"
+      subtitle={
+        <>
+          Cửa sổ {WINDOW_LABEL[win]} · lô dữ liệu hành vi {d?.latest_source_name ?? "chưa có nguồn"} · không dùng đồ
+          thị/hợp nhất điểm
+        </>
+      }
+    >
       {dashboard.error && (
-        <div className="rounded-panel border border-risk/40 bg-risk/10 px-3.5 py-2.5 text-sm text-risk-soft">
+        <div className="rounded-panel border border-risk/40 bg-risk/10 px-4 py-2.5 text-data text-risk-soft" role="alert">
           {dashboard.error}
         </div>
       )}
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(168px,1fr))" }}>
-        {dashboard.loading && !d
-          ? Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-[76px] animate-pulse rounded-panel bg-panel" />
-            ))
-          : kpis.map((k) => (
-              <KpiCard key={k.label} label={k.label} value={k.value} valueColor={k.color} delta={k.delta} />
-            ))}
+        {dashboard.loading && !d ? (
+          <CardSkeleton count={6} height={84} />
+        ) : (
+          kpis.map((kpi) => (
+            <MetricCard key={kpi.label} label={kpi.label} value={kpi.value} tone={kpi.tone} note={kpi.note} />
+          ))
+        )}
       </div>
 
       <div className="flex flex-wrap items-start gap-3.5">
@@ -178,30 +269,31 @@ export function DashboardPage() {
 
           <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
             <ChartCard
-              title="Đánh giá chuẩn mô phỏng ABM"
-              subtitle="Bộ đánh giá tổng hợp riêng; không phải kết quả của lô dữ liệu IBM"
+              title="Đánh giá release HI-Medium"
+              subtitle="Test split khóa trước; F1 trung bình được tính trên 5 seed"
               height={176}
               spec={benchSpec}
               tools={["data", "dl", "full"]}
               state={benchmarks.loading ? "loading" : benchSpec ? "ok" : "empty"}
-              note="Không dùng để khẳng định hiệu năng ML hành vi trên dữ liệu vận hành."
+              note="Các chỉ số mô hình là kết quả đánh giá offline; hiệu quả xử lý cảnh báo phải được theo dõi riêng khi vận hành."
             />
             <Panel title="Nhóm hành vi gợi ý" subtitle="Gợi ý trên tập cảnh báo, chưa phải kết luận điều tra">
               <div className="flex items-center gap-3">
                 <div className="w-[118px] flex-none">
                   <Chart spec={typologySpec} height={118} />
                 </div>
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-xs">
-                  {d?.typology_distribution.map((t, i) => (
-                    <div key={t.typology_code} className="flex items-center gap-1.5 overflow-hidden">
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-data">
+                  {d?.typology_distribution.map((typology, index) => (
+                    <div key={typology.typology_code} className="flex items-center gap-1.5 overflow-hidden">
                       <span
                         className="h-2 w-2 flex-none rounded-sm"
-                        style={{ background: SERIES[i % SERIES.length] }}
+                        style={{ background: SERIES[index % SERIES.length] }}
+                        aria-hidden
                       />
-                      <span className="truncate-1 text-ink-soft" title={t.typology_label}>
-                        {t.typology_label}
+                      <span className="truncate-1 text-ink-soft" title={typology.typology_label}>
+                        {typology.typology_label}
                       </span>
-                      <b className="tabular ml-auto font-mono">{t.alert_count}</b>
+                      <b className="tabular ml-auto font-mono text-ink-hi">{typology.alert_count}</b>
                     </div>
                   ))}
                 </div>
@@ -211,80 +303,62 @@ export function DashboardPage() {
 
           <Panel
             title="Hàng đợi ưu tiên — cần xử lý trước"
+            padded={false}
             actions={
-              <Link to="/alerts" className="text-sm text-info-soft transition-colors hover:text-info">
+              <Link
+                to="/alerts"
+                className="text-data text-info-soft transition-colors hover:text-info"
+              >
                 Mở Trung tâm cảnh báo →
               </Link>
             }
-            bodyClassName="overflow-x-auto"
           >
-            <div className="min-w-[720px]">
-              <div
-                className="grid gap-2 border-b border-line px-2 py-1.5 text-3xs uppercase tracking-[0.07em] text-ink-low"
-                style={{ gridTemplateColumns: QUEUE_COLS }}
-              >
-                <span>Cảnh báo</span>
-                <span>Tài khoản</span>
-                <span>Nhóm hành vi</span>
-                <span>Rủi ro</span>
-                <span>Bộ phát hiện</span>
-                <span>Tạo lúc</span>
-                <span>Trạng thái</span>
-              </div>
-              {dashboard.loading && <Skeleton rows={5} />}
-              {!dashboard.loading && !d?.top_alerts.length && <Empty text="Hàng đợi trống" />}
-              {d?.top_alerts.map((a) => (
-                <div
-                  key={a.alert_id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => navigate(`/alerts/${a.alert_id}`)}
-                  onKeyDown={(e) => e.key === "Enter" && navigate(`/alerts/${a.alert_id}`)}
-                  className="grid cursor-pointer items-center gap-2 border-b border-line-faint px-2 py-[7px] text-base transition-colors hover:bg-elev"
-                  style={{ gridTemplateColumns: QUEUE_COLS }}
-                >
-                  <span className="font-mono text-xs text-primary">{a.alert_id}</span>
-                  <span className="truncate-1 font-mono text-xs">{a.account_key}</span>
-                  <span className="truncate-1 text-xs text-ink-soft" title={a.typology_label}>
-                    {a.typology_label}
-                  </span>
-                  <RiskScore score={Math.round(num(a.risk_score))} />
-                  <span className="text-xs text-ink-soft">{detectorLabel(a.detector)}</span>
-                  <span className="text-xs text-ink-soft">{formatRelative(a.created_at)}</span>
-                  <span className="text-2xs text-ink-soft">{alertStatusLabel(a.status)}</span>
-                </div>
-              ))}
-            </div>
+            <DataTable
+              columns={queueColumns}
+              rows={d?.top_alerts ?? []}
+              rowKey={(alert) => alert.alert_id}
+              onRowClick={(alert) => navigate(`/alerts/${alert.alert_id}`)}
+              loading={dashboard.loading && !d}
+              minWidth={760}
+              dense
+              emptyTitle="Hàng đợi trống"
+              emptyDetail="Không có cảnh báo nào đang chờ xử lý trong lô dữ liệu hiện tại."
+            />
           </Panel>
         </div>
 
         <div className="flex min-w-0 max-w-[420px] flex-[1_1_320px] flex-col gap-3.5">
           <Panel title="Tình hình dòng tiền" subtitle="Tổng hợp từ Giám sát địa lý">
-            {world.loading && <Skeleton rows={4} />}
+            {world.loading && <div className="h-24 animate-pulse rounded-control bg-elev/60" aria-hidden />}
             {world.data?.geography_available && (
               <div className="flex flex-col gap-2">
                 {[...world.data.hubs]
-                  .sort((a, b) => b.volume_usd - a.volume_usd)
+                  .sort((a, b) => b.inbound + b.outbound - (a.inbound + a.outbound))
                   .slice(0, 6)
-                  .map((h) => (
-                    <div key={h.id} className="flex items-center gap-2 text-xs">
-                      <span className="truncate-1 flex-1 text-ink-mid">{h.name}</span>
-                      <span className="tabular flex-none font-mono text-2xs text-ink-low">
-                        {h.inbound}↓ {h.outbound}↑
+                  .map((hub) => (
+                    <div key={hub.id} className="flex items-center gap-2 text-data">
+                      <span className="truncate-1 flex-1 text-ink-mid">{hub.name}</span>
+                      <span className="tabular flex-none font-mono text-meta text-ink-low">
+                        {hub.inbound}↓ {hub.outbound}↑
                       </span>
-                      <b className="tabular w-16 flex-none text-right font-mono">{usd(h.volume_usd)}</b>
+                      <b className="tabular w-24 flex-none text-right font-mono text-ink-hi">
+                        {int(hub.inbound + hub.outbound)} GD
+                      </b>
                     </div>
                   ))}
-                <Link to="/world" className="mt-1 text-center text-sm text-info-soft transition-colors hover:text-info">
+                <Link
+                  to="/world"
+                  className="mt-1 text-center text-data text-info-soft transition-colors hover:text-info"
+                >
                   Mở Giám sát địa lý →
                 </Link>
               </div>
             )}
             {world.data && !world.data.geography_available && (
-              <div className="rounded-[9px] border border-warn/25 bg-warn/10 p-3">
-                <div className="text-sm font-semibold text-warn-soft">Chưa có dữ liệu địa lý đã kiểm chứng</div>
-                <p className="mt-1.5 text-xs leading-relaxed text-ink-soft">{world.data.limitation}</p>
-                <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+              <div className="rounded-control border border-warn/25 bg-warn/10 p-3">
+                <div className="text-data font-semibold text-warn-soft">Chưa có dữ liệu địa lý đã kiểm chứng</div>
+                <p className="mt-1.5 text-meta leading-relaxed text-ink-soft">{world.data.limitation}</p>
+                <div className="mt-3 flex items-center justify-between gap-2 text-meta">
                   <span className="font-mono text-ink-mid">
                     {int(world.data.transaction_count)} giao dịch · {world.data.source_name ?? "chưa có nguồn"}
                   </span>
@@ -299,12 +373,12 @@ export function DashboardPage() {
           <Panel
             title={
               <span className="flex items-center gap-2">
-                <PulseDot color={C.primary} size={6} />
+                <PulseDot tone="primary" size={6} />
                 Trạng thái hệ thống
               </span>
             }
           >
-            <dl className="flex flex-col gap-2 text-xs">
+            <dl className="flex flex-col gap-2 text-data">
               {[
                 ["Chế độ dữ liệu", world.data?.data_mode === "operational" ? "vận hành" : "mô phỏng"],
                 ["Nguồn giao dịch", world.data?.source_name ?? "—"],
@@ -312,29 +386,28 @@ export function DashboardPage() {
                 ["Dữ liệu địa lý", world.data?.geography_available ? "có" : "chưa có"],
                 ["Worker nền", d?.worker_alive ? "đang chạy" : "không phản hồi"],
                 ["Chiều sâu hàng lệnh", d ? String(d.queue_depth) : "—"],
-              ].map(([k, v]) => (
-                <div key={k} className="flex items-center gap-2">
-                  <dt className="flex-1 text-ink-low">{k}</dt>
-                  <dd className="tabular font-mono text-ink-mid">{v}</dd>
+              ].map(([key, value]) => (
+                <div key={key} className="flex items-center gap-2">
+                  <dt className="flex-1 text-ink-low">{key}</dt>
+                  <dd className="tabular font-mono text-ink-mid">{value}</dd>
                 </div>
               ))}
             </dl>
           </Panel>
 
           <Panel title="Giới hạn cần biết" subtitle="Công bố kèm mọi kết quả">
-            <p className="text-xs leading-relaxed text-ink-soft">
-              ML hành vi đang chạy trên lô giao dịch đã nạp. Tuy nhiên nguồn IBM không cung cấp quốc gia hoặc
-              toạ độ ngân hàng đã kiểm chứng, nên Giám sát địa lý không dựng hành lang địa lý từ nguồn này. Các màn có
-              nhãn <b className="text-ink-mid">mô phỏng ABM</b> là dữ liệu tổng hợp riêng, không được trộn vào kết
-              quả vận hành.
+            <p className="text-meta leading-relaxed text-ink-soft">
+              ML đang phục vụ release HI-Medium currency-native. Bản đồ dùng bảng tham chiếu bank-country của dự án;
+              một phần quốc gia được gán cho ngân hàng hư cấu và không phải dữ liệu pháp vực từ IBM. Không dùng bản đồ
+              để kết luận thẩm quyền pháp lý hoặc cộng giá trị giữa các currency.
             </p>
-            <p className="mt-2 text-xs leading-relaxed text-ink-low">
+            <p className="mt-2 text-meta leading-relaxed text-ink-low">
               Không có thiết kế dataset nào bảo đảm phát hiện đầy đủ giao dịch tiền mặt hoặc tài sản ẩn danh không đi
               qua điểm chuyển đổi vào/ra tài sản quan sát được.
             </p>
           </Panel>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

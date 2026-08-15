@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { api } from "../api/client";
 import { auditEventLabel, formatDateTime, formatRelative, roleLabel } from "../api/format";
 import { useApi } from "../api/useApi";
+import { PageShell } from "../components/ui";
+import { TEXT } from "../design/typography";
 import { RoleBadge, StatusBadge } from "../components/common/Badges";
 import { Panel } from "../components/common/Panel";
 import { ReasonModal } from "../components/common/ReasonModal";
@@ -59,11 +61,11 @@ export function UsersPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[1280px] space-y-3">
+    <PageShell>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-[20px] font-bold text-ink-hi">Quản trị Người dùng & Vai trò</h1>
-          <p className="mt-0.5 text-[13px] text-ink-mid">Quản lý tài khoản, phân quyền và giám sát hoạt động hệ thống.</p>
+          <h2 className={TEXT.h2}>Quản trị Người dùng & Vai trò</h2>
+          <p className="mt-1 text-body text-ink-soft">Quản lý tài khoản, phân quyền và giám sát hoạt động hệ thống.</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => downloadUsers(filteredUsers)} disabled={!filteredUsers.length} className="inline-flex items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 py-1.5 text-2xs font-medium text-ink-hi disabled:opacity-40">
@@ -80,7 +82,7 @@ export function UsersPage() {
           <div key={kpi.label} className="rounded-panel border border-line bg-panel p-4">
             <div className="text-2xs font-semibold uppercase tracking-wider text-ink-mid">{kpi.label}</div>
             <div className="mt-1.5 flex items-end justify-between">
-              <span className="tabular text-[26px] font-bold leading-none text-ink-hi">{kpi.value}</span>
+              <span className="tabular text-h1 font-bold leading-none text-ink-hi">{kpi.value}</span>
               <span className={`text-2xs font-medium ${kpi.tone}`}>{kpi.note}</span>
             </div>
           </div>
@@ -104,7 +106,7 @@ export function UsersPage() {
                 <tbody>
                   {filteredUsers.map((user) => (
                     <tr key={user.id} className="border-b border-line/60 last:border-0">
-                      <td className="px-3 py-2.5"><span className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-elev text-2xs font-bold text-primary">{user.name.split(" ").slice(-2).map((word) => word[0]).join("")}</span><span><span className="block text-[13px] font-medium text-ink-hi">{user.name}</span><span className="block text-2xs text-ink-low">{user.email}</span></span></span></td>
+                      <td className="px-3 py-2.5"><span className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-elev text-2xs font-bold text-primary">{user.name.split(" ").slice(-2).map((word) => word[0]).join("")}</span><span><span className="block text-body font-medium text-ink-hi">{user.name}</span><span className="block text-2xs text-ink-low">{user.email}</span></span></span></td>
                       <td className="px-3 py-2.5"><RoleBadge label={roleLabel(user.role)} /></td>
                       <td className="px-3 py-2.5">{user.active ? <StatusBadge tone="ok" label="Hoạt động" /> : <StatusBadge tone="risk" label="Vô hiệu hóa" />}</td>
                       <td className="tabular px-3 py-2.5 text-2xs text-ink-mid" title={formatDateTime(user.lastLogin)}>{user.lastLogin ? formatRelative(user.lastLogin) : "Chưa đăng nhập"}</td>
@@ -119,7 +121,7 @@ export function UsersPage() {
         </Panel>
 
         <Panel padded={false} title="Ma trận Phân quyền">
-          <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-line"><th className="px-3 py-2.5 text-2xs font-semibold uppercase tracking-wider text-ink-mid">Hành động \ Vai trò</th>{["Quản trị viên", "MLRO", "Chuyên viên phân tích"].map((item) => <th key={item} className="px-2 py-2.5 text-center text-2xs font-semibold uppercase tracking-wider text-ink-mid">{item}</th>)}</tr></thead><tbody>{PERMISSION_MATRIX.map((row) => <tr key={row.action} className="border-b border-line/60 last:border-0"><td className="px-3 py-2.5 text-[13px] text-ink-hi">{row.action}</td>{[row.admin, row.mlro, row.analyst].map((allowed, index) => <td key={index} className="px-2 py-2.5 text-center"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${allowed ? "bg-ok/15 text-ok" : "bg-ink-low/10 text-ink-low"}`}>{allowed ? <Check size={11} /> : <X size={11} />}</span></td>)}</tr>)}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-line"><th className="px-3 py-2.5 text-2xs font-semibold uppercase tracking-wider text-ink-mid">Hành động \ Vai trò</th>{["Quản trị viên", "MLRO", "Chuyên viên phân tích"].map((item) => <th key={item} className="px-2 py-2.5 text-center text-2xs font-semibold uppercase tracking-wider text-ink-mid">{item}</th>)}</tr></thead><tbody>{PERMISSION_MATRIX.map((row) => <tr key={row.action} className="border-b border-line/60 last:border-0"><td className="px-3 py-2.5 text-body text-ink-hi">{row.action}</td>{[row.admin, row.mlro, row.analyst].map((allowed, index) => <td key={index} className="px-2 py-2.5 text-center"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${allowed ? "bg-ok/15 text-ok" : "bg-ink-low/10 text-ink-low"}`}>{allowed ? <Check size={11} /> : <X size={11} />}</span></td>)}</tr>)}</tbody></table></div>
           <p className="border-t border-line p-3 text-2xs leading-relaxed text-ink-mid">ⓘ Đây là chính sách phân quyền của hệ thống; mọi thay đổi tài khoản đều ghi vào nhật ký kiểm toán.</p>
         </Panel>
       </div>
@@ -129,7 +131,7 @@ export function UsersPage() {
         {!auditQuery.loading && !userEvents.length && <EmptyState detail="Chưa có hoạt động người dùng." />}
         <div className="grid gap-3 md:grid-cols-3">{userEvents.map((event) => {
           const Icon = event.event_type === "user_login" ? LogIn : event.payload.after === false ? ShieldAlert : KeyRound;
-          return <div key={event.audit_id} className="rounded-control border border-line bg-elev p-3"><div className="flex items-center gap-1.5 text-[13px] font-semibold text-primary"><Icon size={13} />{auditEventLabel(event.event_type)}</div><p className="mt-1 text-2xs leading-relaxed text-ink-mid">{event.actor} · {JSON.stringify(event.payload)}</p><div className="mt-1.5 text-2xs text-ink-low">{formatRelative(event.occurred_at)}</div></div>;
+          return <div key={event.audit_id} className="rounded-control border border-line bg-elev p-3"><div className="flex items-center gap-1.5 text-body font-semibold text-primary"><Icon size={13} />{auditEventLabel(event.event_type)}</div><p className="mt-1 text-2xs leading-relaxed text-ink-mid">{event.actor} · {JSON.stringify(event.payload)}</p><div className="mt-1.5 text-2xs text-ink-low">{formatRelative(event.occurred_at)}</div></div>;
         })}</div>
       </Panel>
 
@@ -138,6 +140,6 @@ export function UsersPage() {
         try { await api.updateUser(editing.id, !editing.active, reason); setEditing(null); usersQuery.reload(); auditQuery.reload(); pushToast({ tone: "success", title: "Đã cập nhật trạng thái tài khoản" }); }
         catch (cause) { pushToast({ tone: "error", title: "Không cập nhật được tài khoản", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" }); }
       }} />
-    </div>
+    </PageShell>
   );
 }

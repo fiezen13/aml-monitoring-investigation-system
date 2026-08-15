@@ -17,6 +17,11 @@ export default defineConfig({
         target: process.env.VITE_API_TARGET ?? "http://localhost:8000",
         changeOrigin: true,
       },
+      "/grafana": {
+        target: process.env.VITE_GRAFANA_TARGET ?? "http://localhost:3000",
+        changeOrigin: true,
+        headers: { "X-WEBAUTH-USER": "fin07-console", "X-WEBAUTH-ROLE": "Viewer" },
+      },
     },
   },
   build: {

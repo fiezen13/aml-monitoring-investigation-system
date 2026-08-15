@@ -812,7 +812,7 @@ Repo hiện có pipeline Graph Detection cho features và cả bốn detector FA
 | Mentor review §7.4 | Thêm pass-through, betweenness, community, scatter-gather | Baseline detectors **chỉ** CYCLE, FAN_IN, FAN_OUT, GATHER_SCATTER |
 | Mentor review §7.1 | Graph tại `t` chứa mọi tx `occurred_at <= t` (full history tới t) | Scoring graph **window 7d half-open**: `start_ts <= occurred_at < end_ts` với `as_of_ts = end_ts`; lookback dài hơn chỉ khi feature spec cho phép |
 | Mentor review §7.5 | Ví dụ JSON `graph_score` + nhiều signal codes đã “có vẻ chốt” | `graph_score` **chưa** được invent/implement như quyết định cuối |
-| `docs/isolation_forest_handoff.md` | Window ví dụ `1d / 7d / 14d` | Graph (và fusion với IF) **khóa `window=7d`** cho scoring unit baseline |
+| `docs/isolation_forest_handoff.md` | Window Behaviour `1d / 7d` | Graph (và fusion với IF) **khóa `window=7d`** cho scoring unit baseline |
 | `FIN-07_Kien_truc_He_thong.md` Hình 4 | Agent state “Phân tích đồ thị” như bước agent | Agent **gọi Graph Evidence Tool**; không tự chạy detector trong LLM loop |
 | `ARCHITECTURE.md` (boilerplate) | LangGraph agent generic | Không mô tả Graph AML branch — không dùng làm SoT Graph |
 | Task 2 docs | Pattern names `FAN-IN` (hyphen); nhấn mạnh Task 2 **không** xây detector | Vẫn đúng: Task 2 = mapping/eval; detector thuộc Graph branch; cần map tên `FAN_IN` ↔ `FAN-IN` |
