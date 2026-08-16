@@ -5,7 +5,7 @@ import math
 import statistics
 import time
 from bisect import bisect_left
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -251,7 +251,14 @@ def _behavior_from_rows(
         else 0.0
     )
 
-    repeated = sum(amounts.count(value) >= 2 for value in amounts) / len(amounts) if amounts else 0.0
+    # Đếm một lần rồi tra bảng, thay vì amounts.count() *bên trong* vòng lặp qua
+    # chính amounts. Cách cũ là O(n²): với tài khoản trung chuyển 148.164 giao
+    # dịch trong cửa sổ, đó là khoảng 2,2 x 10^10 phép so sánh — đo được 353
+    # giây cho một lượt gọi công cụ, và phiên điều tra không bao giờ kết thúc.
+    # Kết quả không đổi: vẫn là tỷ lệ giao dịch có số tiền trùng với ít nhất một
+    # giao dịch khác.
+    amount_counts = Counter(amounts)
+    repeated = sum(amount_counts[value] >= 2 for value in amounts) / len(amounts) if amounts else 0.0
     gaps = [(events[i][0] - events[i - 1][0]).total_seconds() / 60 for i in range(1, len(events))]
     std = statistics.stdev(amounts) if len(amounts) > 1 else 0.0
     return {
