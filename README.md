@@ -281,10 +281,13 @@ Tài khoản demo và vai trò tương ứng (mật khẩu đều là `demo-pass
 | Email | Vai trò | Thấy gì |
 |---|---|---|
 | `tuan.la@velrix.vn` | analyst | Cảnh báo, vụ việc, đồ thị, giao dịch |
-| `hung.nq@velrix.vn` | compliance_officer | analyst + SAR + người dùng |
-| `tuan.dm@velrix.vn` | mlro | Toàn bộ |
-| `khiem.lm@velrix.vn` | auditor | Chỉ đọc dấu vết; **không** thấy hàng đợi cảnh báo |
-| `manh.dh@velrix.vn` | admin | Vận hành; **không** thấy dữ liệu điều tra |
+| `hung.nq@velrix.vn` | compliance_officer | Điều tra, SAR, chất lượng mô hình, nhật ký và danh sách người dùng |
+| `tuan.dm@velrix.vn` | mlro | Điều tra, phê duyệt SAR, chất lượng mô hình, nhật ký và cấu hình |
+| `khiem.lm@velrix.vn` | auditor | Chỉ đọc giao dịch và dấu vết; **không** thấy hàng đợi cảnh báo |
+| `manh.dh@velrix.vn` | admin | Người dùng, cấu hình và vận hành; **không** thấy dữ liệu điều tra |
+
+Xem hướng dẫn thao tác ngắn cho từng vai trò tại
+[`docs/HUONG_DAN_SU_DUNG_THEO_VAI_TRO.md`](docs/HUONG_DAN_SU_DUNG_THEO_VAI_TRO.md).
 
 ## Lệnh vận hành thường dùng
 
