@@ -8,12 +8,10 @@ pydantic>=2.10.0
 pydantic-settings>=2.7.0
 python-dotenv>=1.0.0
 
-# AI. Explainable AML agents call Gemini only through the official Google Gen
-# AI SDK. LangGraph remains for the pre-existing demo chat state machine; it
-# is not the investigation orchestrator.
+# AI. Ba tác tử điều tra gọi Gemini qua đúng SDK chính thức của Google Gen AI,
+# không qua lớp trung gian nào. LangChain và LangGraph từng có mặt ở đây chỉ để
+# phục vụ khung mẫu trong src/agents/; khung đó đã gỡ nên hai gói cũng đi theo.
 google-genai>=2.14.0
-langchain>=0.3.0
-langgraph>=0.2.0
 
 # Database
 sqlalchemy>=2.0.0

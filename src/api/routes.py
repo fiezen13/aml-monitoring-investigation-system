@@ -729,9 +729,9 @@ async def agent_status() -> dict[str, Any]:
     """Trạng thái của tầng tác tử điều tra.
 
     Trước đây endpoint này trả về hằng số ``"LangGraph Agent v1.0"`` — tên của
-    khung mẫu trong ``src/agents/``, không phải tầng tác tử thật đang chạy điều
-    tra (``src/investigation/``). Giờ nó báo đúng thứ đang chạy và ngân sách an
-    toàn đang áp dụng.
+    một khung mẫu sinh sẵn, không phải tầng tác tử thật đang chạy điều tra
+    (``src/investigation/``). Khung mẫu ấy nay đã gỡ khỏi repo. Giờ endpoint báo
+    đúng thứ đang chạy và ngân sách an toàn đang áp dụng.
     """
     settings = get_settings()
     return {
