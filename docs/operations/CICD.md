@@ -229,7 +229,82 @@ Mọi script trong `ci/` chạy độc lập được — đây cũng là cách 
 
 ---
 
-## 10. Những chỗ chưa làm, nói rõ ra
+## 10. Tự động đồng bộ production (`deploy/autodeploy.sh`)
+
+Mục 5 mô tả luồng giao hàng qua Jenkins, dùng khi bàn giao cho tổ chức tự vận
+hành. Bản đang chạy tại <https://www.amlmonitoring.site> dùng một cơ chế khác,
+và lý do là một ràng buộc thật chứ không phải sở thích kiến trúc.
+
+### Vì sao máy chủ *kéo* thay vì CI *đẩy*
+
+Cách quen thuộc là GitHub Actions ssh vào máy chủ rồi triển khai. Cách đó cần
+secret trong repo — khoá SSH hoặc service account — mà **thêm secret đòi quyền
+Admin trên repo**, quyền nhóm này không có vì repo thuộc org của khoá học (xem
+mục 4: cũng chính vì lý do đó mà branch protection tới nay vẫn chưa bật được).
+
+Nên đảo chiều. Máy chủ tự hỏi GitHub hai câu — "nhánh phát hành đang ở commit
+nào" và "CI của commit đó xanh chưa" — rồi tự kéo về. Thứ duy nhất cần là một
+**fine-grained token chỉ đọc** do cá nhân tạo trong phần cài đặt tài khoản, với
+quyền `Contents: Read` và `Actions: Read`. Không đụng tới quyền repo.
+
+Đổi lại là độ trễ: thay đổi lên production sau tối đa một chu kỳ hẹn giờ, hiện
+là hai phút.
+
+### Hai điều kiện phải cùng đúng
+
+1. Commit đầu nhánh khác commit đang chạy.
+2. Commit ấy có **ít nhất một** lượt kiểm tra, và **mọi** lượt đều `success`
+   (hoặc `skipped`/`neutral`).
+
+Điều kiện 2 cố ý chặt hơn mức cần thiết: commit chưa từng chạy CI cũng bị từ
+chối, không chỉ commit CI đỏ. Nếu chỉ chặn CI đỏ, một lỗi cấu hình khiến
+workflow không kích hoạt sẽ âm thầm biến cơ chế này thành "triển khai mọi thứ
+được đẩy lên" — đúng cái mà nó sinh ra để ngăn.
+
+### Nhánh phát hành đang là `develop`, không phải `main`
+
+Tính tới 16/08/2026, `main` còn lùi **110 commit** so với `develop` và commit
+mới nhất của nó là một lần revert về trạng thái ban đầu. Trỏ agent vào `main`
+lúc này sẽ ghi đè production bằng một bản cũ.
+
+Chuyển sang `main` sau khi gộp `develop` vào `main` ở cuối chương trình, và chỉ
+sau khi đã thấy CI xanh trên `main`. Sửa `DEPLOY_BRANCH` trong
+`/etc/fin07/autodeploy.env`.
+
+### Cài đặt
+
+```bash
+sudo bash deploy/install-autodeploy.sh
+sudo nano /etc/fin07/autodeploy.env      # điền GITHUB_TOKEN
+sudo /opt/fin07/autodeploy.sh            # chạy thử một lượt, đọc log
+sudo systemctl enable --now fin07-autodeploy.timer
+```
+
+### Vận hành
+
+```bash
+journalctl -u fin07-autodeploy.service -f      # nhật ký
+systemctl list-timers fin07-autodeploy.timer   # lịch chạy
+cat /opt/fin07/state/deployed-sha              # commit đang phục vụ
+sudo /opt/fin07/autodeploy.sh --force          # triển khai lại dù SHA không đổi
+```
+
+### Quay lui
+
+Sau khi dựng lại dịch vụ, agent gọi tên miền thật để kiểm tra khói — không phải
+`localhost`, vì Caddy, chứng chỉ TLS và nginx trong container web đều là những
+chỗ hỏng được mà container vẫn xanh. Kiểm tra khói hỏng thì agent tự `checkout`
+lại commit trước và dựng lại, rồi thoát với mã lỗi khác 0.
+
+### Điều cần biết trước khi tin vào nó
+
+- **Token hết hạn thì việc triển khai lặng lẽ dừng.** Không có gì trên giao
+  diện báo điều đó. Đặt lịch thay token trước ngày hết hạn.
+- **`.env` không nằm trong repo.** Agent chạy `git clean -fdx` nhưng chừa
+  `.env`; máy chủ mới phải được chép `.env` vào `APP_DIR` trước lượt đầu tiên.
+- **Chưa có kênh thông báo khi triển khai hỏng** — cùng lý do đã nêu ở mục 10.
+
+## 11. Những chỗ chưa làm, nói rõ ra
 
 - **Chưa bật branch protection** — mục 4. Chưa bật thì CI đỏ vẫn merge được.
 - **Chưa có quét bảo mật image** (Trivy/Grype).
@@ -242,3 +317,7 @@ Mọi script trong `ci/` chạy độc lập được — đây cũng là cách 
 - **Chưa có kênh thông báo khi build hỏng.** Khối `post { failure { } }` trong `Jenkinsfile` để
   trống có chủ ý: một webhook giả cắm sẵn mà không tới nơi còn tệ hơn không có thông báo.
 - **Chưa có kiểm tra tải** và **chưa có sao lưu/diễn tập khôi phục**.
+- **Triển khai tự động chạy theo nhịp hẹn giờ, không theo sự kiện.** Máy chủ hỏi GitHub mỗi
+  hai phút thay vì được webhook đánh thức, vì nhận webhook đòi mở cổng vào và một endpoint
+  công khai để xác thực chữ ký. Hệ quả: độ trễ tối đa hai phút, và khoảng 720 lượt gọi API
+  mỗi ngày.

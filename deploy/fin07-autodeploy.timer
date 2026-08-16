@@ -1,0 +1,13 @@
+[Unit]
+Description=Kiểm tra nhánh phát hành mỗi hai phút
+
+[Timer]
+# Hai phút là đủ nhanh để cảm giác như tự động, mà vẫn chỉ khoảng 720 lượt gọi
+# GitHub API mỗi ngày — xa hạn mức 5.000/giờ của token cá nhân.
+OnBootSec=2min
+OnUnitActiveSec=2min
+# Lượt trước chưa xong thì bỏ qua lượt này, không xếp hàng.
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
