@@ -32,19 +32,72 @@ thường không đóng góp gì cho điểm hợp nhất, và nhánh đồ th�
 
 ## 2. Hệ thống làm gì, theo đúng thứ tự
 
+### 2.1 Từ giao dịch tới cảnh báo
+
+Ba nhánh phát hiện chạy độc lập trên cùng một bộ đặc trưng, rồi điểm của chúng
+được gộp lại. Con số trên mỗi mũi tên là số cảnh báo nhánh đó sinh ra.
+
+```mermaid
+flowchart TD
+    TX["<b>Giao dịch</b><br/>6.119.572 dòng · IBM AML LI-Small"]
+    FE["<b>Trích đặc trưng</b><br/>37 đặc trưng · giữ nguyên loại tiền gốc<br/>chuẩn hoá chỉ tính trên tập train"]
+
+    RULE["<b>Nhánh luật nghiệp vụ</b><br/>4 luật viết tay"]
+    GRAPH["<b>Nhánh đồ thị</b><br/>FAN_IN · FAN_OUT · GATHER_SCATTER"]
+    ML["<b>Nhánh mô hình bất thường</b><br/>Isolation Forest"]
+
+    FUSE["<b>Hợp nhất điểm</b><br/>luật 0,55 · đồ thị 0,45 · Isolation Forest 0,00"]
+    ALERT["<b>21.034 cảnh báo</b><br/>mỗi cảnh báo kèm tối thiểu 3 yếu tố giải thích"]
+
+    TX --> FE
+    FE --> RULE
+    FE --> GRAPH
+    FE --> ML
+    RULE -- "19.704" --> FUSE
+    GRAPH -- "830" --> FUSE
+    ML -- "500" --> FUSE
+    FUSE --> ALERT
+
+    style ML stroke-dasharray: 5 5
 ```
-Giao dịch  →  Đặc trưng  →  Ba nhánh phát hiện  →  Hợp nhất điểm  →  Cảnh báo
-                                                                        ↓
-                                            Chuyên viên bấm "Điều tra bằng tác tử"
-                                                                        ↓
-                        Tác tử điều phối → Tác tử giải thích → Tác tử phản biện
-                                                                        ↓
-                                        Hồ sơ có dẫn chứng, chờ người quyết định
+
+Nét đứt ở Isolation Forest là có ý: nó vẫn sinh cảnh báo riêng, nhưng **trọng số
+trong bước hợp nhất bằng 0** — xem mục 4.5.
+
+### 2.2 Từ cảnh báo tới hồ sơ có dẫn chứng
+
+Tác tử chỉ chạy khi **chuyên viên bấm nút**, không tự khởi động. Ba tác tử chạy
+nối tiếp và có thể lặp lại, nhưng bị chặn cứng ở 3 vòng và 8 lượt gọi công cụ.
+
+```mermaid
+flowchart TD
+    HUMAN(["Chuyên viên mở cảnh báo<br/>và bấm <b>Điều tra bằng tác tử</b>"])
+    SUP["<b>1 · Điều phối</b><br/>chọn công cụ nào cần gọi tiếp"]
+    TOOLS[("<b>7 công cụ đọc dữ liệu</b><br/>điểm rủi ro · hành vi · giao dịch<br/>bằng chứng đồ thị · lân cận<br/>nhóm hành vi · giải thích bất thường")]
+    EXP["<b>2 · Giải thích</b><br/>viết luận giải<br/>mỗi khẳng định phải kèm mã bằng chứng"]
+    CRI{"<b>3 · Phản biện</b><br/>đối chiếu từng con số<br/>với bằng chứng được viện dẫn"}
+
+    OK["<b>Hồ sơ có dẫn chứng</b><br/>chờ người có thẩm quyền ký"]
+    STOP["<b>Chưa đủ bằng chứng</b><br/>kèm danh sách chỗ còn hổng"]
+
+    HUMAN --> SUP
+    SUP --> TOOLS
+    TOOLS --> EXP
+    EXP --> CRI
+    CRI -- "đạt" --> OK
+    CRI -- "chưa đạt · còn vòng" --> SUP
+    CRI -- "chưa đạt · hết 3 vòng<br/>hoặc hết 8 lượt công cụ" --> STOP
+
+    style STOP stroke-dasharray: 5 5
 ```
+
+Hiện **mọi phiên đều đi vào nhánh nét đứt** — chưa ca nào qua được bước phản
+biện. Đó là hàng rào chống bịa đặt hoạt động đúng, và cũng là việc cần làm tiếp
+số một (mục 8).
 
 Điểm quan trọng nhất về mặt thiết kế: **tác tử không bao giờ tự kết luận**. Nó
 đề xuất, con người ký. Không có đường nào trong mã nguồn để tác tử tự đóng một
-vụ việc.
+vụ việc — kể cả nhánh "đạt" cũng chỉ dừng ở *chờ ký*.
 
 ---
 
@@ -175,6 +228,44 @@ lẻ đúng 0,0027, còn PR-AUC thì *tệ hơn*. Và Isolation Forest nhận tr
 
 Đây là phát hiện có giá trị, không phải thất bại cần giấu. Nó chỉ ra chính xác
 chỗ cần đầu tư tiếp (xem mục 8).
+
+### 4.6 Mô hình nằm ở đâu
+
+Mỗi mô hình có bốn thứ đi kèm: **file trọng số**, **script huấn luyện**, **script
+nạp/chấm điểm**, và **báo cáo đánh giá**. Bảng dưới đây tra cứu được cả bốn.
+
+| Mô hình | File trọng số | Huấn luyện bằng | Nạp / chấm điểm | Báo cáo |
+|---|---|---|---|---|
+| **Currency-native edge** — chấm điểm từng giao dịch, đang phục vụ giao diện | `models/fin07_currency_native_policy_edge_li_small_v1.joblib` (5,1 MB) | `scripts/train_currency_native_edge.py` | `scripts/score_currency_native_edge.py` → `scripts/load_currency_native_edge_release.py` | `reports/edge-benchmark/li_small_currency_native_policy_v1.json` và `.md` |
+| **Hợp nhất ba nhánh** | `models/fin07_rule_if_graph_fusion_v1.json` (39 KB) | `scripts/train_fusion_tri.py` | `scripts/load_fusion_tri.py` | `reports/fusion-tri/li_small_tri_fusion_v1.json` |
+| **Isolation Forest 7 ngày** | `models/fin07_if_7d_v2.joblib` | — (bàn giao) | `scripts/publish_if_alerts.py` | `docs/isolation_forest_handoff.md` |
+| **Graph HistGB 7 ngày** | `models/fin07_graph_7d_v2.joblib` | — (bàn giao) | `scripts/run_graph_detector_eval.py` | `reports/graph_eval_v2.json` |
+| **Fusion v2** (bản trước, IF + đồ thị) | `models/fin07_if_graph_fusion_v2.joblib` | `scripts/train_fusion_v2.py` | `scripts/load_fusion_release.py` | `reports/fusion_release_v1.json` |
+
+**Bản nào đang thực sự phục vụ** thì không đọc từ thư mục `models/` mà đọc từ cơ
+sở dữ liệu — bảng `edge_model_release`, dòng có `status='active'`:
+
+```
+REL-EDGE-5b9f9fc5f8c33e14  ·  fin07_currency_native_policy_edge_v1  ·  sha256 6b31b1644d7a…
+```
+
+Dòng đó giữ luôn mã băm của file mô hình và của bảng điểm, nên lúc kiểm toán có
+thể chứng minh điểm hiển thị trên màn hình đúng là do đúng file mô hình ấy sinh
+ra. Giao diện đọc qua `GET /api/v1/fc/edge-model/release`, hiện ở trang **Giám
+sát mô hình**.
+
+> ⚠️ **Hai file trọng số quan trọng nhất hiện KHÔNG nằm trong git.**
+> `fin07_currency_native_policy_edge_li_small_v1.joblib` và
+> `fin07_rule_if_graph_fusion_v1.json` chỉ có trên máy đã huấn luyện và trong
+> image đã dựng. Người mới clone repo sẽ nhận được bốn file `.joblib` cũ, **không
+> có hai file này**, nên không tự chấm điểm lại được.
+>
+> Ba cách xử lý, chọn một và ghi vào tài liệu:
+> 1. Đưa lên cùng thư mục Google Drive với PostgreSQL dump, kèm checksum — nhất
+>    quán với cách đang làm cho dump.
+> 2. Commit thẳng vào git; 5,1 MB là chấp nhận được với một repo đã có sẵn model
+>    nhị phân khác.
+> 3. Dùng Git LFS, sạch nhất nhưng cả nhóm phải cài thêm.
 
 ---
 
@@ -356,6 +447,12 @@ hết mức, phần còn lại là hạ tầng.
   lần ở phần đó. Cần đọc `cached_content_token_count` từ phản hồi Gemini.
 - **README mô tả bộ dữ liệu khác bản đang chạy** — hướng dẫn restore dựng
   HI-Medium, tên miền chạy LI-Small. Cần xuất dump LI-Small mới lên Drive.
+- **Hai file trọng số đang phục vụ chưa nằm trong git** — xem cảnh báo ở mục
+  4.6. Người mới clone repo hiện không tự chấm điểm lại được. Nên xử lý sớm vì
+  nó chặn người mới tham gia vào phần mô hình.
+- **`models/README.md` đã lệch** — nó nhắc tới
+  `fin07_currency_native_policy_edge_v1.joblib`, nhưng file thật trên đĩa giờ là
+  bản `..._li_small_v1.joblib`.
 
 ---
 
