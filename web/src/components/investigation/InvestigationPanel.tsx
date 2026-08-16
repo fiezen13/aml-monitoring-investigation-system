@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronRight, Play, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, Play, RefreshCw, ShieldAlert, ShieldCheck, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api } from "../../api/client";
@@ -225,6 +225,10 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
               <li key={event.trace_id} className="flex gap-2 text-2xs">
                 {event.event_type === "VALIDATION_PASS" ? (
                   <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-ok" />
+                ) : event.event_type === "CRITIC_OBJECTION_REFUTED" ? (
+                  // Không phải kết quả kiểm chứng — chỉ là loại bớt khiếu nại sai.
+                  // Dùng dấu riêng để không ai đọc nhầm thành "đã đạt".
+                  <ShieldCheck size={13} className="mt-0.5 shrink-0 text-info" />
                 ) : event.event_type === "VALIDATION_FAIL" || event.event_type === "INVESTIGATION_FAILED" ? (
                   <XCircle size={13} className="mt-0.5 shrink-0 text-risk" />
                 ) : (

@@ -22,3 +22,8 @@ scikit-learn>=1.5.0
 # Sinh biểu đồ EDA (scripts/eda/plot_eda.py). Cũng là bước ngoại tuyến chạy
 # một lần: đọc artifacts/eda/*.json và ghi ra docs/ml/figures/*.png.
 matplotlib>=3.9.0
+
+# ci/lint.sh gọi scripts/validate_observability.py, và script đó đọc file YAML
+# cấu hình của Prometheus/Grafana. Thiếu nó thì job lint hỏng ngay ở bước thứ
+# hai với ModuleNotFoundError — đúng lỗi đã làm CI đỏ trên develop.
+pyyaml>=6.0.0

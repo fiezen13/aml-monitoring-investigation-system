@@ -73,9 +73,7 @@ def refresh_operational_geography(session) -> dict[str, int]:
     ).scalar_one_or_none()
     if release_id is None:
         return {"rollup_hubs": 0, "rollup_flows": 0}
-    rollup_schema = session.execute(
-        text("SELECT to_regclass('public.edge_country_flow') IS NOT NULL")
-    ).scalar_one()
+    rollup_schema = session.execute(text("SELECT to_regclass('public.edge_country_flow') IS NOT NULL")).scalar_one()
     if not rollup_schema:
         raise RuntimeError("Thiếu migration 014; chạy `make migrate` rồi nạp geography lại")
 

@@ -1,5 +1,5 @@
 .PHONY: help up down restart logs ps health db-reset db-shell redis-shell behavior-batch behavior-train \
-        train-fusion load-fusion load-edge-release \
+        train-fusion load-fusion load-edge-release edge-benchmark-report edge-benchmark-report-check \
         migrate migrate-status \
         build run worker test test-unit contracts-check lint format typecheck check clean \
         aml-up aml-down aml-status aml-topics aml-fixture aml-producer-sample aml-producer-run \
@@ -83,6 +83,12 @@ load-fusion:  ## Nạp LI-Small + kết quả champion fusion v2 vào PostgreSQL
 
 load-edge-release:  ## Nạp currency-native HI-Medium release vào PostgreSQL rỗng
 	.venv/bin/python scripts/load_currency_native_edge_release.py
+
+edge-benchmark-report:  ## Sinh báo cáo benchmark khoa học từ JSON đã khóa
+	.venv/bin/python scripts/render_edge_benchmark_report.py
+
+edge-benchmark-report-check:  ## Kiểm tra báo cáo benchmark không bị cũ so với JSON
+	.venv/bin/python scripts/render_edge_benchmark_report.py --check
 
 # --- Chạy ngoài Docker -----------------------------------------------
 

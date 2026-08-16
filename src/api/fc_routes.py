@@ -12,6 +12,7 @@ ngoại tuyến rồi ghi vào `fc.benchmark_result`, nên endpoint benchmark c�
 phải trả về khoảng thời gian đã tính sẵn chứ không phải các mốc thời gian gốc.
 """
 
+from collections.abc import Mapping
 from typing import Any, Literal, NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query
@@ -81,24 +82,17 @@ async def nav_counts() -> NavCountsOut:
         row = (
             session.execute(
                 text(
-                    """WITH active_release AS (
-                           SELECT release_id FROM edge_model_release
-                            WHERE status = 'active' LIMIT 1
-                       )
-                       SELECT
-                         (SELECT count(*) FROM alert al
-                           WHERE status <> 'closed' AND EXISTS (
-                               SELECT 1 FROM transaction_model_score s
-                                WHERE s.transaction_id = al.transaction_id
-                                  AND s.release_id = (SELECT release_id FROM active_release))) AS alerts,
+                    # Đếm trên toàn bộ hàng đợi. Điều kiện cũ khoá theo edge-model
+                    # release, mà nhánh rule và nhánh anomaly chấm điểm ở cấp tài khoản
+                    # nên `alert.transaction_id` là NULL — badge hiện 0 trong khi hàng
+                    # đợi có hai vạn cảnh báo.
+                    """SELECT
+                         (SELECT count(*) FROM alert WHERE status <> 'closed')        AS alerts,
                          (SELECT count(*) FROM approval ap
                            JOIN sar_draft sd USING (sar_draft_id)
-                           WHERE ap.decision = 'pending') AS approvals,
-                         (SELECT count(*) FROM alert al
-                           WHERE status <> 'closed' AND risk_score >= 80 AND EXISTS (
-                               SELECT 1 FROM transaction_model_score s
-                                WHERE s.transaction_id = al.transaction_id
-                                  AND s.release_id = (SELECT release_id FROM active_release))) AS critical"""
+                           WHERE ap.decision = 'pending')                             AS approvals,
+                         (SELECT count(*) FROM alert
+                           WHERE status <> 'closed' AND risk_score >= 80)             AS critical"""
                 )
             )
             .mappings()
@@ -191,9 +185,7 @@ def _operational_geography(session: Any) -> _Geography:
         )
 
     release_id = session.execute(
-        text(
-            """SELECT release_id FROM edge_model_release WHERE status='active' LIMIT 1"""
-        )
+        text("""SELECT release_id FROM edge_model_release WHERE status='active' LIMIT 1""")
     ).scalar_one_or_none()
     if release_id is None:
         return _Geography(hubs=[], flows=[], limitation="Chưa có edge-model release đang hoạt động.")
@@ -418,19 +410,84 @@ def _edge_transaction_metrics(session: Session, sim_id: str) -> dict[tuple[str, 
     return out
 
 
+#: Lấy lân cận giao dịch của các tài khoản hạt giống.
+#:
+#: Bản trước viết ``WHERE from_account_key = ANY(seeds) OR to_account_key =
+#: ANY(seeds)`` rồi nối thẳng với bảng 6,1 triệu điểm và sắp xếp toàn bộ kết quả.
+#: Dấu OR khiến PostgreSQL không dùng được cả hai chỉ mục theo tài khoản, còn
+#: ORDER BY trên cột của bảng điểm buộc nó phải vật chất hoá mọi dòng khớp
+#: trước khi cắt LIMIT. Trên Cloud SQL, câu ấy mất **302 giây**.
+#:
+#: Bản này đổi cách chọn: mỗi tài khoản hạt giống lấy N giao dịch gần nhất qua
+#: đúng hai chỉ mục ``(account, occurred_at DESC)`` đã có, rồi mới tra điểm theo
+#: khoá chính. Ý nghĩa hiển thị cũng đổi theo — "giao dịch gần nhất của từng tài
+#: khoản rủi ro cao" thay vì "giao dịch điểm cao nhất toàn hệ thống" — và đó là
+#: lựa chọn có chủ đích: một đồ thị lân cận phải phủ đều các đỉnh gốc, chứ không
+#: dồn hết cạnh vào một hai tài khoản sôi động nhất.
+_NEIGHBOURHOOD_SQL = """
+    WITH seed AS (
+        SELECT unnest(CAST(:seeds AS text[])) AS account_key
+    ),
+    active AS (
+        SELECT release_id FROM edge_model_release WHERE status = 'active' LIMIT 1
+    ),
+    neighbourhood AS (
+        SELECT e.*
+          FROM seed
+          CROSS JOIN LATERAL (
+              (SELECT t.transaction_id, t.occurred_at, t.from_account_key,
+                      t.to_account_key, t.amount, t.currency, t.channel
+                 FROM transaction t
+                WHERE t.from_account_key = seed.account_key
+                ORDER BY t.occurred_at DESC
+                LIMIT :per_seed)
+              UNION ALL
+              (SELECT t.transaction_id, t.occurred_at, t.from_account_key,
+                      t.to_account_key, t.amount, t.currency, t.channel
+                 FROM transaction t
+                WHERE t.to_account_key = seed.account_key
+                ORDER BY t.occurred_at DESC
+                LIMIT :per_seed)
+          ) e
+    ),
+    deduped AS (
+        -- Một giao dịch giữa hai tài khoản hạt giống xuất hiện hai lần; giữ một.
+        SELECT DISTINCT ON (transaction_id) *
+          FROM neighbourhood
+         ORDER BY transaction_id
+    )
+    SELECT d.transaction_id, d.occurred_at, d.from_account_key, d.to_account_key,
+           d.amount, d.currency, d.channel, s.model_score
+      FROM deduped d
+      CROSS JOIN active a
+      LEFT JOIN transaction_model_score s
+             ON s.transaction_id = d.transaction_id
+            AND s.release_id = a.release_id
+     ORDER BY s.triggered DESC NULLS LAST, s.model_score DESC NULLS LAST, d.occurred_at DESC
+     LIMIT :lim
+"""
+
+
 def _operational_transaction_graph(session: Session, limit: int) -> GraphOut:
-    """Bounded alert-centred graph built from scored HI-Medium transactions."""
+    """Đồ thị quanh các cảnh báo rủi ro cao, dựng từ giao dịch đã chấm điểm.
+
+    Hạt giống lấy **trực tiếp từ bảng alert**, không nối qua
+    ``transaction_model_score``. Ba nhánh phát hiện (rule, anomaly, graph) đều
+    chấm ở cấp **tài khoản** nên ``alert.transaction_id`` là NULL cho toàn bộ
+    21.034 cảnh báo; phép nối cũ không khớp dòng nào và đồ thị luôn rỗng.
+
+    Điểm của mô hình cạnh vẫn được dùng — nhưng ở bước sau, để tô màu rủi ro cho
+    từng cạnh giao dịch, chứ không phải để chọn hạt giống.
+    """
     seed_limit = max(10, min(100, limit // 4))
     seed_rows = (
         session.execute(
             text(
-                """SELECT al.account_key, max(al.risk_score) AS risk_score
-                     FROM alert al
-                     JOIN transaction_model_score s ON s.transaction_id=al.transaction_id
-                     JOIN edge_model_release r USING (release_id)
-                    WHERE r.status='active'
-                    GROUP BY al.account_key
-                    ORDER BY max(al.risk_score) DESC, al.account_key
+                """SELECT account_key, max(risk_score) AS risk_score
+                     FROM alert
+                    WHERE status <> 'closed'
+                    GROUP BY account_key
+                    ORDER BY max(risk_score) DESC, account_key
                     LIMIT :lim"""
             ),
             {"lim": seed_limit},
@@ -442,21 +499,16 @@ def _operational_transaction_graph(session: Session, limit: int) -> GraphOut:
         return GraphOut(nodes=[], edges=[])
     seeds = [row["account_key"] for row in seed_rows]
     seed_risk = {row["account_key"]: int(round(_f(row["risk_score"]))) for row in seed_rows}
+    # Lấy gấp đôi số đỉnh cần vẽ, không gấp tám như trước. Mỗi cạnh mang tối đa
+    # hai đỉnh nên chừng ấy dòng đã thừa để chạm trần `limit`, và phần dư bị vòng
+    # lặp bên dưới bỏ đi. Trên Cloud SQL, mỗi dòng thừa là một lần đọc khối ngẫu
+    # nhiên mất vài mili giây — hạ 8× xuống 2× rút thời gian lần gọi nguội từ
+    # khoảng 100 giây xuống khoảng 30, và lần gọi ấm xuống dưới 2 giây.
+    fetch = limit * 2
     rows = (
         session.execute(
-            text(
-                """SELECT t.transaction_id, t.occurred_at, t.from_account_key,
-                          t.to_account_key, t.amount, t.currency, t.channel,
-                          s.model_score
-                     FROM transaction t
-                     JOIN transaction_model_score s USING (transaction_id)
-                     JOIN edge_model_release r USING (release_id)
-                    WHERE r.status='active'
-                      AND (t.from_account_key=ANY(:seeds) OR t.to_account_key=ANY(:seeds))
-                    ORDER BY s.triggered DESC, s.model_score DESC, t.occurred_at DESC
-                    LIMIT :lim"""
-            ),
-            {"seeds": seeds, "lim": limit * 8},
+            text(_NEIGHBOURHOOD_SQL),
+            {"seeds": seeds, "per_seed": max(4, fetch // len(seeds)), "lim": fetch},
         )
         .mappings()
         .all()
@@ -870,7 +922,8 @@ async def node_transactions(
                 clause = "(t.from_account_key = :key OR t.to_account_key = :key)"
             params = {"key": key, "limit": page_size, "offset": (page - 1) * page_size}
             total = session.execute(
-                text(f"SELECT count(*) FROM transaction t WHERE {clause}"), params  # noqa: S608
+                text(f"SELECT count(*) FROM transaction t WHERE {clause}"),
+                params,  # noqa: S608
             ).scalar_one()
             rows = (
                 session.execute(
@@ -990,16 +1043,32 @@ async def crypto(limit: int = Query(default=200, le=1000)) -> CryptoOut:
             rows = (
                 session.execute(
                     text(
-                        """SELECT t.transaction_id, t.source_transaction_id, t.occurred_at,
-                                  t.from_account_key, t.to_account_key, t.amount, t.currency
-                             FROM transaction t
-                             JOIN transaction_model_score s USING (transaction_id)
-                             JOIN edge_model_release r USING (release_id)
-                            WHERE r.status='active'
-                              AND (t.currency='Bitcoin' OR t.receiving_currency='Bitcoin'
-                                   OR t.channel='BITCOIN')
-                            ORDER BY s.model_score DESC, t.occurred_at DESC
-                            LIMIT :lim"""
+                        # Chọn trước, chấm điểm sau. Sắp theo `s.model_score`
+                        # ngay trong phép nối buộc PostgreSQL dựng toàn bộ
+                        # 264 nghìn dòng khớp rồi mới cắt LIMIT; lấy N dòng gần
+                        # nhất qua `transaction_crypto_idx` rồi mới tra điểm thì
+                        # chỉ chạm đúng N dòng. Mệnh đề WHERE phải giữ nguyên
+                        # văn để khớp điều kiện của chỉ mục một phần.
+                        """WITH recent AS (
+                               SELECT t.transaction_id, t.source_transaction_id, t.occurred_at,
+                                      t.from_account_key, t.to_account_key, t.amount, t.currency
+                                 FROM transaction t
+                                WHERE t.currency='Bitcoin' OR t.receiving_currency='Bitcoin'
+                                   OR t.channel='BITCOIN'
+                                ORDER BY t.occurred_at DESC
+                                LIMIT :lim
+                           ),
+                           active AS (
+                               SELECT release_id FROM edge_model_release WHERE status='active' LIMIT 1
+                           )
+                           SELECT r.transaction_id, r.source_transaction_id, r.occurred_at,
+                                  r.from_account_key, r.to_account_key, r.amount, r.currency
+                             FROM recent r
+                             CROSS JOIN active a
+                             LEFT JOIN transaction_model_score s
+                                    ON s.transaction_id = r.transaction_id
+                                   AND s.release_id = a.release_id
+                            ORDER BY s.model_score DESC NULLS LAST, r.occurred_at DESC"""
                     ),
                     {"lim": limit},
                 )
@@ -1131,72 +1200,140 @@ async def projects() -> list[ProjectOut]:
 
 
 # ---------------------------------------------------------------------
-# Agent
+# Tác tử AI
+#
+# Đọc thẳng dấu vết thật của tầng điều tra: ``investigation_agent_run`` (một
+# dòng cho mỗi tác tử ở mỗi vòng) và ``investigation_tool_call`` (từng lần gọi
+# công cụ). Ba tác tử — điều phối, giải thích, phản biện — chính là ba "tier"
+# mà màn hình hiển thị.
 # ---------------------------------------------------------------------
+
+_AGENT_RUN_SQL = """
+    SELECT r.run_id, r.agent_name, r.iteration, r.status, r.started_at, r.completed_at,
+           r.model_provider, r.model_name, r.prompt_version, r.output_summary,
+           r.total_token_count, r.duration_ms,
+           i.case_id, i.alert_id,
+           (SELECT count(*) FROM investigation_tool_call c WHERE c.run_id = r.run_id) AS step_count
+      FROM investigation_agent_run r
+      JOIN investigation i ON i.investigation_id = r.investigation_id
+"""
+
+
+def _agent_confidence(summary: dict[str, Any]) -> float | None:
+    """Độ tin cậy do chính tác tử khai báo; điều phối viên không khai nên trả None."""
+    value = summary.get("confidence")
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _agent_conclusion(agent_name: str, summary: dict[str, Any]) -> str:
+    """Một câu đọc được cho từng loại tác tử.
+
+    Ba tác tử trả ba cấu trúc khác nhau, nên không có trường ``conclusion``
+    chung để lấy. Ghép ở đây thay vì bắt giao diện tự đoán cấu trúc.
+    """
+    if agent_name == "explanation_agent":
+        return str(summary.get("summary") or "")
+
+    if agent_name == "evidence_critic":
+        status = str(summary.get("status") or "—")
+        issues = summary.get("issues")
+        unsupported = summary.get("unsupported_claims")
+        parts = [f"Phản biện: {status}"]
+        if isinstance(issues, list) and issues:
+            parts.append(f"{len(issues)} vấn đề")
+        if isinstance(unsupported, list) and unsupported:
+            parts.append(f"{len(unsupported)} nhận định thiếu căn cứ")
+        if summary.get("next_action"):
+            parts.append(f"đề xuất: {summary['next_action']}")
+        return " · ".join(parts)
+
+    # investigation_supervisor
+    decisions = summary.get("decisions")
+    count = len(decisions) if isinstance(decisions, list) else 0
+    enough = summary.get("evidence_sufficient")
+    verdict = "đủ bằng chứng" if enough is True else "chưa đủ bằng chứng" if enough is False else "chưa kết luận"
+    return f"Điều phối: chọn {count} công cụ, đánh giá {verdict}"
+
+
+def _agent_run_out(row: Mapping[str, Any]) -> AgentRunOut:
+    summary = row["output_summary"] if isinstance(row["output_summary"], dict) else {}
+    return AgentRunOut(
+        id=row["run_id"],
+        case_id=row["case_id"],
+        alert_id=row["alert_id"],
+        # Giao diện gọi trường này là "tier". Ở đây nó là tên tác tử — thứ bậc
+        # thật của hệ thống là ba tác tử nối tiếp nhau, không phải ba cấp tổ chức.
+        tier=row["agent_name"],
+        started_at=row["started_at"],
+        finished_at=row["completed_at"],
+        status=str(row["status"]).lower(),
+        model_version=f"{row['model_name']} · {row['prompt_version']}",
+        conclusion=_agent_conclusion(row["agent_name"], summary),
+        confidence=_agent_confidence(summary),
+        # Nhà cung cấp giả lập không trả số token; 0 ở đây nghĩa là "không đo
+        # được", và giao diện hiển thị đúng con số đó thay vì bịa ra ước lượng.
+        token_cost=int(row["total_token_count"] or 0),
+        step_count=int(row["step_count"] or 0),
+    )
+
+
+def _step_input(arguments: Mapping[str, Any] | None) -> str:
+    """Gộp tham số gọi công cụ, bỏ những khoá để trống.
+
+    Lược đồ tham số là hợp của mọi công cụ nên mỗi lần gọi chỉ dùng vài khoá,
+    phần còn lại là null. In hết ra thì dòng nào cũng dài mười mấy chữ ``null``.
+    """
+    if not arguments:
+        return "không tham số"
+    used = {k: v for k, v in arguments.items() if v is not None}
+    if not used:
+        return "không tham số"
+    return ", ".join(f"{k}={v}" for k, v in sorted(used.items()))
+
+
+def _step_output(result: Mapping[str, Any] | None, status: str, error_type: str | None) -> str:
+    if status in {"FAILED", "TIMEOUT"}:
+        return f"Không lấy được dữ liệu ({error_type or status})"
+    fields = (result or {}).get("result_fields")
+    available = (result or {}).get("available")
+    if available is False:
+        return "Công cụ chạy xong nhưng không có dữ liệu cho phạm vi này"
+    if isinstance(fields, list) and fields:
+        return f"Trả về {len(fields)} trường: {', '.join(str(f) for f in fields)}"
+    return "Trả về kết quả rỗng"
 
 
 @router.get("/fc/agent-runs", response_model=list[AgentRunOut])
-async def agent_runs() -> list[AgentRunOut]:
+async def agent_runs(limit: int = Query(default=200, ge=1, le=1000)) -> list[AgentRunOut]:
     with get_session() as session:
         rows = (
             session.execute(
-                text(
-                    """SELECT r.run_id, r.case_id, r.alert_id, r.agent_tier, r.started_at,
-                              r.finished_at, r.status, r.model_version, r.conclusion,
-                              r.confidence, r.token_cost,
-                              (SELECT count(*) FROM fc.agent_step s WHERE s.run_id = r.run_id) AS step_count
-                         FROM fc.agent_run r
-                        ORDER BY r.started_at DESC"""
-                )
+                text(f"{_AGENT_RUN_SQL} ORDER BY r.started_at DESC LIMIT :limit"),
+                {"limit": limit},
             )
             .mappings()
             .all()
         )
-    return [
-        AgentRunOut(
-            id=r["run_id"],
-            case_id=r["case_id"],
-            alert_id=r["alert_id"],
-            tier=r["agent_tier"],
-            started_at=r["started_at"],
-            finished_at=r["finished_at"],
-            status=r["status"],
-            model_version=r["model_version"],
-            conclusion=r["conclusion"],
-            confidence=_f(r["confidence"]) if r["confidence"] is not None else None,
-            token_cost=r["token_cost"],
-            step_count=r["step_count"],
-        )
-        for r in rows
-    ]
+    return [_agent_run_out(row) for row in rows]
 
 
 @router.get("/fc/agent-runs/{run_id}", response_model=AgentRunDetailOut)
 async def agent_run_detail(run_id: str) -> AgentRunDetailOut:
     with get_session() as session:
-        run = (
-            session.execute(
-                text(
-                    """SELECT run_id, case_id, alert_id, agent_tier, started_at, finished_at,
-                              status, model_version, conclusion, confidence, token_cost
-                         FROM fc.agent_run WHERE run_id = :rid"""
-                ),
-                {"rid": run_id},
-            )
-            .mappings()
-            .first()
-        )
+        run = session.execute(text(f"{_AGENT_RUN_SQL} WHERE r.run_id = :rid"), {"rid": run_id}).mappings().first()
         if not run:
             raise HTTPException(status_code=404, detail=f"Không tìm thấy lần chạy {run_id}")
 
         steps = (
             session.execute(
                 text(
-                    """SELECT step_id, step_index, tool_name, input_summary, output_summary,
-                              status, started_at, duration_ms, evidence_refs
-                         FROM fc.agent_step
+                    """SELECT tool_call_id, tool_name, arguments, result_summary, status,
+                              started_at, duration_ms, output_ref, error_type
+                         FROM investigation_tool_call
                         WHERE run_id = :rid
-                        ORDER BY step_index"""
+                        ORDER BY started_at"""
                 ),
                 {"rid": run_id},
             )
@@ -1204,32 +1341,25 @@ async def agent_run_detail(run_id: str) -> AgentRunDetailOut:
             .all()
         )
 
+    base = _agent_run_out(run)
     return AgentRunDetailOut(
-        id=run["run_id"],
-        case_id=run["case_id"],
-        alert_id=run["alert_id"],
-        tier=run["agent_tier"],
-        started_at=run["started_at"],
-        finished_at=run["finished_at"],
-        status=run["status"],
-        model_version=run["model_version"],
-        conclusion=run["conclusion"],
-        confidence=_f(run["confidence"]) if run["confidence"] is not None else None,
-        token_cost=run["token_cost"],
+        **base.model_dump(exclude={"step_count"}),
         step_count=len(steps),
         steps=[
             AgentStepOut(
-                id=s["step_id"],
-                index=s["step_index"],
+                id=s["tool_call_id"],
+                index=index,
                 tool=s["tool_name"],
-                input_summary=s["input_summary"],
-                output_summary=s["output_summary"],
-                status=s["status"],
+                input_summary=_step_input(s["arguments"]),
+                output_summary=_step_output(s["result_summary"], s["status"], s["error_type"]),
+                status=str(s["status"]).lower(),
                 started_at=s["started_at"],
                 duration_ms=s["duration_ms"],
-                evidence_refs=list(s["evidence_refs"]),
+                # Mỗi lần gọi sinh đúng một gói bằng chứng, hoặc không sinh gói
+                # nào khi thất bại. Bọc thành danh sách cho khớp lược đồ.
+                evidence_refs=[s["output_ref"]] if s["output_ref"] else [],
             )
-            for s in steps
+            for index, s in enumerate(steps, start=1)
         ],
     )
 
@@ -1238,60 +1368,91 @@ async def agent_run_detail(run_id: str) -> AgentRunDetailOut:
 # Kiểm định, giám sát, chất lượng
 # ---------------------------------------------------------------------
 
-# Với các chỉ số này, giá trị *thấp* mới là đạt.
-_LOWER_IS_BETTER = {"false_positive_rate_hard_negative", "psi_amount", "p95_latency_ms"}
+#: Chỉ số lấy ra từ mỗi lượt chạy, theo thứ tự hiển thị.
+_BENCHMARK_METRICS = ("f1", "pr_auc", "precision", "recall", "alert_rate")
 
 
 @router.get("/fc/benchmarks", response_model=list[BenchmarkOut])
 async def benchmarks() -> list[BenchmarkOut]:
+    """Kết quả đánh giá đã ký của release đang phục vụ.
+
+    Nguồn là cột ``edge_model_release.benchmark`` — chính khối JSON được chốt
+    lúc huấn luyện, cùng lô với ``model_sha256`` và ``scores_sha256``. Đọc từ đó
+    thay vì từ thư mục ``reports/`` là có chủ đích: ảnh container không chứa
+    ``reports/``, và quan trọng hơn, con số hiển thị phải là con số gắn với
+    đúng bản mô hình đang chấm điểm chứ không phải file mới nhất trên đĩa ai đó.
+
+    Mỗi hạt giống ngẫu nhiên là một "gói kịch bản" riêng: một con số F1 duy nhất
+    không nói được nó ổn định hay ăn may, nên bày cả dải ra.
+    """
     with get_session() as session:
-        rows = (
+        release = (
             session.execute(
                 text(
-                    """SELECT result_id, task_id, scenario_package, model_version, split,
-                              metric_name, metric_value, target_value, evaluated_at
-                         FROM fc.benchmark_result
-                        ORDER BY scenario_package, metric_name"""
+                    """SELECT release_id, model_version, dataset, split, benchmark, threshold, trained_at
+                         FROM edge_model_release
+                        WHERE status = 'active'
+                        LIMIT 1"""
                 )
             )
             .mappings()
-            .all()
+            .first()
         )
+    if release is None or not isinstance(release["benchmark"], dict):
+        return []
 
+    benchmark = release["benchmark"]
+    primary = benchmark.get("primary_seed") or {}
+    runs = benchmark.get("over_seeds", {}).get("runs") or []
+    if primary and not any(r.get("seed") == primary.get("seed") for r in runs):
+        runs = [primary, *runs]
+
+    evaluated_at = release["trained_at"]
     out: list[BenchmarkOut] = []
-    for r in rows:
-        target = _f(r["target_value"]) if r["target_value"] is not None else None
-        value = _f(r["metric_value"])
-        passed: bool | None = None
-        if target is not None:
-            passed = value <= target if r["metric_name"] in _LOWER_IS_BETTER else value >= target
-        out.append(
-            BenchmarkOut(
-                id=r["result_id"],
-                task_id=r["task_id"],
-                scenario_package=r["scenario_package"],
-                model_version=r["model_version"],
-                split=r["split"],
-                metric_name=r["metric_name"],
-                metric_value=value,
-                target_value=target,
-                evaluated_at=r["evaluated_at"],
-                passed=passed,
+    for run in runs:
+        seed = run.get("seed")
+        is_primary = seed == primary.get("seed")
+        for metric in _BENCHMARK_METRICS:
+            value = run.get(metric)
+            if not isinstance(value, (int, float)):
+                continue
+            out.append(
+                BenchmarkOut(
+                    id=f"BM-{release['release_id']}-{seed}-{metric}",
+                    task_id=f"seed-{seed}" + (" (chính)" if is_primary else ""),
+                    scenario_package=release["dataset"],
+                    model_version=release["model_version"],
+                    split=release["split"],
+                    metric_name=metric,
+                    metric_value=float(value),
+                    # Không có mục tiêu nào được chốt cho bản này, nên không
+                    # dựng ra một ngưỡng để mọi dòng đều "đạt". Ô kết luận để
+                    # trống là câu trả lời trung thực.
+                    target_value=None,
+                    evaluated_at=evaluated_at,
+                    passed=None,
+                )
             )
-        )
     return out
 
 
 @router.get("/fc/model-monitor", response_model=list[ModelMonitorOut])
 async def model_monitor() -> list[ModelMonitorOut]:
+    """Trôi phân phối điểm theo tuần, tính sẵn bởi ``scripts/run_data_quality.py``.
+
+    Trục thời gian là ``occurred_at`` của giao dịch chứ không phải lúc chấm
+    điểm: cả 6,1 triệu dòng được chấm trong một lượt, nên trục "lúc chấm" chỉ
+    có đúng một điểm và không nói được gì về trôi.
+    """
     with get_session() as session:
         rows = (
             session.execute(
                 text(
-                    """SELECT model_version, observed_at, metric_name, metric_value,
-                              drift_score, status
-                         FROM fc.model_monitor
-                        ORDER BY observed_at, metric_name"""
+                    """SELECT r.model_version, m.observed_at, m.metric_name, m.metric_value,
+                              m.drift_score, m.status
+                         FROM model_monitor_metric m
+                         JOIN edge_model_release r ON r.release_id = m.release_id
+                        ORDER BY m.observed_at, m.metric_name"""
                 )
             )
             .mappings()
@@ -1344,7 +1505,7 @@ async def data_quality() -> list[DataQualityOut]:
                 text(
                     """SELECT check_id, dataset, check_name, dimension, observed_at, pass_rate,
                               threshold, rows_checked, rows_failed, status, detail
-                         FROM fc.data_quality_check
+                         FROM data_quality_check
                         ORDER BY status DESC, dataset"""
                 )
             )
@@ -1411,20 +1572,111 @@ async def observations() -> list[ObservationOut]:
 
 @router.get("/fc/sources", response_model=list[SourceOut])
 async def sources() -> list[SourceOut]:
+    """Sổ nguồn dữ liệu, dựng từ chính dấu vết nạp liệu.
+
+    Không có bảng khai báo tay nào ở đây, và đó là chủ ý: một sổ nguồn viết tay
+    sẽ lệch khỏi thực tế ngay lần nạp tiếp theo mà không ai biết. Ba nguồn dưới
+    đây đọc thẳng từ cột xuất xứ của dữ liệu đã nạp, lô nạp, và bản mô hình đang
+    phục vụ — thứ gì không nạp được thì cũng không xuất hiện.
+    """
+    out: list[SourceOut] = []
     with get_session() as session:
-        rows = (
+        # Cố tình không GROUP BY trên `transaction`: gộp theo (source_dataset,
+        # source_file) buộc quét toàn bộ 6,1 triệu dòng và endpoint này hết giờ
+        # trên Cloud SQL. min/max của occurred_at đi qua transaction_time_idx nên
+        # gần như tức thì, còn số dòng đã có sẵn trong sổ lô nạp — chính con số
+        # mà lô ấy ghi nhận, không phải một ước lượng.
+        datasets = (
             session.execute(
                 text(
-                    """SELECT source_id, source_type, scope, period, jurisdiction, confidence,
-                              access_level, prohibited_uses
-                         FROM fc.source_registry
-                        ORDER BY confidence DESC"""
+                    """SELECT t.source_dataset, t.source_file,
+                              (SELECT min(occurred_at)::date FROM transaction) AS first_day,
+                              (SELECT max(occurred_at)::date FROM transaction) AS last_day,
+                              (SELECT coalesce(sum(transactions_inserted), 0) FROM behavior_batch) AS rows
+                         FROM transaction t
+                        WHERE t.source_dataset IS NOT NULL
+                        LIMIT 1"""
                 )
             )
             .mappings()
             .all()
         )
-    return [SourceOut(**{k: (_f(v) if k == "confidence" else v) for k, v in dict(r).items()}) for r in rows]
+        batches = (
+            session.execute(
+                text(
+                    """SELECT batch_id, source_name, source_sha256, status, rows_read,
+                              rows_rejected, started_at, completed_at
+                         FROM behavior_batch
+                        ORDER BY started_at DESC"""
+                )
+            )
+            .mappings()
+            .all()
+        )
+        release = (
+            session.execute(
+                text(
+                    """SELECT release_id, model_version, dataset, split, model_sha256,
+                              transaction_rows, trained_at
+                         FROM edge_model_release
+                        WHERE status = 'active'
+                        LIMIT 1"""
+                )
+            )
+            .mappings()
+            .first()
+        )
+
+    for row in datasets:
+        out.append(
+            SourceOut(
+                source_id=row["source_dataset"],
+                source_type="dataset",
+                scope=f"{row['source_file']} · {row['rows']:,} giao dịch",
+                period=f"{row['first_day']} → {row['last_day']}",
+                # Bộ dữ liệu IBM là dữ liệu tổng hợp, không gắn với một pháp
+                # quyền nào. Ghi "tổng hợp" thay vì bịa ra một quốc gia.
+                jurisdiction="tổng hợp (IBM AML)",
+                confidence=1.0,
+                access_level="internal",
+                prohibited_uses="Không dùng để kết luận về khách hàng có thật; đây là dữ liệu mô phỏng công khai.",
+            )
+        )
+
+    for row in batches:
+        rejected = int(row["rows_rejected"] or 0)
+        total = int(row["rows_read"] or 0)
+        out.append(
+            SourceOut(
+                source_id=row["batch_id"],
+                source_type="ingest_batch",
+                scope=f"{row['source_name']} · {total:,} dòng đọc, {rejected:,} bị loại",
+                period=f"{row['started_at']:%Y-%m-%d %H:%M} → "
+                + (f"{row['completed_at']:%H:%M}" if row["completed_at"] else "chưa xong"),
+                jurisdiction=f"sha256 {row['source_sha256'][:16]}…",
+                # Lô nạp bị loại dòng nào thì độ tin cậy giảm đúng theo tỷ lệ đó,
+                # thay vì gán một con số cảm tính.
+                confidence=1.0 if total == 0 else (total - rejected) / total,
+                access_level="internal",
+                prohibited_uses="Chỉ dùng để truy vết xuất xứ; không phải nguồn số liệu báo cáo.",
+            )
+        )
+
+    if release is not None:
+        out.append(
+            SourceOut(
+                source_id=release["release_id"],
+                source_type="model_release",
+                scope=f"{release['model_version']} · {release['transaction_rows']:,} giao dịch đã chấm",
+                period=f"{release['dataset']} · tập {release['split']}",
+                jurisdiction=f"sha256 {release['model_sha256'][:16]}…",
+                confidence=1.0,
+                access_level="restricted",
+                prohibited_uses="Điểm số của mô hình không phải kết luận; mọi quyết định phải qua người có thẩm quyền.",
+            )
+        )
+
+    return out
 
 
 # ---------------------------------------------------------------------
@@ -1490,9 +1742,12 @@ async def transactions(
                 params,
             ).scalar_one()
         else:
-            total = session.execute(
-                text("SELECT transaction_rows FROM edge_model_release WHERE status='active' LIMIT 1")
-            ).scalar_one_or_none() or 0
+            total = (
+                session.execute(
+                    text("SELECT transaction_rows FROM edge_model_release WHERE status='active' LIMIT 1")
+                ).scalar_one_or_none()
+                or 0
+            )
 
         rows = (
             session.execute(

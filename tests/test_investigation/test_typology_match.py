@@ -1,0 +1,91 @@
+"""Ánh xạ nhóm hành vi phải đọc luật từ danh mục, không tự chế ra luật."""
+
+from src.investigation.typology_match import (
+    BEHAVIOR_SIGNAL_THRESHOLDS,
+    FALLBACK_TYPOLOGY,
+    match_typology,
+    signals_from_behavior,
+    signals_from_graph_motifs,
+)
+
+
+def test_no_signal_gives_an_explicit_fallback_not_a_silent_t02():
+    """Đây là trạng thái của toàn bộ 6.541 cảnh báo hiện có.
+
+    Trước đây chúng mang T02 mà không có chỗ nào nói mã ấy từ đâu ra. Giá trị
+    không đổi — nhưng giờ phải tự khai là mặc định.
+    """
+    match = match_typology(set())
+
+    assert match.typology_code == FALLBACK_TYPOLOGY
+    assert match.is_fallback is True
+    assert match.matched_required == ()
+    assert "mặc định" in match.rationale
+
+
+def test_a_full_required_signal_set_wins():
+    match = match_typology({"fan_in", "fan_out", "short_dwell_time"})
+
+    assert match.typology_code == "T04"
+    assert match.is_fallback is False
+    assert set(match.matched_required) == {"fan_in", "fan_out"}
+    assert match.matched_supporting == ("short_dwell_time",)
+
+
+def test_a_partial_required_signal_set_does_not_win():
+    """Thiếu một tín hiệu bắt buộc là loại — không có 'gần đúng'."""
+    match = match_typology({"fan_in"})
+
+    assert match.typology_code != "T04"
+    assert match.is_fallback is True
+
+
+def test_more_required_signals_beat_fewer():
+    """T04 cần hai tín hiệu, T05 cần một; có đủ cả thì T04 mô tả sát hơn."""
+    match = match_typology({"fan_in", "fan_out", "rapid_outflow"})
+
+    assert match.typology_code == "T04"
+
+
+def test_the_ranking_is_deterministic_across_runs():
+    signals = {"fan_in", "fan_out", "rapid_outflow", "directed_cycle", "network_flow"}
+    codes = {match_typology(set(signals)).typology_code for _ in range(20)}
+
+    assert len(codes) == 1
+
+
+def test_t02_becomes_a_real_conclusion_once_network_flow_is_evidenced():
+    """Đúng khoảng trống mà tác tử phản biện phàn nàn trên UI.
+
+    T02 đòi tín hiệu ``network_flow``; chỉ khi bộ phát hiện đồ thị báo trúng
+    gather/scatter thì mã này mới thôi là giá trị mặc định.
+    """
+    match = match_typology({"network_flow", "rapid_outflow"})
+
+    assert match.typology_code == "T02"
+    assert match.is_fallback is False
+    assert match.matched_required == ("network_flow",)
+
+
+def test_behavior_signals_respect_the_configured_thresholds():
+    above = BEHAVIOR_SIGNAL_THRESHOLDS["rapid_outflow_ratio"]
+    assert signals_from_behavior({"rapid_outflow_ratio": above}) == {"rapid_outflow"}
+    assert signals_from_behavior({"rapid_outflow_ratio": above - 0.01}) == set()
+
+
+def test_a_missing_feature_produces_no_signal():
+    """Đặc trưng vắng mặt không được suy thành 0 rồi thành tín hiệu."""
+    assert signals_from_behavior({}) == set()
+    assert signals_from_behavior({"rapid_outflow_ratio": None}) == set()
+
+
+def test_graph_motifs_only_fire_when_the_detector_actually_hit():
+    assert signals_from_graph_motifs({"cycle_hit": 0}) == set()
+    assert signals_from_graph_motifs({"cycle_hit": 2}) == {"directed_cycle"}
+    assert signals_from_graph_motifs({"gather_scatter_hit": 1}) == {"network_flow"}
+    assert signals_from_graph_motifs({}) == set()
+
+
+def test_booleans_are_not_read_as_numeric_signals():
+    """``True`` lọt qua thành 1.0 sẽ tạo ra tín hiệu từ một cờ không liên quan."""
+    assert signals_from_behavior({"rapid_outflow_ratio": True}) == set()

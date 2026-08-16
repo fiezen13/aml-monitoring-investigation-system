@@ -203,6 +203,30 @@ def _mask_identifiers(claim: str, cited: list[EvidenceEnvelope]) -> str:
     return claim
 
 
+#: Số liệu trong câu diễn giải, dùng để đối chiếu với bằng chứng đã trích dẫn.
+#:
+#: Dấu trừ phải nằm *trong* token. Bản trước chặn dấu trừ ở lookbehind, nên với
+#: ``-16.466031`` bộ quét bỏ qua ``16.466031`` rồi lại bắt được ``466031`` — phần
+#: thập phân bị cắt rời thành một số nguyên không tồn tại trong bằng chứng nào,
+#: và mọi câu có số âm đều bị đánh trượt UNSUPPORTED_CLAIM.
+#:
+#: Ba rào, mỗi rào chặn một kiểu đọc sai:
+#:
+#: * ``(?<![\w.-])`` — chữ số đứng ngay sau dấu chấm luôn là phần thập phân của
+#:   một số khác, không bao giờ là số độc lập. Đây là rào sửa lỗi trên. Gạch
+#:   ngang giữ nguyên để ``2022-09-01`` không rã thành ``2022`` và ``-09``.
+#: * ``-?`` — dấu trừ nằm *trong* token, nên số âm được đọc trọn vẹn. Rào
+#:   lookbehind ở trên đã lo việc phân biệt dấu trừ trong câu văn với gạch nối
+#:   trong định danh.
+#: * ``(?![\w-])`` — cố tình KHÔNG chặn dấu chấm ở đây: nhóm ``(?:\.\d+)?`` đã
+#:   ăn hết phần thập phân rồi, nên dấu chấm còn lại chỉ có thể là dấu kết câu.
+#:   Chặn nó sẽ làm mọi số đứng cuối câu không bao giờ được kiểm chứng.
+#:
+#: Định danh (mã tài khoản, mã bằng chứng) đã được ``_mask_identifiers`` xoá
+#: trước khi quét.
+_CLAIM_NUMBER_RE = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?![\w-])")
+
+
 def _numeric_values(value: Any) -> Iterable[float]:
     if isinstance(value, bool):
         return
@@ -762,7 +786,9 @@ class EvidenceCriticAgent:
             self.repository.add_trace(
                 self.investigation_id,
                 agent=self.name,
-                event_type="VALIDATION_PASS",
+                # KHÔNG phải VALIDATION_PASS: vòng lặp này vẫn có thể FAIL vì lỗi
+                # khác. Đây chỉ là việc loại bớt khiếu nại mà sổ bằng chứng bác bỏ.
+                event_type="CRITIC_OBJECTION_REFUTED",
                 rationale=(
                     f"Đã bỏ qua {refuted} vấn đề do tác tử phản biện Gemini nêu: sổ bằng chứng cho thấy "
                     "các tham chiếu bị coi là thiếu đều tồn tại."
@@ -828,7 +854,7 @@ class EvidenceCriticAgent:
             lower = claim.claim.lower()
             if claim.claim_type == "FACT":
                 cited_numbers = [number for item in cited for number in _numeric_values(item.payload)]
-                claim_numbers = re.findall(r"(?<![\w-])\d+(?:\.\d+)?(?![\w-])", _mask_identifiers(claim.claim, cited))
+                claim_numbers = _CLAIM_NUMBER_RE.findall(_mask_identifiers(claim.claim, cited))
                 unsupported_numbers = [
                     float(number)
                     for number in claim_numbers

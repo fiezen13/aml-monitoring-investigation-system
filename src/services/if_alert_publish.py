@@ -9,6 +9,7 @@ alert + alert_reason nằm trong cùng một transaction, tránh alert thiếu r
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import UTC, date, datetime
 from typing import Any
@@ -16,9 +17,17 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from src.investigation.typology_match import (
+    FALLBACK_TYPOLOGY,
+    TypologyMatch,
+    match_typology,
+    signals_from_behavior,
+)
+
 ML_WEIGHT = 0.35
 MIN_REASONS = 3
-DEFAULT_TYPOLOGY = "T02"
+#: Chỉ dùng khi không suy được tín hiệu nào — xem ``typology_match``.
+DEFAULT_TYPOLOGY = FALLBACK_TYPOLOGY
 
 
 def stable_alert_id(account_key: str, as_of_ts: Any, window: str, model_version: str) -> str:
@@ -145,24 +154,83 @@ def _clean_reasons(reasons: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return cleaned
 
 
+def resolve_typology(
+    *,
+    features: dict[str, Any] | None = None,
+    typology_code: str | None = None,
+) -> TypologyMatch:
+    """Chốt nhóm hành vi cho một cảnh báo sắp ghi.
+
+    Thứ tự ưu tiên: mã do người gọi chỉ định (giữ đường thoát cho vận hành) →
+    ánh xạ từ đặc trưng hành vi → mặc định. Cả ba đường đều trả về một
+    ``TypologyMatch`` để chỗ nào cũng ghi được dấu vết như nhau.
+    """
+    if typology_code:
+        validate_typology(typology_code)
+        return TypologyMatch(
+            typology_code=typology_code,
+            pattern="OPERATOR_OVERRIDE",
+            catalog_version="n/a",
+            observed_signals=(),
+            is_fallback=True,
+            rationale="Nhóm hành vi do người vận hành chỉ định, không suy ra từ tín hiệu.",
+        )
+    return match_typology(signals_from_behavior(features or {}))
+
+
+def record_typology_match(session: Session, alert_id: str, match: TypologyMatch) -> None:
+    """Lưu dấu vết ánh xạ. Idempotent theo alert_id."""
+    session.execute(
+        text(
+            """
+            INSERT INTO alert_typology_match (
+                alert_id, typology_code, pattern, catalog_version,
+                observed_signals, matched_required, matched_supporting,
+                is_fallback, rationale
+            ) VALUES (
+                :alert_id, :typology_code, :pattern, :catalog_version,
+                CAST(:observed AS jsonb), CAST(:required AS jsonb), CAST(:supporting AS jsonb),
+                :is_fallback, :rationale
+            )
+            ON CONFLICT (alert_id) DO NOTHING
+            """
+        ),
+        {
+            "alert_id": alert_id,
+            "typology_code": match.typology_code,
+            "pattern": match.pattern,
+            "catalog_version": match.catalog_version,
+            "observed": json.dumps(list(match.observed_signals)),
+            "required": json.dumps(list(match.matched_required)),
+            "supporting": json.dumps(list(match.matched_supporting)),
+            "is_fallback": match.is_fallback,
+            "rationale": match.rationale,
+        },
+    )
+
+
 def insert_ml_alert(
     session: Session,
     *,
     alert_id: str,
     account_key: str,
     risk_score: float,
-    typology_code: str,
     reasons: list[dict[str, Any]],
+    typology_code: str | None = None,
+    features: dict[str, Any] | None = None,
     as_of_ts: Any | None = None,
 ) -> dict[str, Any]:
     """Insert alert detector=ml + alert_reason. Idempotent theo alert_id.
 
     ``reasons`` moi phan tu can: factor_code, factor_label, contribution, weight.
 
+    ``features`` la vector dac trung hanh vi cua tai khoan; dung de suy nhom hanh
+    vi. Truyen ``typology_code`` de ep cung mot ma (duong thoat cho van hanh).
+
     Goi trong ``with get_session()``: neu bat ky INSERT nao fail, ca transaction
     bi rollback (khong de alert ton tai ma thieu alert_reason).
     """
-    validate_typology(typology_code)
+    match = resolve_typology(features=features, typology_code=typology_code)
     cleaned = _clean_reasons(reasons)
     risk = round(min(max(float(risk_score), 0.0), 100.0), 2)
 
@@ -195,11 +263,12 @@ def insert_ml_alert(
         {
             "alert_id": alert_id,
             "account_key": account_key,
-            "typology_code": typology_code,
+            "typology_code": match.typology_code,
             "risk_score": risk,
             "created_at": created_at,
         },
     )
+    record_typology_match(session, alert_id, match)
     for reason in cleaned:
         session.execute(
             text(

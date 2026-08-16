@@ -10,12 +10,15 @@ async def test_health(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_empty_message(client):
-    response = await client.post("/api/v1/chat", json={"message": ""})
-    assert response.status_code == 422  # Validation error
-
-
-@pytest.mark.asyncio
 async def test_agent_status(client):
     response = await client.get("/api/v1/status")
     assert response.status_code == 200
+    body = response.json()
+    # Phải báo đúng tầng tác tử đang chạy, không phải tên khung mẫu.
+    assert body["runtime"] == "fin07.investigation.workflow"
+    assert body["agents"] == [
+        "investigation_supervisor",
+        "explanation_agent",
+        "evidence_critic",
+    ]
+    assert body["max_agent_iterations"] >= 1

@@ -557,4 +557,70 @@ class InvestigationRepository:
             ),
             {"case_id": state.case_id, "actor": user_id, "payload": _json(review)},
         )
+        self._record_feedback(state, decision=decision, reason=reason, user_id=user_id)
         return self.get(investigation_id)
+
+    #: Quy đổi quyết định của chuyên viên thành nhãn huấn luyện.
+    #:
+    #: "Cần thêm thông tin" và "tiếp tục theo dõi" KHÔNG phải nhãn âm: chuyên
+    #: viên chưa kết luận. Gộp chúng vào nhóm âm sẽ dạy mô hình rằng mọi cảnh báo
+    #: chưa xử lý xong đều là báo động giả.
+    _DECISION_LABELS = {
+        "REVIEW_FOR_SAR_STR": "SUSPICIOUS",
+        "ESCALATE_TO_L2": "SUSPICIOUS",
+        "CLOSE_AS_LIKELY_FALSE_POSITIVE": "NOT_SUSPICIOUS",
+        "CONTINUE_MONITORING": "INCONCLUSIVE",
+        "REQUEST_MORE_INFORMATION": "INCONCLUSIVE",
+    }
+
+    def _record_feedback(self, state: InvestigationOut, *, decision: str, reason: str, user_id: str) -> None:
+        """Lưu nhãn kèm ảnh chụp điểm tại thời điểm ra quyết định.
+
+        Điểm trong bảng ``alert`` thay đổi mỗi khi nạp bản phát hành mới. Nhãn
+        phải dính với con số mà chuyên viên thật sự nhìn thấy, nếu không thì
+        không hiệu chỉnh được ngưỡng nào từ nó.
+        """
+        snapshot = (
+            self.session.execute(
+                text(
+                    """SELECT a.risk_score, a.detector, a.typology_code, m.is_fallback
+                         FROM alert a
+                         LEFT JOIN alert_typology_match m ON m.alert_id = a.alert_id
+                        WHERE a.alert_id = :alert"""
+                ),
+                {"alert": state.alert_id},
+            )
+            .mappings()
+            .first()
+        ) or {}
+        self.session.execute(
+            text(
+                """INSERT INTO review_feedback (
+                       feedback_id, investigation_id, alert_id, case_id, account_key,
+                       decision, label, reason,
+                       risk_score, detector, typology_code, typology_was_fallback,
+                       investigation_status, reviewed_by
+                   ) VALUES (
+                       :feedback_id, :investigation_id, :alert_id, :case_id, :account_key,
+                       :decision, :label, :reason,
+                       :risk_score, :detector, :typology_code, :typology_was_fallback,
+                       :investigation_status, :reviewed_by
+                   )"""
+            ),
+            {
+                "feedback_id": _id("FBK"),
+                "investigation_id": state.investigation_id,
+                "alert_id": state.alert_id,
+                "case_id": state.case_id,
+                "account_key": state.account_key,
+                "decision": decision,
+                "label": self._DECISION_LABELS.get(decision, "INCONCLUSIVE"),
+                "reason": reason,
+                "risk_score": snapshot.get("risk_score"),
+                "detector": snapshot.get("detector"),
+                "typology_code": snapshot.get("typology_code"),
+                "typology_was_fallback": snapshot.get("is_fallback"),
+                "investigation_status": str(state.status),
+                "reviewed_by": user_id,
+            },
+        )

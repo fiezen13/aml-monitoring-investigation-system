@@ -20,11 +20,18 @@ def located():
         with get_engine().connect() as conn:
             banks = conn.execute(text("SELECT count(*) FROM bank")).scalar_one()
             geo = conn.execute(text("SELECT count(*) FROM country_geo")).scalar_one()
+            hubs = conn.execute(text("SELECT count(*) FROM edge_country_hub")).scalar_one()
     except SQLAlchemyError as exc:
         pytest.skip(f"Không nối được PostgreSQL: {exc}")
     if not banks or not geo:
         pytest.skip("Chưa chạy scripts/load_bank_geography.py")
-    return {"banks": banks, "countries": geo}
+    # Nạp địa lý xong KHÔNG có nghĩa rollup đã dựng: rollup vận hành gắn với
+    # một edge-model release đang hoạt động, và release đó là artifact huấn
+    # luyện riêng. Thiếu nó thì bản đồ vận hành không có gì để khẳng định —
+    # phải bỏ qua, không phải báo hỏng.
+    if not hubs:
+        pytest.skip("Chưa có edge-model release đang hoạt động; rollup vận hành rỗng")
+    return {"banks": banks, "countries": geo, "hubs": hubs}
 
 
 @pytest.mark.asyncio

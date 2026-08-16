@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import { api } from "../api/client";
 import { int } from "../api/fcFormat";
 import { formatDateTime } from "../api/format";
@@ -9,13 +11,42 @@ import { PageShell } from "../components/ui";
 import { C } from "../design/palette";
 
 /** Audited benchmark plus the exact model release currently served by the UI. */
+const DRIFT_STATUS: Record<string, { label: string; color: string }> = {
+  healthy: { label: "Ổn định", color: C.ok },
+  watch: { label: "Cần theo dõi", color: C.warn },
+  degraded: { label: "Đã lệch", color: C.risk },
+};
+
 export function ModelsPage() {
   const release = useApi(() => api.edgeModelRelease(), []);
+  const monitor = useApi(() => api.modelMonitor(), []);
   const primary = release.data?.benchmark.primary_seed;
   const seeded = release.data?.benchmark.over_seeds;
   const alertRate = release.data
     ? (release.data.triggered_rows / release.data.transaction_rows) * 100
     : null;
+
+  /**
+   * Gộp các chỉ số giám sát về từng tuần dữ liệu.
+   *
+   * Backend trả một dòng cho mỗi (tuần, chỉ số) vì đó là dạng lưu tự nhiên;
+   * người đọc thì cần một dòng cho mỗi tuần. Gộp ở đây thay vì tạo thêm một
+   * endpoint chỉ để đổi hình dạng.
+   */
+  const weeks = useMemo(() => {
+    const byWeek = new Map<string, { at: string; status: string; drift: number | null; metrics: Record<string, number> }>();
+    for (const row of monitor.data ?? []) {
+      const entry = byWeek.get(row.observed_at) ?? {
+        at: row.observed_at,
+        status: row.status,
+        drift: row.drift_score,
+        metrics: {},
+      };
+      entry.metrics[row.metric_name] = row.metric_value;
+      byWeek.set(row.observed_at, entry);
+    }
+    return [...byWeek.values()].sort((a, b) => a.at.localeCompare(b.at));
+  }, [monitor.data]);
 
   return (
     <PageShell variant="dense">
@@ -98,6 +129,43 @@ export function ModelsPage() {
           </Panel>
         </>
       )}
+
+      <Panel
+        title="Trôi phân phối điểm theo tuần"
+        subtitle="PSI so với tuần đầu tiên của bộ dữ liệu. Dưới 0,1 coi như không đổi; trên 0,25 là đã lệch"
+        bodyClassName="space-y-2"
+      >
+        {monitor.loading && <Skeleton rows={3} />}
+        {!monitor.loading && !weeks.length && (
+          <p className="text-xs text-ink-low">
+            Chưa có số liệu giám sát. Chạy <span className="font-mono">python -m scripts.run_data_quality</span> để
+            tính lại từ điểm số đã lưu.
+          </p>
+        )}
+        {weeks.map((w) => {
+          const tone = DRIFT_STATUS[w.status] ?? { label: w.status, color: C.inkSoft };
+          return (
+            <div
+              key={w.at}
+              className="grid items-baseline gap-2 border-b border-line-faint pb-2 text-xs last:border-0 last:pb-0"
+              style={{ gridTemplateColumns: "120px 110px 1fr 1fr 1fr" }}
+            >
+              <span className="font-mono text-ink-hi">{w.at.slice(0, 10)}</span>
+              <span className="font-semibold" style={{ color: tone.color }}>
+                {tone.label}
+              </span>
+              {/* Tuần đầu là mốc tham chiếu nên không có PSI — dấu gạch, không phải số 0. */}
+              <span className="tabular font-mono text-ink-soft">
+                PSI {w.drift == null ? "—" : w.drift.toFixed(4)}
+              </span>
+              <span className="tabular font-mono text-ink-soft">
+                gắn cờ {((w.metrics.alert_rate ?? 0) * 100).toFixed(4)}%
+              </span>
+              <span className="tabular font-mono text-ink-low">{int(w.metrics.scored_rows ?? 0)} giao dịch</span>
+            </div>
+          );
+        })}
+      </Panel>
 
       <GrafanaCockpit />
     </PageShell>

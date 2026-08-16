@@ -6,7 +6,7 @@ import { useApi } from "../api/useApi";
 import { ErrorState, PageShell } from "../components/ui";
 import { type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
-import { Chip, Empty, KpiCard, Panel, ProgressBar, ScreenTitle, Skeleton } from "../components/fc/primitives";
+import { Empty, KpiCard, Panel, ProgressBar, ScreenTitle, Skeleton } from "../components/fc/primitives";
 import { C } from "../design/palette";
 
 /**
@@ -19,58 +19,92 @@ import { C } from "../design/palette";
  * hợp pháp trông giống đối tượng nghi vấn.
  */
 
+/**
+ * Năm chỉ số lấy ra từ khối benchmark đã ký của release. Tên viết đúng như
+ * trong dữ liệu — đổi tên ở đây là nói dối về nguồn.
+ */
 const METRIC_LABEL: Record<string, string> = {
-  precision_at_50: "Độ chính xác trong 50 cảnh báo đầu",
-  recall_at_50: "Độ bao phủ trong 50 cảnh báo đầu",
-  false_positive_rate_hard_negative: "Dương tính giả trên mẫu âm khó",
-  detection_lead_time_days: "Thời gian phát hiện sớm (ngày)",
-  alert_to_case_conversion: "Tỷ lệ cảnh báo thành vụ việc",
-  evidence_coverage: "Độ phủ bằng chứng",
-  f1_mean_5_seeds: "F1 trung bình 5 seed",
-  f1_primary_seed: "F1 seed chính",
-  f1_sample_std_5_seeds: "Độ lệch chuẩn F1 qua 5 seed",
-  pr_auc_primary_seed: "PR-AUC seed chính",
-  precision_primary_seed: "Precision seed chính",
-  recall_primary_seed: "Recall seed chính",
+  f1: "F1",
+  pr_auc: "PR-AUC",
+  precision: "Độ chính xác",
+  recall: "Độ bao phủ",
+  alert_rate: "Tỷ lệ gắn cờ",
 };
 
 const METRIC_HINT: Record<string, string> = {
-  precision_at_50:
-    "Trong 50 cảnh báo xếp đầu, bao nhiêu phần là đáng điều tra. Đây là chỉ số chuyên viên trực tiếp cảm nhận được.",
-  recall_at_50: "Trong toàn bộ trường hợp đáng chú ý, bao nhiêu phần lọt vào 50 vị trí đầu.",
-  false_positive_rate_hard_negative:
-    "Tỷ lệ gắn cờ nhầm trên nhóm hợp pháp cố ý trông giống đối tượng nghi vấn. Thấp mới là tốt.",
-  detection_lead_time_days:
-    "Khoảng cách giữa lúc mô hình gắn cờ và lúc đủ bằng chứng xác nhận. Càng dài càng có thời gian can thiệp.",
-  alert_to_case_conversion: "Bao nhiêu phần cảnh báo được nâng thành vụ việc thay vì đóng lại.",
-  evidence_coverage: "Bao nhiêu phần khẳng định trong hồ sơ neo được vào một mục bằng chứng cụ thể.",
-  f1_mean_5_seeds: "Trung bình điều hòa giữa precision và recall trên năm lần chạy với seed độc lập.",
-  f1_primary_seed: "F1 trên seed phát hành chính, dùng cùng test split và threshold đã khóa.",
-  f1_sample_std_5_seeds: "Độ dao động của F1 giữa năm seed; càng thấp mô hình càng ổn định.",
-  pr_auc_primary_seed: "Diện tích dưới đường precision-recall, phù hợp với bài toán mất cân bằng lớp.",
-  precision_primary_seed: "Tỷ lệ dương thật trong các giao dịch được model gắn cờ trên test split.",
-  recall_primary_seed: "Tỷ lệ giao dịch dương thật được model tìm thấy trên test split.",
+  f1: "Trung bình điều hòa giữa độ chính xác và độ bao phủ. Một con số gộp cả hai mặt.",
+  pr_auc:
+    "Diện tích dưới đường precision-recall. Với dữ liệu lệch lớp nặng như rửa tiền, chỉ số này trung thực hơn ROC-AUC.",
+  precision: "Trong các giao dịch bị gắn cờ, bao nhiêu phần thực sự là rửa tiền.",
+  recall: "Trong toàn bộ giao dịch rửa tiền, bao nhiêu phần bị gắn cờ.",
+  alert_rate:
+    "Phần giao dịch bị gắn cờ trên tổng số. Thấp mới là tốt: mỗi cảnh báo là một giờ công của chuyên viên.",
 };
 
-/** Với các chỉ số này, giá trị thấp mới là đạt. */
-const LOWER_IS_BETTER = new Set(["false_positive_rate_hard_negative", "f1_sample_std_5_seeds"]);
+/** Với chỉ số này, giá trị thấp mới là tốt: mỗi cảnh báo tốn một giờ công. */
+const LOWER_IS_BETTER = new Set(["alert_rate"]);
+
+/** Thứ tự trình bày; cũng là thứ tự quan trọng khi đọc một bản đánh giá. */
+const METRIC_ORDER = ["f1", "pr_auc", "precision", "recall", "alert_rate"];
+
+interface Aggregate {
+  metric: string;
+  values: number[];
+  mean: number;
+  min: number;
+  max: number;
+  std: number;
+}
+
+function aggregate(values: number[]): Omit<Aggregate, "metric" | "values"> {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  // Độ lệch chuẩn mẫu (chia n-1): năm seed là một mẫu rút từ tập vô hạn các
+  // lần khởi tạo, không phải toàn bộ tổng thể.
+  const variance =
+    values.length > 1 ? values.reduce((a, b) => a + (b - mean) ** 2, 0) / (values.length - 1) : 0;
+  return { mean, min: Math.min(...values), max: Math.max(...values), std: Math.sqrt(variance) };
+}
 
 export function BenchmarksPage() {
   const data = useApi(() => api.benchmarks(), []);
   const rows = data.data ?? [];
 
-  const passed = rows.filter((r) => r.passed === true).length;
-  const failed = rows.filter((r) => r.passed === false).length;
+  /**
+   * Gộp theo chỉ số, giữ lại từng giá trị.
+   *
+   * Bản phát hành chạy trên năm seed độc lập. Một con số F1 duy nhất không phân
+   * biệt được "mô hình tốt" với "một lần chạy may mắn", nên màn hình này bày cả
+   * dải giá trị và độ lệch chuẩn — chính độ lệch ấy mới nói mô hình có ổn định.
+   */
+  const metrics = useMemo<Aggregate[]>(() => {
+    const byMetric = new Map<string, number[]>();
+    for (const r of rows) {
+      const list = byMetric.get(r.metric_name) ?? [];
+      list.push(r.metric_value);
+      byMetric.set(r.metric_name, list);
+    }
+    return METRIC_ORDER.filter((m) => byMetric.has(m)).map((metric) => {
+      const values = byMetric.get(metric)!;
+      return { metric, values, ...aggregate(values) };
+    });
+  }, [rows]);
 
+  const primary = rows.filter((r) => r.task_id.includes("chính"));
+  const primaryOf = (metric: string) => primary.find((r) => r.metric_name === metric)?.metric_value;
+  const f1 = metrics.find((m) => m.metric === "f1");
+
+  /** Mỗi cột là một seed; đọc ngang thấy ngay mô hình dao động bao nhiêu. */
   const spec = useMemo<ChartSpec | null>(() => {
-    const ratio = rows.filter((r) => r.metric_value <= 1 && r.target_value != null);
-    if (!ratio.length) return null;
+    const seeds = [...new Set(rows.map((r) => r.task_id))];
+    if (seeds.length < 2) return null;
+    const seriesFor = (metric: string) =>
+      seeds.map((seed) => rows.find((r) => r.task_id === seed && r.metric_name === metric)?.metric_value ?? 0);
     return {
       type: "bars",
-      labels: ratio.map((r) => (METRIC_LABEL[r.metric_name] ?? r.metric_name).slice(0, 22)),
+      labels: seeds.map((s) => s.replace(" (chính)", "*")),
       series: [
-        { name: "Đạt được", data: ratio.map((r) => r.metric_value), color: C.primary },
-        { name: "Ngưỡng yêu cầu", data: ratio.map((r) => r.target_value!), color: C.inkDim },
+        { name: "F1", data: seriesFor("f1"), color: C.primary },
+        { name: "PR-AUC", data: seriesFor("pr_auc"), color: C.agent },
       ],
     };
   }, [rows]);
@@ -79,27 +113,37 @@ export function BenchmarksPage() {
     <PageShell variant="dense">
       <ScreenTitle
         title="Đánh giá chuẩn"
-        meta="Kiểm định mức độ phát hiện — ngưỡng được đặt trước khi có kết quả, không chỉnh sau"
+        meta="Kết quả đã ký của bản mô hình đang phục vụ — cùng lô với mã băm mô hình và mã băm điểm số"
       />
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
-        <KpiCard label="Chỉ số đạt" value={passed} valueColor={C.ok} delta={`trên ${rows.length} chỉ số`} />
-        <KpiCard label="Chỉ số chưa đạt" value={failed} valueColor={failed ? C.risk : C.inkLow} delta="cần xem lại" />
         <KpiCard
-          label="Gói kịch bản"
-          value={<span className="text-2xl">{rows[0]?.scenario_package ?? "—"}</span>}
-          delta="đang kiểm định"
+          label="F1 seed chính"
+          value={primaryOf("f1")?.toFixed(4) ?? "—"}
+          valueColor={C.primary}
+          delta="seed phát hành"
+        />
+        <KpiCard
+          label="F1 trung bình"
+          value={f1 ? f1.mean.toFixed(4) : "—"}
+          delta={f1 ? `${f1.values.length} seed độc lập` : ""}
+        />
+        <KpiCard
+          label="Độ lệch chuẩn F1"
+          value={f1 ? f1.std.toFixed(4) : "—"}
+          valueColor={f1 && f1.std > 0.05 ? C.warn : C.ok}
+          delta="càng thấp càng ổn định"
         />
         <KpiCard
           label="Phiên bản mô hình"
           value={<span className="text-2xl">{rows[0]?.model_version ?? "—"}</span>}
-          delta={rows[0] ? `tập ${rows[0].split}` : ""}
+          delta={rows[0] ? `${rows[0].scenario_package} · tập ${rows[0].split}` : ""}
         />
       </div>
 
       <ChartCard
-        title="Đạt được so với ngưỡng"
-        subtitle="Chỉ các chỉ số theo thang 0–1; thời gian phát hiện sớm tính bằng ngày nên tách riêng bên dưới"
+        title="F1 và PR-AUC theo từng seed"
+        subtitle="Dấu * là seed phát hành. Khoảng cách giữa các cột chính là mức dao động của mô hình"
         height={186}
         spec={spec}
         tools={["data", "dl", "full"]}
@@ -111,61 +155,51 @@ export function BenchmarksPage() {
       {!data.loading && !data.error && !rows.length && (
         <Empty
           text="Release đang hoạt động chưa có kết quả kiểm định được công bố"
-          hint="Chạy pipeline benchmark đã khóa split và threshold, sau đó xuất kết quả vào PostgreSQL."
+          hint="Chạy pipeline benchmark đã khóa split và threshold, sau đó nạp release bằng scripts/load_currency_native_edge_release.py."
         />
       )}
 
       <div className="flex flex-col gap-2.5">
-        {rows.map((r) => {
-          const lower = LOWER_IS_BETTER.has(r.metric_name);
-          // Thanh tiến độ luôn theo hướng "dài hơn = tốt hơn", kể cả với chỉ số
-          // mà giá trị thấp mới đạt — nếu không, cùng một hình ảnh sẽ mang hai
-          // nghĩa trái ngược trên cùng một màn hình.
-          const ratio = r.target_value
-            ? lower
-              ? Math.min(100, (r.target_value / Math.max(r.metric_value, 0.0001)) * 100)
-              : Math.min(100, (r.metric_value / r.target_value) * 100)
-            : null;
-          const color = r.passed === false ? C.risk : r.passed === true ? C.ok : C.inkSoft;
+        {metrics.map((m) => {
+          const lower = LOWER_IS_BETTER.has(m.metric);
+          // Thanh chỉ mô tả vị trí trung bình trên thang 0–1, không so với
+          // ngưỡng nào: bản phát hành này không chốt trước mục tiêu, và vẽ ra
+          // một ngưỡng để mọi dòng đều xanh là tự lừa mình.
+          const width = Math.min(100, m.mean * 100);
           return (
-            <Panel key={r.id} className="p-0">
+            <Panel key={m.metric} className="p-0">
               <div className="flex flex-wrap items-start gap-3 px-3.5 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-base font-semibold">{METRIC_LABEL[r.metric_name] ?? r.metric_name}</span>
-                    {r.passed != null && (
-                      <Chip color={color}>{r.passed ? "đạt ngưỡng" : "chưa đạt"}</Chip>
-                    )}
+                    <span className="text-base font-semibold">{METRIC_LABEL[m.metric] ?? m.metric}</span>
                     {lower && <span className="text-2xs text-ink-low">thấp hơn là tốt hơn</span>}
                   </div>
-                  <p className="mt-1 text-xs leading-relaxed text-ink-low">{METRIC_HINT[r.metric_name] ?? ""}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-low">{METRIC_HINT[m.metric] ?? ""}</p>
                 </div>
                 <div className="flex flex-none items-baseline gap-4">
                   <div className="text-right">
-                    <div className="text-2xs text-ink-low">Đạt được</div>
-                    <div className="tabular font-mono text-4xl font-semibold" style={{ color }}>
-                      {r.metric_value.toFixed(r.metric_value > 1 ? 1 : 3)}
+                    <div className="text-2xs text-ink-low">Seed chính</div>
+                    <div className="tabular font-mono text-4xl font-semibold" style={{ color: C.primary }}>
+                      {primaryOf(m.metric)?.toFixed(4) ?? "—"}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xs text-ink-low">Ngưỡng</div>
+                    <div className="text-2xs text-ink-low">Dải {m.values.length} seed</div>
                     <div className="tabular font-mono text-2xl text-ink-soft">
-                      {r.target_value != null ? r.target_value.toFixed(r.target_value > 1 ? 1 : 3) : "—"}
+                      {m.min.toFixed(4)} – {m.max.toFixed(4)}
                     </div>
                   </div>
                 </div>
               </div>
-              {ratio != null && (
-                <div className="px-3.5 pb-3">
-                  <ProgressBar value={ratio} color={color} />
-                  <div className="mt-1 flex justify-between text-3xs text-ink-dim">
-                    <span>
-                      {r.task_id} · tập {r.split}
-                    </span>
-                    <span>đánh giá {formatDateTime(r.evaluated_at)}</span>
-                  </div>
+              <div className="px-3.5 pb-3">
+                <ProgressBar value={width} color={lower ? C.warn : C.primary} />
+                <div className="mt-1 flex justify-between text-3xs text-ink-dim">
+                  <span>
+                    trung bình {m.mean.toFixed(4)} · độ lệch chuẩn {m.std.toFixed(4)}
+                  </span>
+                  <span>đánh giá {formatDateTime(rows[0]?.evaluated_at ?? "")}</span>
                 </div>
-              )}
+              </div>
             </Panel>
           );
         })}

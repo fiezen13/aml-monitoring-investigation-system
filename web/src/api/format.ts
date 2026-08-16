@@ -186,6 +186,7 @@ const TRACE_EVENT_LABELS: Record<string, string> = {
   EXPLANATION_GENERATED: "Tạo bản giải thích",
   VALIDATION_PASS: "Kiểm chứng đạt",
   VALIDATION_FAIL: "Kiểm chứng không đạt",
+  CRITIC_OBJECTION_REFUTED: "Bác bỏ khiếu nại của tác tử phản biện",
   INVESTIGATION_COMPLETED: "Hoàn tất điều tra",
   HUMAN_REVIEW_REQUIRED: "Yêu cầu chuyên viên rà soát",
   GEMINI_REQUEST: "Gửi yêu cầu tới Gemini",

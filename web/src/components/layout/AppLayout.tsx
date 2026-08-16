@@ -4,7 +4,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { api } from "../../api/client";
 import { useApi } from "../../api/useApi";
-import { ROUTE_TITLES } from "../../config/nav";
+import { ROUTE_TITLES, canAccess } from "../../config/nav";
 import { useApp } from "../../context/AppContext";
 import { pageVariants, safeVariants, transitions, useReduced } from "../../design/motion";
 import { useIsNarrow } from "../../hooks/useMediaQuery";
@@ -45,10 +45,15 @@ export function AppLayout() {
   const [navOpen, setNavOpen] = useState(false);
 
   const counts = useApi(() => api.navCounts(), []);
+  // Ô lệnh tra ra cảnh báo, vụ việc và tài khoản. Vai trò không được vào hồ sơ
+  // điều tra thì cũng không được tra cứu chúng ở đây — API sẽ trả 403, và gọi
+  // để nhận về 403 sau mỗi ký tự chỉ tạo tiếng ồn.
+  const canSearch = canAccess("/alerts", currentUser?.role);
   // Chỉ tra cứu khi đã gõ đủ để kết quả có nghĩa — mỗi ký tự là một lượt gọi.
   const search = useApi(
-    () => (paletteQuery.trim().length >= 2 ? api.search(paletteQuery.trim()) : Promise.resolve([])),
-    [paletteQuery],
+    () =>
+      canSearch && paletteQuery.trim().length >= 2 ? api.search(paletteQuery.trim()) : Promise.resolve([]),
+    [paletteQuery, canSearch],
   );
 
   // Chuyển sang khung rộng thì lớp phủ không còn lý do tồn tại; để nguyên sẽ có
@@ -59,6 +64,12 @@ export function AppLayout() {
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Lọc menu chỉ giấu lối vào. Chốt chặn thật cho việc gõ thẳng URL nằm ở đây —
+  // và ở tầng API, nơi dữ liệu bị từ chối kể cả khi màn hình đã mở.
+  if (!canAccess(location.pathname, currentUser.role)) {
+    return <Navigate to="/403" replace />;
   }
 
   const crumb = ROUTE_TITLES.find(([prefix]) => location.pathname.startsWith(prefix))?.[1] ?? "FIN-07";

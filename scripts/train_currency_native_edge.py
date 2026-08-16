@@ -33,10 +33,10 @@ from src.models.currency_native_edge import (  # noqa: E402
     validate_bundle,
 )
 
-DEFAULT_DB = ROOT / "data/processed/hi_medium.duckdb"
-DEFAULT_MODEL = ROOT / "models/fin07_currency_native_policy_edge_v1.joblib"
-DEFAULT_REPORT = ROOT / "reports/edge-benchmark/hi_medium_currency_native_policy_v1.json"
-DEFAULT_SCORES = ROOT / "data/processed/edge-policy-v1/hi_medium_test_scores.parquet"
+DEFAULT_DB = ROOT / "data/processed/aml.duckdb"
+DEFAULT_MODEL = ROOT / "models/fin07_currency_native_policy_edge_li_small_v1.joblib"
+DEFAULT_REPORT = ROOT / "reports/edge-benchmark/li_small_currency_native_policy_v1.json"
+DEFAULT_SCORES = ROOT / "data/processed/edge-policy-v1/li_small_test_scores.parquet"
 
 MODEL_GRID = (
     {"max_iter": 200, "max_leaf_nodes": 31, "learning_rate": 0.1, "class_weight": "balanced"},

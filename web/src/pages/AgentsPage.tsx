@@ -17,55 +17,59 @@ import { C } from "../design/palette";
  * kết luận không kiểm chứng được.
  */
 
+/**
+ * Ba tác tử chạy nối tiếp trong một phiên điều tra, theo đúng thứ tự này.
+ * Backend trả về `agent_name` — tên thật trong `investigation_agent_run` —
+ * nên nhãn ở đây phải khớp với ba giá trị đó, không phải ba cấp tổ chức.
+ */
 const TIER_LABEL: Record<string, string> = {
-  A_INSTITUTION: "Tầng A · Tổ chức tài chính",
-  B_REGULATOR: "Tầng B · Cơ quan quản lý",
-  C_INVESTIGATION: "Tầng C · Điều tra",
+  investigation_supervisor: "1 · Điều phối điều tra",
+  explanation_agent: "2 · Giải thích rủi ro",
+  evidence_critic: "3 · Phản biện bằng chứng",
 };
 
 const STATUS_COLOR: Record<string, string> = {
   running: C.info,
   succeeded: C.ok,
   failed: C.risk,
-  needs_human: C.warn,
+  timeout: C.warn,
 };
 
 const STATUS_LABEL: Record<string, string> = {
   running: "Đang chạy",
   succeeded: "Hoàn tất",
   failed: "Thất bại",
-  needs_human: "Chờ người duyệt",
+  timeout: "Quá hạn",
 };
 
+/**
+ * `partial` là trạng thái đáng chú ý nhất: công cụ chạy xong nhưng chỉ lấy được
+ * một phần dữ liệu — thường vì bằng chứng đồ thị chưa phủ hết tài khoản. Tô màu
+ * cảnh báo chứ không tô xanh, vì kết luận dựng trên nó yếu hơn.
+ */
 const STEP_COLOR: Record<string, string> = {
-  ok: C.ok,
-  error: C.risk,
-  skipped: C.inkLow,
-  blocked: C.warn,
+  succeeded: C.ok,
+  failed: C.risk,
+  timeout: C.risk,
+  partial: C.warn,
 };
 
 const STEP_LABEL: Record<string, string> = {
-  ok: "Hoàn tất",
-  error: "Lỗi",
-  skipped: "Đã bỏ qua",
-  blocked: "Bị chặn",
+  succeeded: "Hoàn tất",
+  failed: "Lỗi",
+  timeout: "Quá hạn",
+  partial: "Thiếu một phần",
 };
 
+/** Bảy công cụ mà tác tử được phép gọi — khớp ràng buộc CHECK của bảng. */
 const TOOL_LABEL: Record<string, string> = {
-  query_transactions: "Truy vấn giao dịch",
-  retrieve_evidence: "Truy hồi bằng chứng",
-  screen_watchlists: "Đối chiếu danh sách theo dõi",
-  analyze_network: "Phân tích mạng lưới",
-  calculate_risk: "Tính điểm rủi ro",
-  draft_case_summary: "Soạn tóm tắt vụ việc",
-  fetch_alert_context: "Lấy bối cảnh cảnh báo",
-  expand_entity_graph: "Mở rộng đồ thị thực thể",
-  device_correlation: "Đối chiếu thiết bị",
-  screen_watchlist: "Đối chiếu danh sách theo dõi",
-  trace_crypto_exposure: "Truy vết phơi nhiễm tài sản mã hoá",
-  request_vasp_records: "Yêu cầu hồ sơ từ VASP",
-  draft_str_narrative: "Soạn nội dung báo cáo STR",
-  request_human_review: "Yêu cầu chuyên viên rà soát",
+  GetRiskBreakdown: "Bóc tách điểm rủi ro",
+  GetAccountBehavior: "Hành vi tài khoản",
+  GetTransactions: "Truy vấn giao dịch",
+  GetGraphEvidence: "Bằng chứng đồ thị",
+  GetGraphNeighborhood: "Lân cận trên đồ thị",
+  GetTypology: "Nhóm hành vi rửa tiền",
+  GetAnomalyExplanation: "Giải thích bất thường",
 };
 
 function summaryVi(value: string): string {
@@ -90,8 +94,11 @@ export function AgentsPage() {
   const runs = useApi(() => api.agentRuns(), []);
   const rows = runs.data ?? [];
 
-  const needsHuman = rows.filter((r) => r.status === "needs_human").length;
-  const blockedTotal = rows.reduce((s, r) => s + (r.status === "failed" ? 1 : 0), 0);
+  // Đếm theo tác tử phản biện chứ không theo một trạng thái "chờ người duyệt"
+  // riêng: quy trình không có trạng thái đó. Việc chuyển cho người quyết định
+  // nằm ở kết quả phản biện, và đó mới là con số đáng theo dõi.
+  const criticRuns = rows.filter((r) => r.tier === "evidence_critic").length;
+  const failedTotal = rows.filter((r) => r.status === "failed" || r.status === "timeout").length;
 
   return (
     <PageShell variant="dense">
@@ -99,8 +106,8 @@ export function AgentsPage() {
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
         <KpiCard label="Tổng lần chạy" value={rows.length} delta="trong hệ thống" />
-        <KpiCard label="Chờ người duyệt" value={needsHuman} valueColor={C.warn} delta="con người tham gia quyết định" />
-        <KpiCard label="Thất bại" value={blockedTotal} valueColor={C.risk} delta="cần xem lại" />
+        <KpiCard label="Lượt phản biện" value={criticRuns} valueColor={C.warn} delta="mỗi phiên đều bị soát lại" />
+        <KpiCard label="Thất bại" value={failedTotal} valueColor={C.risk} delta="cần xem lại" />
         <KpiCard
           label="Tổng đơn vị từ"
           value={int(rows.reduce((s, r) => s + r.token_cost, 0))}
@@ -116,7 +123,7 @@ export function AgentsPage() {
             style={{ gridTemplateColumns: LIST_COLS }}
           >
             <span>Mã lượt chạy</span>
-            <span>Tầng năng lực</span>
+            <span>Tác tử</span>
             <span>Vụ việc</span>
             <span>Bắt đầu</span>
             <span>Số bước</span>
@@ -195,10 +202,10 @@ export function AgentRunPage() {
 
           <Panel title="Kết luận của tác tử" subtitle="Chưa có hiệu lực cho tới khi người có thẩm quyền duyệt">
             <p className="text-base leading-relaxed text-ink-mid">{summaryVi(r.conclusion) || "—"}</p>
-            {r.status === "needs_human" && (
+            {r.tier === "evidence_critic" && (
               <div className="mt-3 rounded-control border border-warn/35 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn-soft">
-                Tác tử dừng lại và chuyển cho người duyệt. Đây là hành vi đúng thiết kế: tác tử đề xuất, con người quyết
-                định. Không có đường nào để tác tử tự kết luận một vụ việc.
+                Đây là tác tử phản biện: nó soát lại lời giải thích và chỉ ra chỗ thiếu căn cứ. Kết quả của nó không kết
+                luận vụ việc — tác tử đề xuất, con người quyết định. Không có đường nào để tác tử tự đóng hồ sơ.
               </div>
             )}
           </Panel>
@@ -235,10 +242,11 @@ export function AgentRunPage() {
                         ))}
                       </div>
                     )}
-                    {s.status === "blocked" && (
+                    {s.status === "partial" && (
                       <div className="mt-1.5 text-2xs leading-relaxed text-warn-soft">
-                        Bước này bị chặn vì vai trò hiện tại không có thẩm quyền. Ranh giới quyền truy cập được cưỡng
-                        chế ở tầng công cụ, không phụ thuộc vào việc mô hình có "biết điều" hay không.
+                        Công cụ chỉ lấy được một phần dữ liệu — thường vì bằng chứng đồ thị chưa phủ hết tài khoản
+                        trong phạm vi hỏi. Ghi lại nguyên trạng thay vì lấp chỗ trống: một kết luận dựng trên bằng
+                        chứng thiếu phải được nhìn thấy là thiếu.
                       </div>
                     )}
                   </div>

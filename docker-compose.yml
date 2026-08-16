@@ -170,7 +170,11 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
       interval: 15s
-      timeout: 5s
+      # Cùng lý do như worker: mỗi lần kiểm tra khởi động một trình thông dịch
+      # mới. Trên VM hai nhân chạy đồng thời api, worker, web, Caddy, Prometheus
+      # và Loki, riêng phần khởi động ấy đã vượt 5 giây — /health/ready trả lời
+      # ngay lập tức nhưng vẫn bị tính là trượt.
+      timeout: 10s
       retries: 5
       start_period: 20s
     restart: unless-stopped
@@ -199,7 +203,11 @@ services:
     healthcheck:
       test: ["CMD", "python", "-m", "src.worker.healthcheck"]
       interval: 15s
-      timeout: 5s
+      # 10s chứ không phải 5s: mỗi lần kiểm tra là một tiến trình Python mới.
+      # Trên máy hai nhân, lúc worker đang gọi mô hình và API cũng đang phục vụ,
+      # riêng phần khởi động trình thông dịch đã ăn hết 5 giây và Docker tính
+      # đó là một lần trượt — worker khoẻ nhưng bị báo hỏng.
+      timeout: 10s
       retries: 3
       start_period: 15s
     restart: unless-stopped

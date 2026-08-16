@@ -1,11 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from src.api.authz import enforce_policy
 from src.api.fc_routes import router as fc_router
 from src.api.routes import router
 from src.config import get_settings
@@ -45,9 +46,15 @@ app.add_middleware(
 )
 app.add_middleware(ObservabilityMiddleware)
 
-app.include_router(router, prefix="/api/v1")
-# Màn hình "Thành phố tài chính" — đọc schema `fc` do ABM sinh ra.
-app.include_router(fc_router, prefix="/api/v1")
+# Phân quyền gắn ở cấp router: mọi endpoint dưới /api/v1 đều đi qua bảng chính
+# sách trong src/api/authz.py trước khi chạy. Các route sức khoẻ và /metrics nằm
+# ngoài router nên không bị chặn — chúng phải trả lời được cho orchestrator kể
+# cả khi cơ sở dữ liệu phiên đăng nhập chưa sẵn sàng.
+_authz = [Depends(enforce_policy)]
+
+app.include_router(router, prefix="/api/v1", dependencies=_authz)
+# Màn hình "Thành phố tài chính" — đọc dữ liệu vận hành từ schema `public`.
+app.include_router(fc_router, prefix="/api/v1", dependencies=_authz)
 
 
 @app.get("/health", response_model=HealthOut)

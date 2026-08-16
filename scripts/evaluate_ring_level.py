@@ -188,13 +188,10 @@ def main() -> int:
     # stitching them by position would silently mis-pair every row.
     columns = ", ".join(f'"{name}"' for name in features)
     frame = con.execute(
-        "SELECT split, y, occurred_at, from_account_key, to_account_key, "
-        f"amount_paid_orig, {columns} FROM features"
+        f"SELECT split, y, occurred_at, from_account_key, to_account_key, amount_paid_orig, {columns} FROM features"
     ).fetchdf()
     con.close()
-    frame[features] = (
-        frame[features].astype(np.float32).replace([np.inf, -np.inf], 0.0).fillna(0.0)
-    )
+    frame[features] = frame[features].astype(np.float32).replace([np.inf, -np.inf], 0.0).fillna(0.0)
 
     print("[3/5] Fitting on train and scoring test ...", flush=True)
     train = frame[frame.split == "train"]
@@ -233,9 +230,7 @@ def main() -> int:
     result["account_level"] = {
         "units": int(len(per_account)),
         "positives": int(per_account.y.sum()),
-        "operating_points": level_metrics(
-            per_account.y.to_numpy(), per_account.score.to_numpy(), BUDGETS
-        ),
+        "operating_points": level_metrics(per_account.y.to_numpy(), per_account.score.to_numpy(), BUDGETS),
     }
 
     # --- ring level: match pattern transactions onto scored test transactions
@@ -284,9 +279,7 @@ def main() -> int:
                     "recall": round(float((group.score >= top_cutoff).mean()), 4),
                 }
             )
-        result["ring_level"]["by_pattern_type_at_5000_alerts"] = sorted(
-            by_type, key=lambda r: -r["rings"]
-        )
+        result["ring_level"]["by_pattern_type_at_5000_alerts"] = sorted(by_type, key=lambda r: -r["rings"])
 
     print("[5/5] Writing report ...", flush=True)
     result["seconds"] = round(time.perf_counter() - started, 1)
