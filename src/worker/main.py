@@ -35,6 +35,7 @@ from src.observability.telemetry import (
     shutdown_observability,
     tracer,
 )
+from src.services import queue
 from src.services.queue import get_redis
 
 logger = logging.getLogger("fin07.worker")
@@ -97,6 +98,44 @@ def _start_heartbeat(ttl: int) -> None:
     logger.info("Nhịp tim mỗi %.0fs, TTL %ds", interval, ttl)
 
 
+#: Phiên điều tra bị bỏ rơi: đã ghi vào cơ sở dữ liệu nhưng không còn tác vụ nào
+#: nhắc tới. Hàng đợi Redis dùng ``blpop`` — việc bị lấy ra *trước* khi chạy, nên
+#: worker tắt giữa chừng là mất việc. Bản ghi nằm lại ở QUEUED mãi mãi, và giao
+#: diện hiển thị "đang chờ" không bao giờ đổi, cũng không có lỗi nào để đọc.
+#:
+#: Ngưỡng năm phút: dài hơn mọi phiên điều tra bình thường (30–60 giây), nên
+#: không có nguy cơ nhân đôi việc đang chạy dở của một worker khác.
+_ORPHAN_SQL = """
+    SELECT investigation_id
+      FROM investigation
+     WHERE status IN ('QUEUED', 'INVESTIGATING')
+       AND updated_at < now() - make_interval(mins => 5)
+     ORDER BY created_at
+"""
+
+
+def requeue_orphans() -> int:
+    """Nhặt lại các phiên điều tra mồ côi lúc khởi động.
+
+    Chạy một lần khi worker lên, không định kỳ: thời điểm duy nhất sinh ra bản
+    ghi mồ côi là lúc worker chết, và ngay sau đó nó khởi động lại. Sửa ở đây là
+    đủ, mà không phải dựng thêm một vòng quét nền.
+    """
+    try:
+        with get_session() as session:
+            ids = list(session.execute(text(_ORPHAN_SQL)).scalars())
+    except Exception:  # noqa: BLE001 — không nối được DB thì để vòng lặp chính báo lỗi
+        logger.warning("Không kiểm tra được phiên điều tra mồ côi", exc_info=True)
+        return 0
+
+    for investigation_id in ids:
+        queue.enqueue("investigate_alert", {"investigation_id": investigation_id})
+        logger.info("Giao lại phiên điều tra bị bỏ rơi %s", investigation_id)
+    if ids:
+        logger.info("Đã giao lại %d phiên điều tra mồ côi", len(ids))
+    return len(ids)
+
+
 def handle_investigate_case(payload: dict[str, Any]) -> None:
     """Chạy một bước điều tra: đẩy vụ việc sang trạng thái kế tiếp.
 
@@ -151,6 +190,34 @@ def handle_ping(payload: dict[str, Any]) -> None:
     logger.info("ping %s", payload)
 
 
+def _mark_failed(investigation_id: str, exc: BaseException) -> None:
+    """Lưới an toàn cuối: không để phiên điều tra nào chết lặng.
+
+    Quy trình đã tự ghi trạng thái thất bại ở đường xử lý lỗi của nó. Nhưng nếu
+    chính lượt ghi ấy hỏng — phiên làm việc đã rollback, mất kết nối, hết giờ —
+    thì bản ghi nằm nguyên ở QUEUED và giao diện treo ở "đang chờ" mãi mãi.
+
+    Nên mở một phiên **mới** ở đây và ghi lại. Phiên mới là điểm mấu chốt: phiên
+    cũ có thể đang hỏng, dùng lại nó chỉ sinh thêm PendingRollbackError.
+    Chỉ ghi khi trạng thái chưa phải kết thúc, để không đè lên kết quả đã có.
+    """
+    try:
+        with get_session() as session:
+            session.execute(
+                text(
+                    """UPDATE investigation
+                          SET status = 'FAILED', workflow_state = 'FAILED',
+                              failure_reason = :reason, updated_at = now(), completed_at = now()
+                        WHERE investigation_id = :id
+                          AND status NOT IN ('COMPLETED', 'FAILED', 'INSUFFICIENT_EVIDENCE',
+                                             'NEEDS_HUMAN_REVIEW')"""
+                ),
+                {"id": investigation_id, "reason": f"{type(exc).__name__}: {str(exc)[:400]}"},
+            )
+    except Exception:  # noqa: BLE001 — đây đã là đường cứu hộ, không được ném tiếp
+        logger.warning("Không ghi được trạng thái thất bại cho %s", investigation_id, exc_info=True)
+
+
 def handle_investigate_alert(payload: dict[str, Any]) -> None:
     """Run the complete bounded explainable workflow for one alert."""
     investigation_id = payload["investigation_id"]
@@ -190,6 +257,7 @@ def handle_investigate_alert(payload: dict[str, Any]) -> None:
         except Exception as exc:
             record_safe_exception(span, exc)
             span.set_status(trace.Status(trace.StatusCode.ERROR, type(exc).__name__))
+            _mark_failed(investigation_id, exc)
             raise
         finally:
             duration = time.monotonic() - started
@@ -321,6 +389,7 @@ def main() -> int:
     client = get_redis()
     beat()
     _start_heartbeat(settings.worker_heartbeat_ttl)
+    requeue_orphans()
     logger.info("Worker sẵn sàng, đang nghe hàng đợi %s", settings.worker_queue)
 
     while not _shutdown:

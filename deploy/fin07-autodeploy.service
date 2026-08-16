@@ -1,0 +1,13 @@
+[Unit]
+Description=FIN-07 — đồng bộ production với nhánh phát hành khi CI xanh
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/fin07/autodeploy.sh
+# Một lượt triển khai gồm build image và dựng lại dịch vụ; trên máy hai nhân
+# việc đó mất vài phút. Cắt ở 30 phút để một lượt treo không chặn lượt sau mãi.
+TimeoutStartSec=1800
+StandardOutput=journal
+StandardError=journal

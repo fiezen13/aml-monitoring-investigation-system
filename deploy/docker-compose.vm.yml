@@ -51,7 +51,11 @@ services:
     ports: !override []
     restart: always
     environment:
-      APP_ENV: production
+      # Gắn cứng tên môi trường ở đây thì .env không ghi đè được (khối
+      # `environment:` thắng `env_file:`), và cùng một VM không chạy được
+      # ở chế độ staging. Mặc định vẫn là production nên hành vi cũ giữ
+      # nguyên; đặt APP_ENV trong .env để đổi.
+      APP_ENV: ${APP_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Giao diện và API cùng một gốc nên trình duyệt không phát sinh request
       # cross-origin nào. Danh sách này chỉ còn tác dụng cho công cụ gọi thẳng.
@@ -67,7 +71,11 @@ services:
   worker:
     restart: always
     environment:
-      APP_ENV: production
+      # Gắn cứng tên môi trường ở đây thì .env không ghi đè được (khối
+      # `environment:` thắng `env_file:`), và cùng một VM không chạy được
+      # ở chế độ staging. Mặc định vẫn là production nên hành vi cũ giữ
+      # nguyên; đặt APP_ENV trong .env để đổi.
+      APP_ENV: ${APP_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     deploy:
       resources:

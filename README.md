@@ -183,6 +183,14 @@ Email:    hung.nq@velrix.vn
 Password: demo-password
 ```
 
+> **Bản dựng cục bộ và bản đang chạy dùng hai bộ dữ liệu khác nhau.** Hướng dẫn
+> restore ở trên dựng bộ **HI-Medium** (5.866.610 giao dịch, 6.541 cảnh báo,
+> release `REL-EDGE-039b4b0fd5fb669a`) — đó là dump hiện có trên Drive. Bản phục
+> vụ tại <https://www.amlmonitoring.site> chạy **LI-Small** (6.119.572 giao dịch,
+> 21.034 cảnh báo, release `REL-EDGE-5b9f9fc5f8c33e14`) với đủ ba nhánh phát hiện.
+> Con số trên hai môi trường vì vậy không khớp nhau, và điều đó là bình thường.
+> Cấu trúc, quy trình và mọi màn hình thì giống hệt.
+
 ## Dữ liệu hiển thị trên console
 
 Sau khi restore đúng dump, các màn chính có dữ liệu:
@@ -200,6 +208,86 @@ Sau khi restore đúng dump, các màn chính có dữ liệu:
 
 Cases, SAR/Approvals và Agent Runs chỉ có dữ liệu sau khi chuyên viên thực hiện workflow. Console
 không tạo case, kết luận điều tra hoặc dữ liệu on-chain giả để lấp màn hình.
+
+## Biến môi trường
+
+Danh mục đầy đủ nằm ở [`.env.example`](.env.example) — 142 biến, mỗi biến có
+chú thích ngay trên dòng khai báo. File đó là **tài liệu duy nhất** về biến môi
+trường; `tests/test_config_documented.py` bắt buộc mọi trường của `Settings` và
+mọi `${BIEN}` trong `docker-compose.yml` đều phải xuất hiện ở đó, nên nó không
+lệch khỏi mã nguồn được.
+
+Không cần `.env` để chạy `docker compose up`: mọi biến đều có mặc định cho môi
+trường phát triển. Dưới đây là những biến thực sự phải nghĩ khi đổi môi trường.
+
+| Biến | Mặc định | Vì sao phải quan tâm |
+|---|---|---|
+| `LLM_MODE` | `mock` | `mock` chạy tác tử tất định, không gọi mạng — dùng cho test. `gemini` mới là đường thật. `APP_ENV=production` **bắt buộc** phải là `gemini`; cấu hình sai thì ứng dụng từ chối khởi động. |
+| `GOOGLE_API_KEY` | rỗng | Khoá Gemini. Không có khoá thì `LLM_MODE=gemini` không khởi động được. Không bao giờ commit; trên máy chủ nó nằm ở `.env` với quyền 600. |
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Chỉ nhận đúng giá trị này. Đổi model là đổi cả chi phí lẫn hành vi, nên phải sửa mã có chủ đích. |
+| `GEMINI_INPUT_USD_PER_MTOK` / `GEMINI_OUTPUT_USD_PER_MTOK` | `0` | Đơn giá để tính chỉ số chi phí trên Grafana. Để `0` thì bảng chi phí hiển thị 0 — đúng theo nghĩa "chưa khai báo đơn giá", không phải "miễn phí". |
+| `DATABASE_URL` | PostgreSQL trong compose | Trỏ sang Cloud SQL khi chạy production. |
+| `REDIS_URL` | Redis trong compose | Hàng đợi giữa API và worker. |
+| `APP_ENV` | `development` | `production` bật các ràng buộc chặt hơn, gồm cả ràng buộc `LLM_MODE` ở trên. |
+| `MAX_AGENT_ITERATIONS` / `MAX_TOOL_CALLS` | `3` / `8` | Trần chi phí một phiên điều tra. Chạm trần thì phiên dừng với trạng thái `INSUFFICIENT_EVIDENCE` chứ không kết luận bừa. |
+
+## Truy vấn mẫu
+
+Mọi endpoint đều đòi phiên đăng nhập — phân quyền cưỡng chế ở tầng API, không
+phải chỉ ẩn menu. Các lệnh dưới đây chạy được ngay trên bản đang phục vụ; đổi
+`BASE` thành `http://localhost:8000` để chạy với stack cục bộ.
+
+```bash
+BASE=https://www.amlmonitoring.site
+
+# 1. Đăng nhập, lấy token cho các lệnh sau
+TOKEN=$(curl -s -X POST "$BASE/api/v1/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"tuan.la@velrix.vn","password":"demo-password"}' \
+  | jq -r .token)
+
+# 2. Ba cảnh báo rủi ro cao nhất đang mở
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts?limit=3" \
+  | jq -r '.[] | "\(.alert_id)  \(.risk_score)  \(.typology_code)"'
+#   ALT-IF-2f9a70d0e19b21f2  100.00  T05
+#   ALT-IF-a91a8104f979eaf7  100.00  T05
+#   ALT-RULE-f7304166d3c80b3b  100.00  T08
+
+# 3. Vì sao cảnh báo đó được sinh ra (NT7: luôn ≥ 3 yếu tố đóng góp)
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts/ALT-IF-2f9a70d0e19b21f2" \
+  | jq '{alert_id, risk_score, so_yeu_to: (.reasons | length)}'
+
+# 4. Giao cho tầng tác tử điều tra — đây là user flow chính
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/alerts/ALT-IF-2f9a70d0e19b21f2/investigate" | jq
+
+# 5. Theo dõi tới khi có kết luận (khoảng 40–90 giây, tuỳ kích thước tài khoản)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/alerts/ALT-IF-2f9a70d0e19b21f2/investigation" \
+  | jq '{status, workflow_state, iteration, tool_call_count, failure_reason}'
+
+# 6. Đọc bản giải thích và dấu vết từng bước tác tử đã đi
+INV=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/alerts/ALT-IF-2f9a70d0e19b21f2/investigation" | jq -r .investigation_id)
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/investigations/$INV/explanation" | jq
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/investigations/$INV/trace"       | jq
+```
+
+Trên giao diện, cùng luồng ấy là: **Trung tâm cảnh báo** → mở một cảnh báo →
+**Điều tra bằng tác tử** → xem tab *Bằng chứng* và *Dấu vết*.
+
+Tài khoản demo và vai trò tương ứng (mật khẩu đều là `demo-password`):
+
+| Email | Vai trò | Thấy gì |
+|---|---|---|
+| `tuan.la@velrix.vn` | analyst | Cảnh báo, vụ việc, đồ thị, giao dịch |
+| `hung.nq@velrix.vn` | compliance_officer | Điều tra, SAR, chất lượng mô hình, nhật ký và danh sách người dùng |
+| `tuan.dm@velrix.vn` | mlro | Điều tra, phê duyệt SAR, chất lượng mô hình, nhật ký và cấu hình |
+| `khiem.lm@velrix.vn` | auditor | Chỉ đọc giao dịch và dấu vết; **không** thấy hàng đợi cảnh báo |
+| `manh.dh@velrix.vn` | admin | Người dùng, cấu hình và vận hành; **không** thấy dữ liệu điều tra |
+
+Xem hướng dẫn thao tác ngắn cho từng vai trò tại
+[`docs/HUONG_DAN_SU_DUNG_THEO_VAI_TRO.md`](docs/HUONG_DAN_SU_DUNG_THEO_VAI_TRO.md).
 
 ## Lệnh vận hành thường dùng
 
@@ -341,6 +429,28 @@ artifacts/          Dump và artifact lớn, bị loại khỏi Git
 
 Xem thêm [`SECURITY.md`](SECURITY.md), [`contracts/README.md`](contracts/README.md) và
 [`docs/ml/CURRENCY_NATIVE_EDGE_MVP.md`](docs/ml/CURRENCY_NATIVE_EDGE_MVP.md).
+Bảng benchmark đầy đủ theo dạng báo cáo nghiên cứu nằm tại
+[`reports/edge-benchmark/hi_medium_currency_native_policy_v1.md`](reports/edge-benchmark/hi_medium_currency_native_policy_v1.md).
+
+## Triển khai tự động
+
+Đẩy code lên `develop` → GitHub Actions chạy kiểm thử → máy chủ tự đồng bộ
+trong vòng hai phút. Không cần thao tác tay nào ở giữa.
+
+Máy chủ **kéo** chứ không phải CI **đẩy**: thêm secret vào repo đòi quyền Admin
+mà nhóm không có, nên đảo chiều để chỉ cần một token chỉ đọc do cá nhân tạo.
+Agent chỉ triển khai khi commit đầu nhánh có ít nhất một lượt kiểm tra và mọi
+lượt đều xanh; kiểm tra khói hỏng thì tự quay lui về bản trước.
+
+```bash
+sudo bash deploy/install-autodeploy.sh      # cài một lần
+sudo nano /etc/fin07/autodeploy.env         # điền GITHUB_TOKEN
+sudo systemctl enable --now fin07-autodeploy.timer
+
+journalctl -u fin07-autodeploy.service -f   # theo dõi
+```
+
+Chi tiết ở [`docs/operations/CICD.md`](docs/operations/CICD.md).
 
 ## Tài liệu chuyên sâu
 
@@ -349,8 +459,10 @@ Xem thêm [`SECURITY.md`](SECURITY.md), [`contracts/README.md`](contracts/README
 | [`docs/architecture/PRODUCTION_ARCHITECTURE.md`](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Kiến trúc triển khai production |
 | [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Vận hành và xử lý sự cố |
 | [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai VM |
-| [`docs/operations/CICD.md`](docs/operations/CICD.md) | CI/CD và merge gates |
+| [`docs/operations/CICD.md`](docs/operations/CICD.md) | CI/CD, cổng chặn merge và tự động triển khai |
+| [`docs/eval/GATE2_EVAL_EVIDENCE.md`](docs/eval/GATE2_EVAL_EVIDENCE.md) | Năm ca đánh giá thủ công với output Gemini thật |
 | [`docs/ml/CURRENCY_NATIVE_EDGE_MVP.md`](docs/ml/CURRENCY_NATIVE_EDGE_MVP.md) | Release đang phục vụ UI |
+| [`reports/edge-benchmark/hi_medium_currency_native_policy_v1.md`](reports/edge-benchmark/hi_medium_currency_native_policy_v1.md) | 15 bảng benchmark khoa học của release HI-Medium |
 | [`docs/ml/FIN-07-FUSION-001.md`](docs/ml/FIN-07-FUSION-001.md) | Fusion IF + Graph |
 | [`docs/ml/FIN-07-ML-004_Ke_hoach_MEGA_PNA.md`](docs/ml/FIN-07-ML-004_Ke_hoach_MEGA_PNA.md) | Kế hoạch MEGA-PNA |
 | [`docs/ml/MEGA_PNA_RUNBOOK.md`](docs/ml/MEGA_PNA_RUNBOOK.md) | Huấn luyện và benchmark MEGA-PNA |
