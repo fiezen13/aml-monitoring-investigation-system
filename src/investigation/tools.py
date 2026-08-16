@@ -4,6 +4,7 @@ import json
 import math
 import statistics
 import time
+from bisect import bisect_left
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -107,6 +108,31 @@ def _quantile(values: list[float], q: float) -> float:
     return ordered[low] * (high - position) + ordered[high] * (position - low)
 
 
+def _dwell_hours(
+    incoming: list[tuple[datetime, str, str, float]],
+    outgoing: list[tuple[datetime, str, str, float]],
+) -> list[float]:
+    """Khoảng thời gian tiền nằm lại: mỗi lần nhận tới lần chuyển đi kế tiếp.
+
+    Tìm bằng tìm kiếm nhị phân chứ không quét tuyến tính. ``outgoing`` đã được
+    sắp theo thời gian từ ``events.sort()``, nên "phần tử đầu tiên >= mốc nhận"
+    chính là ``bisect_left`` — cùng một kết quả, nhưng O(n log n) thay vì O(n²).
+
+    Bậc hai ở đây không phải chuyện lý thuyết: ``GetAnomalyExplanation`` tính
+    đặc trưng cho 500 tài khoản tham chiếu, và chỉ cần một tài khoản trung
+    chuyển lớn là tích incoming × outgoing lên tới hàng trăm triệu phép so sánh.
+    Trên môi trường thật, worker chiếm 389% CPU và phiên điều tra không bao giờ
+    kết thúc.
+    """
+    outgoing_times = [event[0] for event in outgoing]
+    dwell: list[float] = []
+    for incoming_time, *_ in incoming:
+        index = bisect_left(outgoing_times, incoming_time)
+        if index < len(outgoing_times):
+            dwell.append((outgoing_times[index] - incoming_time).total_seconds() / 3600)
+    return dwell
+
+
 def _either_direction(param: str) -> str:
     """Điều kiện "tài khoản này ở một trong hai đầu giao dịch", dạng đi được chỉ mục.
 
@@ -155,12 +181,7 @@ def _observed_from_rows(
         elif prior_incoming and timestamp - prior_incoming <= timedelta(hours=2):
             rapid_amount += amount
 
-    dwell_hours: list[float] = []
-    outgoing_times = [event[0] for event in outgoing]
-    for incoming_time, *_ in incoming:
-        next_out = next((out_time for out_time in outgoing_times if out_time >= incoming_time), None)
-        if next_out:
-            dwell_hours.append((next_out - incoming_time).total_seconds() / 3600)
+    dwell_hours = _dwell_hours(incoming, outgoing)
 
     historical_counterparties: set[str] = set()
     for row in history:
@@ -215,12 +236,7 @@ def _behavior_from_rows(
         elif prior_incoming and timestamp - prior_incoming <= timedelta(hours=2):
             rapid_amount += amount
 
-    dwell_hours: list[float] = []
-    outgoing_times = [event[0] for event in outgoing]
-    for incoming_time, *_ in incoming:
-        next_out = next((out_time for out_time in outgoing_times if out_time >= incoming_time), None)
-        if next_out:
-            dwell_hours.append((next_out - incoming_time).total_seconds() / 3600)
+    dwell_hours = _dwell_hours(incoming, outgoing)
 
     historical_counterparties: set[str] = set()
     for row in history:
