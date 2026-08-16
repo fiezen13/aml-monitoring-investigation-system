@@ -278,6 +278,14 @@ class InvestigationWorkflow:
                 last_validation = critic_result.output
                 METRICS.critic_duration.record(time.monotonic() - critic_started)
                 METRICS.critic_validations.add(1, attrs(status=last_validation.status.lower()))
+                # Điểm chất lượng của chính lần kiểm chứng này: 1 nếu bản giải
+                # thích vượt qua bộ phản biện tất định, 0 nếu không. Prometheus
+                # lấy trung bình theo cửa sổ thời gian để ra `quality_avg` —
+                # tính trung bình ở đây sẽ khoá cứng cửa sổ vào mã nguồn.
+                METRICS.quality_score.set(
+                    1.0 if last_validation.status == "PASS" else 0.0,
+                    attrs(agent=critic.name),
+                )
                 issue_map = {
                     "UNSUPPORTED_CLAIM": "unsupported_claim",
                     "MISSING_EVIDENCE": "missing_evidence",
@@ -348,13 +356,25 @@ class InvestigationWorkflow:
 
             final_status = InvestigationStatus.INSUFFICIENT_EVIDENCE
             METRICS.agent_iterations.record(self.settings.max_agent_iterations, attrs(status="limit_or_insufficient"))
-            if tool_count < self.settings.max_tool_calls:
+            tool_budget_spent = tool_count >= self.settings.max_tool_calls
+            if not tool_budget_spent:
                 METRICS.supervisor_limit_reached.add(1, attrs(limit="iterations"))
+            # Nói rõ ngân sách nào thực sự cạn. Câu chung "tác tử/công cụ" buộc
+            # chuyên viên phải mở nhật ký mới biết nên nới vòng lặp hay nới số
+            # lần gọi công cụ — hai cách xử lý khác hẳn nhau.
+            failure_reason = (
+                f"Kiểm chứng bằng chứng chưa đạt: đã dùng hết {tool_count}/{self.settings.max_tool_calls} "
+                "lượt gọi công cụ được cấu hình."
+                if tool_budget_spent
+                else f"Kiểm chứng bằng chứng chưa đạt: đã dùng hết {iteration}/"
+                f"{self.settings.max_agent_iterations} vòng lặp được cấu hình "
+                f"(mới dùng {tool_count}/{self.settings.max_tool_calls} lượt gọi công cụ)."
+            )
             self.repository.update_state(
                 investigation_id,
                 status=final_status,
                 workflow_state=WorkflowState.COMPLETED,
-                failure_reason="Kiểm chứng bằng chứng chưa đạt trong giới hạn tác tử/công cụ đã cấu hình.",
+                failure_reason=failure_reason,
                 completed=True,
             )
             self.repository.add_trace(
@@ -365,6 +385,19 @@ class InvestigationWorkflow:
             )
             self._audit_completion(investigation_id, state.case_id, "investigation_completed")
         except Exception as exc:
+            # Phải rollback trước khi ghi bất cứ thứ gì.
+            #
+            # Nếu lỗi vừa rồi đến từ cơ sở dữ liệu, phiên làm việc đang ở trạng
+            # thái hỏng: mọi câu lệnh tiếp theo chỉ ném PendingRollbackError.
+            # Khi đó chính đoạn ghi "đã thất bại" bên dưới cũng ném, lỗi mới đè
+            # lên lỗi gốc, và bản ghi điều tra nằm nguyên ở QUEUED — không trạng
+            # thái, không lý do, không dấu vết. Người dùng thấy màn hình treo ở
+            # "đang chờ" vĩnh viễn và nhật ký chỉ nói PendingRollbackError.
+            #
+            # Rollback làm mất những gì đã ghi trong lượt chạy này, nhưng chúng
+            # cũng chưa từng được commit: cả quy trình chạy trong một giao dịch.
+            # Đổi lại, ta ghi được đúng nguyên nhân thật.
+            self.session.rollback()
             if isinstance(exc, GeminiServiceError):
                 self.repository.update_state(
                     investigation_id,

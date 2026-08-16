@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from src.worker.main import requeue_orphans
+from src.worker.main import _mark_failed, requeue_orphans
 
 
 def test_giao_lai_phien_mo_coi() -> None:
@@ -32,3 +32,25 @@ def test_loi_co_so_du_lieu_khong_giet_worker() -> None:
     ):
         assert requeue_orphans() == 0
         enqueue.assert_not_called()
+
+
+def test_ghi_that_bai_bang_phien_moi() -> None:
+    """Lưới an toàn phải mở phiên mới, và chỉ ghi khi trạng thái chưa kết thúc.
+
+    Dùng lại phiên cũ là vô nghĩa: nó thường đang hỏng, và đó chính là lý do
+    đường ghi lỗi trước đó đã thất bại.
+    """
+    with patch("src.worker.main.get_session") as session_ctx:
+        session = session_ctx.return_value.__enter__.return_value
+        _mark_failed("INV-9", RuntimeError("mất kết nối"))
+
+        session_ctx.assert_called_once()
+        sql = str(session.execute.call_args.args[0])
+        assert "status NOT IN" in sql
+        assert session.execute.call_args.args[1]["reason"].startswith("RuntimeError: ")
+
+
+def test_luoi_an_toan_khong_nem_tiep() -> None:
+    """Cứu hộ mà ném lỗi thì che mất lỗi gốc — điều cần chẩn đoán."""
+    with patch("src.worker.main.get_session", side_effect=RuntimeError("DB chết")):
+        _mark_failed("INV-9", ValueError("lỗi gốc"))
