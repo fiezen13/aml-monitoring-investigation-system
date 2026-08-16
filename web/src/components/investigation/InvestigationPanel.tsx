@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronRight, Play, RefreshCw, ShieldAlert, ShieldCheck, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronRight, Loader2, Play, RefreshCw, ShieldAlert, ShieldCheck, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api } from "../../api/client";
@@ -22,6 +22,8 @@ import { Panel } from "../common/Panel";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../common/States";
 
 const ACTIVE = new Set(["QUEUED", "INVESTIGATING"]);
+/** Nhịp hỏi lại khi tác tử đang chạy. Một phiên mất khoảng 40–90 giây. */
+const POLL_MS = 2000;
 // An investigation that stops for a human still produced the explanation that
 // sent it there, and that is the part a reviewer needs to read.
 const EXPLAINED = new Set(["COMPLETED", "NEEDS_HUMAN_REVIEW", "INSUFFICIENT_EVIDENCE"]);
@@ -57,11 +59,18 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
     [investigationId, latest.data?.status],
   );
 
+  // Hẹn giờ bám vào *trạng thái*, không bám vào cả đối tượng dữ liệu. Mỗi lượt
+  // hỏi thành công trả về một đối tượng mới, nên nếu để `latest.data` trong deps
+  // thì cứ hai giây React lại huỷ và tạo lại bộ đếm — nhịp hỏi trôi đi và có lúc
+  // dồn cục. Trạng thái chỉ đổi vài lần trong cả phiên, nên bộ đếm dựng đúng một
+  // lần cho mỗi giai đoạn.
+  const status = latest.data?.status;
+  const running = status !== undefined && ACTIVE.has(status);
   useEffect(() => {
-    if (!latest.data || !ACTIVE.has(latest.data.status)) return;
-    const timer = window.setInterval(latest.reload, 2000);
+    if (!running) return;
+    const timer = window.setInterval(latest.reload, POLL_MS);
     return () => window.clearInterval(timer);
-  }, [latest.data, latest.reload]);
+  }, [running, latest.reload]);
 
   async function start() {
     setStarting(true);
@@ -93,6 +102,9 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
     }
   }
 
+  // Chỉ vẽ khung chờ khi thật sự chưa có gì. Trong lúc tác tử chạy, mỗi hai giây
+  // lại có một lượt hỏi mới; thay cả bảng bằng khung chờ ở mỗi lượt là nguyên
+  // nhân khiến màn hình giật suốt cả phút.
   if (latest.loading) return <LoadingSkeleton rows={5} />;
   if (latest.error) return <ErrorState detail={latest.error} onRetry={latest.reload} />;
   if (!latest.data) {
@@ -121,8 +133,16 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
       <Panel
         title="Trạng thái điều tra"
         action={
-          <button type="button" onClick={latest.reload} className="text-ink-mid hover:text-ink-hi" aria-label="Làm mới">
-            <RefreshCw size={13} />
+          <button
+            type="button"
+            onClick={latest.reload}
+            className="text-ink-mid hover:text-ink-hi"
+            aria-label={latest.refreshing ? "Đang cập nhật" : "Làm mới"}
+          >
+            {/* Biểu tượng quay là dấu hiệu duy nhất cho biết màn hình còn sống
+                trong lúc chờ. Trước đây không có gì cả, nên một phiên dài trông
+                y hệt một phiên đã treo. */}
+            <RefreshCw size={13} className={latest.refreshing ? "animate-spin" : undefined} />
           </button>
         }
       >
@@ -136,6 +156,15 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
             vòng lặp {inv.iteration} · {inv.tool_call_count} lần gọi công cụ · ảnh chụp dữ liệu {formatDateTime(inv.snapshot_time)}
           </span>
         </div>
+        {running && (
+          // Nói rõ mất bao lâu. Không có câu này, người dùng nhìn "0 lần gọi
+          // công cụ" đứng yên vài chục giây và tưởng hệ thống hỏng.
+          <p className="mt-2 flex items-center gap-1.5 text-2xs text-ink-mid">
+            <Loader2 size={12} className="animate-spin" />
+            Tác tử đang chạy trong tiến trình nền, thường mất 40–90 giây. Màn hình tự cập nhật, không cần tải lại
+            trang.
+          </p>
+        )}
         {inv.failure_reason && <p className="mt-2 text-2xs text-risk">{investigationTextVi(inv.failure_reason)}</p>}
         <p className="mt-2 text-2xs text-ink-low">
           Không lưu chuỗi suy luận nội bộ. Dòng thời gian bên dưới chỉ gồm quyết định ngắn, công cụ và mã tham chiếu bằng chứng.
