@@ -68,7 +68,17 @@ export function WorldPage() {
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [replayT, setReplayT] = useState(100);
-  const [bottomOpen, setBottomOpen] = useState(true);
+  // Mặc định đóng dải phân tích. Ba biểu đồ dưới đáy đọc cùng bộ dữ liệu mà bản
+  // đồ đã thể hiện, nhưng chúng chiếm 172px chiều cao — đúng phần khiến bản đồ
+  // bị bó lại. Người cần vẫn mở được bằng nút ở góc phải dải.
+  const [bottomOpen, setBottomOpen] = useState(false);
+
+  // Nhãn ngắn cho huy hiệu góc bản đồ. "IBM AML LI-Small currency-native" quá
+  // dài cho một dòng chip, nhưng phần "IBM AML" thì mọi màn hình đều đã nói rồi.
+  const datasetBadge = (world.data?.source_name ?? "")
+    .replace(/^IBM AML\s*/i, "")
+    .toUpperCase()
+    .trim() || "CHƯA XÁC ĐỊNH";
   const [selFlow, setSelFlow] = useState<string | null>(null);
   const [selHub, setSelHub] = useState<string | null>(null);
 
@@ -274,7 +284,11 @@ export function WorldPage() {
         {/* --- Cột trái: bộ lọc --- */}
         <aside className="flex flex-none flex-col gap-3.5 border-b border-line bg-side p-3.5 lg:min-w-[216px] lg:flex-[0_3_300px] lg:overflow-y-auto lg:border-b-0 lg:border-r">
           <div className="rounded-[9px] border border-line bg-panel p-2.5">
-            <div className="text-3xs font-semibold uppercase tracking-[0.09em] text-ink-dim">Dữ liệu HI-Medium</div>
+            {/* Tên bộ dữ liệu đọc từ payload, không viết cứng: trang này từng
+                ghi "HI-Medium" trong khi máy chủ phục vụ LI-Small. */}
+            <div className="text-3xs font-semibold uppercase tracking-[0.09em] text-ink-dim">
+              Dữ liệu {world.data?.source_name ?? "chưa xác định"}
+            </div>
             <p className="mt-1 text-2xs leading-relaxed text-ink-soft">{world.data?.limitation}</p>
           </div>
           <div>
@@ -353,7 +367,8 @@ export function WorldPage() {
 
           <p className="border-t border-line-soft pt-2.5 text-2xs leading-relaxed text-ink-low">
             Kéo để xoay · cuộn để phóng · rê chuột lên cung để xem chi tiết · nhấp vào cung hoặc trung tâm để mở
-            bảng thanh tra · nháy đúp nền để đặt lại. Đây là rollup từ giao dịch HI-Medium đã được model chấm.
+            bảng thanh tra · nháy đúp nền để đặt lại. Đây là rollup từ giao dịch{" "}
+            {world.data?.source_name ?? "đã nạp"} đã được model chấm.
           </p>
         </aside>
 
@@ -383,7 +398,7 @@ export function WorldPage() {
           <div className="absolute left-3.5 top-3 z-hud flex items-center gap-2 rounded-chip border border-line-strong bg-raised/85 px-3 py-1 text-meta backdrop-blur">
             <PulseDot tone={world.error ? "risk" : "ok"} />
             <span className={`font-mono tracking-[0.08em] ${world.error ? "text-risk-soft" : "text-ok-soft"}`}>
-              {world.error ? "MẤT KẾT NỐI" : world.loading ? "ĐANG TẢI" : "HI-MEDIUM · CURRENCY-NATIVE"}
+              {world.error ? "MẤT KẾT NỐI" : world.loading ? "ĐANG TẢI" : datasetBadge}
             </span>
           </div>
 
