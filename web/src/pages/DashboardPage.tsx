@@ -34,26 +34,10 @@ import type { ApiAlert } from "../api/client";
  * hàng đợi ưu tiên, thứ analyst thực sự phải làm gì đó với nó.
  */
 
-const BENCHMARK_LABEL: Record<string, string> = {
-  precision_at_50: "Chính xác trong 50 cảnh báo đầu",
-  recall_at_50: "Bao phủ trong 50 cảnh báo đầu",
-  false_positive_rate_hard_negative: "Dương tính giả trên mẫu âm khó",
-  detection_lead_time_days: "Thời gian phát hiện sớm",
-  alert_to_case_conversion: "Cảnh báo thành vụ việc",
-  evidence_coverage: "Độ phủ bằng chứng",
-  f1_mean_5_seeds: "F1 trung bình 5 seed",
-  f1_primary_seed: "F1 seed chính",
-  f1_sample_std_5_seeds: "Độ lệch chuẩn F1 qua 5 seed",
-  pr_auc_primary_seed: "PR-AUC seed chính",
-  precision_primary_seed: "Precision seed chính",
-  recall_primary_seed: "Recall seed chính",
-};
-
 export function DashboardPage() {
   const navigate = useNavigate();
   const dashboard = useApi(() => api.dashboard(), []);
   const world = useApi(() => api.world(), []);
-  const benchmarks = useApi(() => api.benchmarks(), []);
 
   const d = dashboard.data;
 
@@ -156,23 +140,6 @@ export function DashboardPage() {
     };
   }, [world.data]);
 
-  const benchSpec = useMemo<ChartSpec | null>(() => {
-    const rows = benchmarks.data;
-    if (!rows?.length) return null;
-    // Chỉ lấy chỉ số thang 0–1 để một trục chung còn có nghĩa; lead time tính
-    // bằng ngày nên để riêng ở màn hình Benchmarks.
-    const ratio = rows.filter((row) => row.metric_value <= 1 && row.target_value != null);
-    if (!ratio.length) return null;
-    return {
-      type: "bars",
-      labels: ratio.map((row) => (BENCHMARK_LABEL[row.metric_name] ?? row.metric_name).slice(0, 24)),
-      series: [
-        { name: "Đạt được", data: ratio.map((row) => row.metric_value), color: toneColor("primary") },
-        { name: "Ngưỡng yêu cầu", data: ratio.map((row) => row.target_value!), color: toneColor("neutral") },
-      ],
-    };
-  }, [benchmarks.data]);
-
   const queueColumns: Column<ApiAlert>[] = [
     {
       key: "alert_id",
@@ -271,15 +238,6 @@ export function DashboardPage() {
           </div>
 
           <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
-            <ChartCard
-              title="Đánh giá release HI-Medium"
-              subtitle="Test split khóa trước; F1 trung bình được tính trên 5 seed"
-              height={176}
-              spec={benchSpec}
-              tools={["data", "dl", "full"]}
-              state={benchmarks.loading ? "loading" : benchSpec ? "ok" : "empty"}
-              note="Các chỉ số mô hình là kết quả đánh giá offline; hiệu quả xử lý cảnh báo phải được theo dõi riêng khi vận hành."
-            />
             <Panel title="Nhóm hành vi gợi ý" subtitle="Gợi ý trên tập cảnh báo, chưa phải kết luận điều tra">
               <div className="flex items-center gap-3">
                 <div className="w-[118px] flex-none">
