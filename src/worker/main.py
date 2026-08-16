@@ -35,6 +35,7 @@ from src.observability.telemetry import (
     shutdown_observability,
     tracer,
 )
+from src.services import queue
 from src.services.queue import get_redis
 
 logger = logging.getLogger("fin07.worker")
@@ -95,6 +96,44 @@ def _start_heartbeat(ttl: int) -> None:
 
     threading.Thread(target=loop, name="worker-heartbeat", daemon=True).start()
     logger.info("Nhịp tim mỗi %.0fs, TTL %ds", interval, ttl)
+
+
+#: Phiên điều tra bị bỏ rơi: đã ghi vào cơ sở dữ liệu nhưng không còn tác vụ nào
+#: nhắc tới. Hàng đợi Redis dùng ``blpop`` — việc bị lấy ra *trước* khi chạy, nên
+#: worker tắt giữa chừng là mất việc. Bản ghi nằm lại ở QUEUED mãi mãi, và giao
+#: diện hiển thị "đang chờ" không bao giờ đổi, cũng không có lỗi nào để đọc.
+#:
+#: Ngưỡng năm phút: dài hơn mọi phiên điều tra bình thường (30–60 giây), nên
+#: không có nguy cơ nhân đôi việc đang chạy dở của một worker khác.
+_ORPHAN_SQL = """
+    SELECT investigation_id
+      FROM investigation
+     WHERE status IN ('QUEUED', 'INVESTIGATING')
+       AND updated_at < now() - make_interval(mins => 5)
+     ORDER BY created_at
+"""
+
+
+def requeue_orphans() -> int:
+    """Nhặt lại các phiên điều tra mồ côi lúc khởi động.
+
+    Chạy một lần khi worker lên, không định kỳ: thời điểm duy nhất sinh ra bản
+    ghi mồ côi là lúc worker chết, và ngay sau đó nó khởi động lại. Sửa ở đây là
+    đủ, mà không phải dựng thêm một vòng quét nền.
+    """
+    try:
+        with get_session() as session:
+            ids = list(session.execute(text(_ORPHAN_SQL)).scalars())
+    except Exception:  # noqa: BLE001 — không nối được DB thì để vòng lặp chính báo lỗi
+        logger.warning("Không kiểm tra được phiên điều tra mồ côi", exc_info=True)
+        return 0
+
+    for investigation_id in ids:
+        queue.enqueue("investigate_alert", {"investigation_id": investigation_id})
+        logger.info("Giao lại phiên điều tra bị bỏ rơi %s", investigation_id)
+    if ids:
+        logger.info("Đã giao lại %d phiên điều tra mồ côi", len(ids))
+    return len(ids)
 
 
 def handle_investigate_case(payload: dict[str, Any]) -> None:
@@ -321,6 +360,7 @@ def main() -> int:
     client = get_redis()
     beat()
     _start_heartbeat(settings.worker_heartbeat_ttl)
+    requeue_orphans()
     logger.info("Worker sẵn sàng, đang nghe hàng đợi %s", settings.worker_queue)
 
     while not _shutdown:
