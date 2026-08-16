@@ -226,7 +226,7 @@ export function AlertDetailPage() {
                 <Info size={12} className="mt-0.5 shrink-0" aria-hidden />
                 <p>
                   NT7 — mỗi điểm rủi ro luôn kèm danh sách yếu tố đóng góp có giá trị số. Điểm này đến từ bộ
-                  model currency-native transaction edge trên HI-Medium; vẫn cần người phân tích xác nhận.
+                  model currency-native transaction edge; vẫn cần người phân tích xác nhận.
                 </p>
               </div>
             </Panel>

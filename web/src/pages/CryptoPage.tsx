@@ -150,7 +150,7 @@ export function CryptoPage() {
       <ScreenTitle
         title="Truy vết tài sản mã hoá"
         meta={ledgerMode
-          ? "HI-Medium chỉ cung cấp giao dịch Bitcoin trong sổ tổng hợp; không có block, địa chỉ ví hay dữ liệu on-chain"
+          ? "Bộ dữ liệu IBM AML chỉ cung cấp giao dịch Bitcoin trong sổ tổng hợp; không có block, địa chỉ ví hay dữ liệu on-chain"
           : "Dữ liệu trên chuỗi là quan sát chắc chắn; việc gán dịch vụ và nối với chân ngân hàng là suy luận có xác suất"}
       />
 
@@ -224,7 +224,7 @@ export function CryptoPage() {
               <span>Độ tin cậy</span>
             </div>
             {data.loading && <Skeleton rows={8} />}
-            {!data.loading && !data.error && !transfers.length && <Empty text="HI-Medium không có giao dịch Bitcoin trong release đang phục vụ" />}
+            {!data.loading && !data.error && !transfers.length && <Empty text="Không có giao dịch Bitcoin trong release đang phục vụ" />}
             {transfers.map((t) => (
               <div
                 key={t.id}
@@ -273,7 +273,7 @@ export function CryptoPage() {
             {!data.loading && !data.error && !exposures.length && (
               <Empty
                 text="Chưa có nhãn phơi nhiễm nào"
-                hint={ledgerMode ? "HI-Medium không chứa nhãn địa chỉ hoặc dịch vụ on-chain." : undefined}
+                hint={ledgerMode ? "Bộ dữ liệu IBM AML không chứa nhãn địa chỉ hoặc dịch vụ on-chain." : undefined}
               />
             )}
             {exposures.map((e) => (
