@@ -92,7 +92,11 @@ async def nav_counts() -> NavCountsOut:
                            JOIN sar_draft sd USING (sar_draft_id)
                            WHERE ap.decision = 'pending')                             AS approvals,
                          (SELECT count(*) FROM alert
-                           WHERE status <> 'closed' AND risk_score >= 80)             AS critical"""
+                           WHERE status <> 'closed' AND risk_score >= 80)             AS critical,
+                         -- min/max đi qua transaction_time_idx nên gần như tức thì,
+                         -- không phải quét 6,1 triệu dòng.
+                         (SELECT min(occurred_at)::date FROM transaction)             AS data_period_start,
+                         (SELECT max(occurred_at)::date FROM transaction)             AS data_period_end"""
                 )
             )
             .mappings()

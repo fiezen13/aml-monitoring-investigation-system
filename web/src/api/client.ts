@@ -265,6 +265,9 @@ export interface FcNavCounts {
   alerts: number;
   approvals: number;
   critical: number;
+  /** Kỳ dữ liệu đang hiển thị, dạng ISO `YYYY-MM-DD`. */
+  data_period_start: string | null;
+  data_period_end: string | null;
 }
 
 export interface FcSearchHit {
