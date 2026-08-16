@@ -30,6 +30,7 @@ from src.investigation.schemas import (
     RiskComponent,
     TransactionPage,
     TransactionRecord,
+    TypologyAssignment,
     TypologyResult,
 )
 from src.observability.metrics import METRICS, attrs
@@ -104,6 +105,26 @@ def _quantile(values: list[float], q: float) -> float:
     if low == high:
         return ordered[low]
     return ordered[low] * (high - position) + ordered[high] * (position - low)
+
+
+def _either_direction(param: str) -> str:
+    """Điều kiện "tài khoản này ở một trong hai đầu giao dịch", dạng đi được chỉ mục.
+
+    Viết thẳng ``(from_account_key = :x OR to_account_key = :x)`` thì PostgreSQL
+    bỏ cả hai chỉ mục ``(account, occurred_at DESC)`` và quét tuần tự 6,1 triệu
+    dòng. Dựng sẵn tập ``transaction_id`` bằng hai lần dò chỉ mục rồi lọc theo
+    tập ấy cho **đúng cùng một tập kết quả**, nhưng chỉ chạm vài chục dòng.
+
+    Mốc thời gian ``:snapshot`` được lặp lại trong truy vấn con là có chủ đích:
+    thiếu nó, tập ứng viên phình ra toàn bộ lịch sử của tài khoản.
+    """
+    return f"""transaction_id IN (
+        SELECT transaction_id FROM transaction
+         WHERE from_account_key = :{param} AND occurred_at <= :snapshot
+        UNION
+        SELECT transaction_id FROM transaction
+         WHERE to_account_key = :{param} AND occurred_at <= :snapshot
+    )"""
 
 
 def _observed_from_rows(
@@ -361,11 +382,172 @@ class InvestigationTools:
         ):
             raise PermissionError("Tool account_key is outside the current investigation")
 
+    #: Khoá bắt buộc trong ``behavior_feature_snapshot.features`` để coi là ảnh
+    #: chụp có hợp nhất điểm. Thiếu bất kỳ khoá nào thì coi như không có.
+    _FUSION_KEYS = (
+        "isolation_forest_percentile",
+        "graph_percentile",
+        "isolation_forest_contribution",
+        "graph_contribution",
+        "champion",
+    )
+
+    def _fusion_snapshot(self, account_key: str, as_of_time: Any) -> dict[str, Any] | None:
+        """Ảnh chụp đặc trưng đã hợp nhất điểm cho đúng tài khoản và mốc thời gian.
+
+        ``scripts/load_fusion_release.py`` ghi phân vị và mức đóng góp của từng
+        nhánh vào ``behavior_feature_snapshot.features``, với ``as_of_time``
+        chính là ``created_at`` của cảnh báo sinh ra từ nó. Đây là chỗ duy nhất
+        cần đọc — không suy diễn, không tính lại điểm.
+        """
+        row = (
+            self.session.execute(
+                text(
+                    """SELECT snapshot_id, model_version, features
+                         FROM behavior_feature_snapshot
+                        WHERE account_key = :account AND as_of_time = :as_of
+                        ORDER BY created_at DESC
+                        LIMIT 1"""
+                ),
+                {"account": account_key, "as_of": as_of_time},
+            )
+            .mappings()
+            .first()
+        )
+        if not row:
+            return None
+        features = row["features"] or {}
+        if any(key not in features for key in self._FUSION_KEYS):
+            return None
+        return {"snapshot_id": row["snapshot_id"], "model_version": row["model_version"], **features}
+
+    @staticmethod
+    def _branch(percentile: Any, contribution: Any, source_ref: str) -> RiskComponent:
+        """Một nhánh detector trong bản hợp nhất.
+
+        Trọng số suy ngược từ ``contribution = weight × percentile`` (xem
+        ``src/fusion/model.py``). Phân vị bằng 0 thì trọng số không xác định —
+        báo 0 chứ không chia cho 0.
+
+        ``available`` giữ đúng nghĩa mà tác tử phản biện đang dựa vào: *nhánh
+        này có góp vào điểm cuối cùng hay không*. Biết phân vị nhưng trọng số
+        bằng 0 thì vẫn là không góp — nếu báo available ở đây, bộ phản biện sẽ
+        đòi bằng chứng đồ thị cho một nhánh chưa hề tham gia.
+        """
+        pct = float(percentile) if percentile is not None else 0.0
+        contrib = float(contribution) if contribution is not None else 0.0
+        if not math.isfinite(pct) or not math.isfinite(contrib):
+            pct, contrib = 0.0, 0.0
+        weight = contrib / pct if pct > 0 else 0.0
+        return RiskComponent(
+            score=round(min(max(pct, 0.0), 1.0), 6),
+            weight=round(min(max(weight, 0.0), 1.0), 6),
+            contribution=round(min(max(contrib, 0.0), 1.0), 6),
+            available=weight > 0,
+            source_ref=source_ref if weight > 0 else None,
+        )
+
+    def _risk_components(
+        self,
+        *,
+        alert_id: str,
+        account_key: str,
+        detector: str,
+        score: float,
+        as_of_time: Any,
+    ) -> tuple[dict[str, RiskComponent], bool, str | None]:
+        """Phân rã điểm rủi ro theo đúng những gì dữ liệu có.
+
+        Hai đường:
+
+        * Có bản phát hành hợp nhất cho cảnh báo này → đọc phân vị và mức đóng
+          góp thật của từng nhánh.
+        * Không có → điểm của bộ phát hiện là điểm cuối cùng, các nhánh còn lại
+          báo *không khả dụng* chứ không suy đoán giá trị.
+
+        Điểm cuối cùng luôn lấy từ bảng ``alert`` ở cả hai đường: công cụ này
+        giải thích điểm, không được phép tính lại điểm.
+        """
+        snapshot = self._fusion_snapshot(account_key, as_of_time)
+        if snapshot is not None:
+            champion = str(snapshot.get("champion", ""))
+            source_ref = f"behavior_feature_snapshot:{snapshot['snapshot_id']}"
+            if champion == "fusion":
+                # Nhánh rule chỉ có mặt trong bản hợp nhất ba nhánh; bản hai nhánh
+                # cũ không ghi hai khoá này và nhánh rule đúng là không tham gia.
+                has_rule = "rule_percentile" in snapshot and "rule_contribution" in snapshot
+                components = {
+                    "rule": (
+                        self._branch(snapshot["rule_percentile"], snapshot["rule_contribution"], source_ref)
+                        if has_rule
+                        else RiskComponent(score=0, weight=0, contribution=0, available=False)
+                    ),
+                    "anomaly": self._branch(
+                        snapshot["isolation_forest_percentile"],
+                        snapshot["isolation_forest_contribution"],
+                        source_ref,
+                    ),
+                    "graph": self._branch(snapshot["graph_percentile"], snapshot["graph_contribution"], source_ref),
+                }
+                branches = ", ".join(name for name, c in components.items() if c.available) or "none"
+                return (
+                    components,
+                    True,
+                    (
+                        f"Final score is the weighted fusion of the {branches} branch(es) recorded in "
+                        f"{source_ref} (fusion model {snapshot['model_version']}). A branch with zero weight "
+                        "was evaluated and selected out on validation, not omitted."
+                    ),
+                )
+            # Bản phát hành có chạy hợp nhất nhưng một nhánh đơn thắng ở bước
+            # kiểm định, nên điểm cuối cùng là điểm của nhánh đó. Nói thẳng tên
+            # nhánh thắng thay vì báo "không có hợp nhất".
+            winner = {"isolation_forest": "anomaly", "graph": "graph"}.get(champion, "anomaly")
+            components = {
+                name: RiskComponent(
+                    score=score if name == winner else 0,
+                    weight=1 if name == winner else 0,
+                    contribution=score if name == winner else 0,
+                    available=name == winner,
+                    source_ref=f"alert:{alert_id}" if name == winner else None,
+                )
+                for name in ("rule", "anomaly", "graph")
+            }
+            return (
+                components,
+                False,
+                (
+                    f"Fusion was evaluated for this release but the single '{champion}' detector was selected "
+                    f"as champion on validation, so its score is the authoritative final score. Recorded in "
+                    f"{source_ref}."
+                ),
+            )
+
+        source = {"rule": "rule", "ml": "anomaly", "graph": "graph"}[detector]
+        components = {
+            name: RiskComponent(
+                score=score if name == source else 0,
+                weight=1 if name == source else 0,
+                contribution=score if name == source else 0,
+                available=name == source,
+                source_ref=f"alert:{alert_id}" if name == source else None,
+            )
+            for name in ("rule", "anomaly", "graph")
+        }
+        return (
+            components,
+            False,
+            (
+                "No score-fusion release covers this alert; the alert detector score is the authoritative "
+                "final score. Other branches are unavailable, not inferred."
+            ),
+        )
+
     def get_risk_breakdown(self, raw: dict[str, Any]) -> ToolExecution:
         args = RiskArgs.model_validate(raw)
         row = (
             self.session.execute(
-                text("SELECT alert_id, account_key, detector, risk_score FROM alert WHERE alert_id = :id"),
+                text("SELECT alert_id, account_key, detector, risk_score, created_at FROM alert WHERE alert_id = :id"),
                 {"id": args.alert_id},
             )
             .mappings()
@@ -374,26 +556,19 @@ class InvestigationTools:
         if not row:
             raise LookupError(f"Không tìm thấy cảnh báo {args.alert_id}")
         score = round(float(row["risk_score"]) / 100, 6)
-        source = {"rule": "rule", "ml": "anomaly", "graph": "graph"}[row["detector"]]
-        components = {
-            name: RiskComponent(
-                score=score if name == source else 0,
-                weight=1 if name == source else 0,
-                contribution=score if name == source else 0,
-                available=name == source,
-                source_ref=f"alert:{args.alert_id}" if name == source else None,
-            )
-            for name in ("rule", "anomaly", "graph")
-        }
+        components, fusion_available, limitation = self._risk_components(
+            alert_id=args.alert_id,
+            account_key=row["account_key"],
+            detector=row["detector"],
+            score=score,
+            as_of_time=row["created_at"],
+        )
         result = RiskBreakdown(
             alert_id=args.alert_id,
             final_risk_score=score,
-            fusion_available=False,
+            fusion_available=fusion_available,
             components=components,
-            limitation=(
-                "This repository does not yet have a score-fusion runtime; the alert detector score is the "
-                "authoritative final score for this alert. Other branches are unavailable, not inferred."
-            ),
+            limitation=limitation,
         )
         evidence = self.repository.add_evidence(
             self.investigation_id,
@@ -424,6 +599,110 @@ class InvestigationTools:
             )
         return ToolExecution(result=result.model_dump(mode="json"), evidence=evidence)
 
+    #: Lấy giao dịch của **nhiều** tài khoản trong một lượt.
+    #:
+    #: Nối hai lần theo hai chỉ mục ``(account, occurred_at DESC)`` rồi UNION,
+    #: thay vì một mệnh đề OR — dấu OR khiến PostgreSQL không dùng được chỉ mục
+    #: nào trong hai. Cột ``owner`` cho biết dòng này thuộc về tài khoản tham
+    #: chiếu nào; một giao dịch nối hai tài khoản trong mẫu sẽ xuất hiện hai
+    #: lần, mỗi lần dưới một chủ sở hữu, đúng như khi hỏi riêng từng tài khoản.
+    _BATCH_WINDOW_SQL = """
+        WITH acct AS (SELECT unnest(CAST(:accounts AS text[])) AS account_key)
+        SELECT a.account_key AS owner, t.transaction_id, t.occurred_at,
+               t.from_account_key, t.to_account_key, t.amount, t.currency
+          FROM acct a
+          JOIN transaction t ON t.from_account_key = a.account_key
+         WHERE t.occurred_at > :start AND t.occurred_at <= :as_of
+        UNION
+        SELECT a.account_key AS owner, t.transaction_id, t.occurred_at,
+               t.from_account_key, t.to_account_key, t.amount, t.currency
+          FROM acct a
+          JOIN transaction t ON t.to_account_key = a.account_key
+         WHERE t.occurred_at > :start AND t.occurred_at <= :as_of
+    """
+
+    _BATCH_HISTORY_SQL = """
+        WITH acct AS (SELECT unnest(CAST(:accounts AS text[])) AS account_key)
+        SELECT a.account_key AS owner, t.transaction_id, t.occurred_at,
+               t.from_account_key, t.to_account_key, t.amount
+          FROM acct a
+          JOIN transaction t ON t.from_account_key = a.account_key
+         WHERE t.occurred_at <= :start
+        UNION
+        SELECT a.account_key AS owner, t.transaction_id, t.occurred_at,
+               t.from_account_key, t.to_account_key, t.amount
+          FROM acct a
+          JOIN transaction t ON t.to_account_key = a.account_key
+         WHERE t.occurred_at <= :start
+    """
+
+    def _reference_features(self, accounts: list[str], window: str) -> dict[str, dict[str, float | int]]:
+        """Đặc trưng hành vi của cả mẫu tham chiếu, bằng đúng hai truy vấn.
+
+        Bản trước gọi ``_behavior`` trong vòng lặp qua 500 tài khoản — 1.500
+        truy vấn cho **một** lần gọi công cụ. Trên máy chạy thử thì không ai
+        để ý; trên Cloud SQL, mỗi truy vấn mất vài giây vì đĩa chậm, và một
+        phiên điều tra kéo dài **44 phút**, trong đó 43 phút nằm ở riêng chỗ này.
+        Người dùng bấm "Điều tra" rồi không bao giờ thấy kết quả.
+
+        Phép tính không đổi: vẫn ``_behavior_from_rows`` trên đúng những dòng ấy,
+        chỉ khác là gom về theo tài khoản ở Python thay vì hỏi lại cơ sở dữ liệu
+        từng lần. Tài khoản không có giao dịch nào vẫn có mặt với danh sách rỗng,
+        y như khi hỏi riêng — bỏ nó đi sẽ làm lệch phân vị.
+        """
+        if not accounts:
+            return {}
+        as_of = self.state.snapshot_time
+        start = as_of - timedelta(days=WINDOW_DAYS[window])
+        params = {"accounts": accounts, "start": start, "as_of": as_of}
+
+        rows_by_account: dict[str, list[dict[str, Any]]] = {account: [] for account in accounts}
+        for row in self.session.execute(text(self._BATCH_WINDOW_SQL), params).mappings():
+            rows_by_account[row["owner"]].append(dict(row))
+
+        history_by_account: dict[str, list[dict[str, Any]]] = {account: [] for account in accounts}
+        for row in self.session.execute(text(self._BATCH_HISTORY_SQL), params).mappings():
+            history_by_account[row["owner"]].append(dict(row))
+
+        return {
+            account: _behavior_from_rows(account, rows_by_account[account], history_by_account[account])
+            for account in accounts
+        }
+
+    #: Giao dịch của **một** tài khoản trong cửa sổ, và toàn bộ lịch sử trước đó.
+    #:
+    #: Cả hai từng viết ``WHERE ... AND (from_account_key = :account OR
+    #: to_account_key = :account)``. Dấu OR ấy khiến PostgreSQL không dùng được
+    #: cả hai chỉ mục ``(account, occurred_at DESC)`` và rơi xuống quét tuần tự
+    #: 6,1 triệu dòng. Trên máy chạy thử thì vài trăm mili giây; trên Cloud SQL
+    #: là **hơn tám phút cho một lượt gọi công cụ** — và ``GetAccountBehavior``
+    #: là công cụ tác tử gọi gần như đầu tiên trong mọi phiên điều tra.
+    #:
+    #: Tách thành hai nhánh rồi UNION thì mỗi nhánh đi đúng một chỉ mục. Dùng
+    #: UNION chứ không UNION ALL, và có ``transaction_id`` trong cả hai nhánh,
+    #: để một giao dịch tự chuyển (nếu có) vẫn chỉ đếm một lần — đúng như mệnh
+    #: đề OR cũ.
+    _WINDOW_SQL = """
+        (SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount, currency
+           FROM transaction
+          WHERE from_account_key = :account AND occurred_at > :start AND occurred_at <= :as_of)
+        UNION
+        (SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount, currency
+           FROM transaction
+          WHERE to_account_key = :account AND occurred_at > :start AND occurred_at <= :as_of)
+        ORDER BY occurred_at, transaction_id
+    """
+
+    _HISTORY_SQL = """
+        (SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount
+           FROM transaction
+          WHERE from_account_key = :account AND occurred_at <= :start)
+        UNION
+        (SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount
+           FROM transaction
+          WHERE to_account_key = :account AND occurred_at <= :start)
+    """
+
     def _behavior(self, account_key: str, window: str) -> BehaviorResult:
         if not self.session.execute(
             text("SELECT EXISTS(SELECT 1 FROM account WHERE account_key = :account)"), {"account": account_key}
@@ -434,26 +713,14 @@ class InvestigationTools:
         rows = [
             dict(row)
             for row in self.session.execute(
-                text(
-                    """SELECT transaction_id, occurred_at, from_account_key, to_account_key,
-                              amount, currency
-                         FROM transaction
-                        WHERE occurred_at > :start AND occurred_at <= :as_of
-                          AND (from_account_key = :account OR to_account_key = :account)
-                        ORDER BY occurred_at, transaction_id"""
-                ),
+                text(self._WINDOW_SQL),
                 {"start": start, "as_of": as_of, "account": account_key},
             ).mappings()
         ]
         history = [
             dict(row)
             for row in self.session.execute(
-                text(
-                    """SELECT occurred_at, from_account_key, to_account_key, amount
-                         FROM transaction
-                        WHERE occurred_at <= :start
-                          AND (from_account_key = :account OR to_account_key = :account)"""
-                ),
+                text(self._HISTORY_SQL),
                 {"start": start, "account": account_key},
             ).mappings()
         ]
@@ -502,10 +769,10 @@ class InvestigationTools:
             elif args.direction == "out":
                 conditions.append("from_account_key = :account")
             else:
-                conditions.append("(from_account_key = :account OR to_account_key = :account)")
+                conditions.append(_either_direction("account"))
             params["account"] = args.account_key
         if args.counterparty:
-            conditions.append("(from_account_key = :counterparty OR to_account_key = :counterparty)")
+            conditions.append(_either_direction("counterparty"))
             params["counterparty"] = args.counterparty
         if args.start_time:
             conditions.append("occurred_at >= :start_time")
@@ -558,10 +825,24 @@ class InvestigationTools:
         )
         return ToolExecution(result=page.model_dump(mode="json"), evidence=evidence)
 
-    def get_graph_evidence(self, raw: dict[str, Any]) -> ToolExecution:
-        args = GraphEvidenceArgs.model_validate(raw)
-        rows = list(
-            self.session.execute(
+    def _graph_evidence_rows(self) -> list[dict[str, Any]]:
+        """Bằng chứng đồ thị dùng được cho phiên điều tra này.
+
+        Hai nguồn, theo thứ tự:
+
+        1. ``evidence`` của vụ việc — sổ bằng chứng bất biến, dành cho bộ phát
+           hiện nào ghi thẳng vào đó khi vụ việc đã tồn tại.
+        2. ``graph_detector_evidence`` — kho của bộ phát hiện chạy theo lô, khoá
+           theo (tài khoản, mốc thời gian). Bộ phát hiện chạy trước khi có vụ
+           việc nên không thể ghi vào nguồn 1.
+
+        Trước đây chỉ có nguồn 1, và vì không bộ phát hiện nào ghi vào đó, công
+        cụ luôn trả ``available: false`` — nhánh đồ thị trong sơ đồ kiến trúc
+        thực tế chưa từng chạy lần nào.
+        """
+        rows = [
+            dict(row)
+            for row in self.session.execute(
                 text(
                     """SELECT evidence_id, payload FROM evidence
                         WHERE case_id = :case_id AND source_table = 'graph_detector'
@@ -569,9 +850,46 @@ class InvestigationTools:
                 ),
                 {"case_id": self.state.case_id},
             ).mappings()
-        )
+        ]
+        if rows:
+            return rows
+        # Khoá theo mốc của CHÍNH cảnh báo, không phải ``snapshot_time`` của
+        # phiên điều tra. Hai mốc này cố ý khác nhau: ``snapshot_time`` là giao
+        # dịch gần nhất của tài khoản tại hoặc trước cảnh báo (neo dữ liệu),
+        # còn bộ phát hiện chạy theo mốc cắt cửa sổ của nó. Trên LI-Small chúng
+        # lệch nhau bảy ngày, và so khớp bằng ``snapshot_time`` không tìm thấy gì.
+        #
+        # Lấy mốc detector gần nhất *tại hoặc trước* cảnh báo, rồi trả về mọi
+        # mẫu hình ở đúng mốc đó — không trộn bằng chứng của hai cửa sổ.
+        return [
+            dict(row)
+            for row in self.session.execute(
+                text(
+                    """WITH alert_time AS (
+                           SELECT created_at FROM alert WHERE alert_id = :alert
+                       ),
+                       latest AS (
+                           SELECT max(g.as_of_time) AS as_of
+                             FROM graph_detector_evidence g, alert_time a
+                            WHERE g.account_key = :account AND g.as_of_time <= a.created_at
+                       )
+                       SELECT g.evidence_id, g.payload
+                         FROM graph_detector_evidence g, latest
+                        WHERE g.account_key = :account AND g.as_of_time = latest.as_of
+                        ORDER BY g.created_at DESC"""
+                ),
+                {"account": self.state.account_key, "alert": self.state.alert_id},
+            ).mappings()
+        ]
+
+    def get_graph_evidence(self, raw: dict[str, Any]) -> ToolExecution:
+        args = GraphEvidenceArgs.model_validate(raw)
+        rows = self._graph_evidence_rows()
         for row in rows:
-            payload = row["payload"]
+            # ``available`` và ``evidence_id`` do tầng này quyết định, nên bỏ ra
+            # khỏi payload trước khi dựng — nguồn nào lỡ lưu chúng cũng không
+            # làm hỏng lời gọi.
+            payload = {k: v for k, v in row["payload"].items() if k not in {"available", "evidence_id"}}
             if payload.get("pattern") and (not args.pattern or payload["pattern"] == args.pattern):
                 result = GraphEvidenceResult(**payload, evidence_id=row["evidence_id"], available=True)
                 transaction_refs = [edge.transaction_id for edge in result.edges]
@@ -603,11 +921,26 @@ class InvestigationTools:
             if not frontier:
                 break
             rows = self.session.execute(
+                # Cùng lý do như _WINDOW_SQL: tách OR thành hai nhánh đi chỉ mục.
+                # Ở đây mỗi nhánh còn giới hạn riêng rồi mới hợp lại — nếu chỉ
+                # đặt LIMIT ở ngoài, PostgreSQL vẫn phải dựng đủ cả hai nhánh.
                 text(
                     """SELECT transaction_id, from_account_key, to_account_key
-                         FROM transaction
-                        WHERE occurred_at > :start AND occurred_at <= :snapshot
-                          AND (from_account_key = ANY(:frontier) OR to_account_key = ANY(:frontier))
+                         FROM (
+                             (SELECT transaction_id, occurred_at, from_account_key, to_account_key
+                                FROM transaction
+                               WHERE from_account_key = ANY(:frontier)
+                                 AND occurred_at > :start AND occurred_at <= :snapshot
+                               ORDER BY occurred_at DESC, transaction_id DESC
+                               LIMIT :edge_limit)
+                             UNION
+                             (SELECT transaction_id, occurred_at, from_account_key, to_account_key
+                                FROM transaction
+                               WHERE to_account_key = ANY(:frontier)
+                                 AND occurred_at > :start AND occurred_at <= :snapshot
+                               ORDER BY occurred_at DESC, transaction_id DESC
+                               LIMIT :edge_limit)
+                         ) hop
                         ORDER BY occurred_at DESC, transaction_id DESC
                         LIMIT :edge_limit"""
                 ),
@@ -661,6 +994,35 @@ class InvestigationTools:
         path = Path(__file__).with_name("typologies.json")
         return json.loads(path.read_text(encoding="utf-8"))
 
+    def _typology_assignment(self, typology_code: str) -> TypologyAssignment | None:
+        """Dấu vết ánh xạ nhóm hành vi của chính cảnh báo đang điều tra.
+
+        Trả về None khi bản ghi không tồn tại hoặc nói về một mã khác: tác tử
+        chỉ được nhận thông tin ánh xạ đúng cho nhóm hành vi mà nó đang hỏi.
+        """
+        row = (
+            self.session.execute(
+                text(
+                    """SELECT typology_code, is_fallback, observed_signals,
+                              matched_required, matched_supporting, rationale
+                         FROM alert_typology_match WHERE alert_id = :alert"""
+                ),
+                {"alert": self.state.alert_id},
+            )
+            .mappings()
+            .first()
+        )
+        if not row or row["typology_code"] != typology_code:
+            return None
+        return TypologyAssignment(
+            typology_code=row["typology_code"],
+            is_fallback=bool(row["is_fallback"]),
+            observed_signals=list(row["observed_signals"] or []),
+            matched_required=list(row["matched_required"] or []),
+            matched_supporting=list(row["matched_supporting"] or []),
+            rationale=str(row["rationale"] or ""),
+        )
+
     def get_typology(self, raw: dict[str, Any]) -> ToolExecution:
         args = TypologyArgs.model_validate(raw)
         if not args.pattern and not args.typology_code:
@@ -676,7 +1038,7 @@ class InvestigationTools:
         )
         if not entry:
             raise LookupError("Không tìm thấy ánh xạ nhóm hành vi")
-        result = TypologyResult(**entry)
+        result = TypologyResult(**entry, assignment=self._typology_assignment(entry["typology_code"]))
         evidence = self.repository.add_evidence(
             self.investigation_id,
             evidence_type=EvidenceType.TYPOLOGY_MAPPING,
@@ -727,16 +1089,29 @@ class InvestigationTools:
         # Deterministic reference distribution from accounts active in the
         # same point-in-time window. This explains deviations; it does not
         # alter or approximate the detector score.
+        #
+        # Duyệt bảng `account` theo khoá chính rồi hỏi "tài khoản này có giao
+        # dịch trong cửa sổ không", thay vì gom DISTINCT trên toàn bộ giao dịch
+        # của cửa sổ. Cách cũ buộc PostgreSQL đọc hết vài triệu dòng rồi mới cắt
+        # 500 — trên Cloud SQL riêng câu ấy chạy **quá 10 phút**. Cách này dừng
+        # ngay khi đủ 500, mỗi lần hỏi là một lần dò chỉ mục.
+        #
+        # Mẫu chọn ra **không đổi**: vẫn là 500 tài khoản đứng đầu theo thứ tự
+        # khoá có giao dịch trong cửa sổ. Giữ nguyên là bắt buộc — đổi mẫu là đổi
+        # phân vị, và những kết luận đã lưu sẽ không còn tái lập được.
         active_accounts = list(
             self.session.execute(
                 text(
-                    """SELECT DISTINCT account_key FROM (
-                           SELECT from_account_key AS account_key FROM transaction
-                            WHERE occurred_at > :start AND occurred_at <= :snapshot
-                           UNION
-                           SELECT to_account_key AS account_key FROM transaction
-                            WHERE occurred_at > :start AND occurred_at <= :snapshot
-                       ) active ORDER BY account_key LIMIT 500"""
+                    """SELECT a.account_key
+                         FROM account a
+                        WHERE EXISTS (SELECT 1 FROM transaction t
+                                       WHERE t.from_account_key = a.account_key
+                                         AND t.occurred_at > :start AND t.occurred_at <= :snapshot)
+                           OR EXISTS (SELECT 1 FROM transaction t
+                                       WHERE t.to_account_key = a.account_key
+                                         AND t.occurred_at > :start AND t.occurred_at <= :snapshot)
+                        ORDER BY a.account_key
+                        LIMIT 500"""
                 ),
                 {
                     "start": self.state.snapshot_time - timedelta(days=WINDOW_DAYS[args.window]),
@@ -744,11 +1119,12 @@ class InvestigationTools:
                 },
             ).scalars()
         )
+        reference_features = self._reference_features(active_accounts, args.window)
         reference: dict[str, list[float]] = defaultdict(list)
         for account in active_accounts:
-            behavior = self._behavior(account, args.window)
+            computed = reference_features[account]
             for feature in candidate_features:
-                reference[feature].append(float(behavior.features[feature]))
+                reference[feature].append(float(computed[feature]))
         ranked: list[AnomalousFeature] = []
         for feature in candidate_features:
             value = float(target.features[feature])
