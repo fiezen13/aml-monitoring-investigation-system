@@ -25,7 +25,7 @@ def db_engine():
     return engine
 
 
-def test_rule_alert_runs_supervisor_explanation_critic_to_pass(db_engine):
+def test_rule_alert_runs_supervisor_explanation_critic_to_pass(db_engine, disable_authz):
     with db_engine.begin() as connection:
         alert_id = connection.execute(
             text("SELECT alert_id FROM alert WHERE detector = 'rule' ORDER BY alert_id LIMIT 1")
@@ -66,7 +66,7 @@ def test_rule_alert_runs_supervisor_explanation_critic_to_pass(db_engine):
         asyncio.run(assert_api_contracts())
 
 
-def test_graph_alert_without_detector_evidence_stops_at_configured_limits(db_engine):
+def test_graph_alert_without_detector_evidence_stops_at_configured_limits(db_engine, disable_authz):
     with db_engine.begin() as connection:
         alert_id = connection.execute(
             text("SELECT alert_id FROM alert WHERE detector = 'graph' ORDER BY alert_id LIMIT 1")
@@ -90,7 +90,7 @@ def test_graph_alert_without_detector_evidence_stops_at_configured_limits(db_eng
         assert any(issue.required_tool == "GetGraphEvidence" for issue in state.validation.issues)
 
 
-def test_anomaly_alert_collects_deterministic_feature_attribution(db_engine):
+def test_anomaly_alert_collects_deterministic_feature_attribution(db_engine, disable_authz):
     with db_engine.begin() as connection:
         alert_id = connection.execute(
             text("SELECT alert_id FROM alert WHERE detector = 'ml' ORDER BY alert_id LIMIT 1")
@@ -110,3 +110,114 @@ def test_anomaly_alert_collects_deterministic_feature_attribution(db_engine):
         evidence_types = {item.type for item in repository.list_evidence(investigation.investigation_id)}
         assert "BEHAVIOR_FEATURE" in evidence_types
         assert "ANOMALY_EXPLANATION" in evidence_types
+
+
+def _purge_investigation(session, investigation_id: str) -> None:
+    """Xoá nhãn do test tạo ra.
+
+    Kho nhãn là dữ liệu dùng để hiệu chỉnh ngưỡng; không dọn thì mỗi lần chạy
+    test lại thêm một nhãn giả vào đó.
+
+    Chỉ xoá được dòng nhãn: bản thân phiên điều tra kéo theo ``investigation_trace``
+    vốn là bảng chỉ-ghi-thêm (trigger ``deny_mutation``), và đó là chủ ý — nhật ký
+    điều tra không được phép xoá. Phiên điều tra của test nằm lại là chấp nhận
+    được, đúng như các test tích hợp đã có.
+    """
+    session.execute(
+        text("DELETE FROM review_feedback WHERE investigation_id = :id"),
+        {"id": investigation_id},
+    )
+
+
+def test_a_human_review_produces_a_queryable_label(db_engine, disable_authz):
+    """Vòng phản hồi phải để lại nhãn dùng được, không chỉ một dòng nhật ký.
+
+    Trước đây quyết định rà soát chỉ vào ``investigation.human_review`` (bị ghi
+    đè mỗi lần rà soát lại) và ``audit_log``. Cả hai đều không giữ điểm số tại
+    thời điểm ra quyết định — mà thiếu điểm thì nhãn không hiệu chỉnh được cho
+    cái gì.
+    """
+    with db_engine.begin() as connection:
+        alert = (
+            connection.execute(text("SELECT alert_id, risk_score, detector FROM alert ORDER BY alert_id LIMIT 1"))
+            .mappings()
+            .first()
+        )
+    if not alert:
+        pytest.skip("Không có cảnh báo nào trong cơ sở dữ liệu")
+
+    with get_session() as session:
+        repository = InvestigationRepository(session)
+        investigation = repository.create(alert["alert_id"], triggered_by="pytest")
+        session.execute(
+            text("UPDATE investigation SET status = 'COMPLETED' WHERE investigation_id = :id"),
+            {"id": investigation.investigation_id},
+        )
+        session.commit()
+
+        repository.review(
+            investigation.investigation_id,
+            user_id="U-001",
+            decision="CLOSE_AS_LIKELY_FALSE_POSITIVE",
+            reason="Kiểm tra tích hợp cho vòng phản hồi",
+        )
+        session.commit()
+
+        feedback = (
+            session.execute(
+                text(
+                    """SELECT decision, label, risk_score, detector, reviewed_by, investigation_status
+                         FROM review_feedback WHERE investigation_id = :id"""
+                ),
+                {"id": investigation.investigation_id},
+            )
+            .mappings()
+            .first()
+        )
+        # Kho nhãn là dữ liệu huấn luyện — không để nhãn của test nằm lại trong đó.
+        _purge_investigation(session, investigation.investigation_id)
+        session.commit()
+
+    assert feedback is not None
+    assert feedback["decision"] == "CLOSE_AS_LIKELY_FALSE_POSITIVE"
+    assert feedback["label"] == "NOT_SUSPICIOUS"
+    # Ảnh chụp điểm tại thời điểm quyết định — đây là phần khiến nhãn dùng được.
+    assert float(feedback["risk_score"]) == float(alert["risk_score"])
+    assert feedback["detector"] == alert["detector"]
+    assert feedback["reviewed_by"] == "U-001"
+
+
+def test_an_inconclusive_decision_is_not_labelled_as_a_false_positive(db_engine, disable_authz):
+    """ "Cần thêm thông tin" không phải nhãn âm — chuyên viên chưa kết luận."""
+    with db_engine.begin() as connection:
+        alert_id = connection.execute(
+            text("SELECT alert_id FROM alert ORDER BY alert_id DESC LIMIT 1")
+        ).scalar_one_or_none()
+    if not alert_id:
+        pytest.skip("Không có cảnh báo nào trong cơ sở dữ liệu")
+
+    with get_session() as session:
+        repository = InvestigationRepository(session)
+        investigation = repository.create(alert_id, triggered_by="pytest")
+        session.execute(
+            text("UPDATE investigation SET status = 'INSUFFICIENT_EVIDENCE' WHERE investigation_id = :id"),
+            {"id": investigation.investigation_id},
+        )
+        session.commit()
+
+        repository.review(
+            investigation.investigation_id,
+            user_id="U-001",
+            decision="REQUEST_MORE_INFORMATION",
+            reason="Kiểm tra tích hợp cho nhãn chưa kết luận",
+        )
+        session.commit()
+
+        label = session.execute(
+            text("SELECT label FROM review_feedback WHERE investigation_id = :id"),
+            {"id": investigation.investigation_id},
+        ).scalar_one()
+        _purge_investigation(session, investigation.investigation_id)
+        session.commit()
+
+    assert label == "INCONCLUSIVE"

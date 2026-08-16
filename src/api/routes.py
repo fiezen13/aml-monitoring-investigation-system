@@ -2,13 +2,14 @@ import hashlib
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from opentelemetry import trace
 from sqlalchemy import text
 
-from src.agents.graph import agent
+from src.api import authz
+from src.config import get_settings
 from src.db.session import get_session
 from src.domain import (
     INVESTIGATION_CHAIN,
@@ -25,6 +26,8 @@ from src.investigation.schemas import (
     InvestigationPackage,
     InvestigationStartOut,
     InvestigationStatus,
+    ReviewFeedbackOut,
+    ReviewFeedbackPage,
     ReviewRequest,
     TraceEvent,
     WorkflowState,
@@ -39,8 +42,6 @@ from src.models.schemas import (
     CaseDetailOut,
     CaseOut,
     CaseTimelineStepOut,
-    ChatRequest,
-    ChatResponse,
     CustomerOut,
     DashboardOut,
     InternalAlertCreate,
@@ -85,25 +86,14 @@ def _audit_role(role: str) -> str:
 
 
 def _require_user(authorization: str | None) -> dict[str, Any]:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Phiên đăng nhập không tồn tại")
-    token_hash = hashlib.sha256(authorization[7:].encode()).hexdigest()
-    with get_session() as session:
-        row = (
-            session.execute(
-                text(
-                    """SELECT u.user_id, u.name, u.email, u.role, u.role_label, u.active, u.last_login
-                         FROM app_session s JOIN app_user u ON u.user_id = s.user_id
-                        WHERE s.token_hash = :token_hash AND s.expires_at > now() AND u.active"""
-                ),
-                {"token_hash": token_hash},
-            )
-            .mappings()
-            .first()
-        )
-    if row is None:
-        raise HTTPException(status_code=401, detail="Phiên đăng nhập đã hết hạn")
-    return dict(row)
+    """Người dùng của phiên hiện tại.
+
+    Cổng phân quyền ở ``src/api/authz.py`` đã giải mã token trước khi endpoint
+    chạy; ở đây gọi lại cùng một hàm để lấy bản ghi, thay vì lặp lại câu SQL.
+    Các endpoint còn cần nó vì phần kiểm tra riêng của chúng phụ thuộc *dữ liệu*
+    chứ không chỉ vai trò — ví dụ "người gửi không được tự phê duyệt hồ sơ".
+    """
+    return authz.resolve_user(authorization)
 
 
 @router.get("/auth/users", response_model=list[UserOut])
@@ -403,11 +393,7 @@ async def list_alerts(
          WHERE (CAST(:status AS text) IS NULL OR al.status = CAST(:status AS text))
            AND (CAST(:typology_code AS text) IS NULL OR al.typology_code = CAST(:typology_code AS text))
            AND al.risk_score >= :min_risk
-           AND EXISTS (
-               SELECT 1 FROM transaction_model_score s
-               JOIN edge_model_release r USING (release_id)
-                WHERE r.status='active' AND s.transaction_id=al.transaction_id
-           )
+
          ORDER BY al.risk_score DESC, al.created_at DESC
          LIMIT :limit
     """
@@ -450,11 +436,7 @@ async def list_alerts_page(
                OR ac.customer_id ILIKE :q_like
                OR c.occupation ILIKE :q_like
            )
-           AND EXISTS (
-               SELECT 1 FROM transaction_model_score s
-               JOIN edge_model_release r USING (release_id)
-                WHERE r.status='active' AND s.transaction_id=al.transaction_id
-           )
+
     """
     clean_q = q.strip() if q and q.strip() else None
     params = {
@@ -591,6 +573,7 @@ def create_internal_ml_alert(body: InternalAlertCreate) -> InternalAlertCreateOu
                 account_key=body.account_key,
                 risk_score=body.risk_score,
                 typology_code=body.typology_code,
+                features=body.features,
                 reasons=reasons,
                 as_of_ts=body.as_of_ts,
             )
@@ -648,18 +631,14 @@ async def dashboard() -> DashboardOut:
                        SELECT
                          -- "Chưa xử lý" là mọi cảnh báo chưa đóng, không chỉ cái chưa gom
                          -- vào vụ việc: một cảnh báo `grouped` vẫn đang chờ người xử lý.
-                         (SELECT count(*) FROM alert al
-                           WHERE status <> 'closed'
-                             AND EXISTS (
-                                 SELECT 1 FROM transaction_model_score s
-                                  WHERE s.transaction_id=al.transaction_id
-                                    AND s.release_id=(SELECT release_id FROM latest)))          AS open_alerts,
-                         (SELECT count(*) FROM alert al
-                           WHERE risk_score >= 80
-                             AND EXISTS (
-                                 SELECT 1 FROM transaction_model_score s
-                                  WHERE s.transaction_id=al.transaction_id
-                                    AND s.release_id=(SELECT release_id FROM latest)))          AS high_risk_alerts,
+                         --
+                         -- Đếm trên TOÀN BỘ cảnh báo, không giới hạn theo edge-model
+                         -- release. Nhánh rule và nhánh anomaly chấm điểm ở cấp tài
+                         -- khoản nên `alert.transaction_id` là NULL; điều kiện cũ loại
+                         -- sạch chúng, và bảng điều khiển báo 0 trong khi hàng đợi có
+                         -- hai vạn cảnh báo. Các số liệu theo lô nằm riêng bên dưới.
+                         (SELECT count(*) FROM alert WHERE status <> 'closed')                  AS open_alerts,
+                         (SELECT count(*) FROM alert WHERE risk_score >= 80)                    AS high_risk_alerts,
                          (SELECT count(*) FROM aml_case
                            WHERE state NOT IN ('XuatHoSo', 'DongKhongBaoCao')
                              AND EXISTS (
@@ -670,18 +649,18 @@ async def dashboard() -> DashboardOut:
                            WHERE ap.decision = 'pending'
                              AND EXISTS (
                                  SELECT 1 FROM alert al WHERE al.case_id = sd.case_id))         AS sar_pending,
-                         (SELECT coalesce(avg(risk_score), 0) FROM alert al
-                           WHERE EXISTS (
-                               SELECT 1 FROM transaction_model_score s
-                                WHERE s.transaction_id=al.transaction_id
-                                  AND s.release_id=(SELECT release_id FROM latest)))            AS avg_risk_score,
+                         (SELECT coalesce(avg(risk_score), 0) FROM alert)                       AS avg_risk_score,
+                         -- Số liệu theo lô: chỉ có nghĩa khi đang có một edge-model
+                         -- release hoạt động. Không có thì phải trả 0, không được trả
+                         -- NULL — DashboardOut khai kiểu int, và NULL làm cả endpoint
+                         -- trả 500 thay vì hiện một bảng điều khiển rỗng.
                          (SELECT release_id FROM latest)                                        AS latest_batch_id,
                          (SELECT dataset FROM latest)                                           AS latest_source_name,
-                         (SELECT transaction_rows FROM latest)                                  AS transactions_analyzed,
-                         (SELECT transaction_rows FROM latest)                                  AS subjects_analyzed,
-                         (SELECT transaction_rows-triggered_rows FROM latest)                   AS subjects_below_threshold,
-                         (SELECT triggered_rows FROM latest)                                    AS subjects_triggered,
-                         (SELECT triggered_rows FROM latest)                                    AS batch_alerts_created"""
+                         coalesce((SELECT transaction_rows FROM latest), 0)                     AS transactions_analyzed,
+                         coalesce((SELECT transaction_rows FROM latest), 0)                     AS subjects_analyzed,
+                         coalesce((SELECT transaction_rows-triggered_rows FROM latest), 0)      AS subjects_below_threshold,
+                         coalesce((SELECT triggered_rows FROM latest), 0)                       AS subjects_triggered,
+                         coalesce((SELECT triggered_rows FROM latest), 0)                       AS batch_alerts_created"""
                 ),
             )
             .mappings()
@@ -691,13 +670,10 @@ async def dashboard() -> DashboardOut:
         distribution = (
             session.execute(
                 text(
+                    # Phân bố trên toàn bộ hàng đợi, không giới hạn theo edge-model
+                    # release — xem chú thích ở truy vấn bộ đếm phía trên.
                     """SELECT typology_code, count(*) AS alert_count
-                         FROM alert al
-                        WHERE EXISTS (
-                            SELECT 1 FROM transaction_model_score s
-                            JOIN edge_model_release r USING (release_id)
-                             WHERE r.status='active' AND s.transaction_id=al.transaction_id
-                        )
+                         FROM alert
                         GROUP BY typology_code
                         ORDER BY count(*) DESC, typology_code"""
                 ),
@@ -708,15 +684,7 @@ async def dashboard() -> DashboardOut:
 
         top = (
             session.execute(
-                text(
-                    _ALERT_SELECT
-                    + """ WHERE EXISTS (
-                            SELECT 1 FROM transaction_model_score s
-                            JOIN edge_model_release r USING (release_id)
-                             WHERE r.status='active' AND s.transaction_id=al.transaction_id
-                        )
-                        ORDER BY al.risk_score DESC, al.created_at DESC LIMIT 5"""
-                ),
+                text(_ALERT_SELECT + """ ORDER BY al.risk_score DESC, al.created_at DESC LIMIT 5"""),
             )
             .mappings()
             .all()
@@ -756,23 +724,24 @@ async def queue_stats() -> QueueStatsOut:
     return QueueStatsOut(depth=queue.queue_depth(), worker_alive=queue.worker_alive())
 
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
-    """Chat với AI agent."""
-    try:
-        result = await agent.ainvoke({"query": request.message})
-        return ChatResponse(
-            response=result.get("response", ""),
-            analysis=result.get("analysis", ""),
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
 @router.get("/status")
-async def agent_status():
-    """Kiểm tra trạng thái agent."""
-    return {"status": "ready", "agent": "LangGraph Agent v1.0"}
+async def agent_status() -> dict[str, Any]:
+    """Trạng thái của tầng tác tử điều tra.
+
+    Trước đây endpoint này trả về hằng số ``"LangGraph Agent v1.0"`` — tên của
+    khung mẫu trong ``src/agents/``, không phải tầng tác tử thật đang chạy điều
+    tra (``src/investigation/``). Giờ nó báo đúng thứ đang chạy và ngân sách an
+    toàn đang áp dụng.
+    """
+    settings = get_settings()
+    return {
+        "status": "ready",
+        "runtime": "fin07.investigation.workflow",
+        "agents": ["investigation_supervisor", "explanation_agent", "evidence_critic"],
+        "model": settings.gemini_model,
+        "max_agent_iterations": settings.max_agent_iterations,
+        "max_tool_calls": settings.max_tool_calls,
+    }
 
 
 # ---------------------------------------------------------------------
@@ -826,6 +795,57 @@ async def latest_alert_investigation(alert_id: str) -> InvestigationOut | None:
             {"id": alert_id},
         ).scalar_one_or_none()
         return InvestigationRepository(session).get(row) if row else None
+
+
+@router.get("/feedback/labels", response_model=ReviewFeedbackPage)
+async def list_review_feedback(
+    label: Literal["SUSPICIOUS", "NOT_SUSPICIOUS", "INCONCLUSIVE"] | None = None,
+    since: datetime | None = None,
+    limit: int = Query(default=500, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
+    authorization: str | None = Header(default=None),
+) -> ReviewFeedbackPage:
+    """Nhãn từ chuyên viên, dùng để hiệu chỉnh ngưỡng và huấn luyện lại.
+
+    Đây là đầu ra của vòng phản hồi: mỗi dòng là một quyết định của con người
+    kèm đúng điểm số mà họ nhìn thấy lúc ra quyết định. Không có endpoint này
+    thì nhãn nằm chết trong DB và mũi tên "learning loop" chỉ là hình vẽ.
+    """
+    user = _require_user(authorization)
+    if user["role"] not in {"analyst", "compliance_officer", "mlro"}:
+        raise HTTPException(status_code=403, detail="Vai trò này không được đọc nhãn rà soát")
+
+    filters = ["1=1"]
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
+    if label:
+        filters.append("label = :label")
+        params["label"] = label
+    if since:
+        filters.append("reviewed_at >= :since")
+        params["since"] = since
+    where = " AND ".join(filters)
+
+    with get_session() as session:
+        total = session.execute(text(f"SELECT count(*) FROM review_feedback WHERE {where}"), params).scalar_one()
+        rows = (
+            session.execute(
+                text(
+                    f"""SELECT feedback_id, investigation_id, alert_id, case_id, account_key,
+                               decision, label, reason, risk_score, detector, typology_code,
+                               typology_was_fallback, investigation_status, reviewed_by, reviewed_at
+                          FROM review_feedback WHERE {where}
+                         ORDER BY reviewed_at DESC, feedback_id
+                         LIMIT :limit OFFSET :offset"""
+                ),
+                params,
+            )
+            .mappings()
+            .all()
+        )
+    return ReviewFeedbackPage(
+        total=int(total),
+        items=[ReviewFeedbackOut.model_validate(dict(row)) for row in rows],
+    )
 
 
 @router.get("/investigations/{investigation_id}", response_model=InvestigationOut)

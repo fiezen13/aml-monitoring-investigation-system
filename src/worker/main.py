@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import signal
+import threading
 import time
 from datetime import UTC, datetime
 from types import FrameType
@@ -48,7 +49,12 @@ def _request_shutdown(signum: int, _frame: FrameType | None) -> None:
 
 
 def beat() -> None:
-    """Ghi nhịp tim. Healthcheck của container đọc đúng khoá này."""
+    """Ghi nhịp tim. Healthcheck của container đọc đúng khoá này.
+
+    Gọi từ luồng nền (xem ``_start_heartbeat``) chứ không từ vòng lặp chính:
+    nhịp tim phải trả lời "tiến trình còn sống và còn nói chuyện được với Redis",
+    không phải "đang rảnh".
+    """
     settings = get_settings()
     client = get_redis()
     client.set(settings.worker_heartbeat_key, str(time.time()), ex=settings.worker_heartbeat_ttl)
@@ -64,6 +70,31 @@ def beat() -> None:
         except (TypeError, ValueError, json.JSONDecodeError):
             logger.warning("oldest queued job has invalid metadata", extra={"queue": settings.worker_queue})
     METRICS.worker_oldest_queue_age.set(oldest_age, attrs(queue=settings.worker_queue))
+
+
+def _start_heartbeat(ttl: int) -> None:
+    """Đập nhịp tim ở luồng riêng, độc lập với tác vụ đang chạy.
+
+    Trước đây nhịp tim nằm ngay đầu vòng lặp chính, nên nó chỉ được ghi lại khi
+    worker rảnh. Một phiên điều tra mất ~30 giây — đúng bằng TTL — nên khoá hết
+    hạn giữa chừng và container bị đánh dấu ``unhealthy`` trong khi nó đang làm
+    việc bình thường. Tệ hơn: Docker `restart: unless-stopped` cộng với một
+    orchestrator tin vào healthcheck sẽ giết worker đúng lúc nó bận nhất.
+
+    Nhịp gấp ba lần TTL để mất một nhịp vì mạng chập chờn vẫn chưa hết hạn.
+    """
+    interval = max(1.0, ttl / 3)
+
+    def loop() -> None:
+        while not _shutdown:
+            try:
+                beat()
+            except Exception:  # noqa: BLE001 — mất một nhịp không được phép giết worker
+                logger.warning("Không ghi được nhịp tim, sẽ thử lại sau %.0fs", interval, exc_info=True)
+            time.sleep(interval)
+
+    threading.Thread(target=loop, name="worker-heartbeat", daemon=True).start()
+    logger.info("Nhịp tim mỗi %.0fs, TTL %ds", interval, ttl)
 
 
 def handle_investigate_case(payload: dict[str, Any]) -> None:
@@ -247,18 +278,52 @@ def process(raw: str) -> None:
                 METRICS.worker_duration.record(time.monotonic() - started, dimensions)
 
 
+def _serve_metrics(port: int) -> None:
+    """Phơi /metrics của chính tiến trình worker.
+
+    Vì sao cần: chỉ số OpenTelemetry sống **trong tiến trình** phát ra chúng.
+    API phơi /metrics của riêng nó, nhưng toàn bộ công việc của tầng tác tử —
+    lời gọi mô hình, token, độ trễ, kết quả phản biện — chạy ở đây, trong
+    worker. Không có cổng này thì Prometheus chỉ thấy chỉ số HTTP của API và
+    năm trong sáu nhóm chỉ số trên Grafana trống, dù hệ thống chạy đúng.
+    """
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - chữ ký của thư viện chuẩn
+            if self.path.rstrip("/") not in ("/metrics", ""):
+                self.send_error(404)
+                return
+            payload = generate_latest()
+            self.send_response(200)
+            self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *_args: Any) -> None:
+            """Im lặng: mỗi lần scrape một dòng log là nhiễu, không phải thông tin."""
+
+    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    threading.Thread(target=server.serve_forever, name="worker-metrics", daemon=True).start()
+    logger.info("Worker phơi chỉ số ở cổng %d", port)
+
+
 def main() -> int:
     settings = get_settings()
     initialize_observability(settings)
+    _serve_metrics(settings.worker_metrics_port)
     signal.signal(signal.SIGTERM, _request_shutdown)
     signal.signal(signal.SIGINT, _request_shutdown)
 
     client = get_redis()
     beat()
+    _start_heartbeat(settings.worker_heartbeat_ttl)
     logger.info("Worker sẵn sàng, đang nghe hàng đợi %s", settings.worker_queue)
 
     while not _shutdown:
-        beat()
         item = client.blpop([settings.worker_queue], timeout=int(settings.worker_poll_interval))
         if item is None:
             continue

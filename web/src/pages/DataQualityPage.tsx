@@ -25,10 +25,12 @@ const DIMENSION_LABEL: Record<string, string> = {
   validity: "Hợp lệ",
   consistency: "Nhất quán",
   uniqueness: "Duy nhất",
+  accuracy: "Chính xác",
 };
 
-const STATUS_COLOR: Record<string, string> = { ok: C.ok, warn: C.warn, fail: C.risk };
-const STATUS_LABEL: Record<string, string> = { ok: "Đạt", warn: "Cảnh báo", fail: "Không đạt" };
+// Khớp ràng buộc CHECK của bảng `data_quality_check`: pass / warn / fail.
+const STATUS_COLOR: Record<string, string> = { pass: C.ok, warn: C.warn, fail: C.risk };
+const STATUS_LABEL: Record<string, string> = { pass: "Đạt", warn: "Cảnh báo", fail: "Không đạt" };
 
 const ROLE_COLOR: Record<string, string> = {
   BANK: C.info,

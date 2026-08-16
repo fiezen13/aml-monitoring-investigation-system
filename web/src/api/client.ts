@@ -424,7 +424,8 @@ export interface FcAgentStep {
   tool: string;
   input_summary: string;
   output_summary: string;
-  status: "ok" | "error" | "skipped" | "blocked";
+  /** Khớp ràng buộc CHECK của `investigation_tool_call`, viết thường. */
+  status: "succeeded" | "failed" | "timeout" | "partial";
   started_at: string;
   duration_ms: number;
   evidence_refs: string[];
@@ -434,10 +435,11 @@ export interface FcAgentRun {
   id: string;
   case_id: string | null;
   alert_id: string | null;
-  tier: "A_INSTITUTION" | "B_REGULATOR" | "C_INVESTIGATION";
+  /** Tên tác tử trong `investigation_agent_run` — ba tác tử chạy nối tiếp. */
+  tier: "investigation_supervisor" | "explanation_agent" | "evidence_critic";
   started_at: string;
   finished_at: string | null;
-  status: "running" | "succeeded" | "failed" | "needs_human";
+  status: "running" | "succeeded" | "failed" | "timeout";
   model_version: string;
   conclusion: string;
   confidence: number | null;
@@ -468,7 +470,7 @@ export interface FcModelMonitor {
   metric_name: string;
   metric_value: number;
   drift_score: number | null;
-  status: "ok" | "watch" | "breach";
+  status: "healthy" | "watch" | "degraded";
 }
 
 export interface FcDataQuality {
@@ -481,7 +483,7 @@ export interface FcDataQuality {
   threshold: number;
   rows_checked: number;
   rows_failed: number;
-  status: "ok" | "warn" | "fail";
+  status: "pass" | "warn" | "fail";
   detail: string;
 }
 
