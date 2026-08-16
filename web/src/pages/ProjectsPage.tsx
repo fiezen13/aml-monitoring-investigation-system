@@ -47,7 +47,7 @@ export function ProjectsPage() {
       {data.error && <ErrorState detail={data.error} onRetry={data.reload} />}
       {!data.loading && !data.error && !projects.length && (
         <Empty
-          text="HI-Medium không cung cấp dữ liệu dự án token"
+          text="Bộ dữ liệu IBM AML không cung cấp dữ liệu dự án token"
           hint="Cần nguồn hợp đồng, holder và thanh khoản on-chain riêng; hệ thống không suy diễn từ giao dịch ngân hàng."
         />
       )}

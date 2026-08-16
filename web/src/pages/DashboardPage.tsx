@@ -358,7 +358,8 @@ export function DashboardPage() {
 
           <Panel title="Giới hạn cần biết" subtitle="Công bố kèm mọi kết quả">
             <p className="text-meta leading-relaxed text-ink-soft">
-              ML đang phục vụ release HI-Medium currency-native. Bản đồ dùng bảng tham chiếu bank-country của dự án;
+              ML đang phục vụ release {d?.latest_source_name ?? "chưa xác định"}. Bản đồ dùng bảng tham chiếu
+              bank-country của dự án;
               một phần quốc gia được gán cho ngân hàng hư cấu và không phải dữ liệu pháp vực từ IBM. Không dùng bản đồ
               để kết luận thẩm quyền pháp lý hoặc cộng giá trị giữa các currency.
             </p>
