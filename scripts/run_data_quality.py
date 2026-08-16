@@ -313,7 +313,13 @@ def run_monitor(session: Session) -> int:
                 },
             )
             written += 1
-        logger.info("%s  psi=%s  alert_rate=%.6f  n=%d", week.date(), f"{psi:.4f}" if psi else "—", metrics["alert_rate"], data["rows"])
+        logger.info(
+            "%s  psi=%s  alert_rate=%.6f  n=%d",
+            week.date(),
+            f"{psi:.4f}" if psi else "—",
+            metrics["alert_rate"],
+            data["rows"],
+        )
     return written
 
 

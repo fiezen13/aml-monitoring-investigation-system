@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.config import get_settings  # noqa: E402
+from src.services.typology_assignment import assign_from_graph_motifs  # noqa: E402
 
 DEFAULT_DB = ROOT / "data/processed/aml.duckdb"
 DEFAULT_SCORES = ROOT / "data/processed/fusion-v2/fusion_scores.parquet"
@@ -523,6 +524,33 @@ def _load_scores(
         ON CONFLICT (alert_id) DO NOTHING
         """,
         ("graph" if plan.champion == "graph" else "ml",),
+    )
+    # Nhóm hành vi suy từ mẫu hình đồ thị đã trúng, thay vì đóng dấu cứng T02.
+    # Luật nằm trong typologies.json; ở đây chỉ đưa tín hiệu vào.
+    motif_rows = pg.execute(
+        """
+        SELECT alert_id, fan_in_hit, fan_out_hit, gather_scatter_hit, cycle_hit
+          FROM stage_fusion_score WHERE triggered
+        """
+    ).fetchall()
+    typology_stats = assign_from_graph_motifs(
+        pg,
+        (
+            (
+                str(row[0]),
+                {
+                    "fan_in_hit": row[1],
+                    "fan_out_hit": row[2],
+                    "gather_scatter_hit": row[3],
+                    "cycle_hit": row[4],
+                },
+            )
+            for row in motif_rows
+        ),
+    )
+    print(
+        f"      typology: {typology_stats['matched']} suy tu tin hieu, {typology_stats['fallback']} dung mac dinh",
+        flush=True,
     )
     pg.execute(
         """

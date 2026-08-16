@@ -5,15 +5,6 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=5000, description="Tin nhắn từ user")
-
-
-class ChatResponse(BaseModel):
-    response: str = Field(..., description="Phản hồi từ agent")
-    analysis: str = Field(default="", description="Phân tích nội bộ")
-
-
 class CaseOut(BaseModel):
     case_id: str
     subject_account_key: str
@@ -248,8 +239,14 @@ class InternalAlertCreate(BaseModel):
 
     account_key: str = Field(..., min_length=3, max_length=128)
     risk_score: float = Field(..., ge=0, le=100, description="Thang 0-100 (UI/DB)")
-    typology_code: str = Field(default="T02", pattern=r"^T(0[1-9]|10)$")
+    # Bỏ trống để hệ thống suy nhóm hành vi từ ``features`` theo danh mục
+    # typologies.json. Chỉ điền khi cần ép cứng một mã.
+    typology_code: str | None = Field(default=None, pattern=r"^T(0[1-9]|10)$")
     reasons: list[InternalAlertReasonIn] = Field(..., min_length=3)
+    features: dict[str, float] | None = Field(
+        default=None,
+        description="Vector đặc trưng hành vi; dùng để suy nhóm hành vi",
+    )
     alert_id: str | None = Field(default=None, max_length=64)
     as_of_ts: datetime | None = None
     window: str = Field(default="7d", pattern=r"^(1d|7d)$")

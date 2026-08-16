@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     gemini_model: Literal["gemini-3.1-flash-lite"] = "gemini-3.1-flash-lite"
     gemini_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     gemini_max_retries: int = Field(default=2, ge=0, le=10)
+    # Đơn giá token, USD trên một triệu token. Mặc định 0 = chưa khai giá, và
+    # bảng điều khiển chi phí sẽ hiện 0 thay vì một con số bịa.
+    gemini_input_usd_per_mtok: float = Field(default=0.0, ge=0)
+    gemini_output_usd_per_mtok: float = Field(default=0.0, ge=0)
+    # Cổng phơi chỉ số của worker. Worker không phục vụ HTTP nghiệp vụ nào, nên
+    # cổng này chỉ dành cho Prometheus và không publish ra ngoài máy chủ.
+    worker_metrics_port: int = Field(default=9108, ge=1, le=65535)
 
     # Explainable investigation workflow. These are hard safety budgets, not
     # suggestions passed to a model.

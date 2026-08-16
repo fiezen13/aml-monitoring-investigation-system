@@ -83,10 +83,15 @@ export function DashboardPage() {
         note: `${triggeredPct}% giao dịch được chấm`,
       },
       {
-        label: "Cảnh báo từ lô dữ liệu",
-        value: d.batch_alerts_created,
+        // Phải là hàng đợi thật, không phải số giao dịch vượt ngưỡng của mô hình
+        // cạnh: hai con số đó khác nhau và nhãn "Cảnh báo" thì người đọc luôn
+        // hiểu là hàng đợi. Trước đây thẻ này hiện `batch_alerts_created`, vốn
+        // trùng y hệt thẻ "Vượt ngưỡng" bên cạnh và lệch hẳn với Trung tâm cảnh
+        // báo — mô hình cạnh chấm điểm giao dịch nhưng không sinh cảnh báo nào.
+        label: "Cảnh báo chưa xử lý",
+        value: d.open_alerts,
         tone: "risk" as Tone,
-        note: "nhóm ưu tiên cần xem xét",
+        note: "từ ba nhánh: luật, bất thường, đồ thị",
       },
       {
         label: "Vụ việc đang xử lý",

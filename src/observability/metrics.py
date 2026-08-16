@@ -41,6 +41,15 @@ class Fin07Metrics:
         self.gemini_input_tokens = meter.create_counter("fin07.gemini.input.tokens.total")
         self.gemini_output_tokens = meter.create_counter("fin07.gemini.output.tokens.total")
         self.gemini_retries = meter.create_counter("fin07.gemini.retries.total")
+        # Chi phí quy ra USD. Đơn giá lấy từ cấu hình (GEMINI_INPUT_USD_PER_MTOK /
+        # GEMINI_OUTPUT_USD_PER_MTOK) chứ không gắn cứng: bảng giá của nhà cung
+        # cấp thay đổi, và một con số sai ở đây sẽ lặng lẽ làm sai mọi báo cáo chi
+        # phí. Mặc định 0 nghĩa là "chưa khai giá", không phải "miễn phí".
+        self.gemini_cost_usd = meter.create_counter("fin07.gemini.cost.usd.total")
+        # Điểm chất lượng: tỷ lệ phiên điều tra vượt qua bộ phản biện tất định.
+        # Đây là định nghĩa duy nhất mà hệ thống tự đo được mà không cần con
+        # người chấm; xem docs/observability.
+        self.quality_score = meter.create_gauge("fin07.quality.score")
         self.investigations = meter.create_counter("fin07.investigations.total")
         self.investigation_duration = meter.create_histogram("fin07.investigation.duration.seconds")
         self.investigations_active = meter.create_up_down_counter("fin07.investigations.active")

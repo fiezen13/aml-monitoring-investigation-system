@@ -22,6 +22,22 @@ from src.observability.telemetry import record_safe_exception, tracer
 StructuredT = TypeVar("StructuredT", bound=BaseModel)
 
 
+def _record_cost(agent: str, model: str, input_tokens: int | None, output_tokens: int | None) -> None:
+    """Quy token ra USD theo đơn giá đã khai trong cấu hình.
+
+    Không khai giá (mặc định 0) thì không phát metric — thà bảng điều khiển
+    trống còn hơn hiện 0 đồng cho một lời gọi có tính phí.
+    """
+    settings = get_settings()
+    rate_in = settings.gemini_input_usd_per_mtok
+    rate_out = settings.gemini_output_usd_per_mtok
+    if rate_in <= 0 and rate_out <= 0:
+        return
+    cost = (input_tokens or 0) / 1e6 * rate_in + (output_tokens or 0) / 1e6 * rate_out
+    if cost > 0:
+        METRICS.gemini_cost_usd.add(cost, attrs(agent=agent, model=model))
+
+
 class GeminiServiceError(RuntimeError):
     """Normalized Gemini failure that never embeds credentials or payloads."""
 
@@ -159,6 +175,12 @@ class _GeminiObservation:
                 metadata.output_token_count, attrs(agent=self.agent_name, model=self.model)
             )
             self.span.set_attribute("gen_ai.usage.output_tokens", metadata.output_token_count)
+        _record_cost(
+            self.agent_name,
+            self.model,
+            metadata.input_token_count,
+            metadata.output_token_count,
+        )
         self.span.set_attribute("aml.genai.retry_count", retries)
         self.span.set_attribute("aml.genai.structured_output_valid", metadata.structured_output_valid)
         if metadata.response_id:

@@ -29,7 +29,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.db.session import get_session  # noqa: E402
 from src.services.if_alert_publish import (  # noqa: E402
-    DEFAULT_TYPOLOGY,
     MIN_REASONS,
     ML_WEIGHT,
     ensure_subject,
@@ -73,7 +72,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--scores", type=Path, default=DEFAULT_SCORES)
     p.add_argument("--window", default="7d", choices=("1d", "7d"))
     p.add_argument("--top-k", type=int, default=100, help="So mau diem cao nhat de tao alert")
-    p.add_argument("--typology", default=DEFAULT_TYPOLOGY, help="Typology ung vien (T01-T10)")
+    p.add_argument(
+        "--typology",
+        default=None,
+        help="Ep cung mot typology (T01-T10). Bo trong de suy tu dac trung hanh vi.",
+    )
     p.add_argument(
         "--dry-run",
         action="store_true",
@@ -272,10 +275,25 @@ def repair_subjects(session: Session, *, dry_run: bool = False) -> dict[str, Any
     }
 
 
+def _features_from_row(row: pd.Series) -> dict[str, Any]:
+    """Đặc trưng hành vi dùng để suy nhóm hành vi.
+
+    Chỉ lấy những cột thật sự có trong bảng điểm; cột vắng thì bỏ qua để bộ ánh
+    xạ không nhận nhầm một giá trị mặc định thành tín hiệu.
+    """
+    features: dict[str, Any] = {}
+    for name in FALLBACK_FEATURES:
+        value = row.get(name)
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            continue
+        features[name] = float(value)
+    return features
+
+
 def publish_rows(
     session: Session | None,
     rows: pd.DataFrame,
-    typology: str,
+    typology: str | None,
     *,
     dry_run: bool = False,
 ) -> dict[str, int]:
@@ -315,6 +333,7 @@ def publish_rows(
             account_key=account_key,
             risk_score=risk_score,
             typology_code=typology,
+            features=_features_from_row(row),
             reasons=reasons,
             as_of_ts=as_of_ts,
         )
@@ -336,7 +355,7 @@ def publish_rows(
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = _parse_args()
-    if not re.fullmatch(r"T(0[1-9]|10)", args.typology):
+    if args.typology is not None and not re.fullmatch(r"T(0[1-9]|10)", args.typology):
         raise SystemExit(f"--typology khong hop le: {args.typology}")
 
     if args.verify_subjects and args.repair_subjects:

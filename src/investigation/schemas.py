@@ -156,6 +156,22 @@ class GraphNeighborhoodResult(BaseModel):
     truncated: bool
 
 
+class TypologyAssignment(BaseModel):
+    """Mã nhóm hành vi này là kết luận hay chỉ là giá trị mặc định.
+
+    Tác tử phản biện dùng trường ``is_fallback`` để biết có được phép coi nhóm
+    hành vi như một dữ kiện hay không. Thiếu nó, mọi cảnh báo đều mang T02 và
+    mọi câu nhắc tới T02 đều trở thành nhận định không có bằng chứng.
+    """
+
+    typology_code: str
+    is_fallback: bool
+    observed_signals: list[str] = Field(default_factory=list)
+    matched_required: list[str] = Field(default_factory=list)
+    matched_supporting: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
 class TypologyResult(BaseModel):
     pattern: str
     typology_code: str
@@ -164,6 +180,10 @@ class TypologyResult(BaseModel):
     required_signals: list[str]
     supporting_signals: list[str]
     version: str
+    # Dấu vết ánh xạ cho chính cảnh báo đang điều tra, lấy từ
+    # ``alert_typology_match``. Không có bản ghi thì để None — nghĩa là cảnh báo
+    # có từ trước khi bật ánh xạ, chưa rõ mã đến từ đâu.
+    assignment: TypologyAssignment | None = None
 
 
 class AnomalousFeature(BaseModel):
@@ -358,3 +378,34 @@ class InvestigationPackage(BaseModel):
     missing_information: list[str]
     recommended_next_step: str
     requires_human_review: Literal[True] = True
+
+
+class ReviewFeedbackOut(BaseModel):
+    """Một nhãn do chuyên viên tạo ra, kèm ảnh chụp điểm lúc ra quyết định.
+
+    ``risk_score`` là điểm tại thời điểm rà soát chứ không phải điểm hiện tại của
+    cảnh báo: nạp một bản phát hành mới sẽ đổi điểm, và khi đó cặp (nhãn, điểm)
+    dùng để hiệu chỉnh ngưỡng sẽ sai nếu đọc điểm hiện hành.
+    """
+
+    feedback_id: str
+    investigation_id: str
+    alert_id: str | None = None
+    case_id: str | None = None
+    account_key: str
+    decision: str
+    label: Literal["SUSPICIOUS", "NOT_SUSPICIOUS", "INCONCLUSIVE"]
+    reason: str = ""
+    risk_score: float | None = None
+    detector: str | None = None
+    typology_code: str | None = None
+    #: True nghĩa là nhóm hành vi đi kèm nhãn này chỉ là giá trị mặc định.
+    typology_was_fallback: bool | None = None
+    investigation_status: str
+    reviewed_by: str
+    reviewed_at: datetime
+
+
+class ReviewFeedbackPage(BaseModel):
+    total: int
+    items: list[ReviewFeedbackOut]

@@ -77,12 +77,21 @@ def test_single_dashboard_is_correlated_and_question_driven() -> None:
     assert [path.name for path in paths] == ["fin07-observability.json"]
     dashboard = json.loads(paths[0].read_text(encoding="utf-8"))
     assert dashboard["uid"] == "fin07-observability"
-    assert dashboard["title"] == "FIN-07 — Tổng quan vận hành"
-    assert len(dashboard["panels"]) == 6
-    assert {panel["datasource"]["type"] for panel in dashboard["panels"]} == {"prometheus"}
-    assert dashboard["templating"]["list"] == []
-    for panel in dashboard["panels"]:
+    # Sáu nhóm chỉ số theo đặc tả: mỗi nhóm là một hàng, không hơn không kém.
+    rows = [panel for panel in dashboard["panels"] if panel["type"] == "row"]
+    assert [row["title"].split(" · ")[1] for row in rows] == [
+        "Latency",
+        "Traffic",
+        "Error",
+        "Cost",
+        "Tokens",
+        "Quality",
+    ]
+    charts = [panel for panel in dashboard["panels"] if panel["type"] != "row"]
+    assert {panel["datasource"]["type"] for panel in charts} == {"prometheus"}
+    for panel in charts:
         assert panel.get("description"), f"panel {panel.get('title')} has no operational question"
+        assert panel.get("targets"), f"panel {panel.get('title')} has no query"
 
     cockpit = (ROOT / "web/src/components/observability/GrafanaCockpit.tsx").read_text(encoding="utf-8")
     assert 'type CockpitView = "overview" | "logs" | "traces"' in cockpit

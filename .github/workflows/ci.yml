@@ -66,8 +66,11 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
 
-      - name: Cài ruff
-        run: pip install "$(grep '^ruff' requirements-dev.txt)"
+      # Chỉ cài đúng thứ ci/lint.sh cần, không cài cả requirements-dev:
+      # job này là cổng nhanh nhất trong pipeline và phải giữ được điều đó.
+      # pyyaml có mặt vì scripts/validate_observability.py đọc file YAML.
+      - name: Cài công cụ lint
+        run: pip install "$(grep '^ruff' requirements-dev.txt)" "$(grep '^pyyaml' requirements-dev.txt)"
 
       - run: ./ci/lint.sh
 

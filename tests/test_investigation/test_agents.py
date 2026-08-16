@@ -317,6 +317,81 @@ def test_critic_accepts_a_sourced_claim_that_names_a_counterparty_account():
     assert not [issue for issue in result.issues if issue.type == "UNSUPPORTED_CLAIM"]
 
 
+def test_critic_reads_a_negative_decimal_as_one_number():
+    """Số âm phải được đọc trọn vẹn, không bị cắt lấy phần thập phân.
+
+    Ca thật từ INV-3cee3f9e357c4c0cbb1c: câu nêu ``net_flow`` bằng ``-16.466031``
+    bị đánh trượt với lý do "Numeric values [466031.0] do not occur in cited
+    evidence". 466031 không phải con số nào trong câu — nó là phần thập phân bị
+    tách rời. Mọi cảnh báo có dòng tiền ròng âm đều vấp lỗi này ở cả ba vòng lặp
+    rồi kết thúc bằng INSUFFICIENT_EVIDENCE.
+    """
+    behavior = evidence(
+        EvidenceType.BEHAVIOR_FEATURE,
+        {"features": {"net_flow": -16.466031, "net_flow_percentile": 0.4}},
+        source="behavior_service",
+    )
+    explanation = Explanation(
+        summary="Cần rà soát",
+        risk_drivers=[],
+        claims=[
+            Claim(
+                claim_id="CLM-1",
+                claim="Dòng tiền ròng của tài khoản ở mức -16.466031, nằm tại phân vị 0.4.",
+                claim_type="FACT",
+                evidence_refs=[behavior.evidence_id],
+                confidence=1.0,
+            )
+        ],
+        facts=[],
+        inferences=[],
+        missing_information=[],
+        typologies=[],
+        confidence=0.9,
+        recommended_action="ESCALATE_TO_L2",
+    )
+    session = MagicMock()
+    session.execute.return_value.mappings.return_value.first.return_value = None
+    critic = EvidenceCriticAgent(session, FakeGeminiService(), "INV-1")
+    result = critic._deterministic_validate(explanation, [behavior])
+
+    assert not [issue for issue in result.issues if issue.type == "UNSUPPORTED_CLAIM"]
+
+
+def test_critic_still_catches_a_number_absent_from_evidence():
+    """Chốt chặn cho hướng ngược lại: nới regex không được làm hỏng việc kiểm số."""
+    behavior = evidence(
+        EvidenceType.BEHAVIOR_FEATURE,
+        {"features": {"net_flow": -16.466031}},
+        source="behavior_service",
+    )
+    explanation = Explanation(
+        summary="Cần rà soát",
+        risk_drivers=[],
+        claims=[
+            Claim(
+                claim_id="CLM-1",
+                claim="Dòng tiền ròng của tài khoản ở mức -99.5.",
+                claim_type="FACT",
+                evidence_refs=[behavior.evidence_id],
+                confidence=1.0,
+            )
+        ],
+        facts=[],
+        inferences=[],
+        missing_information=[],
+        typologies=[],
+        confidence=0.9,
+        recommended_action="ESCALATE_TO_L2",
+    )
+    session = MagicMock()
+    session.execute.return_value.mappings.return_value.first.return_value = None
+    critic = EvidenceCriticAgent(session, FakeGeminiService(), "INV-1")
+    result = critic._deterministic_validate(explanation, [behavior])
+
+    assert [issue for issue in result.issues if issue.type == "UNSUPPORTED_CLAIM"]
+
+
 @pytest.mark.asyncio
 async def test_critic_ignores_a_hallucinated_missing_evidence_objection():
     risk = risk_evidence("rule")

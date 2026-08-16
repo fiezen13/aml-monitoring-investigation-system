@@ -28,18 +28,41 @@ def main() -> int:
     document = json.loads(dashboards[0].read_text(encoding="utf-8"))
     if document.get("uid") != "fin07-observability":
         raise RuntimeError("The embedded dashboard UID must remain fin07-observability")
-    datasource_types = {panel.get("datasource", {}).get("type") for panel in document.get("panels", [])}
-    if datasource_types != {"prometheus"} or len(document.get("panels", [])) != 6:
-        raise RuntimeError("The overview must remain a focused six-panel Prometheus dashboard")
-    if document.get("templating", {}).get("list"):
-        raise RuntimeError("Overview filters belong in focused investigation views, not the main dashboard")
-    if any(not panel.get("description") for panel in document.get("panels", [])):
-        raise RuntimeError("Every cockpit panel must state its operational question")
+
+    panels = document.get("panels", [])
+    rows = [panel for panel in panels if panel.get("type") == "row"]
+    charts = [panel for panel in panels if panel.get("type") != "row"]
+
+    # Sáu nhóm chỉ số là hợp đồng của bảng điều khiển, không phải sở thích trình
+    # bày. Ràng buộc theo *nhóm* thay vì theo tổng số panel: thêm một biểu đồ vào
+    # nhóm sẵn có là việc thường ngày, còn thêm hoặc bỏ một nhóm thì đổi hẳn câu
+    # hỏi mà bảng này trả lời, và phải là một quyết định có chủ đích.
+    expected_rows = ["Latency", "Traffic", "Error", "Cost", "Tokens", "Quality"]
+    actual_rows = [str(row.get("title", "")).split("·")[-1].strip() for row in rows]
+    if actual_rows != expected_rows:
+        raise RuntimeError(f"Bảng điều khiển phải giữ đúng sáu nhóm {expected_rows}, đang có {actual_rows}")
+
+    if not charts:
+        raise RuntimeError("Sáu nhóm chỉ số nhưng không có biểu đồ nào")
+
+    # Chỉ ràng buộc panel có vẽ dữ liệu. Hàng tiêu đề không có nguồn dữ liệu, và
+    # bắt nó khai báo prometheus sẽ là một luật vô nghĩa.
+    datasource_types = {(chart.get("datasource") or {}).get("type") for chart in charts}
+    if datasource_types != {"prometheus"}:
+        raise RuntimeError(f"Mọi biểu đồ phải đọc từ Prometheus, đang thấy {datasource_types}")
+
+    if any(not chart.get("description") for chart in charts):
+        missing = [chart.get("title") for chart in charts if not chart.get("description")]
+        raise RuntimeError(f"Mỗi biểu đồ phải nêu rõ câu hỏi vận hành nó trả lời; thiếu ở {missing}")
+
+    if any(not chart.get("targets") for chart in charts):
+        missing = [chart.get("title") for chart in charts if not chart.get("targets")]
+        raise RuntimeError(f"Biểu đồ không có truy vấn là biểu đồ luôn trống; thiếu ở {missing}")
     cockpit = (ROOT / "web/src/components/observability/GrafanaCockpit.tsx").read_text(encoding="utf-8")
     for required in ('"overview" | "logs" | "traces"', 'uid: "loki"', 'uid: "jaeger"', "/grafana/explore?"):
         if required not in cockpit:
             raise RuntimeError(f"Focused logs/traces integration is missing {required}")
-    print(f"validated {len(yaml_files)} YAML files and {len(dashboards)} dashboards")
+    print(f"đã kiểm {len(yaml_files)} file YAML, {len(rows)} nhóm chỉ số và {len(charts)} biểu đồ")
     return 0
 
 

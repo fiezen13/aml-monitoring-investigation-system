@@ -24,9 +24,9 @@ from src.models.currency_native_edge import (  # noqa: E402
     sha256_file,
 )
 
-DEFAULT_DB = ROOT / "data/processed/hi_medium.duckdb"
-DEFAULT_MODEL = ROOT / "models/fin07_currency_native_policy_edge_v1.joblib"
-DEFAULT_OUTPUT = ROOT / "data/processed/edge-policy-v1/mvp_batch_scores.parquet"
+DEFAULT_DB = ROOT / "data/processed/aml.duckdb"
+DEFAULT_MODEL = ROOT / "models/fin07_currency_native_policy_edge_li_small_v1.joblib"
+DEFAULT_OUTPUT = ROOT / "data/processed/edge-policy-v1/li_small_batch_scores.parquet"
 
 
 def parse_args() -> argparse.Namespace:

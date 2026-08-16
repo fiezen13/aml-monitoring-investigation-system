@@ -30,13 +30,31 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
+  # Lấy chỉ số ứng dụng THẲNG từ API, không qua otel-collector.
+  #
+  # Cấu hình cũ trỏ vào `otel-collector:8889`, nhưng không có service nào tên
+  # otel-collector trong bất kỳ file compose nào của repo. Prometheus vì thế
+  # không bao giờ thu được một chỉ số fin07_* nào, và sáu nhóm chỉ số trên
+  # Grafana trống mà không có lỗi nào chỉ ra vì sao — target chỉ đơn giản là
+  # "down" trong một danh sách mà không ai nhìn.
+  #
+  # API đã phơi sẵn /metrics ở định dạng Prometheus, nên bỏ hẳn một tầng trung
+  # gian là cách gọn nhất: bớt một thành phần phải dựng và phải theo dõi.
   - job_name: fin07-application
+    metrics_path: /metrics
     static_configs:
-      - targets: ["otel-collector:8889"]
+      - targets: ["api:8000"]
+        labels:
+          service: api
 
-  - job_name: otel-collector
+  # Worker phải scrape riêng: chỉ số OpenTelemetry sống trong tiến trình phát ra
+  # chúng, và TOÀN BỘ công việc của tầng tác tử chạy ở worker, không ở API.
+  - job_name: fin07-worker
+    metrics_path: /metrics
     static_configs:
-      - targets: ["otel-collector:8888"]
+      - targets: ["worker:9108"]
+        labels:
+          service: worker
 
   # Máy chủ: CPU, RAM, đĩa, mạng.
   - job_name: node

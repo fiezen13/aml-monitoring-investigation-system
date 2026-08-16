@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
-"""Load the audited currency-native HI-Medium test release into PostgreSQL.
+"""ĐÃ NGỪNG DÙNG — bộ nạp bản phát hành HI-Medium, dựng cơ sở dữ liệu từ số không.
+
+Hệ thống đã chuyển hoàn toàn sang LI-Small và các artifact HI-Medium đã bị xoá,
+nên script này không còn chạy được với mặc định của nó.
+
+Hai lý do nữa khiến nó không dùng lại được:
+
+* Chốt ``_require_clean_schema`` đòi ``(customer, transaction, alert,
+  edge_model_release)`` đều bằng 0 — chỉ đúng lúc dựng cơ sở dữ liệu lần đầu.
+* Nó tự nạp giao dịch từ DuckDB của riêng nó, nên chạy trên một cơ sở dữ liệu
+  đã có dữ liệu là trộn hai bộ dữ liệu vào nhau.
+
+Muốn nạp một bản phát hành edge vào cơ sở dữ liệu đang có dữ liệu, dùng
+``scripts/load_edge_scores.py``.
+
+Giữ lại làm tham chiếu cho đường nạp-từ-đầu; xoá được khi không còn ai cần.
+
+Nguyên văn mô tả cũ:
+
+Load the audited currency-native HI-Medium test release into PostgreSQL.
 
 The loader refuses to merge with an existing business population.  It is
 intended to run immediately after a clean PostgreSQL reset, validates every
@@ -30,6 +49,7 @@ if str(ROOT) not in sys.path:
 
 from src.config import get_settings  # noqa: E402
 from src.models.currency_native_edge import load_bundle  # noqa: E402
+from src.services.typology_assignment import record_fallback  # noqa: E402
 
 DEFAULT_DB = ROOT / "data/processed/hi_medium.duckdb"
 DEFAULT_SCORES = ROOT / "data/processed/edge-policy-v1/hi_medium_test_scores.parquet"
@@ -92,8 +112,7 @@ def _sql_path(path: Path) -> str:
 
 def _export_gzip(duck: duckdb.DuckDBPyConnection, query: str, destination: Path) -> None:
     duck.execute(
-        f"COPY ({query}) TO '{_sql_path(destination)}' "
-        "(FORMAT CSV, HEADER FALSE, NULL '\\N', COMPRESSION GZIP)"
+        f"COPY ({query}) TO '{_sql_path(destination)}' (FORMAT CSV, HEADER FALSE, NULL '\\N', COMPRESSION GZIP)"
     )
 
 
@@ -213,8 +232,7 @@ def _require_clean_schema(pg: psycopg.Connection[Any]) -> None:
     ).fetchone()
     if counts != (0, 0, 0, 0):
         raise RuntimeError(
-            "refusing to merge the new release into existing business data; "
-            f"counts={counts}. Reset PostgreSQL first."
+            f"refusing to merge the new release into existing business data; counts={counts}. Reset PostgreSQL first."
         )
 
 
@@ -436,6 +454,29 @@ def _load_transactions_and_scores(
          WHERE s.triggered
         """,
         (plan.release_id,),
+    )
+    # Mô hình này chấm điểm ở mức giao dịch nên không sinh ra tín hiệu hành vi
+    # cấp tài khoản nào để đối chiếu với danh mục nhóm hành vi. Cảnh báo vẫn
+    # phải mang một mã (cột NOT NULL), nhưng phải ghi rõ đó là giá trị mặc định
+    # — nếu không, tác tử phản biện sẽ đòi bằng chứng cho một nhóm hành vi mà
+    # chưa ai khẳng định.
+    edge_alert_ids = [
+        str(row[0])
+        for row in pg.execute(
+            """
+            SELECT 'ALT-EDGE-' || substr(md5(%s || '|' || s.source_transaction_id), 1, 20)
+              FROM stage_edge_transaction s WHERE s.triggered
+            """,
+            (plan.release_id,),
+        ).fetchall()
+    ]
+    record_fallback(
+        pg,
+        edge_alert_ids,
+        reason=(
+            "Bản phát hành mô hình cạnh chấm điểm ở mức giao dịch, không có tín hiệu hành vi cấp tài "
+            "khoản để đối chiếu với danh mục nhóm hành vi; dùng mã mặc định."
+        ),
     )
     pg.execute("DROP TABLE stage_edge_transaction")
     pg.commit()

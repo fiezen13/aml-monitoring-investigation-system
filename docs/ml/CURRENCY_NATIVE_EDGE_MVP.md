@@ -87,7 +87,10 @@ dùng DuckDB như script trên; nếu chấm real-time, service phải duy trì 
 
 ## Kết quả và kiểm chứng
 
-- Báo cáo benchmark: `reports/edge-benchmark/hi_medium_currency_native_policy_v1.json`.
+- Báo cáo benchmark máy đọc được:
+  `reports/edge-benchmark/hi_medium_currency_native_policy_v1.json`.
+- Báo cáo khoa học gồm 15 bảng:
+  `reports/edge-benchmark/hi_medium_currency_native_policy_v1.md`.
 - Điểm từng giao dịch test: `data/processed/edge-policy-v1/hi_medium_test_scores.parquet`.
 - Model release: `models/fin07_currency_native_policy_edge_v1.joblib`.
 - Test chống static FX và leakage: `tests/test_models/test_currency_native_edge.py`.
@@ -129,9 +132,11 @@ Artifact đã được load lại sau khi ghi và đối chiếu checksum:
 Chạy kiểm chứng code:
 
 ```bash
+.venv/bin/python scripts/render_edge_benchmark_report.py --check
 .venv/bin/pytest tests/test_models/test_currency_native_edge.py -q
 .venv/bin/ruff check src/models/currency_native_edge.py \
   scripts/train_currency_native_edge.py scripts/score_currency_native_edge.py \
+  scripts/render_edge_benchmark_report.py \
   tests/test_models/test_currency_native_edge.py
 ```
 

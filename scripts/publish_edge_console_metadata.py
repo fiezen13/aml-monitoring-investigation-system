@@ -62,7 +62,13 @@ def main() -> int:
         checks = [
             ("DQ-EDGE-SCORE-COVERAGE", "Score coverage", "completeness", measured["rows"], 0),
             ("DQ-EDGE-AMOUNT", "Positive native amounts", "validity", measured["rows"], measured["invalid_amount"]),
-            ("DQ-EDGE-CURRENCY", "Native currency completeness", "completeness", measured["rows"], measured["missing_currency"]),
+            (
+                "DQ-EDGE-CURRENCY",
+                "Native currency completeness",
+                "completeness",
+                measured["rows"],
+                measured["missing_currency"],
+            ),
             ("DQ-EDGE-SCORE-RANGE", "Model score in [0,1]", "validity", measured["rows"], measured["invalid_score"]),
             ("DQ-EDGE-GEOGRAPHY", "Bank-country mapping coverage", "completeness", geo["rows"], geo["missing"]),
         ]

@@ -1,195 +1,633 @@
 {
-  "annotations": {
+  "uid": "fin07-observability",
+  "title": "FIN-07 — Sáu nhóm chỉ số",
+  "tags": [
+    "fin07",
+    "llm",
+    "observability"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
     "list": [
       {
-        "builtIn": 1,
-        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(255, 166, 0, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
+        "name": "agent",
+        "label": "Tác tử",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(fin07_gemini_requests_total, agent)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
-  "description": "Sáu tín hiệu cốt lõi để nhận biết tầng gây suy giảm. Logs và traces được tách sang Grafana Explore trên giao diện FIN-07.",
-  "editable": false,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 1,
-  "id": null,
-  "links": [],
-  "liveNow": false,
   "panels": [
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Các cuộc điều tra đang kết thúc theo trạng thái nào?",
+      "type": "row",
+      "title": "1 · Latency",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Độ trễ P50 / P95 / P99",
+      "description": "Thời gian một lời gọi mô hình, tính từ histogram fin07_gemini_request_duration_seconds.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 1
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line", "fillOpacity": 8, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
-          "min": 0,
-          "unit": "ops"
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
         },
         "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "id": 1,
-      "options": {
-        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
-          "editorMode": "code",
-          "expr": "sum by (status) (rate(fin07_investigations_total{status=~\"completed|failed|needs_human_review|insufficient_evidence\"}[15m]))",
-          "legendFormat": "{{status}}",
-          "range": true,
-          "refId": "A"
+          "refId": "A",
+          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(fin07_gemini_request_duration_seconds_bucket{agent=~\"$agent\"}[5m])))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_gemini_request_duration_seconds_bucket{agent=~\"$agent\"}[5m])))"
+        },
+        {
+          "refId": "C",
+          "legendFormat": "p99",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(fin07_gemini_request_duration_seconds_bucket{agent=~\"$agent\"}[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "P95 hiện tại",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_gemini_request_duration_seconds_bucket[5m])))"
         }
       ],
-      "title": "Kết quả investigation",
-      "type": "timeseries"
+      "description": "Độ trễ p95 tức thời — con số để so với ngưỡng cam kết dịch vụ."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Thời gian bị tiêu tốn ở toàn luồng, agent hay Gemini?",
+      "type": "row",
+      "title": "2 · Traffic",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Số lời gọi mỗi giây, theo tác tử",
+      "description": "rate(fin07_gemini_requests_total) — lưu lượng thực tế tới mô hình.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 10
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line", "fillOpacity": 8, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
-          "min": 0,
-          "unit": "s"
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "id": 2,
-      "options": {
-        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
       "targets": [
-        { "editorMode": "code", "exemplar": true, "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_investigation_duration_seconds_bucket[15m])))", "legendFormat": "Investigation p95", "range": true, "refId": "A" },
-        { "editorMode": "code", "exemplar": true, "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_agent_run_duration_seconds_bucket[15m])))", "legendFormat": "Agent p95", "range": true, "refId": "B" },
-        { "editorMode": "code", "exemplar": true, "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_gemini_request_duration_seconds_bucket[15m])))", "legendFormat": "Gemini p95", "range": true, "refId": "C" }
-      ],
-      "title": "Độ trễ p95",
-      "type": "timeseries"
+        {
+          "refId": "A",
+          "legendFormat": "{{agent}}",
+          "expr": "sum by (agent) (rate(fin07_gemini_requests_total{agent=~\"$agent\"}[5m]))"
+        }
+      ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Failure bắt đầu từ worker, agent, tool hay Gemini?",
+      "type": "stat",
+      "title": "Tổng lời gọi",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 10
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
-          "min": 0,
-          "unit": "ops"
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "id": 3,
       "options": {
-        "legend": { "calcs": ["lastNotNull"], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "colorMode": "value",
+        "graphMode": "area"
       },
       "targets": [
-        { "editorMode": "code", "expr": "sum(rate(fin07_worker_job_failures_total[5m]))", "legendFormat": "Worker", "range": true, "refId": "A" },
-        { "editorMode": "code", "expr": "sum(rate(fin07_agent_failures_total[5m]))", "legendFormat": "Agent", "range": true, "refId": "B" },
-        { "editorMode": "code", "expr": "sum(rate(fin07_agent_tool_calls_total{status!=\"success\"}[5m]))", "legendFormat": "Tool", "range": true, "refId": "C" },
-        { "editorMode": "code", "expr": "sum(rate(fin07_gemini_requests_total{status=\"failure\"}[5m]))", "legendFormat": "Gemini", "range": true, "refId": "D" }
+        {
+          "refId": "A",
+          "legendFormat": "lời gọi",
+          "expr": "sum(fin07_gemini_requests_total)"
+        }
       ],
-      "title": "Failure theo tầng",
-      "type": "timeseries"
+      "description": "Tổng số lời gọi mô hình từ khi tiến trình khởi động."
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Failure AI đến từ lỗi provider/schema hay bị Critic từ chối?",
+      "type": "row",
+      "title": "3 · Error",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Tỷ lệ lỗi (%)",
+      "description": "Phần trăm lời gọi mô hình thất bại trên tổng số lời gọi.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "bars", "fillOpacity": 60, "lineWidth": 1, "showPoints": "never", "stacking": { "group": "A", "mode": "normal" } },
+          "unit": "percent",
           "min": 0,
-          "unit": "ops"
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 15
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "id": 4,
-      "options": {
-        "legend": { "calcs": ["sum"], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
       "targets": [
-        { "editorMode": "code", "expr": "sum by (error_type) (rate(fin07_gemini_errors_total[15m]))", "legendFormat": "Gemini · {{error_type}}", "range": true, "refId": "A" },
-        { "editorMode": "code", "expr": "sum by (issue_type) (rate(fin07_critic_issues_total[30m]))", "legendFormat": "Critic · {{issue_type}}", "range": true, "refId": "B" }
-      ],
-      "title": "Nguyên nhân failure AI",
-      "type": "timeseries"
+        {
+          "refId": "A",
+          "legendFormat": "tỷ lệ lỗi",
+          "expr": "100 * sum(rate(fin07_gemini_requests_total{status=\"failure\"}[5m])) / clamp_min(sum(rate(fin07_gemini_requests_total[5m])), 1e-9)"
+        }
+      ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "Worker có đang bị backlog hoặc xử lý quá nhiều job đồng thời?",
+      "type": "barchart",
+      "title": "Breakdown theo loại lỗi",
+      "description": "fin07_gemini_errors_total tách theo error_type — lỗi phía nhà cung cấp (timeout, quota…). fin07_critic_issues_total tách theo issue_type — lý do bộ phản biện bác bản giải thích.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
-          "min": 0,
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
-      "id": 5,
       "options": {
-        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0
       },
       "targets": [
-        { "editorMode": "code", "expr": "max(fin07_worker_queue_depth)", "legendFormat": "Đang chờ", "range": true, "refId": "A" },
-        { "editorMode": "code", "expr": "sum(fin07_worker_active_jobs)", "legendFormat": "Đang xử lý", "range": true, "refId": "B" }
-      ],
-      "title": "Tải worker",
-      "type": "timeseries"
+        {
+          "refId": "A",
+          "legendFormat": "gọi mô hình · {{error_type}}",
+          "expr": "sum by (error_type) (increase(fin07_gemini_errors_total[$__range]))",
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "legendFormat": "phản biện · {{issue_type}}",
+          "expr": "sum by (issue_type) (increase(fin07_critic_issues_total[$__range]))",
+          "instant": true
+        }
+      ]
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "CPU, RAM hay kết nối PostgreSQL có trùng thời điểm suy giảm không?",
+      "type": "row",
+      "title": "4 · Cost",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Tổng chi phí (USD)",
+      "description": "fin07_gemini_cost_usd_total. Bằng 0 khi chưa khai đơn giá — đặt GEMINI_INPUT_USD_PER_MTOK và GEMINI_OUTPUT_USD_PER_MTOK trong .env.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 28
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "drawStyle": "line", "fillOpacity": 8, "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": true },
-          "max": 1,
-          "min": 0,
-          "unit": "percentunit"
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          }
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
-      "id": 6,
       "options": {
-        "legend": { "calcs": ["lastNotNull", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "colorMode": "background",
+        "graphMode": "area"
       },
       "targets": [
-        { "editorMode": "code", "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))", "legendFormat": "CPU", "range": true, "refId": "A" },
-        { "editorMode": "code", "expr": "1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes", "legendFormat": "RAM", "range": true, "refId": "B" },
-        { "editorMode": "code", "expr": "sum(pg_stat_activity_count) / clamp_min(max(pg_settings_max_connections), 1)", "legendFormat": "PostgreSQL", "range": true, "refId": "C" }
+        {
+          "refId": "A",
+          "legendFormat": "tổng",
+          "expr": "sum(fin07_gemini_cost_usd_total)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Chi phí trung bình mỗi lời gọi (USD)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 6
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "trung bình",
+          "expr": "sum(fin07_gemini_cost_usd_total) / clamp_min(sum(fin07_gemini_requests_total), 1)"
+        }
       ],
-      "title": "Áp lực tài nguyên",
-      "type": "timeseries"
+      "description": "Tổng chi phí chia tổng lời gọi — dùng để ước lượng chi phí một phiên điều tra."
+    },
+    {
+      "type": "timeseries",
+      "title": "Chi phí tích luỹ theo thời gian",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{agent}}",
+          "expr": "sum by (agent) (increase(fin07_gemini_cost_usd_total[$__rate_interval]))"
+        }
+      ],
+      "description": "Chi phí phát sinh trong từng khoảng, tách theo tác tử để biết tác tử nào tốn nhất."
+    },
+    {
+      "type": "row",
+      "title": "5 · Tokens",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Token đã tiêu thụ",
+      "description": "fin07_gemini_input_tokens_total và fin07_gemini_output_tokens_total.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 37
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "input",
+          "expr": "sum(fin07_gemini_input_tokens_total)"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "output",
+          "expr": "sum(fin07_gemini_output_tokens_total)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tốc độ tiêu thụ token",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 37
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "input · {{agent}}",
+          "expr": "sum by (agent) (rate(fin07_gemini_input_tokens_total{agent=~\"$agent\"}[5m]))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "output · {{agent}}",
+          "expr": "sum by (agent) (rate(fin07_gemini_output_tokens_total{agent=~\"$agent\"}[5m]))"
+        }
+      ],
+      "description": "Token vào/ra mỗi giây — dấu hiệu sớm của prompt phình to trước khi hoá đơn tăng."
+    },
+    {
+      "type": "row",
+      "title": "6 · Quality",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "collapsed": false
+    },
+    {
+      "type": "gauge",
+      "title": "Điểm chất lượng trung bình",
+      "description": "Trung bình fin07_quality_score — tỷ lệ bản giải thích vượt qua bộ phản biện tất định. 1,0 nghĩa là mọi nhận định đều truy được về bằng chứng.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 46
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "chất lượng",
+          "expr": "avg_over_time(fin07_quality_score[$__range])"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Chất lượng theo thời gian",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 46
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "chất lượng trung bình",
+          "expr": "avg_over_time(fin07_quality_score[10m])"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "tỷ lệ kiểm chứng đạt",
+          "expr": "sum(rate(fin07_critic_validations_total{status=\"pass\"}[10m])) / clamp_min(sum(rate(fin07_critic_validations_total[10m])), 1e-9)"
+        }
+      ],
+      "description": "Chất lượng trung bình và tỷ lệ kiểm chứng đạt, để thấy xu hướng chứ không chỉ giá trị hiện tại."
     }
-  ],
-  "refresh": "30s",
-  "schemaVersion": 39,
-  "tags": ["fin07", "observability", "otel"],
-  "templating": { "list": [] },
-  "time": { "from": "now-6h", "to": "now" },
-  "timepicker": { "refresh_intervals": ["30s", "1m", "5m"], "time_options": ["15m", "1h", "6h", "12h", "24h", "7d"] },
-  "timezone": "browser",
-  "title": "FIN-07 — Tổng quan vận hành",
-  "uid": "fin07-observability",
-  "version": 2,
-  "weekStart": ""
+  ]
 }
