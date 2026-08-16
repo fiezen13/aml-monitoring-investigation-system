@@ -153,6 +153,36 @@ def _either_direction(param: str) -> str:
     )"""
 
 
+def _recent_either_direction(param: str) -> str:
+    """Như ``_either_direction`` nhưng chặn tập ứng viên ở N giao dịch gần nhất.
+
+    ``_either_direction`` dựng đủ *mọi* mã giao dịch của tài khoản. Với tài khoản
+    trung chuyển 223.590 giao dịch, câu ngoài phải nạp và sắp từng ấy dòng rồi
+    mới cắt lấy 50 — trên Cloud SQL mất **hơn bảy phút** cho một lượt gọi công cụ.
+
+    Câu ngoài sắp theo ``occurred_at DESC, transaction_id DESC``. Lấy N dòng mới
+    nhất của mỗi chiều rồi hợp lại và lấy N dòng mới nhất của phần hợp ấy cho
+    **đúng** N giao dịch mới nhất của tài khoản — tức là đã chứa trọn những gì
+    LIMIT/OFFSET bên ngoài có thể trả về. Không mất dòng nào, miễn là không còn
+    bộ lọc nào khác thu hẹp kết quả (xem chỗ gọi).
+    """
+    branch = """
+        (SELECT transaction_id, occurred_at FROM transaction
+          WHERE {side} = :{param} AND occurred_at <= :snapshot
+          ORDER BY occurred_at DESC, transaction_id DESC
+          LIMIT :candidates)
+    """
+    return f"""transaction_id IN (
+        SELECT transaction_id FROM (
+            {branch.format(side="from_account_key", param=param)}
+            UNION ALL
+            {branch.format(side="to_account_key", param=param)}
+        ) gan_nhat
+         ORDER BY occurred_at DESC, transaction_id DESC
+         LIMIT :candidates
+    )"""
+
+
 def _observed_from_rows(
     account_key: str,
     rows: list[dict[str, Any]],
@@ -786,11 +816,23 @@ class InvestigationTools:
             ids = [int(value) for value in args.transaction_ids]
             conditions.append("transaction_id = ANY(:transaction_ids)")
             params["transaction_ids"] = ids
+        # Chỉ chặn trước tập ứng viên khi tài khoản là *bộ lọc duy nhất* chọn dòng.
+        #
+        # Khi có thêm điều kiện (đối tác, khoảng thời gian, danh sách mã), lớp lọc
+        # bên ngoài còn loại bớt nữa, nên cắt sớm có thể trả về thiếu dòng so với
+        # câu hỏi thật. Lúc đó chấp nhận tập ứng viên đầy đủ.
+        only_account = bool(args.account_key) and not (
+            args.transaction_ids or args.counterparty or args.start_time or args.end_time
+        )
         if args.account_key:
             if args.direction == "in":
                 conditions.append("to_account_key = :account")
             elif args.direction == "out":
                 conditions.append("from_account_key = :account")
+            elif only_account:
+                conditions.append(_recent_either_direction("account"))
+                # Lấy đúng số dòng trang hiện tại cần tới, không hơn.
+                params["candidates"] = limit + offset + 1
             else:
                 conditions.append(_either_direction("account"))
             params["account"] = args.account_key
