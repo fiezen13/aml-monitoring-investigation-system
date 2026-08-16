@@ -84,6 +84,10 @@ export function AppLayout() {
           <Header
             crumb={crumb}
             criticalCount={counts.data?.critical ?? 0}
+            dataPeriod={{
+              start: counts.data?.data_period_start ?? null,
+              end: counts.data?.data_period_end ?? null,
+            }}
             onOpenNav={narrow ? () => setNavOpen(true) : undefined}
           />
           <main className="relative min-h-0 min-w-0 flex-1 overflow-auto">

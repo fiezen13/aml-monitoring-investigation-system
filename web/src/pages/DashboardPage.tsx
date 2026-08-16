@@ -20,7 +20,6 @@ import {
 } from "../components/ui";
 import { ALERT_STATUS_TONE, DETECTOR_TONE, type Tone } from "../design/semantic";
 import { SERIES, toneColor } from "../design";
-import { useConsole, WINDOW_LABEL } from "../context/ConsoleContext";
 import type { ApiAlert } from "../api/client";
 
 /**
@@ -52,7 +51,6 @@ const BENCHMARK_LABEL: Record<string, string> = {
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const { window: win } = useConsole();
   const dashboard = useApi(() => api.dashboard(), []);
   const world = useApi(() => api.world(), []);
   const benchmarks = useApi(() => api.benchmarks(), []);
@@ -232,8 +230,8 @@ export function DashboardPage() {
       variant="dense"
       subtitle={
         <>
-          Cửa sổ {WINDOW_LABEL[win]} · lô dữ liệu hành vi {d?.latest_source_name ?? "chưa có nguồn"} · không dùng đồ
-          thị/hợp nhất điểm
+          Lô dữ liệu {d?.latest_source_name ?? "chưa có nguồn"} · toàn bộ số liệu dưới đây là tổng của một lượt chạy,
+          không phải chuỗi thời gian
         </>
       }
     >

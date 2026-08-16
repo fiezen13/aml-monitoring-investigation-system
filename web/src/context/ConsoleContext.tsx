@@ -1,34 +1,20 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 /**
- * Trạng thái dùng chung của cả console: cửa sổ thời gian, thế giới mô phỏng
- * đang xem, và sidebar thu gọn hay không.
+ * Trạng thái dùng chung của cả console: thế giới mô phỏng đang xem và sidebar
+ * thu gọn hay không.
+ *
+ * Từng có thêm "cửa sổ thời gian" (1h/24h/7d/30d). Đã gỡ vì không truy vấn nào
+ * nhận nó: mọi số liệu trên console là tổng của một lượt chạy trên một bộ dữ
+ * liệu cố định, không có trục thời gian để cắt. Header giờ hiển thị đúng kỳ dữ
+ * liệu thay vì một bộ chọn bấm vào không đổi gì.
  *
  * Tách khỏi `AppContext` (vốn lo phiên đăng nhập và toast) vì hai nhóm này có
  * vòng đời khác nhau: đăng xuất thì xoá phiên, nhưng cửa sổ thời gian người
  * dùng vừa chọn thì nên giữ lại cho lần sau.
  */
 
-export type TimeWindow = "1h" | "24h" | "7d" | "30d";
-
-export const WINDOW_LABEL: Record<TimeWindow, string> = {
-  "1h": "1 giờ",
-  "24h": "24 giờ",
-  "7d": "7 ngày",
-  "30d": "30 ngày",
-};
-
-/** Số giờ tương ứng — dùng để gửi xuống API. */
-export const WINDOW_HOURS: Record<TimeWindow, number> = {
-  "1h": 1,
-  "24h": 24,
-  "7d": 168,
-  "30d": 720,
-};
-
 interface ConsoleState {
-  window: TimeWindow;
-  setWindow: (w: TimeWindow) => void;
   world: string;
   setWorld: (w: string) => void;
   sidebarCollapsed: boolean;
@@ -42,12 +28,11 @@ const ConsoleContext = createContext<ConsoleState | null>(null);
 const PREF_KEY = "fin07.console.prefs";
 
 interface Prefs {
-  window: TimeWindow;
   world: string;
   sidebarCollapsed: boolean;
 }
 
-const DEFAULTS: Prefs = { window: "24h", world: "FIN-07 Primary", sidebarCollapsed: false };
+const DEFAULTS: Prefs = { world: "FIN-07 Primary", sidebarCollapsed: false };
 
 function readPrefs(): Prefs {
   try {
@@ -88,8 +73,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ConsoleState>(
     () => ({
-      window: prefs.window,
-      setWindow: (w) => setPrefs((p) => ({ ...p, window: w })),
       world: prefs.world,
       setWorld: (w) => setPrefs((p) => ({ ...p, world: w })),
       sidebarCollapsed: prefs.sidebarCollapsed,
@@ -107,9 +90,4 @@ export function useConsole(): ConsoleState {
   const ctx = useContext(ConsoleContext);
   if (!ctx) throw new Error("useConsole phải được dùng bên trong ConsoleProvider");
   return ctx;
-}
-
-/** Hook tiện dụng cho các trang chỉ cần số giờ để gọi API. */
-export function useWindowHours(): number {
-  return WINDOW_HOURS[useConsole().window];
 }

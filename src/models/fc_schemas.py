@@ -9,7 +9,7 @@ dưới dạng chuỗi, nên các trường tiền tệ khai báo là `float` v�
 tầng truy vấn, chứ không để Decimal rơi ra ngoài.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -298,6 +298,11 @@ class NavCountsOut(BaseModel):
     alerts: int
     approvals: int
     critical: int
+    # Kỳ dữ liệu đang hiển thị, lấy từ chính bảng transaction. Header cần nó để
+    # nói rõ người dùng đang nhìn khoảng thời gian nào — thay cho bộ chọn
+    # 1h/24h/7d/30d cũ, vốn không nối vào truy vấn nào.
+    data_period_start: date | None = None
+    data_period_end: date | None = None
 
 
 class SearchHitOut(BaseModel):

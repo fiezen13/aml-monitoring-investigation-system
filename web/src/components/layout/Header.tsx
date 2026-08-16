@@ -2,9 +2,9 @@ import { Bell, Menu, Search } from "lucide-react";
 import { useState } from "react";
 
 import { useApp } from "../../context/AppContext";
-import { useConsole, WINDOW_LABEL, type TimeWindow } from "../../context/ConsoleContext";
+import { useConsole } from "../../context/ConsoleContext";
 import { TEXT } from "../../design/typography";
-import { Badge, IconButton, Popover, PulseDot, SegmentedControl, Select } from "../ui";
+import { Badge, IconButton, Popover, PulseDot, Select } from "../ui";
 
 interface Props {
   /** Tên màn hình hiện tại. Đây là chỗ DUY NHẤT hiển thị nó. */
@@ -13,20 +13,26 @@ interface Props {
   criticalCount?: number;
   /** Chỉ có ở khung hẹp, nơi sidebar là lớp phủ. */
   onOpenNav?: () => void;
+  /** Kỳ dữ liệu đang hiển thị, lấy từ `/nav-counts`. */
+  dataPeriod?: { start: string | null; end: string | null };
 }
 
 const WORLDS = ["FIN-07 Chính", "FIN-07 Mô phỏng sức chịu đựng"];
-const WINDOWS: { value: TimeWindow; label: string }[] = [
-  { value: "1h", label: "1h" },
-  { value: "24h", label: "24h" },
-  { value: "7d", label: "7d" },
-  { value: "30d", label: "30d" },
-];
+/** `2022-09-01` → `01/09/2022`. Giữ nguyên chuỗi ISO nếu định dạng lạ. */
+function viDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const [y, m, d] = iso.split("-");
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
 
-export function Header({ crumb, criticalCount = 0, onOpenNav }: Props) {
+export function Header({ crumb, criticalCount = 0, onOpenNav, dataPeriod }: Props) {
   const { currentUser } = useApp();
-  const { window: win, setWindow, world, setWorld, setPaletteOpen } = useConsole();
+  const { world, setWorld, setPaletteOpen } = useConsole();
   const [bellOpen, setBellOpen] = useState(false);
+
+  const start = viDate(dataPeriod?.start);
+  const end = viDate(dataPeriod?.end);
+  const periodLabel = start && end ? `${start} – ${end}` : null;
 
   const initials = (currentUser?.name ?? "")
     .split(" ")
@@ -71,14 +77,25 @@ export function Header({ crumb, criticalCount = 0, onOpenNav }: Props) {
         ))}
       </Select>
 
-      <SegmentedControl
-        label="Cửa sổ thời gian"
-        size="sm"
-        value={win}
-        onChange={setWindow}
-        options={WINDOWS}
-        className="hidden sm:inline-flex"
-      />
+      {/* Đây từng là bộ chọn 1h/24h/7d/30d. Nó không nối vào truy vấn nào —
+          `/dashboard` chỉ trả tổng của một lô chạy, không có trường nào theo
+          trục thời gian — nên bấm vào không có gì đổi ngoài một dòng nhãn.
+          Tệ hơn: nối thật cũng vô nghĩa, vì cảnh báo chỉ được tạo ở ba mốc và
+          mốc gần nhất đã cách hiện tại hơn một ngày, nên "1h" và "24h" sẽ luôn
+          trả về rỗng.
+
+          Thay bằng câu trả lời thật cho đúng câu hỏi mà bộ chọn ấy gợi ra:
+          người dùng đang nhìn khoảng thời gian nào. */}
+      {periodLabel && (
+        <Badge
+          tone="neutral"
+          icon={false}
+          className="hidden whitespace-nowrap sm:inline-flex"
+          title="Toàn bộ số liệu trên console tính trên đúng khoảng thời gian này"
+        >
+          Dữ liệu {periodLabel}
+        </Badge>
+      )}
 
       {/* Nhãn này không phải trang trí: toàn bộ dữ liệu trong console là tổng
           hợp, và người xem phải biết điều đó ở mọi màn hình. */}
@@ -119,8 +136,8 @@ export function Header({ crumb, criticalCount = 0, onOpenNav }: Props) {
       >
         <div className={`${TEXT.eyebrow} mb-2`}>Thông báo nội bộ</div>
         <p className="text-meta leading-relaxed text-ink-mid">
-          {criticalCount} cảnh báo đang ở mức nghiêm trọng trong cửa sổ {WINDOW_LABEL[win]}. Thông báo chỉ phát trong
-          nội bộ — hệ thống không có kênh nào gửi tới chủ thể đang bị rà soát.
+          {criticalCount} cảnh báo đang ở mức nghiêm trọng{periodLabel ? ` trong kỳ dữ liệu ${periodLabel}` : ""}.
+          Thông báo chỉ phát trong nội bộ — hệ thống không có kênh nào gửi tới chủ thể đang bị rà soát.
         </p>
       </Popover>
 
