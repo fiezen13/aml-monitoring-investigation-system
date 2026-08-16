@@ -82,3 +82,120 @@ def test_behavior_features_are_deterministic_and_source_derived():
     assert features["outgoing_count"] == 1
     assert features["rapid_outflow_ratio"] == 1.0
     assert features["median_dwell_time"] == 1.0
+
+
+def _tools_with_snapshot(features):
+    """InvestigationTools với một ảnh chụp đặc trưng giả lập (hoặc không có)."""
+    from unittest.mock import MagicMock
+
+    from src.investigation.tools import InvestigationTools
+
+    session = MagicMock()
+    row = None if features is None else {"snapshot_id": "SNP-1", "model_version": "fusion-v2", "features": features}
+    session.execute.return_value.mappings.return_value.first.return_value = row
+    repository = MagicMock()
+    repository.get.return_value = MagicMock(alert_id="ALT-1", account_key="001:A")
+    return InvestigationTools(session, repository, "INV-1")
+
+
+def _fusion_features(champion="fusion"):
+    """Đúng bộ khoá mà scripts/load_fusion_release.py ghi vào snapshot."""
+    return {
+        "isolation_forest_percentile": 0.80,
+        "graph_percentile": 0.60,
+        # contribution = weight × percentile, xem src/fusion/model.py
+        "isolation_forest_contribution": 0.40,
+        "graph_contribution": 0.30,
+        "champion": champion,
+    }
+
+
+def test_risk_breakdown_reports_real_branches_when_a_fusion_release_covers_the_alert():
+    tools = _tools_with_snapshot(_fusion_features())
+    components, fusion_available, limitation = tools._risk_components(
+        alert_id="ALT-1", account_key="001:A", detector="ml", score=0.70, as_of_time="2022-09-27T14:22:00Z"
+    )
+
+    assert fusion_available is True
+    assert components["anomaly"].score == 0.80
+    assert components["graph"].score == 0.60
+    # Trọng số suy ngược từ contribution / percentile.
+    assert components["anomaly"].weight == 0.5
+    assert components["graph"].weight == 0.5
+    assert components["anomaly"].available and components["graph"].available
+    # Ảnh chụp hai nhánh (không có khoá rule) thì nhánh rule báo không khả dụng.
+    assert components["rule"].available is False
+    assert limitation and "anomaly, graph" in limitation
+
+
+def test_risk_breakdown_reports_all_three_branches_when_the_snapshot_has_them():
+    """Bản hợp nhất ba nhánh — hộp 5 của sơ đồ kiến trúc."""
+    features = _fusion_features()
+    features.update({"rule_percentile": 0.9, "rule_contribution": 0.45})
+    tools = _tools_with_snapshot(features)
+    components, fusion_available, limitation = tools._risk_components(
+        alert_id="ALT-1", account_key="001:A", detector="graph", score=0.70, as_of_time="2022-09-17T00:00:00Z"
+    )
+
+    assert fusion_available is True
+    assert components["rule"].available is True
+    assert components["rule"].score == 0.9
+    assert components["rule"].weight == 0.5
+    assert limitation and "rule" in limitation
+
+
+def test_a_branch_with_zero_weight_is_reported_as_evaluated_not_omitted():
+    """Trọng số 0 nghĩa là nhánh đã được cân nhắc rồi bị loại, khác với không chạy."""
+    features = _fusion_features()
+    features.update({"rule_percentile": 0.9, "rule_contribution": 0.0})
+    tools = _tools_with_snapshot(features)
+    _, _, limitation = tools._risk_components(
+        alert_id="ALT-1", account_key="001:A", detector="graph", score=0.70, as_of_time="2022-09-17T00:00:00Z"
+    )
+
+    assert limitation and "selected out on validation" in limitation
+
+
+def test_risk_breakdown_names_the_single_champion_instead_of_claiming_fusion():
+    """Có chạy hợp nhất nhưng một nhánh đơn thắng — không được báo fusion_available."""
+    tools = _tools_with_snapshot(_fusion_features(champion="graph"))
+    components, fusion_available, limitation = tools._risk_components(
+        alert_id="ALT-1", account_key="001:A", detector="graph", score=0.70, as_of_time="2022-09-27T14:22:00Z"
+    )
+
+    assert fusion_available is False
+    assert components["graph"].available is True
+    assert components["anomaly"].available is False
+    assert limitation and "champion" in limitation
+
+
+def test_risk_breakdown_falls_back_to_the_detector_score_without_a_fusion_release():
+    tools = _tools_with_snapshot(None)
+    components, fusion_available, limitation = tools._risk_components(
+        alert_id="ALT-1", account_key="001:A", detector="ml", score=1.0, as_of_time="2022-09-27T14:22:00Z"
+    )
+
+    assert fusion_available is False
+    assert components["anomaly"].contribution == 1.0
+    assert components["graph"].available is False
+    assert limitation and "not inferred" in limitation
+
+
+def test_a_snapshot_without_the_full_fusion_key_set_is_not_treated_as_fusion():
+    """Ảnh chụp đặc trưng thường (không có hợp nhất) không được đọc nhầm."""
+    tools = _tools_with_snapshot({"rapid_outflow_ratio": 0.6})
+    _, fusion_available, limitation = tools._risk_components(
+        alert_id="ALT-1", account_key="001:A", detector="ml", score=1.0, as_of_time="2022-09-27T14:22:00Z"
+    )
+
+    assert fusion_available is False
+    assert limitation and "No score-fusion release" in limitation
+
+
+def test_a_branch_with_zero_percentile_does_not_divide_by_zero():
+    tools = _tools_with_snapshot(None)
+    branch = tools._branch(0.0, 0.0, "snapshot:SNP-1")
+
+    assert branch.weight == 0.0
+    assert branch.available is False
+    assert branch.source_ref is None
