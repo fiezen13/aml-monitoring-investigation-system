@@ -183,6 +183,14 @@ Email:    hung.nq@velrix.vn
 Password: demo-password
 ```
 
+> **Bản dựng cục bộ và bản đang chạy dùng hai bộ dữ liệu khác nhau.** Hướng dẫn
+> restore ở trên dựng bộ **HI-Medium** (5.866.610 giao dịch, 6.541 cảnh báo,
+> release `REL-EDGE-039b4b0fd5fb669a`) — đó là dump hiện có trên Drive. Bản phục
+> vụ tại <https://www.amlmonitoring.site> chạy **LI-Small** (6.119.572 giao dịch,
+> 21.034 cảnh báo, release `REL-EDGE-5b9f9fc5f8c33e14`) với đủ ba nhánh phát hiện.
+> Con số trên hai môi trường vì vậy không khớp nhau, và điều đó là bình thường.
+> Cấu trúc, quy trình và mọi màn hình thì giống hệt.
+
 ## Dữ liệu hiển thị trên console
 
 Sau khi restore đúng dump, các màn chính có dữ liệu:
