@@ -252,6 +252,9 @@ Học không giám sát trên đặc trưng hành vi tài khoản trong cửa s�
 | Chỉ số | Seed chính (42) | Trung bình 5 seed |
 |---|---|---|
 | F1 | 0,3022 | 0,2969 ± 0,0131 |
+| PR-AUC | 0,2371 | |
+| Precision | 0,4350 | |
+| Recall | 0,2315 | |
 
 > ⚠️ **Con số này đo trên tập đã bị lọc.** Lúc nạp dữ liệu ta bỏ 804.477 giao
 > dịch tự chuyển — 11,6% file gốc, và gần như toàn bộ là mẫu âm dễ (chỉ 3 trong
@@ -259,9 +262,12 @@ Học không giám sát trên đặc trưng hành vi tài khoản trong cửa s�
 > bài toán thật, và F1 gần như chắc chắn bị thổi lên; ước lượng con số so được
 > nằm quanh 0,28. Cách lấy con số đúng: xem
 > [`docs/KE_HOACH_LAM_LAI_MODEL.md`](KE_HOACH_LAM_LAI_MODEL.md) giai đoạn 1.
-| PR-AUC | 0,2371 | |
-| Precision | 0,4350 | |
-| Recall | 0,2315 | |
+>
+> **Có đường tốt hơn.** `src/mega_pna/` đã chứa bản cài đặt đầy đủ của MEGA-PNA —
+> mô hình mạnh nhất từng công bố trên bộ dữ liệu này (F1 45,07%) — và dữ liệu của
+> nó **giữ nguyên đủ 6.924.049 dòng**, nên không dính lỗi đo trên. Nó chưa từng
+> được huấn luyện vì máy không có GPU NVIDIA. Quy trình thực hiện:
+> [`docs/HUONG_DAN_DUNG_LAI_MODEL.md`](HUONG_DAN_DUNG_LAI_MODEL.md).
 
 Ngưỡng chốt 0,0569 → 446 cảnh báo trên 1.223.740 giao dịch (tỷ lệ 0,036%).
 
