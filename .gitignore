@@ -140,7 +140,20 @@ infra/terraform/*.tfvars
 !infra/terraform/*.tfvars.example
 infra/terraform/crash.log
 
-# MEGA-PNA checkpoints and per-edge scores are reproducible, machine-specific
-# benchmark artifacts. Commit the compact JSON reports, not model/data payloads.
-/models/mega-pna/**/*.pt
+# Điểm từng cạnh là dữ liệu lớn, dựng lại được từ checkpoint — để ngoài Git.
 /models/mega-pna/**/*.parquet
+
+# Checkpoint thì ngược lại: giữ trong Git.
+#
+# Quy tắc cũ loại luôn cả *.pt vì lúc viết chưa ai huấn luyện, nên nó bị xem là
+# "artifact benchmark dựng lại được". Hai điều làm quy tắc ấy sai:
+#
+#   * Checkpoint MEGA-PNA chỉ **79.197 tham số, dưới 1 MB** — nhỏ hơn cả file
+#     JSON báo cáo đi kèm.
+#   * Nó **không dựng lại được** trong thực tế. Dựng lại đòi đúng GPU, đúng phiên
+#     bản thư viện, và vài giờ máy. Mất file là mất luôn mô hình đã sinh ra những
+#     điểm số đang phục vụ trên console.
+#
+# PostgreSQL chỉ giữ mã băm SHA-256 của nó (edge_model_release.model_sha256), nên
+# nếu file biến mất thì mã băm ấy không đối chiếu được với gì nữa.
+!/models/mega-pna/**/*.pt
