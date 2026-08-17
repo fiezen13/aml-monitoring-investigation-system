@@ -19,8 +19,34 @@ Nguyên tắc:
   đường cho nhóm hành vi tương ứng — không phải sửa hai chỗ.
 * **Tín hiệu phải phân biệt được.** ``rule_trigger`` trong danh mục là tín hiệu
   bắt buộc *riêng của T01*, không phải cờ chung "có luật nào đó kích hoạt". Nếu
-  mọi luật đều phát nó thì T01 thắng mọi lần và ba luật còn lại mất tác dụng
+  mọi luật đều phát nó thì T01 thắng mọi lần và các luật còn lại mất tác dụng
   chọn nhóm hành vi. Chỉ luật chia nhỏ giao dịch được phát tín hiệu này.
+
+Vì sao chỉ còn hai luật
+-----------------------
+
+Trước đây có bốn. Hai luật đã gỡ vì chúng dựa trên thuộc tính **do dự án tự gán**
+chứ không có trong bộ dữ liệu IBM AML, nên không cách nào kiểm chứng:
+
+* ``R03_VASP_EXPOSURE`` đọc cờ ``bank.is_vasp``. Cờ đó đến từ
+  ``data/reference/bank_country.csv`` — bảng do dự án viết — và chỉ đánh dấu
+  **một** họ ngân hàng hư cấu (``Crytpo Bank``, ``country_source=assigned``).
+  Luật này vì thế phát hiện chính thứ dự án tạo ra. Nó từng sinh 11.191 cảnh báo
+  với mức đóng góp trung bình 93,8 — cao nhất trong bốn luật.
+* ``R04_CROSS_BORDER_FLOW`` so quốc gia hai đầu, mà quốc gia cũng lấy từ bảng
+  ấy: 12.857 trên 32.173 ngân hàng có quốc gia **do dự án gán**, không đọc được
+  từ dữ liệu.
+
+Bộ ``LI-Small_Trans.csv`` chỉ có: thời điểm, ngân hàng và tài khoản hai đầu, số
+tiền, loại tiền, hình thức thanh toán, và cờ ``Is Laundering``. Không có quốc
+gia, không có VASP. Và tệp nhãn ``LI-Small-Patterns.txt`` gán 117 vụ rửa tiền
+theo tám **mẫu hình đồ thị** — FAN-OUT, STACK, BIPARTITE, RANDOM,
+SCATTER-GATHER, GATHER-SCATTER, FAN-IN, CYCLE — không có mẫu nào là "phơi nhiễm
+VASP" hay "xuyên biên giới".
+
+Hai số đo ``vasp_*`` và ``cross_border_*`` vẫn nằm trong ``RuleContext``: chúng
+là dữ kiện tra được và hữu ích khi đọc một cảnh báo. Chỉ khác là chúng không còn
+tự mở cảnh báo và không còn góp vào điểm rủi ro.
 
 Luật không tự chấm điểm rủi ro cuối cùng. Nó phát ra mức đóng góp; việc hợp nhất
 là của ``src/fusion``.
@@ -49,13 +75,6 @@ RULE_THRESHOLDS: dict[str, float] = {
     "rapid_outflow_ratio": 0.60,
     #: Cần đủ lượng giao dịch để tỷ lệ có ý nghĩa.
     "rapid_min_outgoing": 3,
-    # --- R03 phơi nhiễm tài sản mã hoá ---
-    #: Tỷ lệ giá trị đi/đến đối tác là VASP.
-    "vasp_exposure_ratio": 0.30,
-    "vasp_min_transactions": 2,
-    # --- R04 dòng tiền xuyên biên giới ---
-    "cross_border_ratio": 0.50,
-    "cross_border_min_transactions": 5,
 }
 
 #: Trọng số của nhánh rule khi hợp nhất điểm. Đặt ở đây để `alert_reason.weight`
@@ -214,69 +233,10 @@ def rule_rapid_movement(ctx: RuleContext) -> RuleHit | None:
     )
 
 
-def rule_vasp_exposure(ctx: RuleContext) -> RuleHit | None:
-    """R03 — phần lớn giá trị đi qua tổ chức cung ứng tài sản mã hoá.
-
-    Dựa trên cờ ``bank.is_vasp`` — dữ liệu thật, 1.508 ngân hàng được đánh dấu.
-    """
-    ratio_floor = RULE_THRESHOLDS["vasp_exposure_ratio"]
-    if ctx.vasp_transaction_count < int(RULE_THRESHOLDS["vasp_min_transactions"]):
-        return None
-    if ctx.vasp_ratio < ratio_floor:
-        return None
-
-    signals = {"vasp_link"}
-    if ctx.rapid_outflow_ratio >= RULE_THRESHOLDS["rapid_outflow_ratio"]:
-        signals.add("rapid_cross_channel_flow")
-
-    return RuleHit(
-        code="R03_VASP_EXPOSURE",
-        label=f"{ctx.vasp_ratio:.0%} giá trị giao dịch với đối tác là VASP",
-        contribution=_scale(ctx.vasp_ratio, ratio_floor, 1.0),
-        signals=frozenset(signals),
-        detail={
-            "vasp_ratio": round(ctx.vasp_ratio, 4),
-            "vasp_transaction_count": ctx.vasp_transaction_count,
-            "vasp_amount": round(ctx.vasp_amount, 2),
-        },
-    )
-
-
-def rule_cross_border(ctx: RuleContext) -> RuleHit | None:
-    """R04 — dòng tiền chủ yếu xuyên biên giới.
-
-    Lưu ý về phạm vi: luật này KHÔNG khẳng định "quốc gia rủi ro cao" (T06).
-    Muốn khẳng định điều đó phải có danh sách quốc gia được chỉ định — FATF hoặc
-    danh sách nội bộ — mà repo chưa có. Ở đây chỉ nêu một dữ kiện kiểm chứng
-    được: ngân hàng hai đầu nằm ở hai quốc gia khác nhau.
-    """
-    ratio_floor = RULE_THRESHOLDS["cross_border_ratio"]
-    if ctx.transaction_count < int(RULE_THRESHOLDS["cross_border_min_transactions"]):
-        return None
-    if ctx.cross_border_ratio < ratio_floor:
-        return None
-
-    return RuleHit(
-        # Luật phụ: một mình nó KHÔNG mở cảnh báo. Xem ``should_alert``.
-        is_primary=False,
-        code="R04_CROSS_BORDER_FLOW",
-        label=f"{ctx.cross_border_ratio:.0%} giao dịch có ngân hàng hai đầu khác quốc gia",
-        contribution=_scale(ctx.cross_border_ratio, ratio_floor, 1.0),
-        signals=frozenset({"cross_border_flow"}),
-        detail={
-            "cross_border_ratio": round(ctx.cross_border_ratio, 4),
-            "cross_border_count": ctx.cross_border_count,
-            "transaction_count": ctx.transaction_count,
-        },
-    )
-
-
 #: Thứ tự cố định để kết quả tất định giữa các lần chạy.
 RULES = (
     rule_structuring,
     rule_rapid_movement,
-    rule_vasp_exposure,
-    rule_cross_border,
 )
 
 
@@ -288,14 +248,10 @@ def evaluate(ctx: RuleContext) -> list[RuleHit]:
 def should_alert(hits: list[RuleHit]) -> bool:
     """Có mở cảnh báo cho tập luật này không.
 
-    Cần ít nhất một **luật chính**. Nếu không có rào này, R04 tự mở cảnh báo cho
-    27% số tài khoản trong bộ dữ liệu — giao dịch xuyên biên giới là chuyện bình
-    thường ở đây, không phải vi phạm. Trong danh mục nhóm hành vi,
-    ``cross_border_flow`` cũng chỉ là tín hiệu *hỗ trợ*, không bao giờ tự chọn
-    được nhóm nào; một cảnh báo chỉ có R04 sẽ không có phát hiện nào để nói.
-
-    Nó vẫn được giữ trong kết quả để làm giàu ngữ cảnh cho cảnh báo do luật
-    chính mở.
+    Cần ít nhất một **luật chính**. Hiện cả hai luật đều là luật chính nên điều
+    kiện này luôn đúng khi có luật kích hoạt; giữ lại vì khái niệm luật phụ vẫn
+    còn trong ``RuleHit`` và sẽ quay lại khi có luật mới, mà bỏ rào rồi thêm
+    luật phụ sau thì lỗi sẽ âm thầm.
     """
     return any(hit.is_primary for hit in hits)
 

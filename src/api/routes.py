@@ -638,7 +638,11 @@ async def dashboard() -> DashboardOut:
                          -- sạch chúng, và bảng điều khiển báo 0 trong khi hàng đợi có
                          -- hai vạn cảnh báo. Các số liệu theo lô nằm riêng bên dưới.
                          (SELECT count(*) FROM alert WHERE status <> 'closed')                  AS open_alerts,
-                         (SELECT count(*) FROM alert WHERE risk_score >= 80)                    AS high_risk_alerts,
+                         -- Cùng phạm vi với open_alerts. Không lọc `closed` ở đây từng
+                         -- khiến bảng điều khiển báo 14.592 cảnh báo rủi ro cao trên tổng
+                         -- 10.414 đang mở — một con số không thể đúng.
+                         (SELECT count(*) FROM alert
+                           WHERE status <> 'closed' AND risk_score >= 80)                       AS high_risk_alerts,
                          (SELECT count(*) FROM aml_case
                            WHERE state NOT IN ('XuatHoSo', 'DongKhongBaoCao')
                              AND EXISTS (
@@ -649,7 +653,8 @@ async def dashboard() -> DashboardOut:
                            WHERE ap.decision = 'pending'
                              AND EXISTS (
                                  SELECT 1 FROM alert al WHERE al.case_id = sd.case_id))         AS sar_pending,
-                         (SELECT coalesce(avg(risk_score), 0) FROM alert)                       AS avg_risk_score,
+                         (SELECT coalesce(avg(risk_score), 0) FROM alert
+                           WHERE status <> 'closed')                                            AS avg_risk_score,
                          -- Số liệu theo lô: chỉ có nghĩa khi đang có một edge-model
                          -- release hoạt động. Không có thì phải trả 0, không được trả
                          -- NULL — DashboardOut khai kiểu int, và NULL làm cả endpoint
@@ -670,10 +675,13 @@ async def dashboard() -> DashboardOut:
         distribution = (
             session.execute(
                 text(
-                    # Phân bố trên toàn bộ hàng đợi, không giới hạn theo edge-model
-                    # release — xem chú thích ở truy vấn bộ đếm phía trên.
+                    # Phân bố trên hàng đợi *đang mở*, không giới hạn theo edge-model
+                    # release — xem chú thích ở truy vấn bộ đếm phía trên. Đếm cả cảnh
+                    # báo đã đóng sẽ khiến biểu đồ nhóm hành vi không cộng lại thành
+                    # tổng cảnh báo hiển thị ngay bên cạnh nó.
                     """SELECT typology_code, count(*) AS alert_count
                          FROM alert
+                        WHERE status <> 'closed'
                         GROUP BY typology_code
                         ORDER BY count(*) DESC, typology_code"""
                 ),
