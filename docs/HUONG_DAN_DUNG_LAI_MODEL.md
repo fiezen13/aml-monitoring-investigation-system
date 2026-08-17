@@ -180,30 +180,77 @@ triệu đỉnh phải gom, sắp và gộp cho **mỗi lô**. Việc đó cần
 trên CUDA. Trên MPS của Apple nó vẫn đúng, nhưng chậm tới mức không dùng được —
 đúng như dòng preflight ở trên.
 
-### 4.2 Ba lựa chọn máy
+### 4.2 Đã có quota AWS — đọc cho đúng con số
 
-Giá dưới đây là **giá tham khảo**; kiểm lại lúc thuê vì giá GPU thay đổi liên tục.
+Ngày 17/08 AWS duyệt cho tài khoản của nhóm ở **US East (N. Virginia)**:
 
-| | Máy | Ưu | Nhược | Chi phí ước tính cho toàn bộ cổng |
-|---|---|---|---|---|
-| **A** ⭐ | **GCP `g2-standard-8` + NVIDIA L4** | Cùng nhà cung cấp với Cloud SQL đang chạy; dùng máy Spot rẻ hơn ~3 lần; chạy nền được nhiều ngày | Phải xin quota GPU, thường duyệt trong 1–2 ngày | **~15–35 USD** (Spot ≈ 0,3 USD/giờ) |
-| **B** | **RunPod / Vast.ai, L4 hoặc A10** | Thuê được trong 5 phút, không cần quota | Máy có thể bị thu hồi; ổ đĩa tạm, phải tự sao lưu checkpoint | ~20–50 USD |
-| **C** | **Google Colab Pro+** | Rẻ nhất, quen thuộc | Phiên bị ngắt sau ~24 giờ — **không chạy nổi 10 lượt seed liên tục**; chỉ hợp để thử 1 seed | ~50 USD/tháng |
+```
+EC2 Instances / All G and VT instances — New Limit = 8
+```
 
-**Khuyến nghị: A.** Nếu quota chưa duyệt kịp và cần kết quả gấp, dùng B cho 1
-seed LI-Small để có số sớm, rồi chuyển sang A cho cổng đầy đủ.
+> ⚠️ **Số 8 này là 8 vCPU, không phải 8 GB VRAM và cũng không phải 8 máy.**
+> Hạn mức họ G của AWS luôn tính bằng **tổng số vCPU của các máy đang bật**.
+>
+> Điều đó nghĩa là: **chạy được đúng một máy GPU cỡ `.2xlarge`** (8 vCPU, 1 GPU).
+> Đúng bằng thứ ta cần — MEGA-PNA chỉ dùng một GPU. Không thiếu gì cả.
 
-### 4.3 Cấu hình máy tối thiểu
+### 4.3 Chọn máy nào trong hạn mức 8 vCPU
 
-| Hạng mục | Yêu cầu | Vì sao |
+Tất cả các máy dưới đây đều **vừa khít** hạn mức. Giá là **giá tham khảo**
+us-east-1 theo giờ, kiểm lại trên trang giá của AWS lúc thuê.
+
+| Máy | GPU | VRAM | RAM | Giá ≈ | Nhận xét |
+|---|---|---|---|---|---|
+| `g4dn.2xlarge` | T4 | 16 GB | 32 GiB | ~0,75 USD | Rẻ nhất. T4 chậm hơn đáng kể — chỉ chọn nếu tiết kiệm là ưu tiên số một |
+| **`g5.2xlarge`** ⭐ | **A10G** | **24 GB** | **32 GiB** | **~1,2 USD** | **Khuyến nghị.** Nhanh, sẵn hàng, VRAM thoải mái |
+| `g6.2xlarge` | L4 | 24 GB | 32 GiB | ~0,98 USD | Đúng con GPU mà preflight nhắm tới. Ngang ngửa g5, rẻ hơn chút |
+| `g6e.2xlarge` | L40S | 48 GB | **64 GiB** | ~2,2 USD | Chỉ dùng nếu 32 GiB RAM bị tràn ở bước lấy mẫu láng giềng |
+
+**Chọn `g5.2xlarge` hoặc `g6.2xlarge`.** Cả hai đều 8 vCPU nên vừa hạn mức, đều
+24 GB VRAM nên chạy được lô 8.192 cạnh của bài báo mà không phải hạ xuống 4096.
+
+> **Điểm cần để ý: RAM 32 GiB là mức sàn, không phải mức thoải mái.** Cả đồ thị
+> phải nằm trong RAM trước khi lấy mẫu. Nếu bước nạp dữ liệu bị giết vì hết bộ
+> nhớ (`Killed`, không có traceback), đổi sang `g6e.2xlarge` — nó vẫn 8 vCPU nên
+> **không cần xin thêm quota**, chỉ đắt hơn.
+
+### 4.4 Hai điều về quota cần xử lý trước
+
+**Một — hạn mức vừa duyệt là cho máy On-Demand, không dùng được cho Spot.**
+AWS tính Spot bằng một hạn mức riêng tên
+`All G and VT Spot Instance Requests`, và nó **vẫn đang là 0**. Muốn rẻ hơn
+khoảng ba lần thì phải xin thêm hạn mức đó (cũng đặt 8). Nếu không xin, cứ chạy
+On-Demand — chi phí vẫn nằm trong dự trù, chỉ là không rẻ nhất.
+
+**Hai — chạy tuần tự, một máy một lúc.** Nhóm xin 16 nhưng được 8, nên không bật
+song song hai máy được. Cổng đầy đủ là 10 lượt seed chạy nối tiếp nhau.
+
+| | Có 8 vCPU (hiện tại) | Nếu kháng nghị lên 16 |
 |---|---|---|
-| GPU | NVIDIA, **≥ 16 GB VRAM** | lô 8.192 cạnh với láng giềng (100, 100) |
-| RAM | **≥ 32 GB** | cả đồ thị nằm trong RAM trước khi lấy mẫu |
-| Đĩa | **≥ 100 GB SSD** | dữ liệu đã chuyển đổi + checkpoint + báo cáo |
-| CPU | ≥ 8 nhân | bộ lấy mẫu láng giềng chạy trên CPU |
-| Hệ điều hành | Ubuntu 22.04, driver CUDA 12.x | có ảnh máy dựng sẵn của GCP |
+| Số máy chạy cùng lúc | 1 | 2 |
+| Thời gian thực tế | 27–107 giờ | **một nửa** |
+| Tổng chi phí | không đổi | không đổi |
 
-### 4.4 Cài đặt — chạy đúng thứ tự này
+Kháng nghị **không làm rẻ đi**, chỉ rút ngắn thời gian chờ. Email của AWS có nói
+mở lại case được. Nếu lịch gấp thì đáng làm; nếu không thì 8 là đủ.
+
+> **Cách xin thêm:** Service Quotas → EC2 → tìm đúng tên hạn mức → Request
+> increase. Nhớ chọn đúng vùng **US East (N. Virginia)** — hạn mức tính theo từng
+> vùng, xin ở vùng khác thì máy ở Virginia vẫn không bật được.
+
+### 4.5 Ảnh máy nên dùng
+
+Chọn **Deep Learning AMI GPU PyTorch (Ubuntu 22.04)** khi tạo máy. Nó có sẵn
+driver NVIDIA và CUDA, bỏ được toàn bộ phần hay hỏng nhất của việc cài đặt.
+
+| Hạng mục | Đặt là |
+|---|---|
+| AMI | Deep Learning AMI GPU PyTorch, Ubuntu 22.04 |
+| Ổ đĩa gốc | **≥ 100 GB gp3** (mặc định thường chỉ 45 GB — **phải sửa lúc tạo máy**) |
+| Vùng | US East (N. Virginia) — nơi có hạn mức |
+| Cặp khoá | tạo mới và tải `.pem` về, dùng để `ssh`/`scp` |
+
+### 4.6 Cài đặt — chạy đúng thứ tự này
 
 > ⚠️ **Cái bẫy số một của cả tài liệu nằm ở bước 3.** `torch-scatter` và
 > `torch-sparse` **phải cài SAU `torch`, và phải có `--no-build-isolation`**.
@@ -212,9 +259,13 @@ seed LI-Small để có số sớm, rồi chuyển sang A cho cổng đầy đ�
 > vì không có thông báo lỗi nào cả.
 
 ```bash
+# ── 0. Vào máy ─────────────────────────────────────────────────────────────
+chmod 400 ~/fin07-gpu.pem
+ssh -i ~/fin07-gpu.pem ubuntu@<địa-chỉ-IP-công-cộng>
+
 # ── 1. Hệ thống ────────────────────────────────────────────────────────────
 sudo apt update && sudo apt install -y python3.12 python3.12-venv git build-essential
-nvidia-smi          # phải in ra tên GPU. Không in ra thì dừng, driver chưa xong.
+nvidia-smi          # phải in ra "A10G" hoặc "L4". Không in ra thì dừng, driver chưa xong.
 
 # ── 2. Lấy mã và dựng môi trường ───────────────────────────────────────────
 git clone <URL-repo> P-022 && cd P-022
@@ -243,21 +294,26 @@ python -m pytest tests/test_mega_pna -q      # phải ra 4 bài qua
 > 3.12, còn 3.14 thì phải biên dịch từ mã nguồn, mất 20–40 phút và dễ hỏng. Mã
 > của repo chạy được trên cả hai.
 
-### 4.5 Đưa dữ liệu lên máy GPU
+### 4.7 Đưa dữ liệu lên máy GPU
 
 Hai cách, chọn một:
 
-**Cách 1 — chép file đã chuyển đổi lên (nhanh hơn, khuyến nghị).** File chỉ 358
-MB và đã kiểm băm rồi:
+**Cách 1 — chép file đã chuyển đổi lên (nhanh hơn, khuyến nghị).** Hai bộ dữ
+liệu cộng lại khoảng 620 MB và đã kiểm băm rồi:
 
 ```bash
-# trên Mac
-gcloud compute scp \
-  data/processed/mega-pna/Small_LI/formatted_transactions.csv \
-  data/processed/mega-pna/Small_LI/formatted_transactions.manifest.json \
-  data/processed/mega-pna/Small_HI/formatted_transactions.csv \
-  data/processed/mega-pna/Small_HI/formatted_transactions.manifest.json \
-  <tên-máy>:~/P-022/data/processed/mega-pna/
+# chạy trên Mac
+HOST=ubuntu@<địa-chỉ-IP-công-cộng>
+KEY=~/fin07-gpu.pem
+
+ssh -i $KEY $HOST 'mkdir -p ~/P-022/data/processed/mega-pna/{Small_LI,Small_HI}'
+
+for DS in Small_LI Small_HI; do
+  scp -i $KEY \
+    data/processed/mega-pna/$DS/formatted_transactions.csv \
+    data/processed/mega-pna/$DS/formatted_transactions.manifest.json \
+    $HOST:~/P-022/data/processed/mega-pna/$DS/
+done
 ```
 
 **Cách 2 — chuyển đổi lại trên máy GPU.** Cần chép file CSV gốc lên trước
@@ -300,14 +356,32 @@ seed=42 epoch=001 loss=0.412... train_f1=0.0821 val_f1=0.1104
 
 **Bấm giờ dòng đầu tiên.** Rồi nhân lên:
 
-| Một epoch mất | 1 seed (80 epoch) | Cổng đầy đủ (10 lượt seed) | Chi phí ở 0,3 USD/giờ |
-|---|---|---|---|
-| 2 phút | 2,7 giờ | ~27 giờ | ~8 USD |
-| 4 phút | 5,3 giờ | ~53 giờ | ~16 USD |
-| 8 phút | 10,7 giờ | ~107 giờ | ~32 USD |
+| Một epoch mất | 1 seed (80 epoch) | Cổng đầy đủ (10 lượt seed) | On-Demand ≈1,2 USD/giờ | Spot ≈0,4 USD/giờ |
+|---|---|---|---|---|
+| 2 phút | 2,7 giờ | ~27 giờ | ~32 USD | ~11 USD |
+| 4 phút | 5,3 giờ | ~53 giờ | ~64 USD | ~21 USD |
+| 8 phút | 10,7 giờ | ~107 giờ | ~128 USD | ~43 USD |
+
+> **Đọc bảng này rồi hãy quyết.** Nếu epoch rơi vào 6–8 phút thì hoá đơn
+> On-Demand lên tới ba chữ số — lúc đó nên bỏ ra 10 phút xin hạn mức Spot (mục
+> 4.4) trước khi chạy cổng đầy đủ. Nếu epoch dưới 3 phút thì cứ On-Demand cho
+> nhanh gọn.
+>
+> Muốn cắt đôi chi phí mà không xin gì thêm: chạy cổng **chỉ trên LI-Small** (5
+> lượt seed) — đó là bộ dữ liệu hệ thống đang dùng. HI-Small chỉ để đối chứng
+> thêm cho chắc.
 
 Nếu một epoch quá 15 phút thì **dừng lại** — máy đang chạy CPU chứ không phải
-GPU. Quay lại mục 4.4 bước 3 và 4.
+GPU. Quay lại mục 4.6 bước 3 và 4.
+
+**Trong lúc chờ, mở một cửa sổ khác kiểm GPU có thật sự làm việc không:**
+
+```bash
+watch -n 2 nvidia-smi
+```
+
+Cột `GPU-Util` phải nhảy lên vài chục phần trăm trở lên. Nếu nó nằm im ở 0% thì
+`torch-scatter` đã bị biên dịch bản CPU — đúng cái bẫy ở mục 4.6.
 
 > **Xoá `reports/mega-pna-thu` sau khi đo xong.** Nếu để lại, script cổng thấy
 > báo cáo có sẵn với cấu hình epoch khác sẽ báo lỗi và dừng.
@@ -399,18 +473,26 @@ File ra có 4 cột:
 ### Bước 6 — Mang kết quả về
 
 ```bash
-# trên Mac
-gcloud compute scp --recurse <tên-máy>:~/P-022/reports/mega-pna ./reports/
-gcloud compute scp --recurse <tên-máy>:~/P-022/models/mega-pna ./models/
-gcloud compute scp <tên-máy>:~/P-022/data/processed/mega-pna/Small_LI/predictions.parquet \
+# chạy trên Mac
+scp -i $KEY -r $HOST:~/P-022/reports/mega-pna ./reports/
+scp -i $KEY -r $HOST:~/P-022/models/mega-pna  ./models/
+scp -i $KEY $HOST:~/P-022/data/processed/mega-pna/Small_LI/predictions.parquet \
   data/processed/mega-pna/Small_LI/
 ```
 
-**Rồi tắt máy GPU ngay.** Nó tính tiền theo giờ kể cả lúc không chạy gì.
+**Rồi tắt máy GPU ngay.** `g5.2xlarge` tính khoảng 1,2 USD mỗi giờ **kể cả lúc
+không chạy gì** — quên tắt một cuối tuần là mất gần 90 USD.
 
 ```bash
-gcloud compute instances stop <tên-máy>
+aws ec2 stop-instances --instance-ids <i-xxxxxxxx> --region us-east-1
 ```
+
+> **Tắt (`stop`) chứ đừng huỷ (`terminate`)** nếu còn định chạy tiếp. Máy đã tắt
+> không tính tiền giờ máy, chỉ còn tiền ổ đĩa (~8 USD/tháng cho 100 GB gp3), và
+> bật lại là mọi thứ đã cài vẫn còn nguyên. Huỷ là mất sạch, phải cài lại từ đầu.
+>
+> **Nhớ kiểm bằng mắt.** Vào EC2 Console xem trạng thái đã về `stopped` chưa —
+> lệnh trả về thành công không có nghĩa là máy đã dừng ngay.
 
 ---
 
@@ -562,8 +644,8 @@ gantt
     title Dựng lại tầng phát hiện bằng MEGA-PNA
 
     section Hạ tầng
-    Xin quota GPU trên GCP        :a1, 2026-08-18, 2d
-    Dựng máy, cài thư viện        :a2, after a1, 1d
+    Quota AWS 8 vCPU              :done, a0, 2026-08-17, 1d
+    Dựng g5.2xlarge, cài thư viện :a2, 2026-08-18, 1d
     Chép dữ liệu, kiểm mã băm     :a3, after a2, 1d
 
     section Huấn luyện
@@ -582,7 +664,7 @@ gantt
 
 | Ai | Làm gì | Cần biết gì |
 |---|---|---|
-| Người 1 | Hạ tầng GPU, cài đặt, chạy huấn luyện | Linux cơ bản, gcloud |
+| Người 1 | Hạ tầng GPU, cài đặt, chạy huấn luyện | Linux cơ bản, EC2 Console, `ssh`/`scp` |
 | Người 2 | Viết bộ chuyển khoá (mục 7.2) | Python, SQL, parquet |
 | Người 3 | Nạp vào PostgreSQL, kiểm 3 trang console | SQL, đọc log API |
 | Người 4 | Gỡ hợp nhất, cập nhật tài liệu và số liệu | mã `src/detection/` |
@@ -596,7 +678,7 @@ cổng**, vì định dạng file kết quả đã cố định.
 
 | Bẫy | Dấu hiệu | Cách xử lý |
 |---|---|---|
-| `torch-scatter` biên dịch bản CPU | Mọi thứ chạy, chỉ chậm kinh khủng; `nvidia-smi` báo GPU rảnh | Cài lại đúng thứ tự mục 4.4, có `--no-build-isolation` |
+| `torch-scatter` biên dịch bản CPU | Mọi thứ chạy, chỉ chậm kinh khủng; `nvidia-smi` báo GPU rảnh | Cài lại đúng thứ tự mục 4.6, có `--no-build-isolation` |
 | Hết bộ nhớ GPU | `CUDA out of memory` | Giảm `--batch-size` xuống 4096. **Ghi lại vào báo cáo** — đổi lô là lệch cấu hình bài báo |
 | Báo cáo cũ chặn lần chạy mới | `was produced with a different epoch/batch config` | Chuyển thư mục `reports/mega-pna/` cũ đi chỗ khác |
 | Máy Spot bị thu hồi giữa chừng | Log dừng đột ngột | Chạy lại đúng lệnh cũ; script bỏ qua seed đã xong |
@@ -607,38 +689,42 @@ cổng**, vì định dạng file kết quả đã cố định.
 
 ---
 
-## 10. Nếu không thuê được GPU
+## 10. Kế hoạch B — vẫn nên làm song song
 
-Kế hoạch B: quay về mô hình edge HistGradientBoosting và **làm cho con số của nó
-đo đúng đã** — đó chính là giai đoạn 1 của
-[KE_HOACH_LAM_LAI_MODEL.md](KE_HOACH_LAM_LAI_MODEL.md).
+Quota đã có nên kế hoạch A chạy được. Nhưng kế hoạch B vẫn đáng làm: quay về mô
+hình edge HistGradientBoosting và **làm cho con số của nó đo đúng đã** — đó chính
+là giai đoạn 1 của [KE_HOACH_LAM_LAI_MODEL.md](KE_HOACH_LAM_LAI_MODEL.md).
 
 | | Kế hoạch A — MEGA-PNA | Kế hoạch B — mô hình edge đo lại |
 |---|---|---|
 | F1 kỳ vọng | ~0,45 | ~0,28 rồi cải thiện dần |
-| Cần GPU | **có** | không |
+| Cần GPU | **có** — đã có quota | không |
 | Cần viết mã | ~80 dòng (bộ chuyển) | sửa 2 dòng lọc + bổ sung đặc trưng đồ thị |
 | Thời gian | 1–2 tuần | 3–4 ngày |
-| Chi phí | 15–35 USD | 0 |
+| Chi phí | 30–130 USD (On-Demand) · 11–43 USD (Spot) | 0 |
 | So được với bài báo | **có ngay** | có, sau khi nạp lại dữ liệu |
 
-**Hai kế hoạch không loại trừ nhau.** Kế hoạch B vẫn nên làm dù có GPU: nó cho
-một mốc so sánh chạy được trên CPU, và nếu MEGA-PNA có trục trặc thì vẫn còn thứ
-để trình bày.
+**Hai kế hoạch không loại trừ nhau, và nên chạy song song.** Kế hoạch B chạy trên
+Mac, không tốn tiền, không tranh máy với kế hoạch A. Nó cho một mốc so sánh chạy
+được trên CPU, và nếu MEGA-PNA có trục trặc thì vẫn còn thứ để trình bày.
 
 ---
 
 ## 11. Kiểm lại trước khi bắt đầu
 
-- [ ] `nvidia-smi` in ra tên GPU
+- [ ] Máy `g5.2xlarge` (hoặc `g6.2xlarge`) ở **US East (N. Virginia)** — đúng vùng có hạn mức
+- [ ] Ổ đĩa gốc đã sửa lên **≥ 100 GB** lúc tạo máy
+- [ ] `nvidia-smi` in ra `A10G` hoặc `L4`
 - [ ] `torch.cuda.is_available()` trả về `True`
 - [ ] `import torch_sparse` không lỗi
 - [ ] `pytest tests/test_mega_pna -q` — 4 bài qua
 - [ ] `sha256sum` của `formatted_transactions.csv` khớp `450d89e1…`
 - [ ] Manifest ghi `rows: 6924049` và `positives: 3565`
 - [ ] Ba epoch thử chạy dưới 15 phút mỗi epoch
+- [ ] `nvidia-smi` trong lúc chạy cho thấy `GPU-Util` **khác 0**
 - [ ] Đã xoá thư mục báo cáo thử
-- [ ] Đã đặt hẹn tắt máy GPU khi xong
+- [ ] Đã xem bảng chi phí ở bước 1 và quyết định On-Demand hay xin thêm hạn mức Spot
+- [ ] **Đã đặt báo thức tắt máy GPU khi xong**
 
 ---
 
@@ -647,7 +733,10 @@ một mốc so sánh chạy được trên CPU, và nếu MEGA-PNA có trục tr
 Mô hình tốt nhất **đã nằm trong repo**. Dữ liệu **đã chuẩn bị đúng, không dính
 lỗi đo** như nhánh edge. Bộ đo và cổng nghiệm thu **đã viết sẵn và tự chấm**.
 
-Thứ duy nhất còn thiếu là **một cái GPU giá vài chục nghìn đồng một giờ**, và
-**tám mươi dòng mã** để nối kết quả về cơ sở dữ liệu.
+Quota AWS **đã có**: 8 vCPU họ G ở US East (N. Virginia) — vừa đúng một máy
+`g5.2xlarge`, và một máy là tất cả những gì MEGA-PNA cần.
 
-Bắt đầu từ mục 4.2: chọn máy.
+Thứ còn lại chỉ là **bấm chạy** và **tám mươi dòng mã** để nối kết quả về cơ sở
+dữ liệu.
+
+Bắt đầu từ mục 4.3: chọn máy.
