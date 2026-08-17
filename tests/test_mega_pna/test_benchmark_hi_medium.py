@@ -84,10 +84,69 @@ def test_cli_rejects_unknown_suite(monkeypatch: pytest.MonkeyPatch) -> None:
         benchmark.parse_args()
 
 
-def test_seed_count_must_be_five(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "argv", ["benchmark_mega_pna.py", "--suite", "hi-medium", "--seeds", "42", "43"])
+def test_legacy_suites_still_require_five_seeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cổng tái lập chấm bằng dung sai công bố, chỉ có nghĩa khi đủ 5 seed."""
+    monkeypatch.setattr(sys, "argv", ["benchmark_mega_pna.py", "--suite", "gate", "--seeds", "42", "43"])
     with pytest.raises(ValueError, match="exactly five seeds"):
         benchmark.main()
+
+
+def test_empty_seed_list_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["benchmark_mega_pna.py", "--suite", "hi-medium", "--seeds"])
+    with pytest.raises(SystemExit):
+        benchmark.parse_args()
+
+
+# --------------------------------------------------------------------------
+# Chạy ít hơn 5 seed: cho phép, nhưng phải nói rõ mất gì
+# --------------------------------------------------------------------------
+
+
+def test_single_seed_run_is_allowed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _seed_report(tmp_path, 42, f1=0.78)
+    monkeypatch.setattr(benchmark, "run_seed", lambda *a, **k: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["benchmark_mega_pna.py", "--suite", "hi-medium", "--seeds", "42", "--reports-dir", str(tmp_path)],
+    )
+    assert benchmark.main() == 0
+
+
+def test_single_seed_is_flagged_not_comparable(tmp_path: Path) -> None:
+    """Bảo vệ quan trọng nhất của chế độ một seed: không ai trích nhầm."""
+    _seed_report(tmp_path, 42, f1=0.78)
+    result = benchmark.summarize_hi_medium(tmp_path, [42])
+
+    assert result["comparable_to_published"] is False
+    assert "MỘT LẦN HUẤN LUYỆN" in result["comparability_note"]
+    assert result["completed_seed_count"] == 1
+
+
+def test_five_seeds_are_flagged_comparable(tmp_path: Path) -> None:
+    _write_passing(tmp_path)
+    assert benchmark.summarize_hi_medium(tmp_path, SEEDS)["comparable_to_published"] is True
+
+
+def test_std_check_is_not_applicable_with_one_seed(tmp_path: Path) -> None:
+    """Không đánh giá được thì để None — không phải False, cũng không âm thầm cho qua."""
+    _seed_report(tmp_path, 42, f1=0.78)
+    result = benchmark.summarize_hi_medium(tmp_path, [42])
+
+    assert result["release_gate_checks"]["f1_std"] is None
+    assert result["checks_not_applicable"] == ["f1_std"]
+    assert result["aggregate"]["f1"]["std"] is None
+    # Những phép kiểm còn lại vẫn phải chấm thật.
+    assert result["release_gate_checks"]["f1_mean"] is True
+    assert result["release_gate_passed"] is True
+
+
+def test_single_seed_below_threshold_still_fails(tmp_path: Path) -> None:
+    """Bỏ qua phép kiểm độ lệch không được nới lỏng những phép kiểm khác."""
+    _seed_report(tmp_path, 42, f1=0.60)
+    result = benchmark.summarize_hi_medium(tmp_path, [42])
+    assert result["release_gate_checks"]["f1_mean"] is False
+    assert result["release_gate_passed"] is False
 
 
 # --------------------------------------------------------------------------
@@ -241,6 +300,7 @@ def test_missing_seed_fails_and_exits_nonzero(tmp_path: Path, monkeypatch: pytes
     result = benchmark.summarize_hi_medium(tmp_path, SEEDS)
     assert result["completed_seed_count"] == 4
     assert result["missing_seeds"] == [46]
+    assert result["comparable_to_published"] is False
     assert result["release_gate_passed"] is False
 
     monkeypatch.setattr(benchmark, "run_seed", lambda *a, **k: None)
@@ -306,3 +366,21 @@ def test_rejects_reuse_when_config_differs(tmp_path: Path, monkeypatch: pytest.M
     args = benchmark.parse_args()
     with pytest.raises(RuntimeError, match="different epoch/batch config"):
         benchmark.run_seed(args, "Medium_HI", "paper", 42)
+
+
+def test_subprocess_forces_gnu_threading_layer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Không có biến này thì tiến trình con chết ngay ở dòng import.
+
+    Tiến trình cha nạp numpy nên MKL chốt lớp luồng INTEL; tiến trình con nạp torch
+    kéo theo libgomp, và hai thứ ấy xung khắc. Lỗi chỉ lộ ra khi chạy qua suite,
+    không lộ khi gọi thẳng train_mega_pna.py.
+    """
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(benchmark.subprocess, "run", lambda cmd, **kw: captured.update(cmd=cmd, **kw))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["benchmark_mega_pna.py", "--suite", "hi-medium", "--seeds", "42", "--reports-dir", str(tmp_path)],
+    )
+    benchmark.run_seed(benchmark.parse_args(), "Medium_HI", "paper", 42)
+    assert captured["env"]["MKL_THREADING_LAYER"] == "GNU"

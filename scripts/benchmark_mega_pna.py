@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -30,9 +31,16 @@ PUBLISHED = {
 #: Bộ dữ liệu duy nhất của suite ``hi-medium``.
 HI_MEDIUM = "Medium_HI"
 
-#: Số seed bắt buộc. Bilgi và cộng sự báo cáo trung bình ± độ lệch trên đúng 5
-#: seed; ít hơn thì độ lệch vô nghĩa, nhiều hơn thì không so được với bảng của họ.
-REQUIRED_SEEDS = 5
+#: Số seed để kết quả so được với bài báo.
+#:
+#: Bilgi và cộng sự báo cáo trung bình ± độ lệch trên đúng 5 seed. Chạy đủ 5 là
+#: cách duy nhất đặt số của mình cạnh ``0,7826 ± 0,0011`` như cùng một loại thống kê.
+#:
+#: Suite vẫn **cho phép** chạy ít hơn — chi phí GPU là có thật và đó là quyết định
+#: của người chạy. Nhưng khi ấy báo cáo tự đánh dấu ``comparable_to_published`` là
+#: false và ghi những phép kiểm không đánh giá được, để sau này không ai trích một
+#: con số đơn lẻ như thể nó là trung bình 5 seed.
+PUBLISHED_SEED_COUNT = 5
 
 #: Cổng phát hành cho HI-Medium.
 #:
@@ -115,7 +123,18 @@ def run_seed(args: argparse.Namespace, dataset: str, arm: str, seed: int) -> Non
     ]
     if arm == "no_payment_format":
         command.append("--no-payment-format")
-    subprocess.run(command, cwd=ROOT, check=True)
+
+    # MKL_THREADING_LAYER=GNU là bắt buộc khi sinh tiến trình con.
+    #
+    # Tiến trình cha đã nạp numpy nên MKL chốt lớp luồng là INTEL; tiến trình con
+    # nạp torch, kéo theo libgomp, và hai thứ ấy không đi cùng nhau:
+    #
+    #   MKL_THREADING_LAYER=INTEL is incompatible with libgomp.so.1 library
+    #
+    # Chạy ``train_mega_pna.py`` trực tiếp thì không gặp vì không có tiến trình cha
+    # nào nạp numpy trước — đó là lý do smoke qua được mà suite lại hỏng ngay.
+    env = {**os.environ, "MKL_THREADING_LAYER": "GNU"}
+    subprocess.run(command, cwd=ROOT, check=True, env=env)
 
 
 def summarize_dataset(
@@ -223,15 +242,18 @@ def summarize_hi_medium(reports_dir: Path, seeds: list[int]) -> dict[str, object
             "max": float(values.max()) if values.size else None,
         }
 
-    complete = len(runs) == REQUIRED_SEEDS
-    checks = {
-        "seeds_complete": complete,
+    # Phép kiểm nào không đánh giá được thì để None, KHÔNG để False và cũng không
+    # âm thầm cho qua. Với một seed thì độ lệch chuẩn không tồn tại — nói thẳng là
+    # "không đánh giá được" trung thực hơn cả hai cách kia.
+    checks: dict[str, bool | None] = {
+        "seeds_complete": len(runs) == len(seeds) and bool(runs),
         "f1_mean": _at_least(aggregate["f1"]["mean"], RELEASE_GATE["f1_mean_min"]),
         "f1_min": _at_least(aggregate["f1"]["min"], RELEASE_GATE["f1_min_min"]),
-        "f1_std": _at_most(aggregate["f1"]["std"], RELEASE_GATE["f1_std_max"]),
+        "f1_std": (_at_most(aggregate["f1"]["std"], RELEASE_GATE["f1_std_max"]) if len(runs) > 1 else None),
         "precision_mean": _at_least(aggregate["precision"]["mean"], RELEASE_GATE["precision_mean_min"]),
         "recall_mean": _at_least(aggregate["recall"]["mean"], RELEASE_GATE["recall_mean_min"]),
     }
+    not_applicable = sorted(name for name, ok in checks.items() if ok is None)
 
     # Chọn seed phát hành bằng validation F1; hoà thì lấy seed nhỏ hơn. Sắp xếp
     # theo (-validation_f1, seed) cho ra đúng thứ tự ấy trong một bước.
@@ -243,14 +265,29 @@ def summarize_hi_medium(reports_dir: Path, seeds: list[int]) -> dict[str, object
         "dataset": HI_MEDIUM,
         "arm": "paper",
         "requested_seeds": list(seeds),
-        "required_seed_count": REQUIRED_SEEDS,
+        "published_seed_count": PUBLISHED_SEED_COUNT,
         "completed_seed_count": len(runs),
         "missing_seeds": missing,
+        # Cờ để đọc nhanh, và để bất kỳ ai trích số cũng thấy ngay giới hạn.
+        "comparable_to_published": len(runs) == PUBLISHED_SEED_COUNT,
+        "comparability_note": (
+            "Chạy đủ 5 seed: trung bình ± độ lệch so trực tiếp được với 0,7826 ± 0,0011."
+            if len(runs) == PUBLISHED_SEED_COUNT
+            else (
+                f"Chỉ {len(runs)} seed. Con số này là kết quả CỦA MỘT LẦN HUẤN LUYỆN, "
+                "không phải trung bình 5 seed như bài báo. Không có ước lượng dao động "
+                "giữa các lần chạy, nên không biết được phần nào do mô hình và phần nào "
+                "do may rủi. Đừng viết nó dưới dạng 'trung bình ± độ lệch'."
+            )
+        ),
+        "checks_not_applicable": not_applicable,
         "runs": runs,
         "aggregate": aggregate,
         "release_gate": RELEASE_GATE,
         "release_gate_checks": checks,
-        "release_gate_passed": all(checks.values()),
+        # Chỉ xét những phép kiểm đánh giá được. Phép kiểm bỏ qua nằm ở
+        # ``checks_not_applicable`` chứ không biến mất.
+        "release_gate_passed": all(ok for ok in checks.values() if ok is not None),
         "selected_seed": selected,
         "selection_rule": "highest validation F1, ties broken by smaller seed",
         # Để đối chiếu, không phải để chấm. Dung sai ±0,0011 của bài báo quá ngặt
@@ -297,13 +334,25 @@ def run_hi_medium(args: argparse.Namespace) -> int:
 
 def main() -> int:
     args = parse_args()
-    if len(args.seeds) != REQUIRED_SEEDS:
-        raise ValueError("Bilgi et al. report mean ± std over exactly five seeds")
+    if not args.seeds:
+        raise ValueError("Cần ít nhất một seed")
 
     # Đường đi riêng, đặt trước mọi thứ: không đọc, không ghi, không chấm
     # Small_HI/Small_LI.
     if args.suite == "hi-medium":
+        if len(args.seeds) != PUBLISHED_SEED_COUNT:
+            print(
+                f"CẢNH BÁO: chạy {len(args.seeds)} seed thay vì {PUBLISHED_SEED_COUNT}. "
+                "Kết quả sẽ không so trực tiếp được với trung bình ± độ lệch của bài báo; "
+                "báo cáo sẽ tự đánh dấu comparable_to_published=false.",
+                file=sys.stderr,
+            )
         return run_hi_medium(args)
+
+    # Các suite cũ vẫn giữ ràng buộc cứng: cổng tái lập của chúng chấm bằng dung
+    # sai công bố, mà dung sai ấy chỉ có nghĩa khi đủ 5 seed.
+    if len(args.seeds) != PUBLISHED_SEED_COUNT:
+        raise ValueError("Bilgi et al. report mean ± std over exactly five seeds")
 
     small = ["Small_HI", "Small_LI"]
     if args.suite != "summarize":
