@@ -52,7 +52,13 @@ F1 của **lớp thiểu số** — không dùng accuracy, vì tỷ lệ dương
 | Multi-GIN+EU | 26,88 | GNN đa đồ thị |
 | **GFP + XGBoost** | **27,30** | **đặc trưng đồ thị + cây** |
 | **Multi-PNA** | **30,65** | GNN đa đồ thị |
-| **Multi-PNA+EU** | **33,07** | GNN đa đồ thị — tốt nhất |
+| **Multi-PNA+EU** | **33,07** | GNN đa đồ thị |
+| **MEGA-PNA** | **45,07 ± 2,26** | GNN đa đồ thị + gộp cạnh song song — **tốt nhất** |
+
+> **MEGA-PNA đã có sẵn trong repo và chưa từng được huấn luyện.** `src/mega_pna/`
+> là bản cài đặt đầy đủ, dữ liệu LI-Small đã chuyển đổi xong và **giữ nguyên
+> 6.924.049 dòng** — tức không dính lỗi đo nói ở khung dưới. Thứ duy nhất thiếu
+> là một GPU NVIDIA. Cách thực hiện từng bước: [HUONG_DAN_DUNG_LAI_MODEL.md](HUONG_DAN_DUNG_LAI_MODEL.md).
 
 **Mô hình edge của chúng ta: 30,2%** (seed chính; trung bình 5 seed 29,7% ± 1,3).
 
@@ -296,19 +302,33 @@ thêm vào phải trả lời được: nó có nâng F1 không? Không nâng th
 **Đo bằng gì** — số cảnh báo và F1 trước/sau. Kỳ vọng: **ít cảnh báo hơn, chất
 lượng cao hơn**, vì mọi cảnh báo giờ đến từ mô hình mạnh nhất.
 
-### Giai đoạn 4 — Thử GNN đa đồ thị (1–2 tuần, tuỳ chọn)
+### Giai đoạn 4 — Chạy MEGA-PNA (1–2 tuần)
 
-Chỉ làm khi giai đoạn 2 đã cạn.
+Nhóm đã chốt **lấy mô hình tốt nhất**, nên giai đoạn này không còn là tuỳ chọn.
 
-Kho mã [IBM/Multi-GNN](https://github.com/IBM/Multi-GNN) công khai, giấy phép
-Apache. Ba sửa đổi cần có: **reverse message passing**, **port numbering**,
-**ego IDs**. Multi-PNA+EU đạt 33,07% trên LI-Small.
+Điều bất ngờ dễ chịu khi rà lại repo: **MEGA-PNA đã được cài đặt xong từ trước và
+chưa ai chạy nó lần nào.**
 
-Repo đã có `src/mega_pna/` dùng PyTorch Geometric — cùng hệ sinh thái, nên không
-phải dựng lại hạ tầng.
+| | Trạng thái |
+|---|---|
+| Mô hình, vòng huấn luyện, bộ đo | ✅ `src/mega_pna/` |
+| Truyền tin ngược chiều · đánh số cổng · định danh ego · gộp cạnh song song | ✅ bật sẵn trong `config.py` |
+| Dữ liệu LI-Small đã chuyển đổi | ✅ 6.924.049 dòng · 3.565 nhãn dương — **đúng bằng file gốc** |
+| Cổng tái lập 5 seed, tự so với số công bố | ✅ `scripts/benchmark_mega_pna.py` |
+| Kiểm thử đơn vị | ✅ 4 bài qua |
+| GPU CUDA | ❌ **thiếu — đây là toàn bộ vấn đề** |
+| Bộ chuyển khoá để nạp vào PostgreSQL | ❌ phải viết, ~80 dòng |
 
-**Cảnh báo trung thực:** bài báo cho biết tổng thời gian GPU của họ khoảng **1000
-giờ** trên Tesla V100. Đừng bắt đầu giai đoạn này nếu chưa có GPU.
+`reports/mega-pna/preflight.json` ghi lại lần thử trên máy Mac: mọi kiểm tra đều
+qua, riêng lần chạy thật bằng MPS **quá 15 phút chưa xong epoch đầu tiên**, trong
+khi cần 80 epoch × 5 seed × 2 bộ dữ liệu.
+
+Chi phí thuê GPU ước tính **15–35 USD** cho toàn bộ cổng nghiệm thu — rẻ hơn
+nhiều so với con số "1000 giờ V100" mà bài báo Multi-GNN nêu, vì đó là tổng thời
+gian cho *mọi* thí nghiệm của họ trên *mọi* bộ dữ liệu, không phải một lần chạy.
+
+**Toàn bộ quy trình, môi trường và cách nạp vào hệ thống:
+[HUONG_DAN_DUNG_LAI_MODEL.md](HUONG_DAN_DUNG_LAI_MODEL.md).**
 
 ---
 
@@ -370,13 +390,17 @@ flowchart LR
     subgraph target["Sau giai đoạn 2"]
         T1["+ đặc trưng đồ thị đầy đủ<br/><b>mục tiêu > 33%</b>"]
     end
+    subgraph gpu["Giai đoạn 4 — cần GPU"]
+        G1["<b>MEGA-PNA</b><br/>đã có sẵn trong repo<br/>chưa từng chạy<br/><b>kỳ vọng ~45%</b>"]
+    end
     subgraph sota["SOTA công bố"]
         S1["GFP+XGBoost 27,3%"]
-        S2["Multi-PNA 30,7%"]
-        S3["Multi-PNA+EU <b>33,1%</b>"]
+        S2["Multi-PNA+EU 33,1%"]
+        S3["MEGA-PNA <b>45,1%</b>"]
     end
-    now --> target
+    now --> target --> gpu
     target -.->|"so sánh"| sota
+    gpu -.->|"so sánh"| sota
 ```
 
 **Chưa biết ta đang đứng ở đâu.** Con số 30,2% đo trên tập đã lọc mất 11,6% dòng
@@ -391,6 +415,10 @@ dùng chu trình tới độ dài 10 cộng thống kê đỉnh đầy đủ.
 mô hình yếu, mà là **kiến trúc chôn mô hình mạnh dưới ba nhánh yếu**. Gỡ chúng ra
 là bước rẻ nhất và hiệu quả nhất.
 
+**Và đường ngắn nhất tới 45% đã nằm sẵn trong repo.** MEGA-PNA được cài đặt đầy
+đủ, dữ liệu đã chuyển đổi đúng, kiểm thử đã qua — chỉ chưa ai có GPU để bấm chạy.
+Xem [HUONG_DAN_DUNG_LAI_MODEL.md](HUONG_DAN_DUNG_LAI_MODEL.md).
+
 ---
 
 ## 12. Bắt đầu từ đâu
@@ -404,6 +432,13 @@ Người nhận việc đọc theo thứ tự này:
 | 3. Xem kết quả hiện tại | `reports/edge-benchmark/li_small_currency_native_policy_v1.json` |
 | 4. Hiểu bối cảnh cả hệ thống | [`docs/TONG_KET_VA_HUONG_PHAT_TRIEN.md`](TONG_KET_VA_HUONG_PHAT_TRIEN.md) |
 | 5. Đọc bài báo gốc | [arXiv:2306.16424](https://arxiv.org/abs/2306.16424) mục 4 và phụ lục D |
+| 6. **Chạy mô hình tốt nhất** | [`docs/HUONG_DAN_DUNG_LAI_MODEL.md`](HUONG_DAN_DUNG_LAI_MODEL.md) |
 
-Việc đầu tiên nên làm: **giai đoạn 1**, chốt mốc so sánh. Không có mốc thì mọi
-cải tiến sau đều là cảm tính.
+Hai việc chạy song song được, vì chúng không đụng nhau:
+
+- **Giai đoạn 1** (không cần GPU) — chốt một mốc so sánh đo đúng cho mô hình
+  edge. Không có mốc thì mọi cải tiến sau đều là cảm tính.
+- **Giai đoạn 4** (cần GPU) — chạy MEGA-PNA. Đường này **không dính lỗi đo** vì
+  dữ liệu đã chuyển đổi giữ nguyên đủ 6.924.049 dòng, nên có số là so được ngay.
+
+Ai lo được GPU thì bắt đầu từ giai đoạn 4; ai không thì bắt đầu từ giai đoạn 1.
