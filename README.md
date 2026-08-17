@@ -457,6 +457,7 @@ Chi tiết ở [`docs/operations/CICD.md`](docs/operations/CICD.md).
 | Tài liệu | Nội dung |
 |---|---|
 | [`docs/TONG_KET_VA_HUONG_PHAT_TRIEN.md`](docs/TONG_KET_VA_HUONG_PHAT_TRIEN.md) | **Bắt đầu từ đây** — đang có gì, huấn luyện thế nào, làm gì tiếp |
+| [`docs/KE_HOACH_LAM_LAI_MODEL.md`](docs/KE_HOACH_LAM_LAI_MODEL.md) | Kế hoạch dựng lại tầng phát hiện theo kiến trúc có dẫn nguồn |
 | [`docs/architecture/PRODUCTION_ARCHITECTURE.md`](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Kiến trúc triển khai production |
 | [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Vận hành và xử lý sự cố |
 | [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai VM |
