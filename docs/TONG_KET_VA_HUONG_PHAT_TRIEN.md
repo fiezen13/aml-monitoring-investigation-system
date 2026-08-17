@@ -274,7 +274,8 @@ hàng trăm lần chọn ngẫu nhiên.
 ### 4.5 Hợp nhất ba nhánh — và một kết quả không như mong đợi
 
 `src/fusion/tri.py` tìm bộ trọng số tốt nhất bằng cách quét lưới trên tập
-validation. Kết quả (`reports/fusion-tri/li_small_tri_fusion_v1.json`):
+validation. Kết quả sau khi huấn luyện lại với bộ luật hai luật
+(`reports/fusion-tri/li_small_tri_fusion_v1.json`):
 
 ```
 trọng số:  luật 0,55  ·  đồ thị 0,45  ·  Isolation Forest 0,00
@@ -282,9 +283,9 @@ trọng số:  luật 0,55  ·  đồ thị 0,45  ·  Isolation Forest 0,00
 
 | Trên tập test | F1 | PR-AUC |
 |---|---|---|
-| Hợp nhất ba nhánh | **0,1365** | **0,0789** |
+| Hợp nhất ba nhánh | **0,1365** | **0,0790** |
 | Chỉ đồ thị | 0,1338 | **0,0841** |
-| Chỉ luật | 0,0130 | 0,0051 |
+| Chỉ luật | 0,0127 | 0,0050 |
 | Chỉ Isolation Forest | 0,0159 | 0,0153 |
 
 **Nói thẳng: việc hợp nhất gần như không mang lại gì.** F1 nhỉnh hơn đồ thị đơn
@@ -293,6 +294,30 @@ lẻ đúng 0,0027, còn PR-AUC thì *tệ hơn*. Và Isolation Forest nhận tr
 
 Đây là phát hiện có giá trị, không phải thất bại cần giấu. Nó chỉ ra chính xác
 chỗ cần đầu tư tiếp (xem mục 8).
+
+#### Huấn luyện lại sau khi gỡ hai luật đã lộ ra một lệch nghiêm trọng hơn
+
+Sau khi gỡ R03 và R04, chạy lại toàn bộ quy trình huấn luyện cho ra kết quả gần
+như **không đổi**: F1 tập test 0,136525 → 0,136504, trọng số y nguyên, và lưới
+điểm nhánh luật chỉ giảm 3 dòng trên 84.792.
+
+Lý do không phải vì hai luật ấy vô hại. Mà vì **chúng chưa bao giờ chạy trong
+lúc huấn luyện**: `scripts/compute_rule_grid.py` để trống các số đo VASP và
+xuyên biên giới, do DuckDB huấn luyện không có bảng `bank`.
+
+Nghĩa là suốt thời gian qua tồn tại một **lệch giữa huấn luyện và phục vụ**:
+
+| | Nhánh luật thực chạy |
+|---|---|
+| Lúc huấn luyện (DuckDB) | R01 + R02 |
+| Lúc phục vụ (PostgreSQL) | R01 + R02 + **R03 + R04** |
+
+Trọng số hợp nhất được khớp trên một nhánh luật *khác* nhánh đang chấm điểm thật.
+Chú thích trong mã còn trấn an rằng hai luật ấy "không đổi việc một tài khoản có
+bị cảnh báo hay không" — sai, vì R03 là luật chính và đã mở 11.191 cảnh báo.
+
+Sau thay đổi này, hai đường chạy đúng cùng một bộ luật và lệch đó không còn. Con
+số F1 0,0127 của nhánh luật vì thế lần đầu tiên mô tả đúng nhánh đang phục vụ.
 
 ### 4.6 Mô hình nằm ở đâu
 
@@ -451,18 +476,7 @@ bằng chứng.
 
 **Ở đâu:** `src/investigation/agents.py`, `src/investigation/prompts/`.
 
-### Ưu tiên 2 — Huấn luyện lại trọng số hợp nhất
-
-**Vì sao:** bộ trọng số hiện tại (`luật 0,55 · đồ thị 0,45 · IF 0,00`) được khớp
-khi nhánh luật còn bốn luật. Hai luật đã gỡ, nên **con số đó nay đã lỗi thời** và
-mọi kết quả hợp nhất ở mục 4.5 phải đọc kèm cảnh báo này.
-
-**Làm gì:** chạy lại `scripts/train_fusion_tri.py`, rồi `scripts/load_fusion_tri.py`.
-
-**Đo bằng gì:** F1 và PR-AUC mới so với nhánh đồ thị đơn lẻ (0,1338 / 0,0841).
-Nếu hợp nhất vẫn không vượt được đồ thị đơn lẻ thì nên bỏ hẳn bước hợp nhất.
-
-### Ưu tiên 3 — Quyết định số phận của Isolation Forest
+### Ưu tiên 2 — Quyết định số phận của Isolation Forest
 
 **Vì sao:** thuật toán tìm trọng số đã cho nó **0,00**. Nó đang tốn công vận
 hành mà không đóng góp gì cho điểm hợp nhất.
@@ -474,7 +488,7 @@ hành mà không đóng góp gì cho điểm hợp nhất.
 
 **Đo bằng gì:** trọng số Isolation Forest sau khi quét lưới. Khác 0 là có ích.
 
-### Ưu tiên 4 — Kéo độ chính xác nhánh đồ thị lên
+### Ưu tiên 3 — Kéo độ chính xác nhánh đồ thị lên
 
 **Vì sao:** recall 0,583 là con số tốt và không nhánh nào khác có. Nhưng
 precision 0,0014 khiến nó không dùng độc lập được.
@@ -485,7 +499,7 @@ thiểu, cửa sổ thời gian chặt hơn. Chấp nhận đánh đổi recall 
 **Đo bằng gì:** chạy lại `scripts/run_graph_detector_eval.py`, mục tiêu
 precision lên ít nhất 0,01 mà recall vẫn trên 0,40.
 
-### Ưu tiên 5 — Bổ sung bằng chứng đồ thị
+### Ưu tiên 4 — Bổ sung bằng chứng đồ thị
 
 **Vì sao:** trong 510 lượt gọi công cụ, **96 lượt trả về "thiếu một phần"** —
 phần lớn là `GetGraphEvidence` không có dữ liệu cho tài khoản đang hỏi. Hiện chỉ
@@ -496,7 +510,7 @@ không chỉ một phần.
 
 **Đo bằng gì:** số lượt `PARTIAL` giảm. Đây cũng là cách gián tiếp giúp Ưu tiên 1.
 
-### Ưu tiên 6 — Dạy tác tử điều phối nhớ công cụ đã cạn
+### Ưu tiên 5 — Dạy tác tử điều phối nhớ công cụ đã cạn
 
 **Vì sao:** trong ca đánh giá số 1, nó gọi `GetGraphEvidence` **ba lần** dù công
 cụ đó chắc chắn không trả thêm gì, và phiên hết trần công cụ vì thế.
@@ -506,7 +520,7 @@ vòng sau.
 
 **Đo bằng gì:** số lượt gọi công cụ trung bình mỗi phiên giảm, tỷ lệ gọi lặp về 0.
 
-### Ưu tiên 7 — Nâng cấu hình Cloud SQL
+### Ưu tiên 6 — Nâng cấu hình Cloud SQL
 
 **Vì sao:** đĩa rất chậm — đo được **7,6 ms cho mỗi khối 8KB**. Một phiên điều
 tra lần đầu (bộ đệm nguội) mất 83 giây; lần sau chỉ 42 giây. Truy vấn đã tối ưu
@@ -515,7 +529,7 @@ hết mức, phần còn lại là hạ tầng.
 **Làm gì:** tăng RAM để bộ đệm giữ được nhiều hơn, hoặc tăng dung lượng đĩa
 (IOPS trên Cloud SQL tỷ lệ với dung lượng).
 
-### Ưu tiên 8 — Phủ nốt năm mẫu hình IBM chưa ai đụng
+### Ưu tiên 7 — Phủ nốt năm mẫu hình IBM chưa ai đụng
 
 **Vì sao:** nhánh đồ thị mới bắt 3 trong 8 mẫu hình có nhãn. Còn **STACK,
 BIPARTITE, RANDOM, SCATTER-GATHER, CYCLE** — cộng lại là 74 trên 117 vụ được gán
@@ -541,6 +555,9 @@ mẫu hình phủ được mà precision không tụt dưới mức hiện tại
 - **Hai file trọng số đang phục vụ chưa nằm trong git** — xem cảnh báo ở mục
   4.6. Người mới clone repo hiện không tự chấm điểm lại được. Nên xử lý sớm vì
   nó chặn người mới tham gia vào phần mô hình.
+- **Bundle hợp nhất đã huấn luyện lại nhưng chưa nạp vào cơ sở dữ liệu.** Chênh
+  lệch chỉ 2 cảnh báo trên 6.630 nên chưa nạp lại để khỏi động vào các cảnh báo
+  đang có phiên điều tra. Chạy `scripts/load_fusion_tri.py` khi nào tiện.
 - **`models/README.md` đã lệch** — nó nhắc tới
   `fin07_currency_native_policy_edge_v1.joblib`, nhưng file thật trên đĩa giờ là
   bản `..._li_small_v1.joblib`.
