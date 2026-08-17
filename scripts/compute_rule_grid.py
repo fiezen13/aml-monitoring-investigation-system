@@ -153,10 +153,20 @@ def main(argv: list[str] | None = None) -> int:
                     near_threshold_span_hours=float(r[8]),
                     rapid_outflow_amount=float(r[9]),
                     median_dwell_hours=float(r[10]) if r[10] is not None else None,
-                    # Hai luật cần dữ liệu ngân hàng (VASP, xuyên biên giới) không
-                    # chạy ở đây: DuckDB huấn luyện không có bảng `bank`. Chúng chỉ
-                    # làm giàu ngữ cảnh, không đổi việc một tài khoản có bị cảnh báo
-                    # hay không — xem `should_alert`.
+                    # Các trường vasp_* và cross_border_* để trống vì DuckDB huấn
+                    # luyện không có bảng `bank`.
+                    #
+                    # Trước đây chỗ này còn khẳng định điều đó "không đổi việc một
+                    # tài khoản có bị cảnh báo hay không". Khẳng định ấy SAI:
+                    # R03_VASP_EXPOSURE là luật chính và trên PostgreSQL nó đã mở
+                    # 11.191 cảnh báo. Nghĩa là suốt thời gian đó, nhánh rule dùng để
+                    # khớp trọng số hợp nhất *không phải* nhánh rule đang phục vụ —
+                    # một lệch giữa huấn luyện và phục vụ, bị che bởi chính chú thích
+                    # trấn an này.
+                    #
+                    # Nay hai luật ấy đã gỡ khỏi src/detection/rules.py, nên cả hai
+                    # đường đều chạy đúng R01 + R02 và lệch đó không còn. Giữ lời
+                    # nhắc ở đây: thêm luật nào cần bảng `bank` là lệch quay lại.
                 )
                 hits = evaluate(ctx)
                 if not hits:
