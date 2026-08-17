@@ -63,6 +63,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch-size", type=int, default=8192)
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="Tiến trình lấy mẫu láng giềng song song, truyền thẳng xuống train_mega_pna.py.",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=0,
+        help="Dừng sớm theo validation, truyền thẳng xuống train_mega_pna.py. 0 là tắt.",
+    )
     parser.add_argument("--include-ablation", action="store_true")
     parser.add_argument("--reports-dir", type=Path, default=ROOT / "reports/mega-pna")
     return parser.parse_args()
@@ -96,6 +108,10 @@ def run_seed(args: argparse.Namespace, dataset: str, arm: str, seed: int) -> Non
         args.device,
         "--reports-dir",
         str(args.reports_dir),
+        "--num-workers",
+        str(args.num_workers),
+        "--patience",
+        str(args.patience),
     ]
     if arm == "no_payment_format":
         command.append("--no-payment-format")

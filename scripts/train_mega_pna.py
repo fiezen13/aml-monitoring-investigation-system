@@ -26,6 +26,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--batch-size", type=int, default=8192)
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="Tiến trình lấy mẫu láng giềng song song. 0 giữ hành vi cũ; trên máy 8 nhân nên đặt 6.",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=0,
+        help="Dừng khi validation F1 không cải thiện sau ngần này epoch. 0 là tắt.",
+    )
     parser.add_argument("--no-payment-format", action="store_true")
     return parser.parse_args()
 
@@ -36,7 +48,9 @@ def main() -> int:
     formatted = args.formatted_dir / args.dataset / "formatted_transactions.csv"
     if not formatted.exists():
         raise FileNotFoundError(f"{formatted} does not exist; run scripts/format_mega_pna.py first")
-    config = MegaPnaConfig(epochs=args.epochs, batch_size=args.batch_size)
+    config = MegaPnaConfig(
+        epochs=args.epochs, batch_size=args.batch_size, num_workers=args.num_workers, patience=args.patience
+    )
     bundle = load_formatted_data(
         formatted,
         include_payment_format=not args.no_payment_format,
