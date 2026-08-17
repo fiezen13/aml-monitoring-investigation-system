@@ -140,6 +140,12 @@ infra/terraform/*.tfvars
 !infra/terraform/*.tfvars.example
 infra/terraform/crash.log
 
+# terraform.tfvars của máy GPU chứa địa chỉ IP nhà người chạy (allowed_ssh_cidr).
+# Bản .example thì commit được.
+infra/terraform/gpu/terraform.tfvars
+infra/terraform/gpu/.terraform/
+infra/terraform/gpu/*.tfstate*
+
 # Điểm từng cạnh là dữ liệu lớn, dựng lại được từ checkpoint — để ngoài Git.
 /models/mega-pna/**/*.parquet
 
