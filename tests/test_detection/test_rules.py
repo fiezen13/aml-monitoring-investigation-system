@@ -4,13 +4,12 @@ from datetime import UTC, datetime
 
 from src.detection.rules import (
     RULE_THRESHOLDS,
+    RULES,
     RuleContext,
     evaluate,
     risk_score,
-    rule_cross_border,
     rule_rapid_movement,
     rule_structuring,
-    rule_vasp_exposure,
     signals_of,
 )
 
@@ -87,43 +86,15 @@ class TestRapidMovement:
         assert "short_dwell_time" not in hit.signals
 
 
-class TestVaspExposure:
-    def test_fires_on_material_vasp_exposure(self):
-        hit = rule_vasp_exposure(ctx(vasp_amount=120_000.0, vasp_transaction_count=5))
-
-        assert hit is not None
-        assert "vasp_link" in hit.signals
-
-    def test_stays_silent_on_a_single_vasp_transaction(self):
-        assert rule_vasp_exposure(ctx(vasp_amount=200_000.0, vasp_transaction_count=1)) is None
-
-
-class TestCrossBorder:
-    def test_fires_when_most_transactions_cross_a_border(self):
-        hit = rule_cross_border(ctx(cross_border_count=15))
-
-        assert hit is not None
-        assert "cross_border_flow" in hit.signals
-
-    def test_never_claims_a_high_risk_jurisdiction(self):
-        """Không có danh sách quốc gia được chỉ định thì không được khẳng định T06."""
-        hit = rule_cross_border(ctx(cross_border_count=20))
-
-        assert "jurisdiction_signal" not in hit.signals
-
-
 class TestScoring:
     def test_no_hit_scores_zero(self):
         assert risk_score([]) == 0.0
 
-    def test_one_severe_rule_outranks_several_weak_ones(self):
+    def test_one_severe_rule_outranks_a_barely_triggered_one(self):
         severe = [rule_rapid_movement(ctx(rapid_outflow_amount=100_000.0, median_dwell_hours=0.1))]
-        weak = evaluate(ctx(cross_border_count=11, vasp_amount=61_000.0, vasp_transaction_count=4))
+        barely = [rule_structuring(ctx(near_threshold_count=3, near_threshold_distinct_amounts=3))]
 
-        assert risk_score(severe) > 0
-        assert len(weak) >= 2
-        # Cộng thẳng sẽ khiến nhóm luật yếu vượt mặt; thang giảm dần ngăn điều đó.
-        assert risk_score(weak) <= 100.0
+        assert risk_score(severe) > risk_score(barely) > 0
 
     def test_the_score_never_exceeds_the_scale(self):
         every = evaluate(
@@ -133,13 +104,10 @@ class TestScoring:
                 near_threshold_span_hours=10,
                 rapid_outflow_amount=100_000.0,
                 median_dwell_hours=0.1,
-                vasp_amount=200_000.0,
-                vasp_transaction_count=50,
-                cross_border_count=20,
             )
         )
 
-        assert len(every) == 4
+        assert len(every) == len(RULES)
         assert 0 < risk_score(every) <= 100.0
 
 
@@ -162,14 +130,6 @@ class TestSignalsFeedTypology:
 
         assert match.typology_code == "T05"
 
-    def test_vasp_exposure_selects_the_virtual_asset_typology(self):
-        from src.investigation.typology_match import match_typology
-
-        hits = evaluate(ctx(vasp_amount=90_000.0, vasp_transaction_count=6))
-        match = match_typology(signals_of(hits))
-
-        assert match.typology_code == "T08"
-
 
 def test_thresholds_live_in_one_place():
     """Ngưỡng phải nằm trong bảng cấu hình để bộ phận tuân thủ hiệu chỉnh được."""
@@ -177,39 +137,42 @@ def test_thresholds_live_in_one_place():
         "reporting_threshold",
         "structuring_min_count",
         "rapid_outflow_ratio",
-        "vasp_exposure_ratio",
-        "cross_border_ratio",
     }
 
 
-class TestSupportingRules:
-    def test_cross_border_alone_does_not_open_an_alert(self):
-        """27% tài khoản trong bộ dữ liệu có dòng tiền xuyên biên giới.
-
-        Đó là chuyện bình thường ở dữ liệu đa ngân hàng, không phải vi phạm. Nếu
-        luật này tự mở cảnh báo thì hàng đợi ngập và mất hết ý nghĩa xếp hạng.
-        """
-        from src.detection.rules import should_alert
-
-        hits = evaluate(ctx(cross_border_count=18))
-
-        assert [hit.code for hit in hits] == ["R04_CROSS_BORDER_FLOW"]
-        assert should_alert(hits) is False
-
-    def test_cross_border_still_enriches_an_alert_a_primary_rule_opened(self):
-        from src.detection.rules import should_alert
-
-        hits = evaluate(ctx(rapid_outflow_amount=95_000.0, median_dwell_hours=0.4, cross_border_count=18))
-        codes = [hit.code for hit in hits]
-
-        assert should_alert(hits) is True
-        assert "R02_RAPID_MOVEMENT" in codes
-        assert "R04_CROSS_BORDER_FLOW" in codes
-
+class TestAlertGate:
     def test_no_hits_never_opens_an_alert(self):
         from src.detection.rules import should_alert
 
         assert should_alert([]) is False
+
+    def test_a_primary_rule_opens_an_alert(self):
+        from src.detection.rules import should_alert
+
+        hits = evaluate(ctx(rapid_outflow_amount=95_000.0, median_dwell_hours=0.4))
+
+        assert [hit.code for hit in hits] == ["R02_RAPID_MOVEMENT"]
+        assert should_alert(hits) is True
+
+
+class TestOnlyVerifiableRulesRemain:
+    """Bộ luật chỉ được chứa luật tính từ cột có thật trong dữ liệu IBM.
+
+    R03 (VASP) và R04 (xuyên biên giới) đã gỡ vì chúng đọc thuộc tính do dự án
+    tự gán trong data/reference/bank_country.csv. Test này giữ cho chúng không
+    lặng lẽ quay lại: thêm luật dựa trên thuộc tính bịa là hỏng ngay ở CI.
+    """
+
+    def test_the_rule_set_is_exactly_the_two_verifiable_rules(self):
+        from src.detection.rules import RULES
+
+        assert [rule.__name__ for rule in RULES] == ["rule_structuring", "rule_rapid_movement"]
+
+    def test_no_rule_reads_a_project_assigned_attribute(self):
+        rich = ctx(vasp_amount=500_000.0, vasp_transaction_count=40, cross_border_count=90)
+        codes = {hit.code for hit in evaluate(rich)}
+
+        assert codes == set(), "Số đo VASP/xuyên biên giới không được tự mở cảnh báo"
 
 
 def test_a_rule_that_fired_never_contributes_zero():

@@ -17,7 +17,7 @@ tử AI điều tra và viết bản giải thích có dẫn chứng.
 |---|---|
 | Giao dịch đã nạp và chấm điểm | 6.119.572 |
 | Tài khoản | 576.781 |
-| Cảnh báo đã sinh | 21.034 |
+| Cảnh báo đang mở | 10.414 (đã sinh 21.034, đóng 10.620 vì không kiểm chứng được) |
 | Phiên điều tra tác tử đã chạy | 110 |
 | Lượt gọi Gemini thật | 258 lượt, 4.139.927 token |
 | Trạng thái | Đang chạy trên tên miền, có HTTPS, tự động triển khai |
@@ -122,28 +122,93 @@ hình nhìn thấy tương lai của chính tài khoản nó đang chấm.
 
 ---
 
+### 3.1 Bộ dữ liệu gán nhãn những gì — và không gán nhãn những gì
+
+Đây là câu hỏi quyết định phạm vi của cả hệ thống, nên đặt ngay ở đây.
+
+`LI-Small_Trans.csv` chỉ có tám cột dữ liệu và một cột nhãn:
+
+```
+Timestamp · From Bank · Account · To Bank · Account
+Amount Received · Receiving Currency · Amount Paid · Payment Currency
+Payment Format · Is Laundering
+```
+
+**Không có quốc gia. Không có cờ VASP. Không có hồ sơ khách hàng.**
+
+Tệp `LI-Small-Patterns.txt` gán nhãn **117 vụ rửa tiền** theo tám mẫu hình —
+tất cả đều là *hình dạng dòng tiền trên đồ thị*:
+
+| Mẫu hình | Số vụ | | Mẫu hình | Số vụ |
+|---|---|---|---|---|
+| FAN-OUT | 19 | | SCATTER-GATHER | 13 |
+| STACK | 18 | | GATHER-SCATTER | 12 |
+| BIPARTITE | 16 | | FAN-IN | 12 |
+| RANDOM | 15 | | CYCLE | 12 |
+
+Nguyên tắc rút ra, và cả nhóm nên theo: **cái gì không có trong bộ dữ liệu thì
+không benchmark được, nên không đưa vào điểm rủi ro.** Nó có thể nằm trong hệ
+thống dưới dạng *ngữ cảnh để đọc*, nhưng không được tự mở cảnh báo.
+
+Đối chiếu hiện trạng:
+
+| Thành phần | Khớp nhãn nào | Kiểm chứng được? |
+|---|---|---|
+| Mô hình currency-native edge | `Is Laundering` từng giao dịch | ✅ F1 0,302 trên tập test |
+| Nhánh đồ thị | 3 trong 8 mẫu hình (FAN_IN, FAN_OUT, GATHER_SCATTER) | ✅ recall 0,583 trên 24 vụ tập test |
+| Nhánh luật `R01`, `R02` | tính từ cột có thật, đo được với `Is Laundering` | ✅ nhưng dataset không mô phỏng riêng hành vi này |
+| ~~`R03` VASP~~, ~~`R04` xuyên biên giới~~ | không mẫu hình nào | ❌ **đã gỡ** — xem mục 4.1 |
+
+Điều này giải thích con số F1 0,013 của nhánh luật ở mục 4.5: không phải luật
+viết sai theo nghĩa AML, mà là **IBM không mô phỏng những hành vi ấy**. Nhánh đồ
+thị nhỉnh hơn hẳn chính vì nó đi tìm đúng thứ bộ dữ liệu có gán nhãn.
+
+---
+
 ## 4. Ba nhánh phát hiện — huấn luyện thế nào, ra sao
 
 ### 4.1 Nhánh luật nghiệp vụ — không huấn luyện
 
-Bốn luật viết tay trong `src/detection/rules.py`, chạy bằng
+**Hai** luật viết tay trong `src/detection/rules.py`, chạy bằng
 `scripts/run_rule_engine.py`.
 
-| Luật | Bắt cái gì |
-|---|---|
-| `R01_STRUCTURING` | Chia nhỏ tiền quanh ngưỡng báo cáo |
-| `R04_CROSS_BORDER_FLOW` | Dòng tiền xuyên biên giới bất thường |
-| `CTX_TRANSACTION_COUNT` | Số giao dịch vọt bất thường |
-| `CTX_RAPID_MOVEMENT` | Tiền vào rồi ra ngay trong 2 giờ |
+| Luật | Điều kiện | Sinh ra |
+|---|---|---|
+| `R01_STRUCTURING` | ≥ 3 giao dịch nằm trong dải 85–100% ngưỡng báo cáo 10.000 | 7.129 cảnh báo |
+| `R02_RAPID_MOVEMENT` | ≥ 60% tiền ra rời tài khoản trong 2 giờ sau khi nhận, tối thiểu 3 giao dịch đi | 1.998 cảnh báo |
 
-Sinh ra **19.704 cảnh báo**. Đây là nhánh ồn nhất nhưng cũng dễ giải thích nhất
-cho kiểm toán — luật viết ra giấy được.
+Tổng **9.084 cảnh báo** (một tài khoản có thể trúng cả hai). Đây là nhánh dễ giải
+thích nhất cho kiểm toán — luật viết ra giấy được.
 
-Hai chi tiết đã phải sửa và nên nhớ:
-- Ban đầu **mọi** luật đều phát tín hiệu `rule_trigger`, khiến nhóm hành vi T01
-  luôn thắng. Giờ chỉ `R01` phát tín hiệu đó.
-- Riêng `R04` chạy một mình gắn cờ 31,9% số tài khoản. Đã thêm khái niệm "luật
-  chính" (`is_primary`) và ngưỡng đóng góp tối thiểu 20 điểm, kéo xuống 6,1%.
+Mức đóng góp đưa về thang 20–100 và tăng theo độ nghiêm trọng. `MIN_CONTRIBUTION
+= 20` chứ không phải 0: luật kích hoạt nghĩa là ngưỡng đã bị vượt, và lần chạy
+đầu trên LI-Small từng tạo 191 cảnh báo điểm 0 vì để thang bắt đầu từ 0.
+
+Chỉ `R01` được phát tín hiệu `rule_trigger`. Ban đầu **mọi** luật đều phát nó,
+khiến nhóm hành vi T01 luôn thắng và các luật khác mất tác dụng chọn nhóm.
+
+#### Hai luật đã gỡ, và vì sao
+
+Trước đây có bốn luật. `R03_VASP_EXPOSURE` và `R04_CROSS_BORDER_FLOW` đã bị gỡ
+vì chúng đọc thuộc tính **do dự án tự gán**, không có trong bộ dữ liệu IBM:
+
+| Luật đã gỡ | Dựa trên | Vấn đề |
+|---|---|---|
+| `R03_VASP_EXPOSURE` | cờ `bank.is_vasp` | Cờ này đến từ `data/reference/bank_country.csv` — bảng do dự án viết — và chỉ đánh dấu **một** họ ngân hàng hư cấu (`Crytpo Bank`). Luật phát hiện chính thứ dự án tạo ra. |
+| `R04_CROSS_BORDER_FLOW` | quốc gia của ngân hàng | Cũng từ bảng ấy: 12.857 trên 32.173 ngân hàng có quốc gia **do dự án gán**, không đọc được từ dữ liệu. |
+
+Hệ quả: **10.620 cảnh báo** chỉ dựa vào hai luật này. Chúng đã được **đóng, không
+xoá** (`scripts/close_unverifiable_rule_alerts.py`) — trong quy trình AML, cảnh
+báo đã phát thì đóng lại kèm lý do chứ không xoá đi, và ở đây xoá còn kéo theo 6
+phiên điều tra cùng 3 vụ việc.
+
+Nhóm hành vi **T08 "Dòng tiền gắn tài sản ảo"** vì thế sụp từ 10.663 xuống **43**
+cảnh báo — 43 cái còn lại đến từ nhánh đồ thị và nhánh bất thường, không phải từ
+cờ VASP.
+
+Hai số đo `vasp_*` và `cross_border_*` vẫn nằm trong `RuleContext`: chúng là dữ
+kiện tra được và hữu ích khi đọc một cảnh báo. Chỉ khác là không còn tự mở cảnh
+báo và không còn góp vào điểm rủi ro.
 
 ### 4.2 Nhánh đồ thị — tìm mẫu hình dòng tiền
 
@@ -351,16 +416,19 @@ với mọi vai trò, kể cả admin — thà ồn ào còn hơn lặng lẽ m�
 đạt 100%**: mọi giao dịch truy được về dòng gốc, có nhãn, có điểm mô hình; mọi
 cảnh báo có đủ ba yếu tố giải thích, có nhóm hành vi, trỏ tới tài khoản có thật.
 
-Phân bố nhóm hành vi trên 21.034 cảnh báo:
+Phân bố nhóm hành vi trên **10.414 cảnh báo đang mở**:
 
 | Nhóm | Số cảnh báo |
 |---|---|
-| T08 | 10.663 |
 | T01 | 7.129 |
 | T05 | 2.024 |
 | T02 | 1.024 |
 | T03 | 192 |
+| T08 | 43 |
 | T04 | 2 |
+
+T08 trước đây là 10.663 — gần như toàn bộ đến từ luật VASP đã gỡ. 43 cái còn lại
+đến từ nhánh đồ thị và nhánh bất thường.
 
 ---
 
@@ -383,7 +451,18 @@ bằng chứng.
 
 **Ở đâu:** `src/investigation/agents.py`, `src/investigation/prompts/`.
 
-### Ưu tiên 2 — Quyết định số phận của Isolation Forest
+### Ưu tiên 2 — Huấn luyện lại trọng số hợp nhất
+
+**Vì sao:** bộ trọng số hiện tại (`luật 0,55 · đồ thị 0,45 · IF 0,00`) được khớp
+khi nhánh luật còn bốn luật. Hai luật đã gỡ, nên **con số đó nay đã lỗi thời** và
+mọi kết quả hợp nhất ở mục 4.5 phải đọc kèm cảnh báo này.
+
+**Làm gì:** chạy lại `scripts/train_fusion_tri.py`, rồi `scripts/load_fusion_tri.py`.
+
+**Đo bằng gì:** F1 và PR-AUC mới so với nhánh đồ thị đơn lẻ (0,1338 / 0,0841).
+Nếu hợp nhất vẫn không vượt được đồ thị đơn lẻ thì nên bỏ hẳn bước hợp nhất.
+
+### Ưu tiên 3 — Quyết định số phận của Isolation Forest
 
 **Vì sao:** thuật toán tìm trọng số đã cho nó **0,00**. Nó đang tốn công vận
 hành mà không đóng góp gì cho điểm hợp nhất.
@@ -395,7 +474,7 @@ hành mà không đóng góp gì cho điểm hợp nhất.
 
 **Đo bằng gì:** trọng số Isolation Forest sau khi quét lưới. Khác 0 là có ích.
 
-### Ưu tiên 3 — Kéo độ chính xác nhánh đồ thị lên
+### Ưu tiên 4 — Kéo độ chính xác nhánh đồ thị lên
 
 **Vì sao:** recall 0,583 là con số tốt và không nhánh nào khác có. Nhưng
 precision 0,0014 khiến nó không dùng độc lập được.
@@ -406,7 +485,7 @@ thiểu, cửa sổ thời gian chặt hơn. Chấp nhận đánh đổi recall 
 **Đo bằng gì:** chạy lại `scripts/run_graph_detector_eval.py`, mục tiêu
 precision lên ít nhất 0,01 mà recall vẫn trên 0,40.
 
-### Ưu tiên 4 — Bổ sung bằng chứng đồ thị
+### Ưu tiên 5 — Bổ sung bằng chứng đồ thị
 
 **Vì sao:** trong 510 lượt gọi công cụ, **96 lượt trả về "thiếu một phần"** —
 phần lớn là `GetGraphEvidence` không có dữ liệu cho tài khoản đang hỏi. Hiện chỉ
@@ -417,7 +496,7 @@ không chỉ một phần.
 
 **Đo bằng gì:** số lượt `PARTIAL` giảm. Đây cũng là cách gián tiếp giúp Ưu tiên 1.
 
-### Ưu tiên 5 — Dạy tác tử điều phối nhớ công cụ đã cạn
+### Ưu tiên 6 — Dạy tác tử điều phối nhớ công cụ đã cạn
 
 **Vì sao:** trong ca đánh giá số 1, nó gọi `GetGraphEvidence` **ba lần** dù công
 cụ đó chắc chắn không trả thêm gì, và phiên hết trần công cụ vì thế.
@@ -427,7 +506,7 @@ vòng sau.
 
 **Đo bằng gì:** số lượt gọi công cụ trung bình mỗi phiên giảm, tỷ lệ gọi lặp về 0.
 
-### Ưu tiên 6 — Nâng cấu hình Cloud SQL
+### Ưu tiên 7 — Nâng cấu hình Cloud SQL
 
 **Vì sao:** đĩa rất chậm — đo được **7,6 ms cho mỗi khối 8KB**. Một phiên điều
 tra lần đầu (bộ đệm nguội) mất 83 giây; lần sau chỉ 42 giây. Truy vấn đã tối ưu
@@ -435,6 +514,18 @@ hết mức, phần còn lại là hạ tầng.
 
 **Làm gì:** tăng RAM để bộ đệm giữ được nhiều hơn, hoặc tăng dung lượng đĩa
 (IOPS trên Cloud SQL tỷ lệ với dung lượng).
+
+### Ưu tiên 8 — Phủ nốt năm mẫu hình IBM chưa ai đụng
+
+**Vì sao:** nhánh đồ thị mới bắt 3 trong 8 mẫu hình có nhãn. Còn **STACK,
+BIPARTITE, RANDOM, SCATTER-GATHER, CYCLE** — cộng lại là 74 trên 117 vụ được gán
+nhãn. Đây là phần duy nhất còn lại vừa **kiểm chứng được**, vừa chưa khai thác.
+
+**Làm gì:** viết bộ nhận diện cho từng mẫu hình trong `src/detection/`, đối chiếu
+với `data/processed/ibm_pattern_instances.json`.
+
+**Đo bằng gì:** recall trên 117 vụ. Hiện phủ 24 vụ tập test; mục tiêu là tăng số
+mẫu hình phủ được mà precision không tụt dưới mức hiện tại.
 
 ### Việc nhỏ hơn, làm khi rảnh
 
