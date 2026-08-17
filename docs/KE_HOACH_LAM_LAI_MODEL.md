@@ -56,9 +56,32 @@ F1 của **lớp thiểu số** — không dùng accuracy, vì tỷ lệ dương
 
 **Mô hình edge của chúng ta: 30,2%** (seed chính; trung bình 5 seed 29,7% ± 1,3).
 
-> ⚠️ Không so trực tiếp được: chúng ta tự chia train/val/test theo thời gian, bài
-> báo dùng split của họ. Nhưng con số nằm **đúng trong dải SOTA**, không phải
-> ngoài lề. Muốn so nghiêm túc thì phải chạy trên đúng split của họ — xem mục 8.
+> ## ⚠️ ĐỪNG TRÍCH CON SỐ NÀY ĐỂ SO VỚI BẢNG TRÊN
+>
+> Nó **không đo trên cùng một bài toán**, và lệch theo hướng **có lợi cho ta**.
+>
+> | | File gốc IBM | Cơ sở dữ liệu của ta |
+> |---|---|---|
+> | Giao dịch | **6.924.049** | 6.119.572 |
+> | Nhãn rửa tiền | 3.565 | 3.562 |
+> | Tỷ lệ dương | 0,0515% | **0,0582%** |
+>
+> Lúc nạp dữ liệu, ta **bỏ 804.477 giao dịch tự chuyển** (`from_account_key =
+> to_account_key`) — xem `scripts/prepare_ibm_behavior_batch.py` dòng 92 và
+> `scripts/load_ibm_dataset_duckdb.py`. Trong số bị bỏ có **804.474 âm tính và
+> chỉ 3 dương tính**.
+>
+> Tức là ta đã vứt gần hết mẫu âm dễ và giữ gần hết mẫu dương. Tỷ lệ dương trong
+> tập đánh giá cao hơn **1,13 lần** so với bài toán thật. Bỏ mẫu âm khỏi tập test
+> chỉ có thể làm precision đẹp lên, nên **F1 0,302 gần như chắc chắn bị thổi lên**.
+>
+> Ước lượng thô: nếu mô hình gắn cờ self-loop với cùng tỷ lệ như giao dịch khác,
+> F1 rơi về khoảng **0,28**. Đây là ước lượng, không phải đo.
+>
+> Bài báo dùng đúng giao thức **60-20-20 theo thời gian** như ta — phần đó khớp.
+> Vấn đề không nằm ở cách chia, mà ở **tập được đưa vào đánh giá**.
+>
+> Muốn có con số so được, xem **giai đoạn 1** ở mục 8.
 
 ---
 
@@ -203,17 +226,35 @@ bổ sung đặc trưng đồ thị còn thiếu và bỏ hai nhánh thừa.
 
 ## 8. Kế hoạch bốn giai đoạn
 
-### Giai đoạn 1 — Chốt mốc so sánh (nửa ngày)
+### Giai đoạn 1 — Lấy một con số ĐO ĐÚNG (1 ngày)
 
-Không sửa gì cả. Chỉ đo lại để có mốc trung thực.
+Đây là việc quan trọng nhất, và phải làm trước mọi thứ khác. Con số 30,2% hiện
+tại không so được với bài báo vì tập đánh giá đã bị lọc mất 11,6% dòng — xem
+cảnh báo ở mục 3.
 
 **Làm gì**
-- Chạy lại `scripts/train_currency_native_edge.py` với đúng 5 seed, ghi lại F1
-  từng seed và độ lệch chuẩn.
-- Ghi rõ số giao dịch, số nhãn dương, và mốc cắt của từng tập vào báo cáo.
 
-**Xong khi** có một con số duy nhất, tái lập được, để mọi thay đổi sau so vào.
-Hiện là **F1 0,2969 ± 0,0131**.
+1. **Nạp lại dữ liệu, giữ nguyên giao dịch tự chuyển.** Bỏ điều kiện lọc ở
+   `scripts/prepare_ibm_behavior_batch.py` (dòng 92) và
+   `scripts/load_ibm_dataset_duckdb.py`. Đích: 6.924.049 dòng, 3.565 nhãn dương —
+   đúng bằng file gốc.
+
+   *Lưu ý:* lược đồ vận hành hiện từ chối self-loop. Nếu không muốn đụng vào cơ
+   sở dữ liệu production, làm riêng một DuckDB chỉ để đánh giá — mô hình không
+   cần PostgreSQL để huấn luyện.
+
+2. **Huấn luyện và đánh giá lại** trên tập đầy đủ, 5 seed, giữ nguyên giao thức
+   60-20-20 theo thời gian.
+
+3. **Ghi vào báo cáo**: số dòng, số nhãn dương, và mốc cắt của từng tập — để lần
+   sau ai đọc cũng biết con số đo trên cái gì.
+
+**Xong khi** có một con số **so được trực tiếp** với 27,30% (GFP+XGBoost) và
+33,07% (Multi-PNA+EU).
+
+**Dự đoán:** F1 sẽ **giảm** so với 0,302, có thể về khoảng 0,28. Đó là điều tốt —
+một con số thấp hơn nhưng đúng thì dùng được, còn con số cao mà không so được thì
+không dùng vào việc gì.
 
 ### Giai đoạn 2 — Bổ sung đặc trưng đồ thị (2–3 ngày)
 
@@ -315,7 +356,7 @@ bắt được bao nhiêu. Đây mới là con số người dùng cảm nhận 
 | **Rò rỉ thời gian qua đặc trưng đồ thị** | Chu trình và scatter-gather rất dễ vô tình dùng cạnh tương lai. |
 | **Nhắm 8 mẫu hình rồi kỳ vọng phủ hết** | Trần cứng ~29% trên LI-Small — mục 4.3. |
 | **Dùng accuracy** | 99,93% mà vô dụng. |
-| **So F1 với bài báo mà khác split** | Muốn so nghiêm túc phải chạy trên đúng split của họ. |
+| **So F1 với bài báo mà khác tập đánh giá** | Đã mắc: ta lọc bỏ 11,6% số dòng (self-loop), gần như toàn bộ là mẫu âm dễ, khiến F1 bị thổi lên. Kiểm tra: số dòng và số nhãn dương của mình có bằng file gốc không? |
 
 ---
 
@@ -323,8 +364,8 @@ bắt được bao nhiêu. Đây mới là con số người dùng cảm nhận 
 
 ```mermaid
 flowchart LR
-    subgraph now["Hiện tại"]
-        N1["Mô hình edge<br/><b>F1 30,2%</b>"]
+    subgraph now["Hiện tại — cần đo lại"]
+        N1["Mô hình edge<br/>F1 30,2% <i>(đo trên tập đã lọc)</i><br/><b>so được: ~28%?</b>"]
     end
     subgraph target["Sau giai đoạn 2"]
         T1["+ đặc trưng đồ thị đầy đủ<br/><b>mục tiêu > 33%</b>"]
@@ -338,9 +379,13 @@ flowchart LR
     target -.->|"so sánh"| sota
 ```
 
-Mô hình edge hiện tại **đã ngang Multi-PNA và vượt GFP+XGBoost** (với lưu ý khác
-split). Mục tiêu của giai đoạn 2 là vượt 33,1% — khả thi, vì ta mới dùng 6 đặc
-trưng đồ thị trong khi GFP dùng chu trình tới độ dài 10 cộng thống kê đỉnh đầy đủ.
+**Chưa biết ta đang đứng ở đâu.** Con số 30,2% đo trên tập đã lọc mất 11,6% dòng
+nên không so được; ước lượng con số so được nằm quanh 0,28. Giai đoạn 1 tồn tại
+để trả lời đúng câu hỏi này trước khi tối ưu bất cứ thứ gì.
+
+Dù vậy, kể cả ở mức 0,28 thì mô hình vẫn nằm trong dải SOTA. Mục tiêu của giai
+đoạn 2 là vượt 33,1% — khả thi, vì ta mới dùng 6 đặc trưng đồ thị trong khi GFP
+dùng chu trình tới độ dài 10 cộng thống kê đỉnh đầy đủ.
 
 **Điều quan trọng nhất cần nhớ:** thứ đang kéo con số tổng thể xuống không phải
 mô hình yếu, mà là **kiến trúc chôn mô hình mạnh dưới ba nhánh yếu**. Gỡ chúng ra
