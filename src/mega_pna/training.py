@@ -6,7 +6,7 @@ import platform
 import random
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +19,14 @@ from .config import MegaPnaConfig
 from .data import MegaPnaDataBundle
 from .metrics import best_f1_threshold, binary_metrics, budget_metrics, paper_binary_metrics
 from .model import MegaPna, degree_histogram, parallel_edge_histogram
+
+# Container CUDA chạy Python 3.10, mà ``datetime.UTC`` chỉ có từ 3.11. Không đổi
+# ảnh máy chỉ vì một hằng số: torch-sparse trong ảnh ấy đã dựng đúng cho CUDA 11.8
+# và đã kiểm chứng chạy được; đổi ảnh là làm lại từ đầu.
+#
+# ``UTC`` vốn chỉ là bí danh của ``timezone.utc``, nên gán lại ở đây giữ nguyên mọi
+# chỗ gọi ``datetime.now(UTC)`` bên dưới.
+UTC = timezone.utc  # noqa: UP017
 
 FORWARD = ("node", "to", "node")
 REVERSE = ("node", "rev_to", "node")
