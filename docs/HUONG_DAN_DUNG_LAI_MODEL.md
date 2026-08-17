@@ -6,8 +6,9 @@ lệnh, môi trường cần thuê, và cách đưa mô hình vào hệ thống 
 
 Nhóm đã chốt: **lấy mô hình tốt nhất.** Tài liệu này viết theo đúng quyết định đó.
 
-Đọc hết mất khoảng 20 phút. Mọi lệnh trong đây đều chạy được với mã hiện tại,
-trừ đúng một chỗ phải viết thêm — được đánh dấu rõ ở mục 7.
+Đọc hết mất khoảng 20 phút. **Mọi lệnh trong đây đều chạy được với mã hiện tại** —
+kể cả bước nạp kết quả vào hệ thống, vốn là mảnh cuối còn thiếu và nay đã viết
+xong, đã kiểm trên dữ liệu thật (mục 7).
 
 ---
 
@@ -26,7 +27,7 @@ mà bài báo yêu cầu.
 NVIDIA. Đây là toàn bộ khoảng cách giữa hiện tại và mô hình tốt nhất.
 
 Nói gọn: đây không phải dự án viết mã. Đây là dự án **thuê một cái GPU và bấm
-chạy**, rồi nối kết quả vào hệ thống.
+chạy**. Đường nạp kết quả về hệ thống cũng đã thông — xem mục 7.
 
 ---
 
@@ -65,7 +66,8 @@ Ba con số công bố mà ta sẽ dùng làm cổng nghiệm thu — chúng n�
 
 ## 2. Kiểm kê: repo đã có gì rồi
 
-Đây là bảng quan trọng nhất tài liệu. **Cột bên phải toàn dấu ✅ trừ một dòng.**
+Đây là bảng quan trọng nhất tài liệu. **Cột giữa toàn dấu ✅ trừ đúng một dòng —
+và dòng đó là cái GPU.**
 
 | Thành phần | Trạng thái | Ở đâu |
 |---|---|---|
@@ -82,7 +84,7 @@ Ba con số công bố mà ta sẽ dùng làm cổng nghiệm thu — chúng n�
 | Kiểm thử đơn vị | ✅ 4 bài đã qua | `reports/mega-pna/preflight.json` |
 | Bảng phát hành + điểm từng giao dịch trong PostgreSQL | ✅ | `db/init/013_currency_native_edge_release.sql` |
 | **GPU CUDA để chạy** | ❌ **thiếu — đây là toàn bộ vấn đề** | — |
-| Bộ chuyển kết quả MEGA-PNA sang định dạng bộ nạp | ❌ phải viết, ~80 dòng | mục 7 |
+| Bộ chuyển kết quả MEGA-PNA sang định dạng bộ nạp | ✅ đã viết, đã kiểm | `scripts/build_mega_pna_release.py` |
 
 ### Bằng chứng "chỉ thiếu GPU"
 
@@ -156,7 +158,7 @@ flowchart TD
     end
 
     subgraph P["Đưa vào hệ thống"]
-        ADAPT["<b>Bộ chuyển</b><br/>source_edge_id → source_transaction_id<br/><i>PHẢI VIẾT — mục 7</i>"]
+        ADAPT["<b>Bộ chuyển</b><br/>source_edge_id → source_transaction_id<br/><i>đã viết · đã kiểm</i>"]
         LOAD["scripts/load_edge_scores.py"]
         PG[("<b>PostgreSQL</b><br/>edge_model_release<br/>transaction_model_score")]
         UI["<b>3 trang console</b><br/>Tra cứu giao dịch<br/>Truy vết tài sản mã hoá<br/>Giám sát địa lý"]
@@ -164,7 +166,7 @@ flowchart TD
     end
 
     style FMT fill:#d4edda,stroke:#28a745
-    style ADAPT fill:#fff3cd,stroke:#ffc107
+    style ADAPT fill:#d4edda,stroke:#28a745
     style GATE fill:#cce5ff,stroke:#0066cc
 ```
 
@@ -524,11 +526,161 @@ Ba trong bốn điều này **mã đã tự bảo đảm**:
 
 ---
 
-## 7. Đưa vào hệ thống đang chạy
+## 7. Huấn luyện xong thì có gì, và đưa vào dự án ra sao
 
-### 7.1 Nó sẽ làm sống lại cái gì
+Mục này đã được **chốt một hướng duy nhất**. Bộ chuyển khoá không còn là việc phải
+viết — nó đã viết xong, đã chạy thử trên dữ liệu thật, và kết quả kiểm ở cuối mục.
 
-Điểm mô hình nằm ở bảng `transaction_model_score`. Ba trang console đọc bảng đó:
+### 7.1 Huấn luyện xong sinh ra những file gì
+
+Mỗi lượt seed sinh **ba** file. Với `--dataset Small_LI --seed 42` (nhánh mặc định
+là `paper`):
+
+| File | Là gì | Nặng |
+|---|---|---|
+| `models/mega-pna/Small_LI/paper/seed_42.pt` | **Checkpoint** — trọng số mô hình ở epoch tốt nhất trên validation, kèm cấu hình, tên đặc trưng, mốc chia tập | ~vài MB |
+| `models/mega-pna/Small_LI/paper/seed_42_test.parquet` | **Điểm từng giao dịch** trên tập test | ~30 MB |
+| `reports/mega-pna/Small_LI/paper/seed_42.json` | **Báo cáo đầy đủ** — F1/precision/recall/PR-AUC, ngưỡng validation, lịch sử từng epoch, thời gian chạy | ~vài MB |
+
+Chạy cả cổng thì có thêm **một** file tổng:
+
+| File | Là gì |
+|---|---|
+| `reports/mega-pna/benchmark.json` | Trung bình ± độ lệch 5 seed, và cờ `small_reproduction_gate_passed` đạt/trượt |
+
+Cấu trúc thư mục sau khi cổng chạy xong:
+
+```
+models/mega-pna/
+└── Small_LI/paper/
+    ├── seed_42.pt              seed_42_test.parquet
+    ├── seed_43.pt              seed_43_test.parquet
+    └── …  (tới seed_46)
+reports/mega-pna/
+├── benchmark.json                        ← cờ đạt/trượt của cả cổng
+└── Small_LI/paper/seed_{42..46}.json
+```
+
+> **Không cần chạy `infer_mega_pna.py`.** Nó có ích khi muốn chấm điểm lại từ một
+> checkpoint cũ. Còn `train_mega_pna.py` đã tự xuất `seed_N_test.parquet` rồi —
+> bước 5 ở mục 5 là tuỳ chọn, không phải bắt buộc.
+
+### 7.2 Ba file cần mang về Mac
+
+Trong đống trên, việc nạp vào dự án chỉ cần **ba** file của **một** seed — chọn
+seed có F1 tốt nhất trên validation:
+
+```
+models/mega-pna/Small_LI/paper/seed_42_test.parquet    ← điểm
+reports/mega-pna/Small_LI/paper/seed_42.json           ← ngưỡng + siêu dữ liệu
+models/mega-pna/Small_LI/paper/seed_42.pt              ← để lấy mã băm, chống sửa lén
+```
+
+Cộng thêm `reports/mega-pna/benchmark.json` nếu muốn bản phát hành ghi luôn con
+số trung bình 5 seed (nên có — nó là bằng chứng mô hình ổn định chứ không ăn may).
+
+### 7.3 Hướng đã chốt
+
+```mermaid
+flowchart TD
+    A["<b>seed_42_test.parquet</b><br/>source_edge_id · score · is_laundering"]
+    B["<b>seed_42.json</b><br/>ngưỡng chọn trên validation"]
+
+    C["<b>scripts/build_mega_pna_release.py</b><br/><i>đã viết · đã kiểm trên dữ liệu thật</i>"]
+    D["<b>LI-Small_Trans.csv</b><br/>file gốc IBM — làm cầu nối"]
+    E[("<b>aml.duckdb</b><br/>bảng transaction")]
+
+    F["<b>pg_scores.parquet</b><br/>transaction_id · score · threshold<br/>triggered · target_laundering"]
+    G["<b>release.json</b><br/>đặc trưng · chính sách · số đo"]
+
+    H["<b>scripts/load_edge_scores.py</b>"]
+    I[("<b>PostgreSQL</b><br/>edge_model_release<br/>transaction_model_score")]
+    J["<b>publish_edge_console_metadata.py</b>"]
+    K["<b>3 trang console sống lại</b>"]
+
+    A --> C
+    B --> C
+    D --> C
+    E --> C
+    C --> F --> H
+    C --> G --> H
+    H --> I --> J --> K
+
+    style C fill:#d4edda,stroke:#28a745
+    style I fill:#cce5ff,stroke:#0066cc
+```
+
+### 7.4 Ba lệnh
+
+**Lệnh 1 — dựng bản phát hành.** Chạy trên Mac, mất khoảng 30 giây:
+
+```bash
+.venv/bin/python scripts/build_mega_pna_release.py \
+  --predictions models/mega-pna/Small_LI/paper/seed_42_test.parquet \
+  --report      reports/mega-pna/Small_LI/paper/seed_42.json \
+  --benchmark   reports/mega-pna/benchmark.json
+```
+
+Nó in ra một bảng đối soát, và **tự dừng nếu cầu nối sai**:
+
+```
+[1/4] Ngưỡng chọn trên validation: 0.612300
+[2/4] Dựng cầu nối từ file gốc ...
+[3/4] Nối điểm với transaction_id ...
+[4/4] Cầu nối     : 6.924.049 dòng file gốc
+      Điểm vào    : 1.385.052
+      Nối được    : 1.357.502
+      Rơi ra      : 27.550  (tự chuyển 27.550, không giải thích được 0)
+      Vượt ngưỡng : 525.739
+      Nhãn dương  : 924
+```
+
+> **Dòng cần nhìn là "không giải thích được".** Nó phải bằng **0**. Giao dịch tự
+> chuyển rơi ra là đúng — PostgreSQL không có chúng. Bất kỳ dòng nào rơi ra vì lý
+> do khác đều nghĩa là cầu nối sai, và script **thoát với lỗi** thay vì nạp bừa.
+>
+> Nhắc lại điều quan trọng: **chỉ bỏ giao dịch tự chuyển ở khâu phục vụ, tuyệt đối
+> không bỏ ở khâu đo.** F1 vẫn tính trên đủ tập test. Bỏ ở khâu đo chính là lỗi đã
+> làm F1 của mô hình edge bị thổi lên.
+
+**Lệnh 2 — nạp vào PostgreSQL.** Thử trước rồi mới nạp thật:
+
+```bash
+.venv/bin/python scripts/load_edge_scores.py \
+  --scores  data/processed/mega-pna/Small_LI/pg_scores.parquet \
+  --report  reports/mega-pna/Small_LI/release.json \
+  --model   models/mega-pna/Small_LI/paper/seed_42.pt \
+  --db      data/processed/aml.duckdb \
+  --dataset "IBM AML LI-Small MEGA-PNA" \
+  --dry-run
+
+# xem output ổn thì bỏ --dry-run chạy lại
+```
+
+Bộ nạp làm bốn việc trong một giao dịch: ghi bản phát hành ở trạng thái `loading`,
+nạp điểm qua bảng tạm, **cho bản phát hành cũ về `superseded`**, rồi kích hoạt bản
+mới. Ràng buộc `edge_model_one_active_release_idx` bảo đảm **chỉ đúng một bản hoạt
+động tại một thời điểm** — không lo trộn hai mô hình.
+
+**Lệnh 3 — cập nhật siêu dữ liệu hiển thị:**
+
+```bash
+.venv/bin/python scripts/publish_edge_console_metadata.py
+```
+
+### 7.5 Kiểm sau khi nạp
+
+```sql
+-- Chỉ một bản đang hoạt động, và là bản MEGA-PNA
+SELECT model_version, dataset, threshold, transaction_rows, triggered_rows, status
+  FROM edge_model_release WHERE status = 'active';
+
+-- Điểm đã gắn vào giao dịch
+SELECT count(*) FROM transaction_model_score
+ WHERE release_id = (SELECT release_id FROM edge_model_release WHERE status='active');
+```
+
+Rồi mở ba trang console và xác nhận có dữ liệu:
 
 | Trang | Đường dẫn API |
 |---|---|
@@ -536,90 +688,39 @@ Ba trong bốn điều này **mã đã tự bảo đảm**:
 | Truy vết tài sản mã hoá | `/api/v1/fc/crypto` |
 | Giám sát địa lý (chế độ vận hành) | `/api/v1/world` |
 
-Một bản phát hành làm sống cả ba cùng lúc. **Không phải sửa truy vấn nào.**
+Cả ba đều đọc `transaction_model_score`, nên **một bản phát hành làm sống cả ba
+cùng lúc** — không phải sửa truy vấn nào.
 
-### 7.2 Việc phải viết thêm — bộ chuyển khoá
+### 7.6 Vì sao cầu nối bắc bằng khoá tự nhiên chứ không phải mã băm
 
-Đây là **chỗ duy nhất trong toàn bộ tài liệu cần viết mã mới.** Khoảng 80 dòng.
+Phần này ghi lại để người sau không đi lại vào bẫy.
 
-Vấn đề: hai đầu dùng hai cách định danh giao dịch khác nhau.
+Con đường hiển nhiên là dựng lại chính công thức md5 trong
+`scripts/load_ibm_dataset_duckdb.py`. **Nó không dùng được**, và đây là kết quả đo
+chứ không phải phỏng đoán: dựng lại đúng biểu thức ấy trên cùng máy, cùng file cho
+ra **0 dòng khớp trên 6,1 triệu**.
 
-```mermaid
-flowchart LR
-    P["<b>predictions.parquet</b><br/>source_edge_id<br/><i>0, 1, 2, …</i><br/>chỉ số dòng CSV gốc"]
-    Q["<b>PostgreSQL</b><br/>source_transaction_id<br/><i>md5 32 ký tự</i>"]
-    B["<b>Bộ chuyển</b><br/>tra bảng row_ord → transaction_id<br/>trong DuckDB"]
-    P --> B --> Q
-    style B fill:#fff3cd,stroke:#ffc107
-```
+Lý do: công thức băm cả `row_ord`, mà `row_ord` sinh bằng `row_number() OVER ()`
+**không có `ORDER BY`**. Script nạp ấy không đặt `preserve_insertion_order`, nên
+DuckDB đọc CSV song song và đánh số theo luồng nào đọc xong trước. Số ấy khác nhau
+giữa các lần chạy.
 
-Cầu nối đã có sẵn, chỉ chưa ai bắc: trong `data/processed/aml.duckdb`,
-`transaction_id` được sinh bằng
+Nên cầu bắc bằng **khoá tự nhiên bảy cột**: thời điểm, tài khoản gửi, tài khoản
+nhận, số tiền gửi, tiền tệ gửi, số tiền nhận, tiền tệ nhận.
 
-```
-md5(occurred_at | from_account_key | to_account_key | amount_paid | payment_currency | row_ord)
-```
+Cả chuỗi đã được kiểm trên dữ liệu thật, không phải lý thuyết:
 
-với `row_ord = row_number() OVER ()` — tức **chỉ số dòng của file CSV gốc, đếm
-từ 1**. Còn `source_edge_id` của MEGA-PNA là **chỉ số dòng cùng file đó, đếm từ 0**.
+| Mắt xích | Cách kiểm | Kết quả |
+|---|---|---|
+| `EdgeID` của file đã chuyển đổi = số thứ tự dòng file gốc | Đối chiếu số tiền và nhãn trên **toàn bộ** 6.924.049 dòng | **0 lệch** |
+| Khoá tự nhiên là duy nhất | Đếm khoá khác nhau trong bảng `transaction` | 6.119.558 / 6.119.572 — **chỉ 14 dòng trùng**, script khử bằng `QUALIFY` |
+| Khoá tự nhiên phủ hết bảng `transaction` | Nối cầu với bảng `transaction` | **6.119.572 / 6.119.572** |
+| Khoá tra được trong PostgreSQL production | Lấy mẫu 2.000 `transaction_id` | **2.000 / 2.000 — 100%** |
 
-Vậy quan hệ là: **`row_ord = source_edge_id + 1`**.
+Mắt xích đầu tin được vì `format_kaggle_file` **có** đặt
+`preserve_insertion_order=true` — đúng cái mà script nạp DuckDB thiếu.
 
-Bộ chuyển cần làm ba việc:
-
-1. Nối `source_edge_id + 1` với `row_ord` trong DuckDB để lấy `transaction_id`.
-2. Chọn ngưỡng trên tập validation, tính cột `triggered = score >= threshold`.
-3. Ghi parquet với đúng các cột mà `scripts/load_edge_scores.py` đọc:
-   `transaction_id`, `score`, `threshold`, `triggered`, `target_laundering`,
-   `model_version`.
-
-Đồng thời phải viết một file báo cáo JSON có khoá `features` — bộ nạp lấy
-`len(report["features"])` để ghi vào `feature_count`.
-
-> ⚠️ **Hai điều phải kiểm khi viết bộ chuyển**
->
-> **Một — 804.477 dòng sẽ không nối được, và đó là bình thường.** PostgreSQL
-> không có giao dịch tự chuyển, còn MEGA-PNA chấm điểm cả chúng. Chúng sẽ rơi ra
-> ở phép nối. Bộ nạp in ra số `unmatched`; con số ấy đúng phải bằng số giao dịch
-> tự chuyển **trong tập test**, không phải 0.
->
-> Nhắc lại cho rõ: **chỉ được bỏ chúng ở khâu phục vụ, tuyệt đối không bỏ ở khâu
-> đo.** Bỏ ở khâu đo chính là lỗi đã làm F1 của mô hình edge bị thổi lên — xem
-> mục 3 của [KE_HOACH_LAM_LAI_MODEL.md](KE_HOACH_LAM_LAI_MODEL.md).
->
-> **Hai — kiểm `row_ord` có thật sự khớp không.** `row_number() OVER ()` không có
-> `ORDER BY`; DuckDB giữ đúng thứ tự đọc khi `preserve_insertion_order` bật (mặc
-> định), nhưng đừng tin suông. Lấy 20 dòng bất kỳ, đối chiếu thời điểm và số tiền
-> giữa hai bên trước khi nạp cả 1,2 triệu dòng.
-
-### 7.3 Nạp vào PostgreSQL
-
-```bash
-# thử trước, không ghi gì
-python scripts/load_edge_scores.py \
-  --scores data/processed/mega-pna/Small_LI/pg_scores.parquet \
-  --report reports/mega-pna/Small_LI/release.json \
-  --model models/mega-pna/Small_LI/paper/seed_42.pt \
-  --db data/processed/aml.duckdb \
-  --dataset "IBM AML LI-Small MEGA-PNA" \
-  --dry-run
-
-# nạp thật
-python scripts/load_edge_scores.py ... (bỏ --dry-run)
-```
-
-Bộ nạp tự làm bốn việc: ghi bản phát hành ở trạng thái `loading`, nạp điểm qua
-bảng tạm, **cho bản phát hành cũ về `superseded`**, rồi kích hoạt bản mới. Ràng
-buộc `edge_model_one_active_release_idx` bảo đảm **chỉ đúng một bản hoạt động tại
-một thời điểm** — không lo trộn hai mô hình.
-
-Cuối cùng, cập nhật siêu dữ liệu hiển thị trên console:
-
-```bash
-python scripts/publish_edge_console_metadata.py
-```
-
-### 7.4 Sau khi nạp — dọn kiến trúc cũ
+### 7.7 Sau khi nạp — dọn kiến trúc cũ
 
 Đây là các bước 3 và 4 của tài liệu kia, giờ đã có mô hình thay thế:
 
@@ -665,12 +766,12 @@ gantt
 | Ai | Làm gì | Cần biết gì |
 |---|---|---|
 | Người 1 | Hạ tầng GPU, cài đặt, chạy huấn luyện | Linux cơ bản, EC2 Console, `ssh`/`scp` |
-| Người 2 | Viết bộ chuyển khoá (mục 7.2) | Python, SQL, parquet |
+| Người 2 | Chạy ba lệnh nạp và đối soát kết quả (mục 7.4–7.5) | Python, SQL, parquet |
 | Người 3 | Nạp vào PostgreSQL, kiểm 3 trang console | SQL, đọc log API |
 | Người 4 | Gỡ hợp nhất, cập nhật tài liệu và số liệu | mã `src/detection/` |
 
-Người 2 làm được song song ngay sau khi có seed đầu tiên — **không phải chờ hết
-cổng**, vì định dạng file kết quả đã cố định.
+Người 2 làm được ngay sau khi có seed đầu tiên — **không phải chờ hết cổng**. Bản
+phát hành dựng lại được bất cứ lúc nào; chạy lại lệnh với seed khác là xong.
 
 ---
 
@@ -683,7 +784,7 @@ cổng**, vì định dạng file kết quả đã cố định.
 | Báo cáo cũ chặn lần chạy mới | `was produced with a different epoch/batch config` | Chuyển thư mục `reports/mega-pna/` cũ đi chỗ khác |
 | Máy Spot bị thu hồi giữa chừng | Log dừng đột ngột | Chạy lại đúng lệnh cũ; script bỏ qua seed đã xong |
 | Đưa vào khác 5 seed | `Bilgi et al. report mean ± std over exactly five seeds` | Đúng 5 seed. Bài báo báo cáo trung bình ± độ lệch trên 5 seed |
-| Nối khoá sai, `unmatched` bằng 0 hoặc bằng tất cả | Bộ nạp in `unmatched` | Kiểm lại `row_ord = source_edge_id + 1` trên 20 dòng mẫu |
+| Nối khoá sai | `build_mega_pna_release.py` in dòng "không giải thích được" khác 0 rồi **tự thoát với lỗi** | Đọc mục 7.6. Đừng sửa script để bỏ qua chốt này |
 | **Lấy F1 của tập validation đem đi khoe** | Số đẹp bất thường | Con số dùng để báo cáo là `test_paper_protocol.f1`, không phải `validation_at_best` |
 | **Chạm tập test nhiều lần rồi chọn lần đẹp nhất** | Không có dấu hiệu — đây là lỗi tự lừa mình | Chạm đúng một lần. Muốn thử cấu hình khác thì thử trên validation |
 
@@ -699,7 +800,7 @@ là giai đoạn 1 của [KE_HOACH_LAM_LAI_MODEL.md](KE_HOACH_LAM_LAI_MODEL.md).
 |---|---|---|
 | F1 kỳ vọng | ~0,45 | ~0,28 rồi cải thiện dần |
 | Cần GPU | **có** — đã có quota | không |
-| Cần viết mã | ~80 dòng (bộ chuyển) | sửa 2 dòng lọc + bổ sung đặc trưng đồ thị |
+| Cần viết mã | **không còn** — bộ chuyển đã xong | sửa 2 dòng lọc + bổ sung đặc trưng đồ thị |
 | Thời gian | 1–2 tuần | 3–4 ngày |
 | Chi phí | 30–130 USD (On-Demand) · 11–43 USD (Spot) | 0 |
 | So được với bài báo | **có ngay** | có, sau khi nạp lại dữ liệu |
@@ -736,7 +837,10 @@ lỗi đo** như nhánh edge. Bộ đo và cổng nghiệm thu **đã viết s�
 Quota AWS **đã có**: 8 vCPU họ G ở US East (N. Virginia) — vừa đúng một máy
 `g5.2xlarge`, và một máy là tất cả những gì MEGA-PNA cần.
 
-Thứ còn lại chỉ là **bấm chạy** và **tám mươi dòng mã** để nối kết quả về cơ sở
-dữ liệu.
+Đường nạp kết quả về cơ sở dữ liệu cũng **đã thông và đã kiểm trên dữ liệu thật**:
+6.119.572/6.119.572 dòng nối được, 2.000/2.000 khoá mẫu tra được trong PostgreSQL
+production.
+
+Thứ còn lại chỉ là **bấm chạy**.
 
 Bắt đầu từ mục 4.3: chọn máy.
