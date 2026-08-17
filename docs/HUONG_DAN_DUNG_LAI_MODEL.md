@@ -579,6 +579,39 @@ models/mega-pna/Small_LI/paper/seed_42.pt              ← để lấy mã băm,
 Cộng thêm `reports/mega-pna/benchmark.json` nếu muốn bản phát hành ghi luôn con
 số trung bình 5 seed (nên có — nó là bằng chứng mô hình ổn định chứ không ăn may).
 
+#### File mô hình rốt cuộc nằm ở đâu
+
+Câu này đáng hỏi, vì trực giác hay sai: **không** có bản mô hình nào nằm trên máy
+chủ production, và **không** có tiến trình nào ở đó nạp mô hình lên.
+
+| Nơi | Có gì | Vai trò |
+|---|---|---|
+| Máy GPU thuê | `seed_42.pt` (bản gốc) | nơi nó sinh ra; **huỷ máy là mất** |
+| Máy lập trình / Git | `models/mega-pna/Small_LI/paper/seed_42.pt` | **bản chính thức, nơi cất giữ lâu dài** |
+| PostgreSQL | `edge_model_release.model_sha256` — **chỉ mã băm** | chứng minh điểm đang phục vụ do đúng file này sinh ra |
+| PostgreSQL | `transaction_model_score` — 1,2 triệu dòng điểm | **thứ mà API thật sự đọc** |
+| Máy chủ production | *không có gì* | — |
+
+Console chấm điểm theo lối **tính sẵn**: mô hình chạy một lần ở ngoài, kết quả
+nạp vào bảng, API chỉ đọc bảng. Không có PyTorch trên máy chủ, không nạp mô hình
+lúc chạy, và một truy vấn không bao giờ phải chờ mô hình suy luận.
+
+Đổi lại: **file `.pt` chính là bản gốc duy nhất.** Mất nó thì mã băm trong
+`edge_model_release` không đối chiếu được với gì nữa, và muốn chấm lại điểm phải
+thuê GPU huấn luyện từ đầu.
+
+Vì vậy checkpoint **được giữ trong Git**. Nó chỉ 79.197 tham số, **dưới 1 MB** —
+nhỏ hơn cả file JSON báo cáo đi kèm:
+
+```bash
+git add models/mega-pna/Small_LI/paper/seed_42.pt
+git commit -m "model(mega-pna): checkpoint seed 42 của bản phát hành đang chạy"
+```
+
+> File `seed_42_test.parquet` (~30 MB) thì **không** vào Git — nó dựng lại được từ
+> checkpoint bằng `scripts/infer_mega_pna.py`, còn checkpoint thì không dựng lại
+> được nếu không có GPU và vài giờ máy.
+
 ### 7.3 Hướng đã chốt
 
 ```mermaid
