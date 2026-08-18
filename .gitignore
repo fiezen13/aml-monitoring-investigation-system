@@ -167,3 +167,6 @@ infra/terraform/gpu/*.tfvars.example.bak
 # PostgreSQL chỉ giữ mã băm SHA-256 của nó (edge_model_release.model_sha256), nên
 # nếu file biến mất thì mã băm ấy không đối chiếu được với gì nữa.
 !/models/mega-pna/**/*.pt
+
+# Gói bàn giao sinh ra từ script, không đưa vào git.
+fin07-mega-pna-*.zip
