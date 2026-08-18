@@ -846,19 +846,19 @@ Mac, không tốn tiền, không tranh máy với kế hoạch A. Nó cho một 
 
 ## 11. Kiểm lại trước khi bắt đầu
 
-- [ ] Máy `g5.2xlarge` (hoặc `g6.2xlarge`) ở **US East (N. Virginia)** — đúng vùng có hạn mức
-- [ ] Ổ đĩa gốc đã sửa lên **≥ 100 GB** lúc tạo máy
-- [ ] `nvidia-smi` in ra `A10G` hoặc `L4`
-- [ ] `torch.cuda.is_available()` trả về `True`
-- [ ] `import torch_sparse` không lỗi
-- [ ] `pytest tests/test_mega_pna -q` — 4 bài qua
-- [ ] `sha256sum` của `formatted_transactions.csv` khớp `450d89e1…`
-- [ ] Manifest ghi `rows: 6924049` và `positives: 3565`
+- [x] Máy `g6e.2xlarge` ở **US East (N. Virginia)** — đúng vùng có hạn mức
+- [x] Ổ đĩa gp3 mã hóa **200 GB**
+- [x] `nvidia-smi` in ra `NVIDIA L40S`, khoảng 46 GiB VRAM
+- [x] `torch.cuda.is_available()` trả về `True`
+- [x] `import torch_sparse` không lỗi
+- [x] `pytest tests/test_mega_pna -q` — 4 bài qua
+- [x] `sha256sum` của HI-Medium `formatted_transactions.csv` khớp `bfbd8847…995e`
+- [x] Manifest ghi `rows: 31898238` và `positives: 35230`
 - [ ] Ba epoch thử chạy dưới 15 phút mỗi epoch
 - [ ] `nvidia-smi` trong lúc chạy cho thấy `GPU-Util` **khác 0**
 - [ ] Đã xoá thư mục báo cáo thử
-- [ ] Đã xem bảng chi phí ở bước 1 và quyết định On-Demand hay xin thêm hạn mức Spot
-- [ ] **Đã đặt báo thức tắt máy GPU khi xong**
+- [x] Đã chọn On-Demand vì quota Spot hiện bằng 0
+- [x] **Đã đặt alarm tự dừng khi máy idle liên tục 6 giờ**
 
 ---
 

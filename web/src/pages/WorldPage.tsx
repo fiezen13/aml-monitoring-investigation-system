@@ -240,7 +240,7 @@ export function WorldPage() {
                 <dd className="mt-1 font-mono text-ink-mid">{world.data.source_id ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-meta text-ink-low">Giao dịch đã nạp</dt>
+                <dt className="text-meta text-ink-low">Giao dịch đã chấm điểm</dt>
                 <dd className="mt-1 font-mono text-h3 font-semibold text-ink-hi">
                   {int(world.data.transaction_count)}
                 </dd>

@@ -47,7 +47,14 @@ export function DashboardPage() {
     const triggeredPct = Math.round((d.subjects_triggered / Math.max(1, d.subjects_analyzed)) * 1000) / 10;
     return [
       {
-        label: "Giao dịch đã nạp",
+        // "đã chấm điểm", KHÔNG phải "đã nạp": con số này là
+        // `edge_model_release.transaction_rows`, tức tập mà mô hình thật sự chấm
+        // — không phải số dòng trong bảng `transaction`. Hai con số lệch nhau
+        // hẳn (6,75 triệu so với 18,5 triệu) vì cơ sở dữ liệu còn giữ lịch sử
+        // ngoài tập đánh giá. Nhãn cũ khiến người đọc tưởng đã mất dữ liệu.
+        //
+        // Ba ô ở đây phải cộng đúng: dưới ngưỡng + vượt ngưỡng = đã chấm điểm.
+        label: "Giao dịch đã chấm điểm",
         value: d.transactions_analyzed,
         tone: "neutral" as Tone,
         note: d.latest_source_name ?? "chưa có lô dữ liệu",
@@ -343,7 +350,7 @@ export function DashboardPage() {
               {[
                 ["Chế độ dữ liệu", world.data?.data_mode === "operational" ? "vận hành" : "mô phỏng"],
                 ["Nguồn giao dịch", world.data?.source_name ?? "—"],
-                ["Giao dịch đã nạp", world.data ? int(world.data.transaction_count) : "—"],
+                ["Giao dịch đã chấm điểm", world.data ? int(world.data.transaction_count) : "—"],
                 ["Dữ liệu địa lý", world.data?.geography_available ? "có" : "chưa có"],
                 ["Worker nền", d?.worker_alive ? "đang chạy" : "không phản hồi"],
                 ["Chiều sâu hàng lệnh", d ? String(d.queue_depth) : "—"],

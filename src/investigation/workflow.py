@@ -45,6 +45,20 @@ class InvestigationWorkflow:
         "ml": (("GetAnomalyExplanation", EvidenceType.ANOMALY_EXPLANATION),),
     }
 
+    #: Bằng chứng bắt buộc cho MỌI cảnh báo, bất kể nhánh nào sinh ra.
+    #:
+    #: Không có hai thứ này thì bản diễn giải không mô tả được hành vi — nó chỉ
+    #: nhắc lại điểm số. Đo trên 11 phiên thật: ``GetAccountBehavior`` chỉ được
+    #: tác tử tự chọn **một lần**, nên phần lớn bản giải thích mở đầu bằng câu
+    #: "chưa mô tả được hành vi cụ thể" trong khi dữ liệu vẫn còn nguyên đó.
+    #:
+    #: Đây chính là câu trả lời cho "tài khoản nhận bao nhiêu, từ ngày nào, đi
+    #: đâu" — câu hỏi đầu tiên của chuyên viên rà soát.
+    ALWAYS_REQUIRED: tuple[tuple[str, EvidenceType], ...] = (
+        ("GetAccountBehavior", EvidenceType.BEHAVIOR_FEATURE),
+        ("GetTransactions", EvidenceType.TRANSACTION),
+    )
+
     def _backfill_required_evidence(
         self,
         *,
@@ -66,7 +80,7 @@ class InvestigationWorkflow:
         * lỗi công cụ **không** làm hỏng phiên — nó được ghi lại, và bộ phản biện
           vẫn nêu vấn đề như trước. Bổ sung là để giúp, không phải để giấu.
         """
-        required = self.REQUIRED_EVIDENCE.get(str(alert.get("detector", "")), ())
+        required = self.ALWAYS_REQUIRED + self.REQUIRED_EVIDENCE.get(str(alert.get("detector", "")), ())
         if not required:
             return tool_count
 
@@ -77,6 +91,10 @@ class InvestigationWorkflow:
             arguments: dict[str, Any] = {"alert_id": alert["alert_id"]}
             if tool_name == "GetAnomalyExplanation":
                 arguments["account_key"] = alert["account_key"]
+            elif tool_name == "GetAccountBehavior":
+                arguments = {"account_key": alert["account_key"], "window": "30d"}
+            elif tool_name == "GetTransactions":
+                arguments = {"account_key": alert["account_key"]}
 
             self.repository.add_trace(
                 investigation_id,

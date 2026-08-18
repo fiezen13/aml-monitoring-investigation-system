@@ -180,6 +180,11 @@ class TypologyResult(BaseModel):
     required_signals: list[str]
     supporting_signals: list[str]
     version: str
+    # Bản tiếng Việt dùng cho mọi câu chữ hiển thị cho chuyên viên. Tên và mô tả
+    # tiếng Anh vẫn giữ nguyên vì là khoá đối chiếu với danh mục gốc.
+    name_vi: str = ""
+    description_vi: str = ""
+    signal_labels_vi: dict[str, str] = Field(default_factory=dict)
     # Dấu vết ánh xạ cho chính cảnh báo đang điều tra, lấy từ
     # ``alert_typology_match``. Không có bản ghi thì để None — nghĩa là cảnh báo
     # có từ trước khi bật ánh xạ, chưa rõ mã đến từ đâu.

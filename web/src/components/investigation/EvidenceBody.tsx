@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { formatDateTime, riskComponentLabel } from "../../api/format";
 import { FEATURE_GROUPS, featureMeta, formatFeature } from "../../api/behaviorLabels";
+import { signalList, typologyDescription, typologyLabel } from "../../api/typologyLabels";
 
 type Payload = Record<string, unknown>;
 
@@ -253,13 +254,17 @@ function TypologyMapping({ p }: { p: Payload }) {
   const matched = (a.matched_required ?? []) as string[];
   return (
     <div>
+      {/* Dịch sang tiếng Việt ở tầng HIỂN THỊ. Danh mục typologies.json giữ
+          nguyên tiếng Anh vì nó là hợp đồng dữ liệu mà tác tử và bộ phản biện
+          đối chiếu — nhưng "T02 — Intermediary account network" thì chuyên viên
+          tuân thủ không đọc được. */}
       <Lead>
-        Xếp vào nhóm <b>{String(p.typology_code ?? "—")} — {String(p.name ?? "")}</b>.{" "}
+        Xếp vào nhóm <b>{typologyLabel(String(p.typology_code ?? "—"), String(p.name ?? ""))}</b>.{" "}
         {String(a.rationale ?? "")}
       </Lead>
-      <Line label="Mô tả nhóm" value={String(p.description ?? "—")} />
-      <Line label="Tín hiệu bắt buộc" value={required.length ? required.join(", ") : "—"} />
-      <Line label="Tín hiệu đã khớp" value={matched.length ? matched.join(", ") : "—"} />
+      <Line label="Mô tả nhóm" value={typologyDescription(String(p.typology_code ?? ""), String(p.description ?? "—"))} />
+      <Line label="Tín hiệu bắt buộc" value={required.length ? signalList(required) : "—"} />
+      <Line label="Tín hiệu đã khớp" value={matched.length ? signalList(matched) : "—"} />
       {a.is_fallback === true && (
         <p className="mt-2 text-micro text-warn">
           Đây là nhóm mặc định: không tín hiệu nào đủ điều kiện, nên mã nhóm chưa được xác nhận.

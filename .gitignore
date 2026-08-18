@@ -146,6 +146,9 @@ infra/terraform/gpu/terraform.tfvars
 infra/terraform/gpu/.terraform/
 infra/terraform/gpu/*.tfstate*
 infra/terraform/gpu/tfplan*
+# Bản sao lưu tfvars cũng chứa IP nhà, chặn luôn cả *.bak.
+infra/terraform/gpu/*.tfvars.bak
+infra/terraform/gpu/*.tfvars.example.bak
 
 # Điểm từng cạnh là dữ liệu lớn, dựng lại được từ checkpoint — để ngoài Git.
 /models/mega-pna/**/*.parquet

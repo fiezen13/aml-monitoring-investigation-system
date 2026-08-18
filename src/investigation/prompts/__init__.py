@@ -15,7 +15,7 @@ class PromptSpec:
 _ROOT = Path(__file__).parent
 _SPECS = {
     "investigation_supervisor": ("investigation-supervisor-v2-vi", "investigation_supervisor.txt"),
-    "explanation_agent": ("risk-explanation-v4-vi", "explanation_agent.txt"),
+    "explanation_agent": ("risk-explanation-v5-vi", "explanation_agent.txt"),
     "evidence_critic": ("evidence-critic-v2-vi", "evidence_critic.txt"),
 }
 

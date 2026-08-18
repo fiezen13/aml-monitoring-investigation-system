@@ -23,7 +23,10 @@ import { AnimatedNumber } from "./AnimatedNumber";
 interface Props {
   label: string;
   /** Truyền số để có nội suy khi dữ liệu đổi; truyền chuỗi cho giá trị không phải số. */
-  value: number | string;
+  /** Số thì chạy hiệu ứng đếm; ngoài ra render nguyên. Nhận cả ReactNode vì
+   *  KpiCard bên `fc/primitives` truyền JSX vào để đổi cỡ chữ, và kiểu hẹp cũ
+   *  buộc nơi đó phải String() — biến JSX thành "[object Object]" trên màn hình. */
+  value: ReactNode;
   format?: (value: number) => string;
   tone?: Tone;
   icon?: ReactNode;

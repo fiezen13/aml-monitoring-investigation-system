@@ -62,7 +62,18 @@ class Settings(BaseSettings):
     # Explainable investigation workflow. These are hard safety budgets, not
     # suggestions passed to a model.
     aml_agent_max_iterations: int = Field(default=3, ge=1, le=10)
-    aml_agent_max_tool_calls: int = Field(default=8, ge=1, le=50)
+    #: Trần lượt gọi công cụ cho một phiên điều tra.
+    #:
+    #: Nâng 8 → 12 khi thêm bước bổ sung bằng chứng bắt buộc. Quy trình tự gọi
+    #: GetAccountBehavior và GetTransactions cho mọi cảnh báo — không có chúng
+    #: thì bản diễn giải không mô tả được hành vi, chỉ nhắc lại điểm số. Hai lượt
+    #: ấy ăn vào ngân sách, nên giữ trần 8 là bóp phần tác tử tự khám phá xuống
+    #: còn 6 và phiên chạm trần trước khi kịp thu đủ chứng cứ.
+    #:
+    #: Vẫn TÍNH hai lượt bổ sung vào ngân sách chứ không miễn trừ: chúng là lượt
+    #: gọi thật, có ghi vào `investigation_tool_call`. Miễn trừ sẽ khiến
+    #: `tool_call_count` không khớp số bản ghi — một sai lệch tệ hơn.
+    aml_agent_max_tool_calls: int = Field(default=12, ge=1, le=50)
     max_graph_hops: int = Field(default=2, ge=1, le=4)
     max_graph_nodes: int = Field(default=100, ge=2, le=1000)
     max_graph_edges: int = Field(default=250, ge=1, le=5000)

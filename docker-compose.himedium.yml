@@ -1,13 +1,17 @@
-# Ghi đè để chạy giao diện trên CSDL HI-Medium mà KHÔNG đụng bản LI-Small.
+# Chạy giao diện trên CSDL HI-Medium mà KHÔNG đụng bản LI-Small.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.himedium.yml up -d api-hm web-hm
+#   docker compose -f docker-compose.yml -f docker-compose.himedium.yml up -d api-hm worker-hm web-hm
 #
-# Hai bản chạy song song, cổng khác nhau:
-#   LI-Small    web 5173 · api 8000
-#   HI-Medium   web 5273 · api 8100
+#   LI-Small    web 5173 · api 8000 · CSDL fin07
+#   HI-Medium   web 5273 · api 8100 · CSDL fin07_hi_medium
 #
-# Dùng cùng máy PostgreSQL, chỉ khác tên cơ sở dữ liệu — nên so sánh hai bản
-# cạnh nhau được, và bản cũ vẫn nguyên vẹn làm đường lùi.
+# Ảnh giao diện ghim cứng `http://api:8000` trong nginx. Thay vì sửa file cấu
+# hình lúc chạy — cách đã hỏng một lần vì Docker Compose nội suy `$api_upstream`
+# thành chuỗi rỗng và lệnh sed không khớp gì — ta cho `api-hm` một **bí danh
+# mạng** tên `api` trên một mạng riêng, rồi chỉ nối `web-hm` vào mạng ấy.
+#
+# Trong mạng đó, `api` phân giải về `api-hm`. Giao diện không phải build lại và
+# không phải biết gì, nên hai môi trường chạy đúng cùng một mã.
 services:
   api-hm:
     image: ${APP_IMAGE:-fin07/app:local}
@@ -19,37 +23,53 @@ services:
       REDIS_URL: redis://redis:6379/1
       APP_ENV: development
       LOG_LEVEL: INFO
+      LLM_MODE: ${LLM_MODE:-gemini}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
+      GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-2}
     ports:
       - "8100:8000"
+    networks:
+      default: {}
+      himedium:
+        aliases: [api]
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
 
   worker-hm:
     image: ${APP_IMAGE:-fin07/app:local}
-    command: ["python", "-m", "src.worker"]
+    command: ["python", "-m", "src.worker.main"]
     environment:
       DATABASE_URL: postgresql+psycopg://fin07:fin07_dev_password@postgres:5432/fin07_hi_medium
       REDIS_URL: redis://redis:6379/1
+      APP_ENV: development
+      LOG_LEVEL: INFO
+      LLM_MODE: ${LLM_MODE:-gemini}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-    depends_on:
-      - api-hm
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
+      GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-2}
+    networks: [default]
+    depends_on: [api-hm]
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.worker.healthcheck"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
 
   web-hm:
     image: ${WEB_IMAGE:-fin07/web:local}
-    # Không build lại giao diện: nginx trong ảnh proxy /api/ sang host `api`.
-    # Thay tên máy chủ ấy bằng `api-hm` là đủ, và bản dựng giữ nguyên nên hai
-    # môi trường chạy đúng cùng một mã giao diện.
-    command:
-      - sh
-      - -c
-      - |
-        sed -i 's/set \$api_upstream  api;/set \$api_upstream  api-hm;/' /etc/nginx/conf.d/default.conf
-        exec nginx -g 'daemon off;'
     ports:
       - "5273:8080"
-    depends_on:
-      - api-hm
+    # CHỈ nối vào mạng himedium: nếu cũng nối vào default thì `api` sẽ phân giải
+    # về dịch vụ LI-Small và ta quay lại đúng lỗi cũ.
+    networks: [himedium]
+    depends_on: [api-hm]
+
+networks:
+  himedium:
+    driver: bridge

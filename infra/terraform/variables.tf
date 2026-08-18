@@ -95,3 +95,49 @@ variable "db_deletion_protection" {
   type        = bool
   default     = true
 }
+
+# ---- Cloud SQL HI-Medium -------------------------------------------
+#
+# Instance song song để nạp và kiểm thử release MEGA-PNA trước khi đổi
+# DATABASE_URL của VM. Không tái sử dụng resource `main`: giữ instance cũ
+# nguyên vẹn là đường rollback trong suốt đợt chuyển dữ liệu.
+
+variable "hi_medium_db_instance_name" {
+  description = "Tên Cloud SQL mới phục vụ release HI-Medium; phải khác instance hiện tại."
+  type        = string
+  default     = "fin07-hi-medium-v1"
+}
+
+variable "hi_medium_db_tier" {
+  description = "Tier Enterprise cho test split HI-Medium (~5,87 triệu giao dịch)."
+  type        = string
+  default     = "db-custom-2-7680"
+}
+
+variable "hi_medium_db_disk_size_gb" {
+  description = "Đĩa SSD khởi điểm; cấp trước khi bulk load thay vì chờ autoresize."
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.hi_medium_db_disk_size_gb >= 50
+    error_message = "Cloud SQL HI-Medium cần tối thiểu 50 GB cho import, index, WAL và headroom."
+  }
+}
+
+variable "hi_medium_db_disk_autoresize_limit_gb" {
+  description = "Trần tự tăng đĩa của Cloud SQL HI-Medium."
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.hi_medium_db_disk_autoresize_limit_gb >= var.hi_medium_db_disk_size_gb
+    error_message = "Trần autoresize không được nhỏ hơn dung lượng đĩa khởi điểm."
+  }
+}
+
+variable "hi_medium_db_deletion_protection" {
+  description = "Giữ true cho tới khi release mới ổn định và đường rollback không còn cần thiết."
+  type        = bool
+  default     = true
+}

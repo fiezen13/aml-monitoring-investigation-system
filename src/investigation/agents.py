@@ -707,20 +707,27 @@ class ExplanationAgent:
             absent = [name for name in expected if name not in signals]
             unmatched = [name for name in expected if signals.get(name) is False]
 
+            # Chuyên viên đọc màn hình bằng tiếng Việt: mã tín hiệu thô như
+            # ``fan_in`` không nói lên điều gì, nên luôn dịch trước khi ghép câu.
+            labels = item.payload.get("signal_labels_vi") or {}
+
+            def _vi(names: list[str], _labels: dict[str, str] = labels) -> str:
+                return ", ".join(_labels.get(name, name) for name in names)
+
             if matched:
-                status = (
-                    f"khớp {len(matched)} trên {len(expected)} tín hiệu đặc trưng của nhóm này ({', '.join(matched)})"
-                )
+                status = f"khớp {len(matched)} trên {len(expected)} tín hiệu đặc trưng của nhóm này ({_vi(matched)})"
             else:
                 status = "chưa khớp tín hiệu đặc trưng nào của nhóm này"
             if unmatched:
-                status += f"; không thấy {', '.join(unmatched)}"
+                status += f"; không thấy {_vi(unmatched)}"
             if absent:
-                status += f"; chưa kiểm tra được {', '.join(absent)} vì thiếu bằng chứng tương ứng"
+                status += f"; chưa kiểm tra được {_vi(absent)} vì thiếu bằng chứng tương ứng"
 
+            name = item.payload.get("name_vi") or item.payload["name"]
+            description = item.payload.get("description_vi") or item.payload.get("description", "")
             inference = (
-                f"Hành vi quan sát được {status}, đối chiếu với nhóm {code} — {item.payload['name']}: "
-                f"{item.payload.get('description', '').rstrip('.')}. "
+                f"Hành vi quan sát được {status}, đối chiếu với nhóm {code} — {name}: "
+                f"{description.rstrip('.')}. "
                 "Đây là nhận định phục vụ điều tra, không phải kết luận về hành vi rửa tiền."
             )
             inferences.append(inference)

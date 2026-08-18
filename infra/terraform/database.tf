@@ -78,6 +78,12 @@ resource "google_sql_database_instance" "main" {
     }
   }
 
+  # Cloud SQL có thể tự tăng dung lượng. Bỏ qua thay đổi này để Terraform
+  # không thay thế instance đang chạy khi đĩa thực tế lớn hơn cấu hình gốc.
+  lifecycle {
+    ignore_changes = [settings[0].disk_size]
+  }
+
   depends_on = [google_project_service.sqladmin]
 }
 

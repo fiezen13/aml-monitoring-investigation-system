@@ -70,6 +70,63 @@ output "db_password" {
   value       = random_password.db.result
 }
 
+output "hi_medium_db_connection_name" {
+  description = "Connection name của Cloud SQL HI-Medium."
+  value       = google_sql_database_instance.hi_medium.connection_name
+}
+
+output "hi_medium_db_public_ip" {
+  description = "IP Cloud SQL HI-Medium; chỉ IP tĩnh của VM được phép kết nối."
+  value       = google_sql_database_instance.hi_medium.public_ip_address
+}
+
+output "hi_medium_database_url" {
+  description = "DATABASE_URL của release HI-Medium; lưu như bí mật."
+  sensitive   = true
+  value = format(
+    "postgresql+psycopg://%s:%s@%s:5432/%s?sslmode=require",
+    google_sql_user.hi_medium_app.name,
+    urlencode(random_password.hi_medium_db.result),
+    google_sql_database_instance.hi_medium.public_ip_address,
+    google_sql_database.hi_medium.name,
+  )
+}
+
+output "hi_medium_monitoring_pg_dsn" {
+  description = "DSN libpq cho postgres-exporter của Cloud SQL HI-Medium."
+  sensitive   = true
+  value = format(
+    "postgresql://%s:%s@%s:5432/%s?sslmode=require",
+    google_sql_user.hi_medium_app.name,
+    urlencode(random_password.hi_medium_db.result),
+    google_sql_database_instance.hi_medium.public_ip_address,
+    google_sql_database.hi_medium.name,
+  )
+}
+
+output "hi_medium_db_password" {
+  description = "Mật khẩu tài khoản ứng dụng HI-Medium; lưu như bí mật."
+  sensitive   = true
+  value       = random_password.hi_medium_db.result
+}
+
+output "hi_medium_agent_password" {
+  description = "Mật khẩu role fin07_agent trên Cloud SQL HI-Medium; lưu như bí mật."
+  sensitive   = true
+  value       = random_password.hi_medium_agent.result
+}
+
+output "hi_medium_agent_database_url" {
+  description = "DATABASE_URL chỉ đọc dành cho agent trên Cloud SQL HI-Medium."
+  sensitive   = true
+  value = format(
+    "postgresql+psycopg://fin07_agent:%s@%s:5432/%s?sslmode=require",
+    urlencode(random_password.hi_medium_agent.result),
+    google_sql_database_instance.hi_medium.public_ip_address,
+    google_sql_database.hi_medium.name,
+  )
+}
+
 output "buoc_tiep_theo" {
   description = "Việc phải làm bằng tay sau khi apply"
   value       = <<-EOT

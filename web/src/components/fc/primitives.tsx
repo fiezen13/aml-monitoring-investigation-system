@@ -78,7 +78,10 @@ export function KpiCard({
   return (
     <MetricCard
       label={label}
-      value={typeof value === "number" ? value : String(value)}
+      // Truyền thẳng, KHÔNG String(): `value` khai là ReactNode nên nơi gọi
+      // truyền cả JSX vào, và String() biến JSX thành "[object Object]" — đúng
+      // thứ đang hiện ở ô "Phiên bản mô hình" trên trang Đánh giá chuẩn.
+      value={value ?? "—"}
       tone={toneOfColor(valueColor)}
       note={delta}
       onClick={onClick}
