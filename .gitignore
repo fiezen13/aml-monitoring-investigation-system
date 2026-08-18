@@ -145,6 +145,7 @@ infra/terraform/crash.log
 infra/terraform/gpu/terraform.tfvars
 infra/terraform/gpu/.terraform/
 infra/terraform/gpu/*.tfstate*
+infra/terraform/gpu/tfplan*
 
 # Điểm từng cạnh là dữ liệu lớn, dựng lại được từ checkpoint — để ngoài Git.
 /models/mega-pna/**/*.parquet

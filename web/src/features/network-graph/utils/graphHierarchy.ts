@@ -390,6 +390,12 @@ export function buildModel(raw: FcGraph): GraphModel {
   if (distinctStages(nodes) < 3) topologicalStages(nodes, edges);
 
   let totalFlowUsd = 0;
+  // Dòng tiền vận hành là ĐA TIỀN TỆ. Máy chủ cố ý để `amt` trống cho cạnh giao
+  // dịch thật và giữ số tiền riêng theo từng loại tiền, vì cộng USD với EUR ra
+  // một con số là sai. Giao diện trước đây vẫn cộng `amt` rồi hiện "$0" — một
+  // con số không những vô nghĩa mà còn sai sự thật, khiến chuyên viên tưởng
+  // mạng lưới không luân chuyển đồng nào.
+  const flowByCurrency: Record<string, number> = {};
   edges.forEach((e) => {
     byId[e.s].degree += 1;
     byId[e.t].degree += 1;
@@ -398,6 +404,9 @@ export function buildModel(raw: FcGraph): GraphModel {
       byId[e.t].inUsd += e.amt;
       totalFlowUsd += e.amt;
     }
+    Object.entries(e.amountsByCurrency ?? {}).forEach(([currency, value]) => {
+      flowByCurrency[currency] = (flowByCurrency[currency] ?? 0) + value;
+    });
   });
 
   // Cụm dựng từ nhãn đã gán ở `resolve`, giữ nguyên thứ tự gặp đầu tiên.
@@ -436,5 +445,5 @@ export function buildModel(raw: FcGraph): GraphModel {
     clusters.push(c);
   });
 
-  return { nodes, edges, clusters, byId, totalFlowUsd };
+  return { nodes, edges, clusters, byId, totalFlowUsd, flowByCurrency };
 }

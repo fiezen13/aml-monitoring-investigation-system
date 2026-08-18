@@ -329,6 +329,37 @@ export interface FcWorld {
   limitation: string | null;
 }
 
+
+/** Một chặng trong mẫu hình do bộ dò đồ thị tìm được. */
+export interface PatternHop {
+  seq: number;
+  source: string;
+  target: string;
+  transaction_id: string;
+  occurred_at: string | null;
+  amount: number | null;
+  currency: string | null;
+  gap_hours: number | null;
+}
+
+/** Mẫu hình đã dò được, dựng thành trình tự có số tiền và thời điểm.
+ *
+ * Khác với chu trình dò trên vùng đang vẽ: vùng ấy là lân cận một chặng quanh
+ * tài khoản có cảnh báo — 48 đỉnh với 47 cạnh, tức một cây — nên về mặt toán học
+ * không thể có chu trình. Đây là kết quả bộ dò đã chạy trên toàn đồ thị.
+ */
+export interface DetectedPattern {
+  evidence_id: string;
+  pattern: string;
+  account_key: string;
+  accounts: string[];
+  hop_count: number;
+  duration_hours: number | null;
+  detector_version: string;
+  as_of_time: string;
+  hops: PatternHop[];
+}
+
 export interface FcGraphNode {
   id: string;
   type: string;
@@ -830,6 +861,8 @@ export const api = {
   world: () => request<FcWorld>("/world"),
 
   entityGraph: (limit = 400) => request<FcGraph>(`/fc/graph${query({ limit })}`),
+  graphPatterns: (accounts: string[], pattern?: string, limit = 25) =>
+    request<DetectedPattern[]>(`/fc/graph/patterns${query({ accounts: accounts.join(","), pattern, limit })}`),
 
   crypto: (limit = 200) => request<FcCrypto>(`/fc/crypto${query({ limit })}`),
 

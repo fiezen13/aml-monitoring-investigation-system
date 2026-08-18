@@ -84,8 +84,16 @@ def test_graph_alert_without_detector_evidence_stops_at_configured_limits(db_eng
         state = repository.get(investigation.investigation_id)
         settings = get_settings()
         assert state.status == "INSUFFICIENT_EVIDENCE"
-        assert state.iteration == settings.max_agent_iterations
+        # Dừng ở MỘT trong hai trần cấu hình, không phải trần cụ thể nào.
+        #
+        # Trước khi có bước bổ sung bằng chứng bắt buộc, phiên này luôn cạn vòng
+        # lặp trước. Nay quy trình tự gọi GetGraphEvidence, lượt gọi ấy tính vào
+        # ngân sách công cụ, nên cảnh báo không có bằng chứng đồ thị chạm trần
+        # công cụ sớm hơn một vòng. Cả hai đều là dừng đúng chỗ; khẳng định vào
+        # đúng một trần là khoá chi tiết hiện thực chứ không khoá hành vi.
+        assert state.iteration <= settings.max_agent_iterations
         assert state.tool_call_count <= settings.max_tool_calls
+        assert state.iteration == settings.max_agent_iterations or state.tool_call_count == settings.max_tool_calls
         assert state.validation is not None and state.validation.status == "FAIL"
         assert any(issue.required_tool == "GetGraphEvidence" for issue in state.validation.issues)
 

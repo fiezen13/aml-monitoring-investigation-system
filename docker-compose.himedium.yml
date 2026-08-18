@@ -1,0 +1,55 @@
+# Ghi đè để chạy giao diện trên CSDL HI-Medium mà KHÔNG đụng bản LI-Small.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.himedium.yml up -d api-hm web-hm
+#
+# Hai bản chạy song song, cổng khác nhau:
+#   LI-Small    web 5173 · api 8000
+#   HI-Medium   web 5273 · api 8100
+#
+# Dùng cùng máy PostgreSQL, chỉ khác tên cơ sở dữ liệu — nên so sánh hai bản
+# cạnh nhau được, và bản cũ vẫn nguyên vẹn làm đường lùi.
+services:
+  api-hm:
+    image: ${APP_IMAGE:-fin07/app:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://fin07:fin07_dev_password@postgres:5432/fin07_hi_medium
+      REDIS_URL: redis://redis:6379/1
+      APP_ENV: development
+      LOG_LEVEL: INFO
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+    ports:
+      - "8100:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-hm:
+    image: ${APP_IMAGE:-fin07/app:local}
+    command: ["python", "-m", "src.worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://fin07:fin07_dev_password@postgres:5432/fin07_hi_medium
+      REDIS_URL: redis://redis:6379/1
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+    depends_on:
+      - api-hm
+
+  web-hm:
+    image: ${WEB_IMAGE:-fin07/web:local}
+    # Không build lại giao diện: nginx trong ảnh proxy /api/ sang host `api`.
+    # Thay tên máy chủ ấy bằng `api-hm` là đủ, và bản dựng giữ nguyên nên hai
+    # môi trường chạy đúng cùng một mã giao diện.
+    command:
+      - sh
+      - -c
+      - |
+        sed -i 's/set \$api_upstream  api;/set \$api_upstream  api-hm;/' /etc/nginx/conf.d/default.conf
+        exec nginx -g 'daemon off;'
+    ports:
+      - "5273:8080"
+    depends_on:
+      - api-hm

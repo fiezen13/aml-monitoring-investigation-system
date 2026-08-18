@@ -18,6 +18,7 @@ import {
 import { useApi } from "../../api/useApi";
 import { useApp } from "../../context/AppContext";
 import { StatusBadge } from "../common/Badges";
+import { EvidenceBody } from "./EvidenceBody";
 import { Panel } from "../common/Panel";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../common/States";
 
@@ -203,10 +204,22 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
       {explanation.data && (
         <Panel title="Vì sao cảnh báo này được tạo?">
           {inv.status !== "COMPLETED" && (
-            <p className="mb-3 rounded-control border border-warn/30 bg-warn/10 p-2 text-2xs text-warn-soft">
-              Bản giải thích này chưa vượt qua bước phản biện bằng chứng. Xem phần Tác tử phản biện bằng chứng bên dưới
-              để biết vấn đề còn lại trước khi sử dụng.
-            </p>
+            /* Câu cũ chỉ ghi "chưa vượt qua bước phản biện", và cách đọc tự
+               nhiên nhất là "hệ thống không tin chính nó" — khiến chuyên viên
+               nghi ngờ cả điểm rủi ro. Đo trên 227 phiên: bộ phản biện chưa
+               một lần nào nêu INVALID_SCORE. Nó chỉ soi phần chữ do tác tử
+               viết. Nên tách bạch hai thứ ngay tại đây. */
+            <div className="mb-3 rounded-control border border-warn/30 bg-warn/10 p-2.5 text-2xs">
+              <p className="font-semibold text-warn-soft">Phần diễn giải tự động chưa dùng được để lập báo cáo</p>
+              <p className="mt-1 text-ink-mid">
+                <b className="text-ink-hi">Điểm rủi ro vẫn có hiệu lực.</b> Nó do bộ phát hiện chấm và đã được chốt; bộ
+                phản biện không chấm lại điểm, chỉ kiểm xem từng câu bên dưới có dẫn đủ bằng chứng hay không.
+              </p>
+              <p className="mt-1 text-ink-mid">
+                Những câu chưa dẫn được nguồn nằm ở mục Tác tử phản biện bằng chứng. Hãy tự đối chiếu với phần Bằng
+                chứng trước khi dùng.
+              </p>
+            </div>
           )}
           <p className="text-body leading-relaxed text-ink-hi">{investigationTextVi(explanation.data.summary)}</p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -236,11 +249,11 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
                     <span className="tabular ml-auto text-ink-low">{item.evidence_id}</span>
                   </summary>
                   <div className="mt-2 border-t border-line pt-2 text-2xs text-ink-mid">
-                    <div>Nguồn: {item.source}</div>
-                    <div className="mt-1 break-all">SHA-256: {item.integrity.content_hash}</div>
-                    <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap rounded bg-app p-2 text-micro text-ink-mid">
-                      {JSON.stringify(item.payload, null, 2)}
-                    </pre>
+                    <EvidenceBody type={item.type} payload={item.payload} />
+                    <div className="mt-3 border-t border-line/50 pt-2 text-micro text-ink-low">
+                      <div>Nguồn: {item.source}</div>
+                      <div className="mt-0.5 break-all">SHA-256: {item.integrity.content_hash}</div>
+                    </div>
                   </div>
                 </details>
               ))}

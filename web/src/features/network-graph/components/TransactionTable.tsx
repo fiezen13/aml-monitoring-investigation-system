@@ -15,6 +15,8 @@ interface Props {
   error: string | null;
   /** Tiêu đề phạm vi, ví dụ "PT-Gate → Tài khoản gom 1". */
   scopeLabel: string;
+  /** Đã chọn quan hệ/thực thể nào chưa. Phân biệt "chưa chọn" với "chọn rồi mà rỗng". */
+  hasScope?: boolean;
   /** Tổng theo từng loại tiền, lấy từ metric của cạnh. */
   amountsByCurrency: Record<string, number>;
   selectedId: number | null;
@@ -51,6 +53,7 @@ export function TransactionTable({
   loading,
   error,
   scopeLabel,
+  hasScope = true,
   amountsByCurrency,
   selectedId,
   onPick,
@@ -108,7 +111,16 @@ export function TransactionTable({
       )}
 
       {/* §41: không có giao dịch thì nói thẳng, không dựng ra một dòng nào. */}
-      {!loading && !error && !rows.length && (
+      {/* Hai trạng thái rỗng khác hẳn nhau. Trước đây cả hai dùng chung một câu
+          "Quan hệ này không có chuyển khoản nào đứng sau" — câu ấy SAI khi người
+          dùng còn chưa chọn gì, và nó khiến tab trông như hỏng. */}
+      {!loading && !error && !rows.length && !hasScope && (
+        <Empty
+          text="Chưa chọn quan hệ nào"
+          hint="Bấm vào một cạnh hoặc một tài khoản trên đồ thị để xem những giao dịch đứng sau nó."
+        />
+      )}
+      {!loading && !error && !rows.length && hasScope && (
         <Empty
           text="Không có bằng chứng giao dịch"
           hint="Quan hệ này không có chuyển khoản ngân hàng nào đứng sau — quan hệ sở hữu, thiết bị dùng chung và chuyển trên chuỗi đều như vậy."

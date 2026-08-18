@@ -12,6 +12,7 @@ import { presetDef } from "../utils/graphStyles";
 
 export type BottomTab = "paths" | "cycles" | "transactions" | "timeline" | "evidence";
 export type InspectorTab = "overview" | "transactions" | "relationships" | "evidence" | "model";
+export type ReplayStatus = "idle" | "playing" | "paused";
 
 export interface GraphState {
   preset: PresetKey;
@@ -37,6 +38,9 @@ export interface GraphState {
   bottomOpen: boolean;
   inspectorTab: InspectorTab;
   suspiciousMin: number;
+  replayStatus: ReplayStatus;
+  replayIndex: number;
+  replaySpeed: 0.5 | 1 | 2;
 }
 
 const EMPTY_FOCUS: FocusState = { nodeId: null, edgeId: null, hops: 1, isolated: false };
@@ -57,9 +61,6 @@ function layersForPreset(preset: PresetKey): Record<LayerKey, boolean> {
 export function initialState(): GraphState {
   return {
     preset: "overview",
-    // fCoSE là mặc định cho khám phá mạng lưới (§23). Layout theo chặng
-    // ("flow") vẫn chọn được từ thanh công cụ khi analyst muốn đọc thứ tự
-    // dòng tiền trái → phải.
     layout: "force",
     layers: layersForPreset("overview"),
     mutedKinds: {},
@@ -77,9 +78,12 @@ export function initialState(): GraphState {
     story: false,
     advancedOpen: false,
     bottomTab: "paths",
-    bottomOpen: true,
+    bottomOpen: false,
     inspectorTab: "overview",
     suspiciousMin: 75,
+    replayStatus: "idle",
+    replayIndex: 0,
+    replaySpeed: 1,
   };
 }
 
@@ -107,21 +111,23 @@ export type GraphAction =
   | { type: "advanced"; on: boolean }
   | { type: "bottomTab"; tab: BottomTab }
   | { type: "bottomOpen"; on: boolean }
-  | { type: "inspectorTab"; tab: InspectorTab };
+  | { type: "inspectorTab"; tab: InspectorTab }
+  | { type: "replayPlay" }
+  | { type: "replayPause" }
+  | { type: "replayStop" }
+  | { type: "replayStep"; index: number }
+  | { type: "replaySpeed"; speed: 0.5 | 1 | 2 };
 
 export function graphReducer(state: GraphState, action: GraphAction): GraphState {
   switch (action.type) {
     case "preset":
-      // Đổi preset là đổi cả câu hỏi đang hỏi, nên focus và đường tiền cũ không
-      // còn nghĩa — xoá đi thay vì để lại một highlight mồ côi.
+      // Mode chỉ đổi cách đọc cùng một vụ việc. Giữ focus và đường tiền để
+      // analyst không mất ngữ cảnh khi chuyển sang Evidence.
       return {
         ...state,
         preset: action.preset,
-        layers: layersForPreset(action.preset),
         mutedKinds: {},
         collapsed: action.collapsed,
-        focus: EMPTY_FOCUS,
-        activePathId: null,
       };
 
     case "layout":
@@ -168,10 +174,16 @@ export function graphReducer(state: GraphState, action: GraphAction): GraphState
       return { ...state, focus: { ...state.focus, isolated: action.on } };
 
     case "clearFocus":
-      return { ...state, focus: { ...EMPTY_FOCUS, isolated: state.focus.isolated }, activePathId: null };
+      return {
+        ...state,
+        focus: { ...EMPTY_FOCUS, isolated: state.focus.isolated },
+        activePathId: null,
+        replayStatus: "idle",
+        replayIndex: 0,
+      };
 
     case "activePath":
-      return { ...state, activePathId: action.id, bottomTab: "paths", bottomOpen: true };
+      return { ...state, activePathId: action.id, replayStatus: "idle", replayIndex: 0 };
 
     case "pathEndpoints":
       return { ...state, pathSource: action.source, pathTarget: action.target, activePathId: null };
@@ -198,6 +210,21 @@ export function graphReducer(state: GraphState, action: GraphAction): GraphState
 
     case "inspectorTab":
       return { ...state, inspectorTab: action.tab };
+
+    case "replayPlay":
+      return { ...state, replayStatus: "playing" };
+
+    case "replayPause":
+      return { ...state, replayStatus: "paused" };
+
+    case "replayStop":
+      return { ...state, replayStatus: "idle", replayIndex: 0 };
+
+    case "replayStep":
+      return { ...state, replayIndex: action.index };
+
+    case "replaySpeed":
+      return { ...state, replaySpeed: action.speed };
 
     default:
       return state;

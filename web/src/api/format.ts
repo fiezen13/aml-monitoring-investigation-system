@@ -277,6 +277,8 @@ const VALIDATION_ISSUE_LABELS: Record<string, string> = {
   MISSING_EVIDENCE: "Thiếu bằng chứng",
   INVALID_SCORE: "Điểm không hợp lệ",
   INVALID_TYPOLOGY: "Nhóm hành vi không hợp lệ",
+  INVALID_SCORE_CONTRIBUTION: "Ghi sai mức đóng góp của nhánh",
+  MISSING_SOURCE_RECORD: "Thiếu bản ghi nguồn",
   PROHIBITED_CONCLUSION: "Kết luận không được phép",
   OTHER: "Vấn đề khác",
 };

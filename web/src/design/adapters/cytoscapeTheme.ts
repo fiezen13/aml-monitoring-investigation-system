@@ -37,6 +37,7 @@ export const cytoscapeTheme = {
     warn: toneColor("warn"),
     crit: toneColor("risk"),
     selected: toneColor("primary"),
+    verified: toneColor("ok"),
     muted: ink.dim,
   },
   font: {

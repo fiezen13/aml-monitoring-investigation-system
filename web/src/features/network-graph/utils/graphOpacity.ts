@@ -136,10 +136,9 @@ export function resolveEmphasis(input: EmphasisInput): Emphasis {
   graph.edges.forEach((e) => {
     let level: EdgeLevel = layerLevel(e.layer, def.emphasis);
 
-    // Preset "money"/"crypto" đẩy mọi thứ không phải tiền xuống nền.
-    if ((preset === "money" || preset === "crypto") && !e.money) level = 4;
-    if (preset === "device" && e.layer !== "device") level = e.layer === "entity" ? 3 : 4;
-    if (preset === "entity" && e.money) level = 4;
+    // Flow ưu tiên quan hệ tiền. Evidence giữ đủ lớp để analyst đối chiếu
+    // quan sát/suy luận ngay tại đúng vị trí, không đổi bản đồ trong đầu.
+    if (preset === "flow" && !e.money) level = 4;
 
     const negEdge = graph.byId[e.s]?.negative || graph.byId[e.t]?.negative;
     if (negEdge && !showAlternatives) level = 4;

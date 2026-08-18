@@ -54,8 +54,22 @@ function minutesBetween(edges: GEdge[]): number {
 function summarise(model: GraphModel, nodeIds: string[], edges: GEdge[], index: number): MoneyPath {
   // Giá trị của một đường là chỗ hẹp nhất: tiền không thể qua nhiều hơn khúc
   // nhỏ nhất trên đường đó. Lấy tổng sẽ thổi phồng con số.
+  //
+  // `amt` chỉ có ở đồ thị mô phỏng. Với dữ liệu vận hành, máy chủ cố ý để trống
+  // vì sổ giao dịch đa tiền tệ — nên trước đây mọi đường đều hiện "$0". Tính nút
+  // thắt riêng cho từng loại tiền, và chỉ xét loại tiền xuất hiện trên TOÀN BỘ
+  // các chặng: một loại tiền chỉ có ở nửa đường thì không chảy hết đường được.
   const amounts = edges.map((e) => e.amt).filter((v): v is number => v != null && v > 0);
   const amountUsd = amounts.length ? Math.min(...amounts) : 0;
+
+  const perEdge = edges.map((e) => e.amountsByCurrency ?? {});
+  const everywhere = Object.keys(perEdge[0] ?? {}).filter((currency) =>
+    perEdge.every((map) => (map[currency] ?? 0) > 0),
+  );
+  const amountByCurrency: Record<string, number> = {};
+  everywhere.forEach((currency) => {
+    amountByCurrency[currency] = Math.min(...perEdge.map((map) => map[currency]));
+  });
 
   const confs = edges.map((e) => (e.inferred ? (e.conf ?? 0.5) : 1));
   const confidence = confs.length ? confs.reduce((a, b) => a * b, 1) ** (1 / confs.length) : 1;
@@ -74,6 +88,7 @@ function summarise(model: GraphModel, nodeIds: string[], edges: GEdge[], index: 
     edgeIds: edges.map((e) => e.id),
     hops: edges.length,
     amountUsd,
+    amountByCurrency,
     durationMin: minutesBetween(edges),
     channels,
     confidence,

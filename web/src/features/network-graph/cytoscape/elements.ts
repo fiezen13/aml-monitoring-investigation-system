@@ -135,6 +135,9 @@ export function buildElements(graph: RenderGraph, opts: BuildOptions): ElementDe
     const classes: string[] = [];
     if (e.money) classes.push("money");
     if (e.inferred) classes.push("inferred");
+    else classes.push("observed");
+    if (e.layer === "device") classes.push("device-link");
+    if (graph.byId[e.s]?.negative || graph.byId[e.t]?.negative) classes.push("verified-negative");
 
     out.push({
       group: "edges",
@@ -147,6 +150,7 @@ export function buildElements(graph: RenderGraph, opts: BuildOptions): ElementDe
         txCount: e.txCount,
         money: e.money,
         inferred: e.inferred,
+        layer: e.layer,
       },
       classes: classes.join(" "),
     });

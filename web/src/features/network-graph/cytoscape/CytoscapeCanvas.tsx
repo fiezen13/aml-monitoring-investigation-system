@@ -1,8 +1,9 @@
 import cytoscape, { type Core, type EdgeSingular, type NodeSingular } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usd } from "../../../api/fcFormat";
 
-import type { RenderEdge, RenderGraph, RenderNode, ZoomLevel } from "../types/graph.types";
+import type { PresetKey, RenderEdge, RenderGraph, RenderNode, ZoomLevel } from "../types/graph.types";
 import type { Emphasis } from "../utils/graphOpacity";
 import { buildElements, edgeLabel, type GapLink } from "./elements";
 import { layoutFor } from "./layout";
@@ -85,6 +86,7 @@ interface Props {
   graph: RenderGraph;
   emphasis: Emphasis;
   layout: LayoutKey;
+  mode: PresetKey;
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   /** Id các cụm đang mở — quyết định compound node nào được dựng. */
@@ -102,6 +104,8 @@ interface Props {
    * 12% — tức là mất luôn cấu trúc, thứ mà §9 nói phải thấy trước tiên.
    */
   pathMode: boolean;
+  replayEdgeId: string | null;
+  replayNodeId: string | null;
   /** Tăng lên để yêu cầu chạy lại layout. */
   layoutNonce: number;
   /** Tăng lên để yêu cầu fit lại khung nhìn. */
@@ -122,10 +126,32 @@ interface Props {
  * khác đi một chiều từ props xuống, và mỗi effect lo đúng một mối quan tâm —
  * đổi lựa chọn không kéo theo tính lại layout, đổi bộ lọc không làm mất camera.
  */
+
+/** Số cạnh tiền vào/ra mỗi đỉnh — đầu vào của layout theo chiều dòng tiền. */
+function flowInput(cy: cytoscape.Core) {
+  const nodes = cy.nodes().map((n) => ({ id: n.id(), inMoney: 0, outMoney: 0 }));
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const edges: { s: string; t: string }[] = [];
+  cy.edges().forEach((e) => {
+    // Chỉ cạnh TIỀN mới định nghĩa chiều. Quan hệ sở hữu hay thiết bị dùng chung
+    // không có chiều dòng tiền, đưa vào sẽ làm lệch cột.
+    if (e.data("money") === false) return;
+    const s = e.source().id();
+    const t = e.target().id();
+    edges.push({ s, t });
+    const from = byId.get(s);
+    const to = byId.get(t);
+    if (from) from.outMoney += 1;
+    if (to) to.inMoney += 1;
+  });
+  return { nodes, edges };
+}
+
 export function CytoscapeCanvas({
   graph,
   emphasis,
   layout,
+  mode,
   selectedNodeId,
   selectedEdgeId,
   openClusterIds,
@@ -133,6 +159,8 @@ export function CytoscapeCanvas({
   pathEdgeIds,
   gaps,
   pathMode,
+  replayEdgeId,
+  replayNodeId,
   layoutNonce,
   fitNonce,
   onSelectNode,
@@ -166,8 +194,28 @@ export function CytoscapeCanvas({
     return m;
   }, [graph]);
 
-  const data = useRef({ nodeById, edgeById });
-  data.current = { nodeById, edgeById };
+  const nodeStats = useMemo(() => {
+    const stats = new Map<string, { incoming: number; outgoing: number; transactions: number; counterparties: Set<string> }>();
+    graph.nodes.forEach((node) => stats.set(node.id, { incoming: 0, outgoing: 0, transactions: 0, counterparties: new Set() }));
+    graph.edges.forEach((edge) => {
+      const source = stats.get(edge.s);
+      const target = stats.get(edge.t);
+      if (source) {
+        source.outgoing += edge.amt ?? 0;
+        source.transactions += edge.txCount;
+        source.counterparties.add(edge.t);
+      }
+      if (target) {
+        target.incoming += edge.amt ?? 0;
+        target.transactions += edge.txCount;
+        target.counterparties.add(edge.s);
+      }
+    });
+    return stats;
+  }, [graph]);
+
+  const data = useRef({ nodeById, edgeById, nodeStats });
+  data.current = { nodeById, edgeById, nodeStats };
 
   // --- Khởi tạo, một lần ---------------------------------------------
   useEffect(() => {
@@ -223,6 +271,7 @@ export function CytoscapeCanvas({
       if (el.isNode()) {
         const n = data.current.nodeById.get(el.id());
         if (!n) return;
+        const stats = data.current.nodeStats.get(el.id());
         el.addClass("hovered");
         setHover({
           x: pos.x,
@@ -231,7 +280,11 @@ export function CytoscapeCanvas({
           lines: [
             n.role || n.type,
             `Điểm rủi ro ${n.risk}`,
-            n.kind === "cluster" ? `${n.count} thực thể trong cụm` : n.sub,
+            stats?.incoming ? `Tiền vào ${usd(stats.incoming)}` : "",
+            stats?.outgoing ? `Tiền ra ${usd(stats.outgoing)}` : "",
+            stats?.transactions ? `${stats.transactions} giao dịch` : "",
+            stats ? `${stats.counterparties.size} đối tác` : "",
+            n.kind === "cluster" ? `${n.count} thực thể trong cụm` : "",
           ].filter(Boolean),
         });
       } else if (el.hasClass("evidence-gap")) {
@@ -320,7 +373,7 @@ export function CytoscapeCanvas({
     });
 
     if (!elements.length) return;
-    const run = cy.layout(layoutFor(layout, cy.nodes().length, false));
+    const run = cy.layout(layoutFor(layout, cy.nodes().length, false, flowInput(cy)));
     run.on("layoutstop", () => fitWithOverlays(cy, false));
     run.run();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- openKey thay cho mảng
@@ -330,7 +383,7 @@ export function CytoscapeCanvas({
   useEffect(() => {
     const cy = cyInstance.current;
     if (!cy || layoutNonce <= 0 || !cy.nodes().length) return;
-    const run = cy.layout(layoutFor(layout, cy.nodes().length, true));
+    const run = cy.layout(layoutFor(layout, cy.nodes().length, true, flowInput(cy)));
     run.on("layoutstop", () => fitWithOverlays(cy, true));
     run.run();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy khi nonce đổi
@@ -341,6 +394,14 @@ export function CytoscapeCanvas({
     if (!cy || fitNonce <= 0 || !cy.nodes().length) return;
     fitWithOverlays(cy, true);
   }, [fitNonce]);
+
+  // Evidence chỉ đổi ngôn ngữ thị giác của cạnh. Không chạy layout và không
+  // thay phần tử, nhờ đó mọi node đứng nguyên vị trí khi analyst đối chiếu.
+  useEffect(() => {
+    const cy = cyInstance.current;
+    if (!cy) return;
+    cy.elements().toggleClass("evidence-mode", mode === "evidence");
+  }, [mode, graph]);
 
   // --- Nhãn theo mức phóng --------------------------------------------
   useEffect(() => {
@@ -363,7 +424,8 @@ export function CytoscapeCanvas({
     const pathEdges = new Set(pathEdgeIds);
 
     cy.batch(() => {
-      cy.elements().removeClass("selected on-path dimmed neighbour");
+      cy.elements().removeStyle("opacity");
+      cy.elements().removeClass("selected on-path dimmed neighbour second-hop replaying replay-node");
 
       cy.nodes().forEach((n) => {
         n.toggleClass("on-path", pathNodes.has(n.id()));
@@ -371,6 +433,8 @@ export function CytoscapeCanvas({
       cy.edges().forEach((e) => {
         e.toggleClass("on-path", pathEdges.has(e.id()));
       });
+      if (replayEdgeId) cy.getElementById(replayEdgeId).addClass("replaying");
+      if (replayNodeId) cy.getElementById(replayNodeId).addClass("replay-node");
 
       if (selectedNodeId) {
         const node = cy.getElementById(selectedNodeId);
@@ -379,16 +443,20 @@ export function CytoscapeCanvas({
           // 1 chặng quanh đỉnh đang chọn giữ nguyên độ rõ; phần còn lại lùi hẳn
           // xuống nhưng KHÔNG bị xoá — mất bối cảnh thì mất luôn ý nghĩa (§12).
           const near = node.closedNeighborhood();
+          const twoHops = near.nodes().closedNeighborhood().difference(near);
           near.addClass("neighbour");
-          cy.elements().difference(near).addClass("dimmed");
+          twoHops.addClass("second-hop");
+          cy.elements().difference(near.union(twoHops)).addClass("dimmed");
         }
       } else if (selectedEdgeId) {
         const edge = cy.getElementById(selectedEdgeId);
         if (edge.nonempty()) {
           edge.addClass("selected");
           const near = edge.connectedNodes().union(edge);
+          const twoHops = edge.connectedNodes().closedNeighborhood().difference(near);
           near.addClass("neighbour");
-          cy.elements().difference(near).addClass("dimmed");
+          twoHops.addClass("second-hop");
+          cy.elements().difference(near.union(twoHops)).addClass("dimmed");
         }
       } else if (pathMode && pathEdges.size) {
         // Chế độ đường tiền: chỉ mạch đang xem nổi lên (§26).
@@ -397,7 +465,28 @@ export function CytoscapeCanvas({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- dùng khoá chuỗi thay mảng
-  }, [selectedNodeId, selectedEdgeId, pathNodeKey, pathEdgeKey, pathMode, graph]);
+  }, [selectedNodeId, selectedEdgeId, pathNodeKey, pathEdgeKey, pathMode, replayEdgeId, replayNodeId, graph]);
+
+  // Renderer-level moving dash: không gây React render mỗi frame. Animation
+  // dừng ngay khi pause/đổi bước và bị tắt khi hệ điều hành yêu cầu giảm motion.
+  useEffect(() => {
+    const cy = cyInstance.current;
+    if (!cy || !replayEdgeId || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const edge = cy.getElementById(replayEdgeId);
+    if (edge.empty()) return;
+    let frame = 0;
+    let offset = 0;
+    const tick = () => {
+      offset = (offset - 0.7) % 24;
+      edge.style("line-dash-offset", offset);
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      edge.removeStyle("line-dash-offset");
+    };
+  }, [replayEdgeId]);
 
   // --- Làm mờ theo bộ lọc / preset ------------------------------------
   useEffect(() => {

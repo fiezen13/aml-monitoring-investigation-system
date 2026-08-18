@@ -1,0 +1,77 @@
+{
+  "schema_version": "fin07.mega_pna.hi_medium_benchmark.v1",
+  "created_at": "2026-08-18T07:48:10.195361+00:00",
+  "dataset": "Medium_HI",
+  "arm": "paper",
+  "requested_seeds": [
+    42
+  ],
+  "published_seed_count": 5,
+  "completed_seed_count": 1,
+  "missing_seeds": [],
+  "comparable_to_published": false,
+  "comparability_note": "Ch\u1ec9 1 seed. Con s\u1ed1 n\u00e0y l\u00e0 k\u1ebft qu\u1ea3 C\u1ee6A M\u1ed8T L\u1ea6N HU\u1ea4N LUY\u1ec6N, kh\u00f4ng ph\u1ea3i trung b\u00ecnh 5 seed nh\u01b0 b\u00e0i b\u00e1o. Kh\u00f4ng c\u00f3 \u01b0\u1edbc l\u01b0\u1ee3ng dao \u0111\u1ed9ng gi\u1eefa c\u00e1c l\u1ea7n ch\u1ea1y, n\u00ean kh\u00f4ng bi\u1ebft \u0111\u01b0\u1ee3c ph\u1ea7n n\u00e0o do m\u00f4 h\u00ecnh v\u00e0 ph\u1ea7n n\u00e0o do may r\u1ee7i. \u0110\u1eebng vi\u1ebft n\u00f3 d\u01b0\u1edbi d\u1ea1ng 'trung b\u00ecnh \u00b1 \u0111\u1ed9 l\u1ec7ch'.",
+  "checks_not_applicable": [
+    "f1_std"
+  ],
+  "runs": [
+    {
+      "seed": 42,
+      "f1": 0.7800846015461662,
+      "precision": 0.8399120510941263,
+      "recall": 0.7282135076252724,
+      "pr_auc": 0.49491752121980975,
+      "validation_f1": 0.7252630882255608,
+      "best_epoch": 18,
+      "seconds": 74622.461118658
+    }
+  ],
+  "aggregate": {
+    "f1": {
+      "mean": 0.7800846015461662,
+      "std": null,
+      "min": 0.7800846015461662,
+      "max": 0.7800846015461662
+    },
+    "precision": {
+      "mean": 0.8399120510941263,
+      "std": null,
+      "min": 0.8399120510941263,
+      "max": 0.8399120510941263
+    },
+    "recall": {
+      "mean": 0.7282135076252724,
+      "std": null,
+      "min": 0.7282135076252724,
+      "max": 0.7282135076252724
+    },
+    "pr_auc": {
+      "mean": 0.49491752121980975,
+      "std": null,
+      "min": 0.49491752121980975,
+      "max": 0.49491752121980975
+    }
+  },
+  "release_gate": {
+    "f1_mean_min": 0.75,
+    "f1_min_min": 0.73,
+    "f1_std_max": 0.01,
+    "precision_mean_min": 0.7,
+    "recall_mean_min": 0.7
+  },
+  "release_gate_checks": {
+    "seeds_complete": true,
+    "f1_mean": true,
+    "f1_min": true,
+    "f1_std": null,
+    "precision_mean": true,
+    "recall_mean": true
+  },
+  "release_gate_passed": true,
+  "selected_seed": 42,
+  "selection_rule": "highest validation F1, ties broken by smaller seed",
+  "published_reference": {
+    "mean": 0.7826,
+    "std": 0.0011
+  }
+}

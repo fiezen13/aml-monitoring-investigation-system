@@ -1,17 +1,11 @@
 import { useState } from "react";
 
-import type { LayoutKey } from "../types/graph.types";
+import type { PresetKey } from "../types/graph.types";
 import type { GraphComponent } from "../utils/graphComponents";
-
-const LAYOUTS: [LayoutKey, string][] = [
-  ["flow", "Luồng điều tra"],
-  ["force", "Lực mô phỏng"],
-  ["hierarchy", "Phân cấp"],
-  ["community", "Cộng đồng"],
-];
+import { GraphViewPresets } from "./GraphViewPresets";
 
 interface Props {
-  layout: LayoutKey;
+  preset: PresetKey;
   perf: boolean;
   isolated: boolean;
   story: boolean;
@@ -22,9 +16,11 @@ interface Props {
   search: string;
   networks: GraphComponent[];
   activeNetworkId: string | null;
+  filtersOpen: boolean;
   onSearch: (v: string) => void;
   onNetwork: (id: string) => void;
-  onLayout: (l: LayoutKey) => void;
+  onPreset: (p: PresetKey) => void;
+  onFilters: () => void;
   onFit: () => void;
   onExpandHop: (hops: number) => void;
   onMoneyPath: () => void;
@@ -73,7 +69,7 @@ function Btn({
  * tràn.
  */
 export function GraphToolbar({
-  layout,
+  preset,
   perf,
   isolated,
   story,
@@ -84,9 +80,11 @@ export function GraphToolbar({
   search,
   networks,
   activeNetworkId,
+  filtersOpen,
   onSearch,
   onNetwork,
-  onLayout,
+  onPreset,
+  onFilters,
   onFit,
   onExpandHop,
   onMoneyPath,
@@ -100,13 +98,13 @@ export function GraphToolbar({
   const [overflow, setOverflow] = useState(false);
 
   return (
-    <div className="relative flex items-center gap-1.5 border-b border-line bg-side px-3 py-1.5">
+    <div className="relative flex min-h-[42px] items-center gap-1.5 border-b border-line bg-side px-3 py-1.5">
       <select
         value={activeNetworkId ?? ""}
         onChange={(event) => onNetwork(event.target.value)}
         aria-label="Chọn mạng lưới giao dịch"
         title="Mỗi lựa chọn là một connected component độc lập"
-        className="w-64 rounded-control border border-primary-line bg-primary-soft px-2 py-1 text-2xs font-medium text-primary outline-none focus:border-primary"
+        className="w-52 rounded-control border border-line bg-sunken px-2 py-1 text-2xs font-medium text-ink-mid outline-none focus:border-primary-line 2xl:w-64"
       >
         {networks.map((network) => (
           <option key={network.id} value={network.id}>
@@ -115,53 +113,22 @@ export function GraphToolbar({
         ))}
       </select>
 
-      <input
-        value={search}
-        onChange={(e) => onSearch(e.target.value)}
-        placeholder="Tìm đỉnh (tên, mã, tài khoản…)"
-        aria-label="Tìm đỉnh trong đồ thị"
-        className="w-44 rounded-control border border-line bg-sunken px-2.5 py-1 text-2xs text-ink-mid outline-none placeholder:text-ink-dim focus:border-primary-line"
-      />
-
-      <select
-        value={layout}
-        onChange={(e) => onLayout(e.target.value as LayoutKey)}
-        aria-label="Kiểu bố cục"
-        className="rounded-control border border-line bg-sunken px-2 py-1 text-2xs text-ink-mid outline-none focus:border-primary-line"
-      >
-        {LAYOUTS.map(([k, label]) => (
-          <option key={k} value={k}>
-            {label}
-          </option>
-        ))}
-      </select>
-
-      <Btn onClick={onFit} title="Đưa toàn bộ đồ thị vào khung nhìn">
-        Vừa khung
-      </Btn>
+      <GraphViewPresets value={preset} onChange={onPreset} />
 
       <Btn onClick={() => onExpandHop(hops >= 3 ? 1 : hops + 1)} title="Mở rộng vùng lân cận quanh đỉnh đang chọn">
-        Mở rộng {hops} chặng
+        Mở rộng 1 hop
       </Btn>
 
       <Btn onClick={onMoneyPath} title="Xếp hạng các đường đi của tiền">
-        Đường tiền
+        Tìm đường tiền
       </Btn>
 
       <Btn onClick={onDetectCycle} title="Tìm chu trình tiền quay lại chủ thể ban đầu">
-        Tìm chu trình
+        Mẫu hình
       </Btn>
 
-      <Btn onClick={() => onIsolate(!isolated)} active={isolated} title="Chỉ giữ mạng lưới đáng ngờ">
-        ⚡ Cô lập mạng đáng ngờ
-      </Btn>
-
-      <Btn
-        onClick={() => onStory(!story)}
-        active={story}
-        title="Chỉ để mạch tiền chính sáng — dùng khi trình bày"
-      >
-        ▶ Luồng chính
+      <Btn onClick={onFilters} active={filtersOpen} title="Mở bộ lọc và lớp dữ liệu">
+        Bộ lọc
       </Btn>
 
       {hasFocus && (
@@ -171,6 +138,16 @@ export function GraphToolbar({
       )}
 
       <div className="ml-auto flex items-center gap-2">
+        <div className="relative hidden xl:block">
+          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-ink-dim">⌕</span>
+          <input
+            value={search}
+            onChange={(e) => onSearch(e.target.value)}
+            placeholder="Tìm thực thể…"
+            aria-label="Tìm đỉnh trong đồ thị"
+            className="w-36 rounded-control border border-line bg-sunken py-1 pl-6 pr-2 text-2xs text-ink-mid outline-none placeholder:text-ink-dim focus:border-primary-line 2xl:w-44"
+          />
+        </div>
         <span className="whitespace-nowrap font-mono text-3xs text-ink-dim">
           {nodeCount} đỉnh · {edgeCount} cạnh
         </span>
@@ -183,12 +160,28 @@ export function GraphToolbar({
               <button
                 type="button"
                 onClick={() => {
-                  onLayout("community");
+                  onFit();
                   setOverflow(false);
                 }}
                 className="w-full rounded-control px-2 py-1.5 text-left text-2xs text-ink-mid hover:bg-elev"
               >
-                Chế độ xem cộng đồng
+                Vừa khung và căn giữa
+              </button>
+              <button
+                type="button"
+                onClick={() => onIsolate(!isolated)}
+                className="flex w-full items-center justify-between rounded-control px-2 py-1.5 text-left text-2xs text-ink-mid hover:bg-elev"
+              >
+                Cô lập mạng đáng ngờ
+                <span className={isolated ? "text-ok" : "text-ink-dim"}>{isolated ? "Bật" : "Tắt"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onStory(!story)}
+                className="flex w-full items-center justify-between rounded-control px-2 py-1.5 text-left text-2xs text-ink-mid hover:bg-elev"
+              >
+                Trình bày luồng chính
+                <span className={story ? "text-ok" : "text-ink-dim"}>{story ? "Bật" : "Tắt"}</span>
               </button>
               <button
                 type="button"

@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 
 import { usd } from "../../../api/fcFormat";
 import { C } from "../../../design/palette";
-import type { BottomTab } from "../stores/graph.store";
+import type { BottomTab, ReplayStatus } from "../stores/graph.store";
 import type { GEdge, GraphModel, MoneyPath } from "../types/graph.types";
 import { MoneyPathPanel } from "./MoneyPathPanel";
+import { PatternSequencePanel } from "./PatternSequencePanel";
 
 const TABS: [BottomTab, string][] = [
   ["paths", "Đường tiền"],
@@ -34,6 +35,13 @@ interface Props {
    * đang chọn, mà đó là state của màn hình chứ không phải của panel.
    */
   transactions: ReactNode;
+  replayStatus: ReplayStatus;
+  replayIndex: number;
+  replaySpeed: 0.5 | 1 | 2;
+  onReplay: () => void;
+  onPauseReplay: () => void;
+  onRestartReplay: () => void;
+  onReplaySpeed: (speed: 0.5 | 1 | 2) => void;
 }
 
 /**
@@ -57,6 +65,13 @@ export function GraphBottomPanel({
   onStepPath,
   missingLinks,
   transactions,
+  replayStatus,
+  replayIndex,
+  replaySpeed,
+  onReplay,
+  onPauseReplay,
+  onRestartReplay,
+  onReplaySpeed,
 }: Props) {
   const activePath = paths.find((p) => p.id === activePathId) ?? null;
 
@@ -79,7 +94,7 @@ export function GraphBottomPanel({
         // Thấp hơn bản trước 42px: chiều cao ở đây lấy thẳng từ đồ thị, mà đồ
         // thị mới là thứ cần chỗ nhất.
         "flex flex-col border-t border-line bg-side transition-[height] duration-200",
-        open ? "h-[176px]" : "h-[32px]",
+        open ? "h-[240px]" : "h-[42px]",
       ].join(" ")}
     >
       <div className="flex flex-none items-center gap-0.5 border-b border-line px-2">
@@ -118,13 +133,28 @@ export function GraphBottomPanel({
               onPick={onPickPath}
               onStep={onStepPath}
               missingLinks={missingLinks}
+              replayStatus={replayStatus}
+              replayIndex={replayIndex}
+              replaySpeed={replaySpeed}
+              onReplay={onReplay}
+              onPause={onPauseReplay}
+              onRestart={onRestartReplay}
+              onSpeed={onReplaySpeed}
             />
           )}
 
+          {/* Tab này đọc mẫu hình từ BỘ DÒ ĐỒ THỊ, không dò lại trên vùng đang vẽ.
+              Vùng đang vẽ là lân cận một chặng quanh tài khoản có cảnh báo — 48
+              đỉnh với 47 cạnh, tức một cây — nên không thể có chu trình, và tab
+              cũ luôn rỗng trong khi cơ sở dữ liệu có 72 chu trình.
+
+              `cycles` (dò tại chỗ) vẫn giữ để hiện thêm khi vùng vẽ tình cờ có
+              chu trình khép kín, nhưng nó không còn là nguồn chính. */}
           {tab === "cycles" && (
-            <div className="h-full overflow-y-auto px-3 py-2">
-              {cycles.length ? (
-                <ol className="flex flex-col gap-1">
+            <div className="h-full overflow-y-auto">
+              {cycles.length > 0 && (
+                <ol className="flex flex-col gap-1 border-b border-line px-3 pb-2 pt-2">
+                  <li className="text-3xs text-ink-dim">Chu trình khép kín ngay trong vùng đang vẽ:</li>
                   {cycles.map((cyc, i) => (
                     <li
                       key={`${cyc.join("-")}-${i}`}
@@ -138,11 +168,8 @@ export function GraphBottomPanel({
                     </li>
                   ))}
                 </ol>
-              ) : (
-                <p className="text-xs text-ink-low">
-                  Không phát hiện chu trình nào — tiền không quay lại chủ thể ban đầu trong phạm vi đang xem.
-                </p>
               )}
+              <PatternSequencePanel accounts={model.nodes.map((n) => n.id)} />
             </div>
           )}
 
@@ -201,10 +228,16 @@ export function GraphBottomPanel({
                     ))}
                 </ul>
               ) : (
-                <p className="text-xs text-ink-low">
-                  Trong phạm vi này mọi quan hệ đều là quan sát trực tiếp — không có suy luận nào cần phản biện.
+                <p className="mb-2 rounded-control border border-line bg-app px-2.5 py-1.5 text-3xs leading-relaxed text-ink-dim">
+                  Mọi quan hệ trong phạm vi này đều là quan sát trực tiếp từ sổ giao dịch — không có cạnh suy luận nào
+                  cần phản biện. Chứng cứ cấu trúc do bộ dò đồ thị ghi nhận nằm bên dưới.
                 </p>
               )}
+              {/* Tab này trước đây CHỈ liệt kê cạnh suy luận. Ở chế độ vận hành
+                  mọi cạnh đều quan sát trực tiếp, nên nó luôn rỗng — một tab tên
+                  "Bằng chứng" mà không có bằng chứng nào. Chứng cứ thật là mẫu
+                  hình bộ dò đồ thị đã ghi, kèm giao dịch và thời điểm. */}
+              <PatternSequencePanel accounts={model.nodes.map((n) => n.id)} />
             </div>
           )}
         </div>

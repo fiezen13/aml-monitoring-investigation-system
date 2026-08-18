@@ -23,6 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--formatted-dir", type=Path, default=ROOT / "data/processed/mega-pna")
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--split",
+        choices=("train", "validation", "test"),
+        default="test",
+        help="Tập cần chấm. Dùng 'validation' để khớp trọng số hợp nhất mà không chạm test.",
+    )
     parser.add_argument("--no-payment-format", action="store_true")
     return parser.parse_args()
 
@@ -37,6 +43,7 @@ def main() -> int:
         bundle,
         args.checkpoint,
         device_name=args.device,
+        split=args.split,
         output_path=args.output,
     )
     print(json.dumps(result, indent=2))

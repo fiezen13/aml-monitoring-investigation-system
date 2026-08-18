@@ -128,6 +128,41 @@ class GraphOut(BaseModel):
     edges: list[GraphEdgeOut]
 
 
+class PatternHopOut(BaseModel):
+    """Một chặng trong mẫu hình, kèm số liệu tra được từ sổ giao dịch."""
+
+    seq: int
+    source: str
+    target: str
+    transaction_id: str
+    occurred_at: datetime | None = None
+    amount: float | None = None
+    currency: str | None = None
+    #: Khoảng cách tới chặng trước, tính bằng giờ. Đây là con số nói lên tốc độ
+    #: luân chuyển — thứ chuyên viên dùng để đánh giá mức đáng ngờ.
+    gap_hours: float | None = None
+
+
+class DetectedPatternOut(BaseModel):
+    """Một mẫu hình do bộ dò đồ thị tìm được, dựng thành trình tự đọc được.
+
+    Trang đồ thị trước đây đếm chu trình bằng cách dò trên **vùng đang vẽ** — một
+    lân cận một chặng quanh tài khoản có cảnh báo, gần như luôn là hình sao nên
+    không bao giờ có chu trình. Nó hiện "Chu trình: 0" trong khi cơ sở dữ liệu có
+    72 chu trình đã dò được. Endpoint này trả đúng những mẫu hình ấy.
+    """
+
+    evidence_id: str
+    pattern: str
+    account_key: str
+    accounts: list[str]
+    hop_count: int
+    duration_hours: float | None = None
+    detector_version: str
+    as_of_time: datetime
+    hops: list[PatternHopOut]
+
+
 # ---------------------------------------------------------------------
 # Crypto
 # ---------------------------------------------------------------------

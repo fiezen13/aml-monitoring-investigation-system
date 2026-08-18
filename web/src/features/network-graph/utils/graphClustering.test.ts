@@ -74,7 +74,7 @@ const FILTER: FilterState = {
 function model(nodes: GNode[], edges: GEdge[], clusters: GCluster[]): GraphModel {
   const byId: Record<string, GNode> = {};
   nodes.forEach((n) => (byId[n.id] = n));
-  return { nodes, edges, clusters, byId, totalFlowUsd: 0 };
+  return { nodes, edges, clusters, byId, totalFlowUsd: 0, flowByCurrency: {} };
 }
 
 /**

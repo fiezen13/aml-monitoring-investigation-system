@@ -31,7 +31,14 @@ export function GraphTopologySummary({ model, graph, paths, cycles, health, onOp
     { label: "Đỉnh đang vẽ", value: String(graph.nodes.length) },
     { label: "Cạnh đang vẽ", value: String(graph.edges.length) },
     { label: "Đường tiền", value: String(paths.length), color: C.info },
-    { label: "Chu trình", value: String(cycles.length), color: cycles.length ? C.warn : C.inkLow },
+    // Nhãn phải nói rõ ĐO TRÊN CÁI GÌ. `detectCycles` chỉ đi trên vùng đồ thị
+    // đang vẽ — một vùng lân cận 1 chặng quanh tài khoản có cảnh báo, thường là
+    // hình sao nên gần như không bao giờ có chu trình. Trong khi đó bộ dò đồ thị
+    // đã tìm được 72 chu trình và lưu ở `graph_detector_evidence`.
+    //
+    // Ghi trống "Chu trình: 0" khiến chuyên viên kết luận mạng lưới không có chu
+    // trình nào — sai sự thật. Đây là con số của vùng đang vẽ, không phải của hệ.
+    { label: "Chu trình trong vùng vẽ", value: String(cycles.length), color: cycles.length ? C.warn : C.inkLow },
     { label: "Rủi ro ≥ 80", value: String(highRisk), color: C.risk },
     { label: "Cạnh suy luận", value: String(inferred), color: C.agent },
   ];
@@ -88,11 +95,49 @@ export function GraphTopologySummary({ model, graph, paths, cycles, health, onOp
         </div>
       </div>
 
+      {cycles.length === 0 && (
+        <p className="mt-2 rounded-control border border-line bg-app px-2 py-1.5 text-3xs leading-relaxed text-ink-dim">
+          Không có chu trình <b>trong vùng đang vẽ</b>. Vùng này là lân cận một chặng quanh tài khoản có cảnh báo, nên
+          hiếm khi khép kín. Chu trình do bộ dò đồ thị tìm được nằm ở mục Bằng chứng của từng cảnh báo.
+        </p>
+      )}
+
       <dl className="mt-3 flex flex-col gap-1.5 text-xs">
-        <div className="flex gap-2">
-          <dt className="w-32 flex-none text-ink-low">Tổng dòng tiền</dt>
-          <dd className="tabular font-mono text-ink-hi">{usd(model.totalFlowUsd)}</dd>
-        </div>
+        {(() => {
+          // Không quy đổi chéo tiền tệ. Một dòng cho mỗi loại tiền là thứ chuyên
+          // viên đối chiếu được với sao kê; một con số USD gộp thì không.
+          const currencies = Object.entries(model.flowByCurrency ?? {})
+            .filter(([, value]) => value > 0)
+            .sort((a, b) => b[1] - a[1]);
+          if (!currencies.length && model.totalFlowUsd > 0) {
+            return (
+              <div className="flex gap-2">
+                <dt className="w-32 flex-none text-ink-low">Tổng dòng tiền</dt>
+                <dd className="tabular font-mono text-ink-hi">{usd(model.totalFlowUsd)}</dd>
+              </div>
+            );
+          }
+          if (!currencies.length) {
+            return (
+              <div className="flex gap-2">
+                <dt className="w-32 flex-none text-ink-low">Dòng tiền</dt>
+                <dd className="text-ink-mid">Chưa có số tiền cho các cạnh đang vẽ</dd>
+              </div>
+            );
+          }
+          return (
+            <div className="flex gap-2">
+              <dt className="w-32 flex-none text-ink-low">Dòng tiền</dt>
+              <dd className="flex flex-col gap-0.5">
+                {currencies.map(([currency, value]) => (
+                  <span key={currency} className="tabular font-mono text-ink-hi">
+                    {value.toLocaleString("vi-VN", { maximumFractionDigits: 0 })} {currency}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          );
+        })()}
         {mule && (
           <div className="flex gap-2">
             <dt className="w-32 flex-none text-ink-low">Tài khoản trung chuyển</dt>

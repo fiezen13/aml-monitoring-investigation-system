@@ -10,7 +10,7 @@ import { useGraphTimeline } from "../hooks/useGraphTimeline";
 import { useMoneyPaths } from "../hooks/useMoneyPaths";
 import { buildLeads } from "../utils/pathRanking";
 import { graphReducer, initialState } from "../stores/graph.store";
-import type { GraphModel, ZoomLevel } from "../types/graph.types";
+import type { GraphModel, PresetKey, ZoomLevel } from "../types/graph.types";
 import { activeClusters, buildRenderGraph, defaultCollapsed } from "../utils/graphClustering";
 import { findEvidenceGaps, investigationHealth } from "../utils/evidenceGaps";
 import type { FilterState } from "../utils/graphClustering";
@@ -24,7 +24,6 @@ import { GraphLegend } from "./GraphLegend";
 import { GraphTimeline } from "./GraphTimeline";
 import { GraphToolbar } from "./GraphToolbar";
 import { GraphTopologySummary } from "./GraphTopologySummary";
-import { GraphViewPresets } from "./GraphViewPresets";
 import { GraphStoryStrip } from "./GraphStoryStrip";
 import { EdgeInspector } from "./EdgeInspector";
 import { NodeInspector } from "./NodeInspector";
@@ -52,7 +51,7 @@ function centerOn(cy: CyCore | null, id: string): void {
  * chạy lại layout, và đổi focus không làm chạy lại gì ngoài alpha.
  */
 export function InvestigationGraph() {
-  const { model, components, activeComponentId, setActiveComponentId, loading, error } = useGraphModel(600);
+  const { model, components, activeComponentId, setActiveComponentId, loading, error, reload } = useGraphModel(600);
   const [state, dispatch] = useReducer(graphReducer, undefined, initialState);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("medium");
   const [fitNonce, setFitNonce] = useState(0);
@@ -97,7 +96,10 @@ export function InvestigationGraph() {
 
   const filter: FilterState = useMemo(
     () => ({
-      preset: state.preset,
+      // Ba mode dùng cùng dữ liệu; preset chỉ thay cách bố trí/nhấn mạnh.
+      // Giữ filter ổn định để chuyển sang Evidence không dựng lại phần tử và
+      // không làm mất mental map.
+      preset: "overview",
       layers: state.layers,
       mutedKinds: state.mutedKinds,
       riskMin: state.riskMin,
@@ -107,7 +109,6 @@ export function InvestigationGraph() {
       showAlternatives: state.showAlternatives,
     }),
     [
-      state.preset,
       state.layers,
       state.mutedKinds,
       state.riskMin,
@@ -183,16 +184,11 @@ export function InvestigationGraph() {
       return id;
     };
     const nodeIds = [...new Set(activePath.nodeIds.map(mapId))].filter((id) => graph.byId[id]);
-    const nodeSet = new Set(nodeIds);
-    const edgeIds = graph.edges
-      .filter((e) => nodeSet.has(e.s) && nodeSet.has(e.t))
-      .filter((e) => {
-        // Chỉ giữ cạnh nối hai đỉnh liền kề trên đường, tránh tô cả cạnh tắt.
-        const i = nodeIds.indexOf(e.s);
-        const j = nodeIds.indexOf(e.t);
-        return i >= 0 && j >= 0 && Math.abs(i - j) === 1;
-      })
-      .map((e) => e.id);
+    const edgeIds = nodeIds.slice(0, -1).flatMap((source, index) => {
+      const target = nodeIds[index + 1];
+      const edge = graph.edges.find((candidate) => candidate.s === source && candidate.t === target);
+      return edge ? [edge.id] : [];
+    });
     return { ...activePath, nodeIds, edgeIds };
   }, [activePath, model, graph]);
 
@@ -216,6 +212,22 @@ export function InvestigationGraph() {
     useCallback((v: number) => dispatch({ type: "timeT", value: v }), []),
     useCallback(() => dispatch({ type: "timelinePlay", on: false }), []),
   );
+
+  // Replay đổi đúng một cạnh mỗi bước; animation của nét chạy nằm hoàn toàn
+  // trong Cytoscape, React chỉ điều phối nhịp 0.5×/1×/2×.
+  useEffect(() => {
+    if (state.replayStatus !== "playing") return;
+    const edgeCount = pathOnRender?.edgeIds.length ?? 0;
+    if (!edgeCount) {
+      dispatch({ type: "replayStop" });
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (state.replayIndex >= edgeCount - 1) dispatch({ type: "replayStop" });
+      else dispatch({ type: "replayStep", index: state.replayIndex + 1 });
+    }, 900 / state.replaySpeed);
+    return () => window.clearTimeout(timer);
+  }, [state.replayStatus, state.replayIndex, state.replaySpeed, pathOnRender]);
 
   // ESC bỏ focus. Đăng ký ở window vì canvas không nhận được phím.
   useEffect(() => {
@@ -309,12 +321,16 @@ export function InvestigationGraph() {
   );
 
   const handlePreset = useCallback(
-    (preset: Parameters<typeof defaultCollapsed>[1]) => {
+    (preset: PresetKey) => {
       if (!model) return;
-      dispatch({ type: "preset", preset, collapsed: defaultCollapsed(model.clusters, preset) });
-      setFitNonce((n) => n + 1);
+      dispatch({ type: "preset", preset, collapsed: state.collapsed });
+      // Evidence là lớp đọc chứng cứ trên đúng bố cục hiện tại. Overview và
+      // Flow mới thay cấu trúc không gian, nên chỉ hai mode đó được relayout.
+      if (preset === "evidence") return;
+      dispatch({ type: "layout", layout: preset === "flow" ? "flow" : "force" });
+      relayout();
     },
-    [model],
+    [model, state.collapsed, relayout],
   );
 
   const handleSearch = useCallback(
@@ -370,7 +386,7 @@ export function InvestigationGraph() {
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <GraphToolbar
-        layout={state.layout}
+        preset={state.preset}
         perf={state.perf}
         isolated={state.focus.isolated}
         story={state.story}
@@ -381,12 +397,11 @@ export function InvestigationGraph() {
         search={search}
         networks={components}
         activeNetworkId={activeComponentId}
+        filtersOpen={leftOpen}
         onSearch={handleSearch}
         onNetwork={setActiveComponentId}
-        onLayout={(l) => {
-          dispatch({ type: "layout", layout: l });
-          relayout();
-        }}
+        onPreset={handlePreset}
+        onFilters={() => setLeftOpen((open) => !open)}
         onFit={() => setFitNonce((n) => n + 1)}
         onExpandHop={(h) => dispatch({ type: "hops", value: h })}
         onMoneyPath={() => {
@@ -436,7 +451,6 @@ export function InvestigationGraph() {
               «
             </button>
           </div>
-          <GraphViewPresets value={state.preset} onChange={handlePreset} />
           <GraphLayerPanel
             layers={state.layers}
             mutedKinds={state.mutedKinds}
@@ -459,23 +473,60 @@ export function InvestigationGraph() {
         <div className="flex min-w-[360px] flex-1 flex-col overflow-hidden">
           <div className="relative min-h-0 flex-1 bg-app">
             {loading && (
-              <div className="absolute inset-0 z-10 grid place-items-center text-sm text-ink-low">
-                Đang dựng đồ thị…
+              <div className="absolute inset-0 z-10 grid place-items-center bg-app/80 backdrop-blur-[1px]">
+                <div className="w-64 rounded-panel border border-line bg-side px-4 py-3 shadow-xl">
+                  <div className="flex items-center gap-2 text-sm text-ink-mid">
+                    <PulseDot tone="primary" />
+                    Đang tải mạng lưới…
+                  </div>
+                  <div className="mt-3 space-y-1.5 text-2xs text-ink-dim">
+                    <div className="h-1.5 w-full animate-pulse rounded-full bg-elev" />
+                    <p>Đang nhận diện thực thể và dựng quan hệ</p>
+                  </div>
+                </div>
               </div>
             )}
             {!loading && error && (
-              <div className="absolute inset-0 z-10 grid place-items-center px-6 text-center text-sm text-risk-soft">
-                {error}
+              <div className="absolute inset-0 z-10 grid place-items-center bg-app px-6 text-center">
+                <div className="max-w-md rounded-panel border border-risk/25 bg-side px-5 py-4">
+                  <p className="text-sm font-semibold text-ink-hi">Không tải được mạng lưới.</p>
+                  <p className="mt-1 text-xs leading-relaxed text-risk-soft">{error}</p>
+                  <button
+                    type="button"
+                    onClick={reload}
+                    className="mt-3 rounded-control border border-primary-line bg-primary-soft px-3 py-1.5 text-xs font-medium text-primary hover:bg-elev"
+                  >
+                    Thử lại
+                  </button>
+                </div>
               </div>
             )}
             {!loading && !error && !model && (
-              <div className="absolute inset-0 z-10 grid place-items-center px-6 text-center text-sm text-ink-low">
-                <div>
-                  Chưa có dữ liệu đồ thị.
-                  <br />
-                  <span className="text-2xs text-ink-dim">
-                    Release đang hoạt động chưa có quan hệ giao dịch để dựng mạng lưới.
-                  </span>
+              <div className="absolute inset-0 z-10 grid place-items-center bg-app px-6 text-center">
+                <div className="max-w-md rounded-panel border border-line bg-side px-5 py-4">
+                  <p className="text-sm font-semibold text-ink-hi">Không đủ quan hệ để dựng mạng lưới.</p>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-low">
+                    Khoảng dữ liệu hiện tại chưa có quan hệ phù hợp với bộ lọc đang dùng.
+                  </p>
+                  <div className="mt-3 flex justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dispatch({ type: "riskMin", value: 0 });
+                        dispatch({ type: "minAmt", value: 0 });
+                      }}
+                      className="rounded-control border border-line bg-sunken px-3 py-1.5 text-xs text-ink-mid hover:bg-elev"
+                    >
+                      Bỏ bộ lọc
+                    </button>
+                    <button
+                      type="button"
+                      onClick={reload}
+                      className="rounded-control border border-primary-line bg-primary-soft px-3 py-1.5 text-xs font-medium text-primary hover:bg-elev"
+                    >
+                      Tải lại dữ liệu
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -484,6 +535,7 @@ export function InvestigationGraph() {
               graph={graph}
               emphasis={emphasis}
               layout={state.layout}
+              mode={state.preset}
               selectedNodeId={state.focus.nodeId}
               selectedEdgeId={state.focus.edgeId}
               openClusterIds={openClusterIds}
@@ -491,6 +543,12 @@ export function InvestigationGraph() {
               pathEdgeIds={pathOnRender?.edgeIds ?? []}
               gaps={renderGaps}
               pathMode={pathMode}
+              replayEdgeId={
+                state.replayStatus === "idle" ? null : (pathOnRender?.edgeIds[state.replayIndex] ?? null)
+              }
+              replayNodeId={
+                state.replayStatus === "idle" ? null : (pathOnRender?.nodeIds[state.replayIndex + 1] ?? null)
+              }
               layoutNonce={layoutNonce}
               fitNonce={fitNonce}
               onSelectNode={handleSelectNode}
@@ -548,6 +606,7 @@ export function InvestigationGraph() {
                   loading={tx.loading}
                   error={tx.error}
                   scopeLabel={txScopeLabel}
+                  hasScope={txScope.kind !== "none"}
                   amountsByCurrency={selectedRenderEdge?.amountsByCurrency ?? {}}
                   selectedId={selectedTx?.id ?? null}
                   onPick={setSelectedTx}
@@ -563,6 +622,16 @@ export function InvestigationGraph() {
               }}
               onStepPath={handleStepPath}
               missingLinks={gaps.length}
+              replayStatus={state.replayStatus}
+              replayIndex={state.replayIndex}
+              replaySpeed={state.replaySpeed}
+              onReplay={() => dispatch({ type: "replayPlay" })}
+              onPauseReplay={() => dispatch({ type: "replayPause" })}
+              onRestartReplay={() => {
+                dispatch({ type: "replayStep", index: 0 });
+                dispatch({ type: "replayPlay" });
+              }}
+              onReplaySpeed={(speed) => dispatch({ type: "replaySpeed", speed })}
             />
           )}
         </div>

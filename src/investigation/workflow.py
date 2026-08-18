@@ -13,7 +13,7 @@ from src.investigation.agents import EvidenceCriticAgent, ExplanationAgent, Inve
 from src.investigation.llm import GeminiCallMetadata, GeminiService, GeminiServiceError, get_gemini_service
 from src.investigation.prompts import get_prompt
 from src.investigation.repository import InvestigationRepository
-from src.investigation.schemas import InvestigationStatus, ValidationResult, WorkflowState
+from src.investigation.schemas import EvidenceType, InvestigationStatus, ValidationResult, WorkflowState
 from src.investigation.tools import InvestigationTools, timed_execute
 from src.observability.metrics import METRICS, attrs
 from src.observability.operations import AgentObservation, ToolObservation
@@ -30,6 +30,110 @@ class InvestigationWorkflow:
         self.repository = InvestigationRepository(session)
         self.settings = get_settings()
         self.gemini_service = gemini_service
+
+    #: Bằng chứng bắt buộc theo loại bộ phát hiện đã mở cảnh báo.
+    #:
+    #: Đo trên 227 phiên điều tra: 159 phiên trượt phản biện, và ``GetGraphEvidence``
+    #: bị đòi **279 lần** — áp đảo mọi nguyên nhân khác. Đọc một bản trượt thì thấy
+    #: tác tử viết "chưa kiểm tra được directed_cycle vì thiếu bằng chứng" trong khi
+    #: bằng chứng đồ thị **có tồn tại**; nó chỉ không gọi công cụ trước khi viết.
+    #:
+    #: Không sửa bằng cách nhắc trong prompt. Prompt là gợi ý, còn đây là bảo đảm:
+    #: thiếu bằng chứng bắt buộc thì quy trình tự gọi, tác tử không có cơ hội bỏ qua.
+    REQUIRED_EVIDENCE: dict[str, tuple[tuple[str, EvidenceType], ...]] = {
+        "graph": (("GetGraphEvidence", EvidenceType.GRAPH_PATTERN),),
+        "ml": (("GetAnomalyExplanation", EvidenceType.ANOMALY_EXPLANATION),),
+    }
+
+    def _backfill_required_evidence(
+        self,
+        *,
+        investigation_id: str,
+        alert: dict[str, Any],
+        tools: InvestigationTools,
+        agent_run: str,
+        tool_count: int,
+    ) -> int:
+        """Gọi nốt công cụ bắt buộc mà tác tử điều phối đã bỏ qua.
+
+        Chạy sau vòng gọi công cụ và trước khi tác tử diễn giải được viết, nên
+        bản diễn giải luôn có sẵn thứ bộ phản biện sẽ đòi.
+
+        Ba giới hạn cố ý:
+
+        * chỉ bổ sung theo ``detector`` của chính cảnh báo, không đoán thêm;
+        * mỗi loại đúng một lần, kiểm bằng bằng chứng đã có chứ không bằng bộ đếm;
+        * lỗi công cụ **không** làm hỏng phiên — nó được ghi lại, và bộ phản biện
+          vẫn nêu vấn đề như trước. Bổ sung là để giúp, không phải để giấu.
+        """
+        required = self.REQUIRED_EVIDENCE.get(str(alert.get("detector", "")), ())
+        if not required:
+            return tool_count
+
+        present = {item.type for item in self.repository.list_evidence(investigation_id)}
+        for tool_name, evidence_type in required:
+            if evidence_type in present:
+                continue
+            arguments: dict[str, Any] = {"alert_id": alert["alert_id"]}
+            if tool_name == "GetAnomalyExplanation":
+                arguments["account_key"] = alert["account_key"]
+
+            self.repository.add_trace(
+                investigation_id,
+                agent="workflow",
+                event_type="TOOL_CALL",
+                tool=tool_name,
+                input_summary=arguments,
+                rationale=(
+                    f"Bằng chứng bắt buộc cho cảnh báo loại '{alert.get('detector')}' còn thiếu; "
+                    "quy trình tự gọi để bản diễn giải có nguồn dẫn."
+                ),
+            )
+            try:
+                with ToolObservation("workflow", tool_name) as tool_observation:
+                    execution, started_at, duration_ms = timed_execute(tools, tool_name, arguments)
+                    tool_observation.status = "success" if execution.status == "SUCCEEDED" else execution.status.lower()
+                    tool_observation.result_count = 1 if execution.evidence else 0
+                tool_count += 1
+                output_ref = execution.evidence.evidence_id if execution.evidence else None
+                self.repository.record_tool_call(
+                    investigation_id,
+                    agent_run,
+                    tool_name,
+                    arguments,
+                    status=execution.status,
+                    output_ref=output_ref,
+                    result_summary={"available": execution.status == "SUCCEEDED", "evidence_ref": output_ref},
+                    started_at=started_at,
+                    duration_ms=duration_ms,
+                )
+                self.repository.add_trace(
+                    investigation_id,
+                    agent="workflow",
+                    event_type="TOOL_RESULT",
+                    tool=tool_name,
+                    output_ref=output_ref,
+                    rationale=f"Bổ sung bằng chứng bắt buộc, trạng thái {execution.status}.",
+                )
+            except Exception as exc:  # noqa: BLE001 — không được làm hỏng phiên vì một lần bổ sung
+                tool_count += 1
+                logger.warning(
+                    "required evidence backfill failed",
+                    extra={
+                        "investigation_id": investigation_id,
+                        "alert_id": alert["alert_id"],
+                        "tool": tool_name,
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                self.repository.add_trace(
+                    investigation_id,
+                    agent="workflow",
+                    event_type="TOOL_RESULT",
+                    tool=tool_name,
+                    rationale=f"Bổ sung bằng chứng bắt buộc thất bại với lỗi {type(exc).__name__}.",
+                )
+        return tool_count
 
     def _alert(self, alert_id: str) -> dict[str, Any]:
         row = (
@@ -203,6 +307,13 @@ class InvestigationWorkflow:
                                 "error_type": type(exc).__name__,
                             },
                         )
+                tool_count = self._backfill_required_evidence(
+                    investigation_id=investigation_id,
+                    alert=alert,
+                    tools=tools,
+                    agent_run=supervisor_run,
+                    tool_count=tool_count,
+                )
                 self.repository.update_state(
                     investigation_id,
                     tool_call_count=tool_count,

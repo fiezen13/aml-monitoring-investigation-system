@@ -13,6 +13,7 @@ phải trả về khoảng thời gian đã tính sẵn chứ không phải các
 """
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any, Literal, NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query
@@ -28,6 +29,7 @@ from src.models.fc_schemas import (
     CryptoOut,
     CryptoTransferOut,
     DataQualityOut,
+    DetectedPatternOut,
     EdgeModelReleaseOut,
     ExposureOut,
     FlowOut,
@@ -38,6 +40,7 @@ from src.models.fc_schemas import (
     ModelMonitorOut,
     NavCountsOut,
     ObservationOut,
+    PatternHopOut,
     ProjectOut,
     SearchHitOut,
     SourceOut,
@@ -483,15 +486,29 @@ def _operational_transaction_graph(session: Session, limit: int) -> GraphOut:
     Điểm của mô hình cạnh vẫn được dùng — nhưng ở bước sau, để tô màu rủi ro cho
     từng cạnh giao dịch, chứ không phải để chọn hạt giống.
     """
+    # Ưu tiên tài khoản CÓ mẫu hình do bộ dò đồ thị ghi nhận.
+    #
+    # Trước đây chỉ xếp theo `max(risk_score) DESC, account_key`. Nhưng 9.084
+    # cảnh báo đang mở cùng đạt điểm 100,0, nên thứ tự thực chất là **bảng chữ
+    # cái** — và 25 tài khoản đầu bảng đều là cảnh báo luật, không tài khoản nào
+    # có cấu trúc đồ thị. Đo được: 0 trên 25 hạt giống có bằng chứng bộ dò, trong
+    # khi 332 tài khoản khác vừa có cảnh báo mở vừa có mẫu hình.
+    #
+    # Hệ quả là đồ thị vẽ ra một hình sao không mang thông tin gì, tab Chu trình
+    # luôn rỗng, và chuyên viên không có gì để đọc. Xếp tài khoản có mẫu hình lên
+    # trước để vùng vẽ chứa đúng thứ đáng nhìn.
     seed_limit = max(10, min(100, limit // 4))
     seed_rows = (
         session.execute(
             text(
-                """SELECT account_key, max(risk_score) AS risk_score
-                     FROM alert
-                    WHERE status <> 'closed'
-                    GROUP BY account_key
-                    ORDER BY max(risk_score) DESC, account_key
+                """SELECT a.account_key,
+                          max(a.risk_score) AS risk_score,
+                          bool_or(g.account_key IS NOT NULL) AS has_pattern
+                     FROM alert a
+                     LEFT JOIN graph_detector_evidence g ON g.account_key = a.account_key
+                    WHERE a.status <> 'closed'
+                    GROUP BY a.account_key
+                    ORDER BY has_pattern DESC, max(a.risk_score) DESC, a.account_key
                     LIMIT :lim"""
             ),
             {"lim": seed_limit},
@@ -1798,3 +1815,119 @@ async def transactions(
         page=page,
         page_size=page_size,
     )
+
+
+_PATTERN_SQL = """
+    SELECT evidence_id, account_key, pattern, detector_version, as_of_time, payload
+      FROM graph_detector_evidence
+     WHERE account_key = ANY(:accounts)
+     ORDER BY (payload ->> 'duration_hours')::float NULLS LAST, evidence_id
+     LIMIT :lim
+"""
+
+
+@router.get("/fc/graph/patterns", response_model=list[DetectedPatternOut])
+async def detected_patterns(
+    accounts: str = Query(default="", description="Danh sách account_key, phân tách bằng dấu phẩy"),
+    pattern: str | None = Query(default=None, description="CYCLE, FAN_IN, FAN_OUT"),
+    limit: int = Query(default=25, le=200),
+) -> list[DetectedPatternOut]:
+    """Mẫu hình do bộ dò đồ thị tìm được, dựng thành trình tự đọc được.
+
+    Vì sao cần: trang đồ thị đếm chu trình bằng cách dò trên **vùng đang vẽ**, mà
+    vùng ấy là lân cận một chặng quanh tài khoản có cảnh báo — 48 đỉnh với 47
+    cạnh, tức một cây, nên về mặt toán học không thể có chu trình. Màn hình vì thế
+    ghi "Chu trình: 0" trong khi ``graph_detector_evidence`` có 72 chu trình.
+
+    Endpoint này trả đúng những mẫu hình ấy, và **tra thêm số tiền, thời điểm cho
+    từng chặng** từ bảng ``transaction``. Danh sách cạnh trần trong payload không
+    đủ để chuyên viên đánh giá: thiếu số tiền thì không biết quy mô, thiếu thời
+    điểm thì không biết tiền nằm lại bao lâu — mà đó mới là dấu hiệu.
+    """
+    keys = [item.strip() for item in accounts.split(",") if item.strip()]
+    if not keys:
+        return []
+
+    with get_session() as session:
+        rows = session.execute(text(_PATTERN_SQL), {"accounts": keys, "lim": limit}).mappings().all()
+        # `isinstance` chứ không chỉ truthy: gọi hàm trực tiếp trong script thì
+        # tham số mặc định là đối tượng ``Query``, vốn truthy, và ``.upper()`` nổ.
+        # Qua HTTP thì FastAPI đã thay bằng None, nhưng đường gọi trực tiếp là
+        # đường người ta hay dùng để kiểm nhanh.
+        if isinstance(pattern, str) and pattern:
+            rows = [row for row in rows if row["pattern"] == pattern.upper()]
+        if not rows:
+            return []
+
+        tx_ids = {
+            str(edge.get("transaction_id"))
+            for row in rows
+            for edge in (row["payload"] or {}).get("edges", [])
+            if edge.get("transaction_id")
+        }
+        detail: dict[str, Any] = {}
+        if tx_ids:
+            # Bộ dò đồ thị ghi khoá chính BIGINT của bảng ``transaction``, không
+            # phải ``source_transaction_id`` (mã băm của dòng gốc IBM). Nối nhầm
+            # cột cho ra 0 dòng khớp và mọi chặng mất số tiền lẫn thời điểm.
+            numeric = [int(value) for value in tx_ids if value.isdigit()]
+            if numeric:
+                detail = {
+                    str(item["transaction_id"]): item
+                    for item in session.execute(
+                        text(
+                            """SELECT transaction_id, occurred_at, amount, currency
+                                 FROM "transaction" WHERE transaction_id = ANY(:ids)"""
+                        ),
+                        {"ids": numeric},
+                    )
+                    .mappings()
+                    .all()
+                }
+
+    results: list[DetectedPatternOut] = []
+    for row in rows:
+        payload = row["payload"] or {}
+        edges = payload.get("edges", [])
+        hops: list[PatternHopOut] = []
+        previous: datetime | None = None
+        # Sắp theo thời gian, không theo thứ tự payload: trình tự chỉ có nghĩa khi
+        # đọc đúng chiều thời gian, và bộ dò không cam kết thứ tự nào.
+        ordered = sorted(
+            edges,
+            key=lambda e: detail.get(str(e.get("transaction_id")), {}).get("occurred_at") or datetime.max,
+        )
+        for index, edge in enumerate(ordered, start=1):
+            info = detail.get(str(edge.get("transaction_id")), {})
+            when = info.get("occurred_at")
+            gap = None
+            if when is not None and previous is not None:
+                gap = round((when - previous).total_seconds() / 3600, 2)
+            if when is not None:
+                previous = when
+            hops.append(
+                PatternHopOut(
+                    seq=index,
+                    source=str(edge.get("from", "")),
+                    target=str(edge.get("to", "")),
+                    transaction_id=str(edge.get("transaction_id", "")),
+                    occurred_at=when,
+                    amount=_f(info["amount"]) if info.get("amount") is not None else None,
+                    currency=info.get("currency"),
+                    gap_hours=gap,
+                )
+            )
+        results.append(
+            DetectedPatternOut(
+                evidence_id=row["evidence_id"],
+                pattern=row["pattern"],
+                account_key=row["account_key"],
+                accounts=list(payload.get("accounts", [])),
+                hop_count=len(hops),
+                duration_hours=payload.get("duration_hours"),
+                detector_version=row["detector_version"],
+                as_of_time=row["as_of_time"],
+                hops=hops,
+            )
+        )
+    return results

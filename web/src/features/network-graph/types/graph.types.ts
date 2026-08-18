@@ -49,7 +49,8 @@ export type Band = "primary" | "support" | "control";
 
 export type LayerKey = "money" | "entity" | "device" | "alert" | "case" | "negative";
 
-export type PresetKey = "overview" | "money" | "entity" | "device" | "crypto";
+/** Ba câu hỏi điều tra chính. Layer là bộ lọc phụ, không phải một view riêng. */
+export type PresetKey = "overview" | "flow" | "evidence";
 
 export type LayoutKey = "flow" | "force" | "hierarchy" | "community";
 
@@ -136,6 +137,8 @@ export interface GraphModel {
   byId: Record<string, GNode>;
   /** Tổng tiền của mọi cạnh transfer, cho thẻ tóm tắt. */
   totalFlowUsd: number;
+  /** Dòng tiền gom theo từng loại tiền tệ. Không cộng chéo tiền tệ. */
+  flowByCurrency: Record<string, number>;
 }
 
 /**
@@ -202,6 +205,8 @@ export interface MoneyPath {
   edgeIds: string[];
   hops: number;
   amountUsd: number;
+  /** Nút thắt hẹp nhất theo từng loại tiền. Rỗng khi các chặng không chung loại tiền nào. */
+  amountByCurrency: Record<string, number>;
   /** Phút từ cạnh đầu tới cạnh cuối. */
   durationMin: number;
   /** Số loại kênh khác nhau đi qua (bank, p2p, vasp, chain…). */

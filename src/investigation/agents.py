@@ -484,29 +484,41 @@ class ExplanationAgent:
     @staticmethod
     def _deterministic(alert: dict[str, Any], evidence: list[EvidenceEnvelope]) -> Explanation:
         grouped = _evidence_by_type(evidence)
-        risk_ev = grouped[EvidenceType.RISK_BREAKDOWN][-1]
-        breakdown = risk_ev.payload
+        # Thiếu phân rã điểm thì viết bản giải thích RÚT GỌN, không ném lỗi.
+        #
+        # Bản cũ tra thẳng vào dict và ném KeyError khi công cụ GetRiskBreakdown
+        # thất bại — làm hỏng cả phiên điều tra, người rà soát nhận được "FAILED"
+        # thay vì một bản giải thích thiếu một phần. Chứng cứ khác vẫn dùng được.
+        risk_items = grouped.get(EvidenceType.RISK_BREAKDOWN) or []
+        risk_ev = risk_items[-1] if risk_items else None
+        breakdown = risk_ev.payload if risk_ev else {}
         drivers: list[RiskDriver] = []
-        claims: list[Claim] = [
-            Claim(
-                claim_id=_claim_id(),
-                claim=f"Bộ máy phát hiện đã gán điểm rủi ro cuối cùng {breakdown['final_risk_score']:.3f} cho cảnh báo {alert['alert_id']}.",
-                claim_type="FACT",
-                evidence_refs=[risk_ev.evidence_id],
-                confidence=1.0,
+        claims: list[Claim] = []
+        if risk_ev is not None:
+            claims.append(
+                Claim(
+                    claim_id=_claim_id(),
+                    claim=(
+                        f"Bộ máy phát hiện đã gán điểm rủi ro cuối cùng "
+                        f"{breakdown['final_risk_score']:.3f} cho cảnh báo {alert['alert_id']}."
+                    ),
+                    claim_type="FACT",
+                    evidence_refs=[risk_ev.evidence_id],
+                    confidence=1.0,
+                )
             )
-        ]
-        facts = [claims[0].claim]
+        facts = [claim.claim for claim in claims]
         inferences: list[str] = []
         missing: list[str] = []
         typologies: list[str] = []
 
-        for source, component in breakdown["components"].items():
+        for source, component in (breakdown.get("components") or {}).items():
             if component["available"]:
                 branch = {
                     "anomaly": "Mô hình phát hiện bất thường",
                     "rule": "Bộ luật nghiệp vụ",
                     "graph": "Bộ phát hiện đồ thị mạng lưới",
+                    "mega_pna": "Mô hình đồ thị MEGA-PNA",
                 }.get(source, source)
                 reason = f"{branch} là nhánh sinh ra cảnh báo này và là nguồn điểm chính thức."
                 drivers.append(
@@ -516,7 +528,7 @@ class ExplanationAgent:
                         weight=component["weight"],
                         contribution=component["contribution"],
                         reason=reason,
-                        evidence_refs=[risk_ev.evidence_id],
+                        evidence_refs=[risk_ev.evidence_id] if risk_ev else [],
                     )
                 )
 
@@ -717,7 +729,7 @@ class ExplanationAgent:
                     claim_id=_claim_id(),
                     claim=inference,
                     claim_type="INFERENCE",
-                    evidence_refs=[item.evidence_id, risk_ev.evidence_id],
+                    evidence_refs=[item.evidence_id, *([risk_ev.evidence_id] if risk_ev else [])],
                     confidence=0.7 if matched else 0.5,
                 )
             )

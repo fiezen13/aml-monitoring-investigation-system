@@ -17,8 +17,20 @@ def score_checkpoint(
     *,
     device_name: str = "auto",
     output_path: Path | None = None,
+    split: str = "test",
 ) -> dict[str, object]:
-    """Load a FIN-07 checkpoint and score its held-out temporal test split."""
+    """Chấm điểm một tập bằng checkpoint đã huấn luyện.
+
+    ``split`` mặc định là ``test`` để giữ nguyên hành vi cũ.
+
+    Vì sao cần ``validation``: trọng số hợp nhất phải khớp trên validation. Khớp
+    trên test rồi báo cáo cũng trên test là rò rỉ — con số đẹp mà vô giá trị.
+    Vòng huấn luyện chỉ ghi điểm của tập test, nên muốn khớp trọng số đúng cách
+    thì phải chấm lại validation bằng chính checkpoint này. Đây là **suy luận**,
+    không phải huấn luyện lại: rẻ hơn hàng trăm lần.
+    """
+    if split not in ("train", "validation", "test"):
+        raise ValueError(f"split phải thuộc (train, validation, test), nhận {split!r}")
 
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     if checkpoint.get("schema_version") != "fin07.mega_pna.checkpoint.v1":
@@ -42,16 +54,17 @@ def score_checkpoint(
     )
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
-    loader = make_loaders(bundle, config)["test"]
+    loader = make_loaders(bundle, config)[split]
     output = evaluate(
         model,
         loader,
-        bundle.split.positions("test"),
+        bundle.split.positions(split),
         device,
         ego_ids=config.ego_ids,
     )
     result = {
         "checkpoint": str(checkpoint_path),
+        "split": split,
         "seed": int(checkpoint["seed"]),
         "epoch": int(checkpoint["epoch"]),
         "metrics": output.metrics,

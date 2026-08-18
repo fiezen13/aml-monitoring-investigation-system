@@ -120,6 +120,10 @@ POLICY: dict[str, frozenset[str]] = {
     "/transactions": INVESTIGATION_READ,
     # --- Đồ thị và tài sản mã hoá ---
     "/fc/graph": INVESTIGATION,
+    # Cùng quyền với /fc/graph: nó đọc chính bằng chứng của bộ dò đồ thị cho các
+    # tài khoản đang hiển thị, không mở thêm dữ liệu nào. Thiếu dòng này thì bảng
+    # chính sách mặc-định-đóng chặn mọi vai trò và tab Chu trình luôn báo 401.
+    "/fc/graph/patterns": INVESTIGATION,
     "/fc/graph/edges/{edge_id}/transactions": INVESTIGATION,
     "/fc/graph/nodes/{node_id}/transactions": INVESTIGATION,
     "/fc/crypto": INVESTIGATION,

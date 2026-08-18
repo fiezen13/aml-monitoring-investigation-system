@@ -576,7 +576,14 @@ class InvestigationTools:
                 ),
             )
 
-        source = {"rule": "rule", "ml": "anomaly", "graph": "graph"}[detector]
+        # Tên nhánh trong bảng phân rã, theo bộ phát hiện đã mở cảnh báo.
+        #
+        # `.get` chứ không tra cứng: bảng cũ chỉ có ba khoá và ném KeyError ngay
+        # khi gặp `mega_pna`, làm hỏng CẢ phiên điều tra chứ không chỉ một công
+        # cụ. Một nhánh mới không được phép đánh sập cả quy trình — chưa biết thì
+        # ghi là chưa biết.
+        source = {"rule": "rule", "ml": "anomaly", "graph": "graph", "mega_pna": "mega_pna"}.get(detector)
+        branches = ("rule", "anomaly", "graph", "mega_pna")
         components = {
             name: RiskComponent(
                 score=score if name == source else 0,
@@ -585,8 +592,15 @@ class InvestigationTools:
                 available=name == source,
                 source_ref=f"alert:{alert_id}" if name == source else None,
             )
-            for name in ("rule", "anomaly", "graph")
+            for name in branches
         }
+        if source is None:
+            return (
+                components,
+                False,
+                f"Bộ phát hiện '{detector}' chưa có tên nhánh trong bảng phân rã; "
+                f"điểm cuối cùng vẫn lấy từ bảng alert.",
+            )
         return (
             components,
             False,

@@ -56,3 +56,21 @@ export function duration(ms: number): string {
   const s = Math.round((ms % 60_000) / 1000);
   return `${m}m ${String(s).padStart(2, "0")}s`;
 }
+
+
+/** Thời lượng theo PHÚT thành chuỗi đọc được.
+ *
+ * Tên khác `duration` ở trên: hàm kia nhận mili giây và dùng cho độ trễ kỹ
+ * thuật. Đây là quãng thời gian nghiệp vụ — "12289 phút" không ai nhẩm được là
+ * 8,5 ngày, mà đó chính là thứ chuyên viên cần để đánh giá tốc độ luân chuyển.
+ */
+export function durationMinutes(minutes: number | null | undefined): string {
+  if (minutes === null || minutes === undefined || minutes <= 0) return "cùng thời điểm";
+  if (minutes < 60) return `${Math.round(minutes)} phút`;
+  if (minutes < 60 * 24) {
+    const hours = minutes / 60;
+    return `${hours.toFixed(hours < 10 ? 1 : 0)} giờ`;
+  }
+  const days = minutes / (60 * 24);
+  return `${days.toFixed(days < 10 ? 1 : 0)} ngày`;
+}

@@ -9,7 +9,7 @@ import type {
   RenderGraph,
   RenderNode,
 } from "../types/graph.types";
-import { CRYPTO_STAGES, presetDef } from "./graphStyles";
+import { presetDef } from "./graphStyles";
 
 /**
  * Gộp cụm và lọc, cho ra đồ thị mà engine thực sự vẽ.
@@ -38,12 +38,6 @@ function nodePassesFilter(n: GNode, f: FilterState): boolean {
   if (n.risk < f.riskMin) return false;
   if (n.t > f.timeT) return false;
   if (n.negative && !f.layers.negative) return false;
-  if (f.preset === "crypto" && !CRYPTO_STAGES.has(n.stage)) return false;
-  if (f.preset === "device") {
-    // Device view vẫn cần tài khoản để thấy thiết bị nối ai với ai, nhưng
-    // không cần toàn bộ phần crypto ở cuối đường.
-    if (n.stage === "crypto" || n.stage === "destination") return false;
-  }
   return true;
 }
 

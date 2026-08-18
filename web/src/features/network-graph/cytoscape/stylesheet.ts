@@ -1,4 +1,4 @@
-import type { NodeSingular, StylesheetStyle } from "cytoscape";
+import type { EdgeSingular, NodeSingular, StylesheetStyle } from "cytoscape";
 
 import { cytoscapeTheme as T } from "../../../design/adapters/cytoscapeTheme";
 
@@ -157,6 +157,11 @@ export function buildStylesheet(): StylesheetStyle[] {
         "border-color": T.tone.selected,
         "border-width": 3,
         "background-color": T.node.fillSelected,
+        width: 52,
+        height: 52,
+        "underlay-color": T.tone.selected,
+        "underlay-opacity": 0.12,
+        "underlay-padding": 7,
       },
     },
     // Đỉnh nằm trên đường tiền đang xem: viền đỏ nhưng KHÔNG to thêm, để không
@@ -194,11 +199,25 @@ export function buildStylesheet(): StylesheetStyle[] {
     // ưu tiên §21: dòng tiền chính trên, quan hệ thường dưới.
     {
       selector: "edge.money",
-      style: { width: 1.6, "line-color": T.edge.money, "target-arrow-color": T.edge.money, opacity: 0.55 },
+      style: {
+        // Log/capped hierarchy theo số giao dịch thật. Một cạnh 100 giao dịch
+        // không được dày gấp 100 lần cạnh 1 giao dịch.
+        width: (edge: EdgeSingular) => {
+          const count = Number(edge.data("txCount") ?? 0);
+          if (count >= 50) return 3.2;
+          if (count >= 15) return 2.4;
+          if (count >= 5) return 1.8;
+          return count >= 2 ? 1.4 : 1;
+        },
+        "line-color": T.edge.money,
+        "target-arrow-color": T.edge.money,
+        opacity: 0.55,
+      },
     },
     // Cạnh suy luận: nét đứt. Analyst phải phân biệt được "quan sát thấy" với
     // "suy ra" mà không cần bấm vào.
     { selector: "edge.inferred", style: { "line-style": "dashed" } },
+    { selector: "edge.device-link", style: { "line-style": "dotted" } },
     { selector: "edge.risk-warn", style: { "line-color": T.tone.warn, "target-arrow-color": T.tone.warn, opacity: 0.75 } },
     { selector: "edge.risk-crit", style: { "line-color": T.tone.crit, "target-arrow-color": T.tone.crit, opacity: 0.9, width: 2.2 } },
 
@@ -209,7 +228,7 @@ export function buildStylesheet(): StylesheetStyle[] {
         label: "data(edgeLabel)",
         "line-color": T.tone.selected,
         "target-arrow-color": T.tone.selected,
-        width: 2.4,
+        width: 4,
         opacity: 1,
         "z-index": 30,
       },
@@ -219,6 +238,22 @@ export function buildStylesheet(): StylesheetStyle[] {
       style: { "line-color": T.tone.crit, "target-arrow-color": T.tone.crit },
     },
     { selector: "edge.hovered", style: { opacity: 0.95, width: 2.4 } },
+    {
+      selector: "edge.replaying",
+      style: {
+        opacity: 1,
+        width: 3.2,
+        "line-color": T.tone.selected,
+        "target-arrow-color": T.tone.selected,
+        "line-style": "dashed",
+        "line-dash-pattern": [9, 5],
+        "z-index": 40,
+      },
+    },
+    {
+      selector: "node.replay-node",
+      style: { "border-color": T.tone.selected, "border-width": 3, "background-color": T.node.fillSelected },
+    },
 
     // Chỗ đứt bằng chứng: chấm chấm, không mũi tên, màu trung tính. Cố ý KHÔNG
     // trông giống bất kỳ quan hệ nào — nó nói "ở đây chúng tôi không quan sát
@@ -236,6 +271,20 @@ export function buildStylesheet(): StylesheetStyle[] {
     },
     { selector: "edge.evidence-gap.hovered", style: { opacity: 0.8, label: "chưa có liên kết quan sát" } },
 
+    // Evidence là một lớp đọc trên bố cục hiện tại: quan sát trực tiếp rõ,
+    // suy luận đứt nét, thiết bị chấm, hard-negative xanh trầm. Không dữ liệu
+    // nào bị đổi hoặc được tạo thêm để phục vụ cách vẽ này.
+    {
+      selector: "edge.evidence-mode.observed",
+      style: { opacity: 0.72, width: 1.8, "line-color": T.tone.selected, "target-arrow-color": T.tone.selected },
+    },
+    { selector: "edge.evidence-mode.inferred", style: { opacity: 0.78, width: 1.6, "line-style": "dashed" } },
+    { selector: "edge.evidence-mode.device-link", style: { opacity: 0.68, "line-style": "dotted" } },
+    {
+      selector: "edge.evidence-mode.verified-negative",
+      style: { opacity: 0.62, "line-color": T.tone.verified, "target-arrow-color": T.tone.verified },
+    },
+
     // ---------------------------------------------------------------
     // Focus + context (§12)
     // ---------------------------------------------------------------
@@ -244,5 +293,6 @@ export function buildStylesheet(): StylesheetStyle[] {
     { selector: ".dimmed", style: { opacity: 0.12 } },
     { selector: "node.dimmed", style: { label: "" } },
     { selector: ".neighbour", style: { opacity: 0.9 } },
+    { selector: ".second-hop", style: { opacity: 0.45 } },
   ];
 }
