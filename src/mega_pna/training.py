@@ -6,7 +6,7 @@ import platform
 import random
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +19,14 @@ from .config import MegaPnaConfig
 from .data import MegaPnaDataBundle
 from .metrics import best_f1_threshold, binary_metrics, budget_metrics, paper_binary_metrics
 from .model import MegaPna, degree_histogram, parallel_edge_histogram
+
+# Container CUDA chạy Python 3.10, mà ``datetime.UTC`` chỉ có từ 3.11. Không đổi
+# ảnh máy chỉ vì một hằng số: torch-sparse trong ảnh ấy đã dựng đúng cho CUDA 11.8
+# và đã kiểm chứng chạy được; đổi ảnh là làm lại từ đầu.
+#
+# ``UTC`` vốn chỉ là bí danh của ``timezone.utc``, nên gán lại ở đây giữ nguyên mọi
+# chỗ gọi ``datetime.now(UTC)`` bên dưới.
+UTC = timezone.utc  # noqa: UP017
 
 FORWARD = ("node", "to", "node")
 REVERSE = ("node", "rev_to", "node")
@@ -84,7 +92,13 @@ def _loader(
         edge_label=data[FORWARD].y[positions],
         batch_size=config.batch_size,
         shuffle=shuffle,
-        num_workers=0,
+        num_workers=config.num_workers,
+        # Chỉ có nghĩa khi num_workers > 0, và PyG từ chối nếu đặt kèm num_workers=0.
+        #
+        # persistent_workers giữ tiến trình con sống qua các epoch. Không có nó thì
+        # mỗi epoch phải dựng lại toàn bộ tiến trình con và nạp lại đồ thị — với 80
+        # epoch, phần dựng lại ấy ăn hết chỗ tiết kiệm được.
+        **({"persistent_workers": True, "prefetch_factor": 4} if config.num_workers > 0 else {}),
     )
 
 
@@ -318,6 +332,8 @@ def train_one_seed(
     best_epoch = 0
     best_state: dict[str, Tensor] | None = None
     history: list[dict[str, object]] = []
+    epochs_without_improvement = 0
+    stopped_early = False
     train_positions = bundle.split.positions("train")
     validation_positions = bundle.split.positions("validation")
     test_positions = bundle.split.positions("test")
@@ -355,6 +371,7 @@ def train_one_seed(
             flush=True,
         )
         if validation_f1 > best_validation_f1:
+            epochs_without_improvement = 0
             best_validation_f1 = validation_f1
             best_epoch = epoch
             best_state = {name: value.detach().cpu().clone() for name, value in model.state_dict().items()}
@@ -369,6 +386,19 @@ def train_one_seed(
                     feature_names=bundle.feature_names,
                     split=bundle.split.to_dict(),
                 )
+        else:
+            epochs_without_improvement += 1
+            if config.patience and epochs_without_improvement >= config.patience:
+                # Dừng ở đây không làm mất gì: trạng thái tốt nhất đã được giữ ở
+                # ``best_state`` và đã ghi ra checkpoint từ epoch ``best_epoch``.
+                stopped_early = True
+                print(
+                    f"seed={seed} dừng sớm ở epoch {epoch}: "
+                    f"{epochs_without_improvement} epoch không cải thiện "
+                    f"(đỉnh val_f1={best_validation_f1:.4f} ở epoch {best_epoch})",
+                    flush=True,
+                )
+                break
 
     if best_state is None:
         raise RuntimeError("Training did not produce a checkpoint")
@@ -405,6 +435,9 @@ def train_one_seed(
         "feature_names": list(bundle.feature_names),
         "split": bundle.split.to_dict(),
         "best_epoch": best_epoch,
+        "epochs_run": len(history),
+        "stopped_early": stopped_early,
+        "patience": config.patience,
         "validation_at_best": validation.metrics,
         "test_paper_protocol": test_paper.metrics,
         "test_validation_threshold": test_operational,

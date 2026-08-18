@@ -7,6 +7,11 @@ chấm sai (``INVALID_SCORE`` xuất hiện **0 lần**) mà là tác tử viế
 
 Bộ test khoá hành vi bổ sung tất định: quy trình tự gọi công cụ còn thiếu, nên
 tác tử không có cơ hội bỏ qua.
+
+Từ bản tiếng Việt của tầng diễn giải, hai công cụ ``GetAccountBehavior`` và
+``GetTransactions`` được gọi cho **mọi** cảnh báo, không phụ thuộc detector: câu
+tóm tắt phải nói được tài khoản nhận bao nhiêu, từ ngày nào, chuyển đi đâu — và
+không có hai công cụ ấy thì không có số để nói.
 """
 
 from __future__ import annotations
@@ -87,16 +92,25 @@ ML_ALERT = {"alert_id": "ALT-2", "account_key": "1:B", "detector": "ml"}
 RULE_ALERT = {"alert_id": "ALT-3", "account_key": "1:C", "detector": "rule"}
 
 
+# Hai lời gọi nền, có ở mọi cảnh báo. Viết ra thành hằng số để mỗi test chỉ còn
+# khẳng định đúng phần RIÊNG của detector mình đang xét.
+def _always(account_key: str) -> list[tuple[str, dict[str, Any]]]:
+    return [
+        ("GetAccountBehavior", {"account_key": account_key, "window": "30d"}),
+        ("GetTransactions", {"account_key": account_key}),
+    ]
+
+
 def test_graph_alert_without_graph_evidence_triggers_backfill(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _Repo([EvidenceType.RISK_BREAKDOWN])
     count = _run(monkeypatch, repo, GRAPH_ALERT)
-    assert repo.called == [("GetGraphEvidence", {"alert_id": "ALT-1"})]  # type: ignore[attr-defined]
-    assert count == 6
+    assert repo.called == [*_always("1:A"), ("GetGraphEvidence", {"alert_id": "ALT-1"})]  # type: ignore[attr-defined]
+    assert count == 8
 
 
 def test_backfill_is_skipped_when_evidence_already_present(monkeypatch: pytest.MonkeyPatch) -> None:
     """Kiểm bằng bằng chứng đã có, không bằng bộ đếm lời gọi."""
-    repo = _Repo([EvidenceType.GRAPH_PATTERN])
+    repo = _Repo([EvidenceType.GRAPH_PATTERN, EvidenceType.BEHAVIOR_FEATURE, EvidenceType.TRANSACTION])
     count = _run(monkeypatch, repo, GRAPH_ALERT)
     assert repo.called == []  # type: ignore[attr-defined]
     assert count == 5
@@ -105,12 +119,30 @@ def test_backfill_is_skipped_when_evidence_already_present(monkeypatch: pytest.M
 def test_ml_alert_backfills_anomaly_explanation_with_account_key(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _Repo([])
     _run(monkeypatch, repo, ML_ALERT)
-    assert repo.called == [("GetAnomalyExplanation", {"alert_id": "ALT-2", "account_key": "1:B"})]  # type: ignore[attr-defined]
+    assert repo.called == [  # type: ignore[attr-defined]
+        *_always("1:B"),
+        ("GetAnomalyExplanation", {"alert_id": "ALT-2", "account_key": "1:B"}),
+    ]
 
 
-def test_rule_alert_needs_no_backfill(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Chỉ bổ sung theo detector của chính cảnh báo, không đoán thêm."""
+def test_rule_alert_needs_no_detector_backfill(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cảnh báo luật không có bằng chứng riêng của detector nào để bổ sung.
+
+    Nhưng hai lời gọi nền vẫn chạy: hồ sơ nào cũng phải kể được dòng tiền, kể cả
+    hồ sơ do luật sinh ra.
+    """
     repo = _Repo([])
+    count = _run(monkeypatch, repo, RULE_ALERT)
+    assert repo.called == _always("1:C")  # type: ignore[attr-defined]
+    assert count == 7
+
+
+def test_always_required_are_skipped_when_already_collected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hai lời gọi nền là bắt buộc, không phải vô điều kiện.
+
+    Tác tử đã tự gọi rồi thì quy trình không gọi lại — ngân sách công cụ hữu hạn.
+    """
+    repo = _Repo([EvidenceType.BEHAVIOR_FEATURE, EvidenceType.TRANSACTION])
     count = _run(monkeypatch, repo, RULE_ALERT)
     assert repo.called == []  # type: ignore[attr-defined]
     assert count == 5
@@ -120,7 +152,7 @@ def test_tool_failure_does_not_break_the_investigation(monkeypatch: pytest.Monke
     """Bổ sung là để giúp, không phải để giấu: lỗi được ghi lại, phiên vẫn chạy tiếp."""
     repo = _Repo([])
     count = _run(monkeypatch, repo, GRAPH_ALERT, fail=True)
-    assert count == 6
+    assert count == 8
     assert any("thất bại" in str(t.get("rationale", "")) for t in repo.traces)
 
 
@@ -129,4 +161,4 @@ def test_backfill_is_traced_as_workflow_not_as_the_agent(monkeypatch: pytest.Mon
     repo = _Repo([])
     _run(monkeypatch, repo, GRAPH_ALERT)
     assert {t["agent"] for t in repo.traces} == {"workflow"}
-    assert repo.tool_calls == ["GetGraphEvidence"]
+    assert repo.tool_calls == ["GetAccountBehavior", "GetTransactions", "GetGraphEvidence"]

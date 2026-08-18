@@ -21,6 +21,13 @@ $PY scripts/validate_observability.py || die "Cấu hình observability không h
 ok "observability config"
 group_end
 
+# Không có chốt này thì chuẩn benchmark chỉ là một tài liệu, và tài liệu không
+# ngăn được file thứ hai mươi ra đời với đơn vị đo thứ năm.
+group_start "benchmark contract"
+$PY scripts/validate_benchmarks.py || die "Có báo cáo benchmark sai chuẩn"
+ok "benchmark contract"
+group_end
+
 group_start "ruff format --check"
 $PY -m ruff format --check src tests scripts \
     || die "Mã chưa đúng định dạng. Chạy: make format"

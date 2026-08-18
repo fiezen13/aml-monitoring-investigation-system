@@ -226,7 +226,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[4/4] Cầu nối     : {bridge_rows:,} dòng file gốc", flush=True)
     print(f"      Điểm vào    : {scored:,}", flush=True)
     print(f"      Nối được    : {linked:,}", flush=True)
-    print(f"      Rơi ra      : {dropped:,}  (tự chuyển {self_loops:,}, không giải thích được {unexplained:,})", flush=True)
+    print(
+        f"      Rơi ra      : {dropped:,}  (tự chuyển {self_loops:,}, không giải thích được {unexplained:,})",
+        flush=True,
+    )
     print(f"      Vượt ngưỡng : {triggered:,}", flush=True)
     print(f"      Nhãn dương  : {positives:,}", flush=True)
 
@@ -234,8 +237,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("Nối được 0 dòng — cầu nối sai. Dừng lại, đừng nạp.")
     if unexplained:
         raise SystemExit(
-            f"{unexplained:,} dòng rơi ra mà không phải giao dịch tự chuyển. "
-            "Cầu nối chưa đúng; kiểm lại trước khi nạp."
+            f"{unexplained:,} dòng rơi ra mà không phải giao dịch tự chuyển. Cầu nối chưa đúng; kiểm lại trước khi nạp."
         )
 
     release = {
