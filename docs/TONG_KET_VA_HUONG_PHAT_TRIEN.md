@@ -260,14 +260,14 @@ Học không giám sát trên đặc trưng hành vi tài khoản trong cửa s�
 > dịch tự chuyển — 11,6% file gốc, và gần như toàn bộ là mẫu âm dễ (chỉ 3 trong
 > số đó là nhãn dương). Tỷ lệ dương trong tập đánh giá vì thế cao hơn 1,13 lần
 > bài toán thật, và F1 gần như chắc chắn bị thổi lên; ước lượng con số so được
-> nằm quanh 0,28. Cách lấy con số đúng: xem
-> [`docs/KE_HOACH_LAM_LAI_MODEL.md`](KE_HOACH_LAM_LAI_MODEL.md) giai đoạn 1.
+> nằm quanh 0,28.
 >
-> **Có đường tốt hơn.** `src/mega_pna/` đã chứa bản cài đặt đầy đủ của MEGA-PNA —
-> mô hình mạnh nhất từng công bố trên bộ dữ liệu này (F1 45,07%) — và dữ liệu của
-> nó **giữ nguyên đủ 6.924.049 dòng**, nên không dính lỗi đo trên. Nó chưa từng
-> được huấn luyện vì máy không có GPU NVIDIA. Quy trình thực hiện:
-> [`docs/HUONG_DAN_DUNG_LAI_MODEL.md`](HUONG_DAN_DUNG_LAI_MODEL.md).
+> **Đã có đường tốt hơn, và đã đi.** MEGA-PNA tại `src/mega_pna/` đã được huấn
+> luyện trên HI-Medium bằng GPU NVIDIA trên EC2 (20,7 giờ, seed 42) và đạt
+> **F1 = 0,7801** trên tập test, so với 0,7826 mà bài báo công bố. Dữ liệu của nó
+> giữ nguyên đủ số dòng nên không dính lỗi đo nêu trên. Kết quả đầy đủ, kèm cảnh
+> báo về đuôi dữ liệu suy biến (F1 vận hành thật là 0,6893):
+> [`docs/MEGA_PNA_BAN_GIAO.md`](MEGA_PNA_BAN_GIAO.md).
 
 Ngưỡng chốt 0,0569 → 446 cảnh báo trên 1.223.740 giao dịch (tỷ lệ 0,036%).
 

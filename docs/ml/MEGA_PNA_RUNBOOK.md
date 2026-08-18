@@ -1,7 +1,7 @@
 # FIN-07 — Runbook MEGA-PNA
 
-Runbook này vận hành phần hiện thực tại `src/mega_pna/` theo
-`FIN-07-ML-004_Ke_hoach_MEGA_PNA.md` và giao thức edge-classification của Bilgi
+Runbook này vận hành phần hiện thực tại `src/mega_pna/` theo giao thức
+edge-classification của Bilgi
 et al., *Multigraph Message Passing with Bi-Directional Multi-Edge Aggregations*.
 
 ## Phạm vi và hợp đồng

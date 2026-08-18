@@ -457,7 +457,7 @@ Chi tiết ở [`docs/operations/CICD.md`](docs/operations/CICD.md).
 | Tài liệu | Nội dung |
 |---|---|
 | [`docs/TONG_KET_VA_HUONG_PHAT_TRIEN.md`](docs/TONG_KET_VA_HUONG_PHAT_TRIEN.md) | **Bắt đầu từ đây** — đang có gì, huấn luyện thế nào, làm gì tiếp |
-| [`docs/KE_HOACH_LAM_LAI_MODEL.md`](docs/KE_HOACH_LAM_LAI_MODEL.md) | Kế hoạch dựng lại tầng phát hiện theo kiến trúc có dẫn nguồn |
+| [`docs/MEGA_PNA_BAN_GIAO.md`](docs/MEGA_PNA_BAN_GIAO.md) | **Mô hình phát hiện** — thuật toán, kết quả, hạn chế đã biết |
 | [`docs/architecture/PRODUCTION_ARCHITECTURE.md`](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Kiến trúc triển khai production |
 | [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Vận hành và xử lý sự cố |
 | [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai VM |
@@ -466,7 +466,6 @@ Chi tiết ở [`docs/operations/CICD.md`](docs/operations/CICD.md).
 | [`docs/ml/CURRENCY_NATIVE_EDGE_MVP.md`](docs/ml/CURRENCY_NATIVE_EDGE_MVP.md) | Release đang phục vụ UI |
 | [`reports/edge-benchmark/hi_medium_currency_native_policy_v1.md`](reports/edge-benchmark/hi_medium_currency_native_policy_v1.md) | 15 bảng benchmark khoa học của release HI-Medium |
 | [`docs/ml/FIN-07-FUSION-001.md`](docs/ml/FIN-07-FUSION-001.md) | Fusion IF + Graph |
-| [`docs/ml/FIN-07-ML-004_Ke_hoach_MEGA_PNA.md`](docs/ml/FIN-07-ML-004_Ke_hoach_MEGA_PNA.md) | Kế hoạch MEGA-PNA |
 | [`docs/ml/MEGA_PNA_RUNBOOK.md`](docs/ml/MEGA_PNA_RUNBOOK.md) | Huấn luyện và benchmark MEGA-PNA |
 | [`contracts/ingestion/README.md`](contracts/ingestion/README.md) | Kafka/Flink/HDFS ingestion tùy chọn |
 | [`data/raw/ibm-aml/README.md`](data/raw/ibm-aml/README.md) | Nguồn và cách tải raw IBM AML |
