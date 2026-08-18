@@ -72,15 +72,6 @@ export function getRiskShortLabel(score: number): string {
   return SPEC[getRiskLevel(score)].shortLabel;
 }
 
-/** Màu theo bậc, dùng khi đã có `RiskLevel` mà không còn điểm số. */
-export function riskLevelColor(level: RiskLevel): string {
-  return toneColor(SPEC[level].tone);
-}
-
-export function riskLevelTone(level: RiskLevel): Tone {
-  return SPEC[level].tone;
-}
-
 /**
  * Mức độ ba bậc mà engine bản đồ và đồ thị dùng.
  *
@@ -95,14 +86,6 @@ export function severityOf(score: number): Severity {
   if (level === "critical") return "crit";
   if (level === "high") return "warn";
   return "ok";
-}
-
-export function severityTone(severity: Severity): Tone {
-  return severity === "crit" ? "risk" : severity === "warn" ? "warn" : "ok";
-}
-
-export function severityColor(severity: Severity): string {
-  return toneColor(severityTone(severity));
 }
 
 export function severityLabel(severity: Severity): string {

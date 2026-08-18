@@ -129,24 +129,6 @@ export interface CaseTimelineStep {
   note: string | null;
 }
 
-export interface AmlCase {
-  case_id: string;
-  subject_account_key: string;
-  title: string;
-  state: CaseState;
-  risk_score: number;
-  priority: Priority;
-  assigned_to: string | null;
-  created_at: string;
-  alert_count: number;
-  evidence_count: number;
-  customer: CustomerProfile;
-  alertId: string;
-  sarId: string | null;
-  timeline: CaseTimelineStep[];
-  flowRows: FlowAnalysisRow[];
-}
-
 export interface FlowAnalysisRow {
   date: string;
   transaction_id: string;
@@ -219,33 +201,6 @@ export interface Approval {
   validation: string;
   validationTone: "ok" | "warn" | "risk";
   flagged: boolean;
-}
-
-export interface AuditEvent {
-  id: string;
-  time: string;
-  actor: string;
-  actorRole: string;
-  action: string;
-  target: string;
-  detail: string;
-  stateBefore: string | null;
-  stateAfter: string | null;
-  reason: string | null;
-  ip: string;
-}
-
-export interface ScreeningResult {
-  id: string;
-  listName: string;
-  listVersion: string;
-  matchType: "exact" | "strong" | "near_miss" | "none";
-  score: number;
-  matchedFields: string[];
-  mismatchedFields: string[];
-  alias: string | null;
-  explanation: string;
-  source: string;
 }
 
 export interface NetworkNode {

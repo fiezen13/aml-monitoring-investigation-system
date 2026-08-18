@@ -6,7 +6,6 @@
  * trong bảng màu nào của hệ thống, và màu đỏ ấy khác màu đỏ rủi ro thật sự.
  */
 
-import { getRiskColor } from "../risk";
 import { toneColor } from "../semantic";
 import { ink, line, surface } from "../tokens";
 
@@ -28,8 +27,3 @@ export const reactFlowTheme = {
   focus: toneColor("primary"),
   risk: toneColor("risk"),
 } as const;
-
-/** Màu cạnh/đỉnh theo điểm rủi ro, đi qua đúng thang của `design/risk`. */
-export function flowRiskColor(score: number): string {
-  return getRiskColor(score);
-}

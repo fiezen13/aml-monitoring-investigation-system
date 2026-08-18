@@ -49,10 +49,6 @@ export function formatAmount(value: string | number, currency?: string): string 
   return currency ? `${text} ${currency}` : text;
 }
 
-export function formatScore(value: string | number): string {
-  return num(value).toFixed(1);
-}
-
 /** Hai chữ cái đại diện cho chủ thể. Lược đồ không lưu họ tên (dữ liệu tổng
  *  hợp), nên lấy từ mã khách hàng: CUS-00048 → 48. */
 export function initials(customerId: string): string {

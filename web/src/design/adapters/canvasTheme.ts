@@ -35,5 +35,3 @@ export function installCanvasTheme(root: HTMLElement = document.documentElement)
     root.style.setProperty(name, value);
   }
 }
-
-export const canvasVars = VARS;

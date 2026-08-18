@@ -10,7 +10,6 @@ import {
   Color,
   Ion,
   Math as CesiumMath,
-  SceneMode,
   TileMapServiceImageryProvider,
   Viewer,
   buildModuleUrl,
@@ -148,26 +147,4 @@ export async function createScene(container: HTMLElement, token?: string): Promi
   });
 
   return { viewer, imagery };
-}
-
-/** Đưa camera về khung nhìn toàn cầu mở đầu. */
-export function resetCamera(viewer: Viewer, durationSeconds = 0.8): void {
-  viewer.camera.flyTo({
-    destination: Cartesian3.fromDegrees(OPENING_LONGITUDE, OPENING_LATITUDE, GLOBAL_VIEW_HEIGHT),
-    orientation: { heading: 0, pitch: CesiumMath.toRadians(-90), roll: 0 },
-    duration: durationSeconds,
-  });
-}
-
-/**
- * Chuyển giữa 2D và 3D bằng chính cơ chế của Cesium.
- *
- * Không huỷ rồi dựng lại Viewer: làm vậy mất thực thể đang chọn, mất vị trí
- * camera, và rò rỉ một context WebGL mỗi lần bấm.
- */
-export function morphTo(viewer: Viewer, mode: "map" | "globe", seconds = 0.8): void {
-  const target = mode === "globe" ? SceneMode.SCENE3D : SceneMode.SCENE2D;
-  if (viewer.scene.mode === target) return;
-  if (mode === "globe") viewer.scene.morphTo3D(seconds);
-  else viewer.scene.morphTo2D(seconds);
 }

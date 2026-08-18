@@ -100,11 +100,6 @@ export function toneColor(tone: Tone): string {
   return TONE[tone].base;
 }
 
-/** Bản nhạt của một tone — dùng cho chữ trên nền tint. */
-export function toneSoft(tone: Tone): string {
-  return TONE[tone].soft;
-}
-
 /**
  * Ngữ nghĩa của bộ phát hiện. Đặt ở đây thay vì trong từng trang vì cùng một
  * `detector` xuất hiện ở Trung tâm cảnh báo, Tổng quan và Chi tiết cảnh báo.
@@ -122,23 +117,4 @@ export const ALERT_STATUS_TONE: Record<string, Tone> = {
   grouped: "warn",
   triaged: "warn",
   closed: "ok",
-};
-
-/** Ngữ nghĩa của trạng thái vụ việc. */
-export const CASE_STATUS_TONE: Record<string, Tone> = {
-  open: "warn",
-  investigating: "info",
-  escalated: "risk",
-  filed: "agent",
-  closed: "ok",
-};
-
-/** Ngữ nghĩa của trạng thái phê duyệt SAR. */
-export const APPROVAL_STATUS_TONE: Record<string, Tone> = {
-  draft: "neutral",
-  pending: "warn",
-  pending_approval: "warn",
-  approved: "ok",
-  rejected: "risk",
-  filed: "info",
 };

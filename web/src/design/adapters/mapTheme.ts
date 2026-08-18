@@ -18,7 +18,7 @@
 
 import { toneColor } from "../semantic";
 import type { Severity } from "../risk";
-import { accent, ink, surface } from "../tokens";
+import { ink, surface } from "../tokens";
 import { CHANNEL } from "../visualization";
 
 /** Bề mặt cơ sở — dùng cho basemap 2D và cho màu nền/quả cầu của Cesium. */
@@ -59,13 +59,6 @@ export const routeColor: Record<Severity, string> = {
 
 /** Màu theo kênh — chỉ dùng khi mức độ rủi ro chưa nói gì (không nghiêm trọng). */
 export const channelColor = CHANNEL;
-
-/** Vùng chọn và hover. Teal giữ đúng nghĩa "đang chọn" như phần còn lại của app. */
-export const mapSelection = {
-  selected: accent.base,
-  selectedGlow: "rgba(32, 199, 167, 0.35)",
-  hover: ink.hi,
-} as const;
 
 /** Bầu khí quyển của quả cầu — rất nhạt, chỉ để tách rìa Trái Đất khỏi nền. */
 export const atmosphere = {

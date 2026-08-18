@@ -169,9 +169,3 @@ export const PRESETS: PresetDef[] = [
 export function presetDef(key: PresetKey): PresetDef {
   return PRESETS.find((p) => p.key === key) ?? PRESETS[0];
 }
-
-/**
- * Chặng được Crypto Trail giữ lại. Preset này khác các preset khác ở chỗ nó cắt
- * theo node chứ không chỉ theo lớp cạnh.
- */
-export const CRYPTO_STAGES = new Set(["conversion", "gateway", "crypto", "destination", "case"]);

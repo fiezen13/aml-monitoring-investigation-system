@@ -39,15 +39,6 @@ export function shortAddr(addr: string, head = 6, tail = 4): string {
   return addr.length <= head + tail + 1 ? addr : `${addr.slice(0, head)}…${addr.slice(-tail)}`;
 }
 
-/** Chỉ giờ:phút — dùng cho dòng thời gian dày đặc, ngày đã ghi ở chỗ khác. */
-export function hhmm(iso: string): string {
-  return new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-}
-
-export function dayMonth(iso: string): string {
-  return new Date(iso).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
-}
-
 /** Thời lượng mili giây thành chuỗi đọc được: 240ms, 1.9s, 3m 02s. */
 export function duration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;

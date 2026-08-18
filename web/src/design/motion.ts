@@ -19,8 +19,6 @@ import { useReducedMotion, type Transition, type Variants } from "motion/react";
 
 import { duration, easing } from "./tokens";
 
-export const motionTokens = { duration, easing } as const;
-
 const std = easing.standard as unknown as [number, number, number, number];
 const enterEase = easing.enter as unknown as [number, number, number, number];
 const exitEase = easing.exit as unknown as [number, number, number, number];
@@ -89,15 +87,6 @@ export const rowVariants: Variants = {
  */
 export function useReduced(): boolean {
   return useReducedMotion() === true;
-}
-
-/**
- * Rút một transition về gần như tức thời khi người dùng yêu cầu giảm chuyển
- * động. Không trả về `duration: 0` — Motion vẫn cần một khung để chạy callback
- * `onAnimationComplete`, mà nhiều orchestrator ở đây bám vào đó.
- */
-export function safeTransition(base: Transition, reduced: boolean): Transition {
-  return reduced ? { duration: 0.01 } : base;
 }
 
 /** Biến thể tương ứng, dùng cho các component nhận `variants`. */

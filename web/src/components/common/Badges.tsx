@@ -2,7 +2,7 @@ import { ShieldCheck, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { Tone } from "../../design/semantic";
-import { Badge, ProgressBar } from "../ui/Badge";
+import { Badge } from "../ui/Badge";
 import { RiskIndicator } from "../ui/RiskIndicator";
 
 /**
@@ -48,16 +48,6 @@ export function StatusBadge({
 
 export function RiskBadge({ score }: { score: number }) {
   return <RiskIndicator score={score} variant="badge" />;
-}
-
-/** Độ tin cậy AI — phần trăm kèm thanh tiến độ nhỏ. */
-export function ConfidenceBadge({ value }: { value: number }) {
-  return (
-    <div className="min-w-[54px]" title={`Độ tin cậy của mô hình: ${value}% — cần con người rà soát`}>
-      <div className="tabular font-mono text-data font-semibold text-ink-hi">{value}%</div>
-      <ProgressBar value={value} tone="primary" className="mt-0.5" />
-    </div>
-  );
 }
 
 export function RoleBadge({ label }: { label: string }) {

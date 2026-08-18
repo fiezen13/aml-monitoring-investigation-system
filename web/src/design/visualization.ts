@@ -12,7 +12,6 @@
  */
 
 import { hue, ink, line, surface } from "./tokens";
-import { toneColor } from "./semantic";
 
 /**
  * Thứ tự màu mặc định cho series không chỉ định màu riêng.
@@ -55,23 +54,6 @@ export const CHANNEL_LABEL: Record<string, string> = {
 };
 
 /**
- * Lớp dữ liệu trên bản đồ thế giới.
- *
- * Không phải lớp nào cũng cần màu bão hoà. Hạ tầng và luồng xuyên biên là ngữ
- * cảnh — chúng phải lùi lại phía sau; chỉ nhóm đáng ngờ và hoạt động tác tử mới
- * được quyền chiếm sự chú ý.
- */
-export const LAYER_COLOR = {
-  banking: hue.info.base,
-  cash: ink.mid,
-  crypto: hue.token.base,
-  crossBorder: "#38BDF8",
-  suspicious: hue.risk.base,
-  agent: hue.agent.base,
-  infrastructure: line.emphasis,
-} as const;
-
-/**
  * Chủ đề chung cho mọi biểu đồ: lưới, trục, nhãn, tooltip, trạng thái rỗng.
  * Adapter của từng thư viện đọc từ đây thay vì tự đặt.
  */
@@ -102,11 +84,3 @@ export const ENTITY_COLOR: Record<string, string> = {
   project: hue.token.base,
   unknown: ink.dim,
 };
-
-/** Nền/viền của canvas dựng hình — để engine không tự chế nền riêng. */
-export const canvasSurface = {
-  background: surface.app,
-  panel: surface.panel,
-  grid: line.faint,
-  selection: toneColor("primary"),
-} as const;

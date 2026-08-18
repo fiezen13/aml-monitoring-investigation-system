@@ -313,16 +313,3 @@ export function applyLayout(graph: RenderGraph, layout: LayoutKey): void {
       investigationFlow(graph);
   }
 }
-
-/** Nhãn cột hiển thị phía trên đồ thị ở chế độ flow. */
-export function columnPositions(graph: RenderGraph): { x: number; stage: string }[] {
-  const compact = occupiedColumns(graph.nodes);
-  const seen = new Map<number, string>();
-  graph.nodes.forEach((n) => {
-    const c = compact.get(STAGE_INDEX[n.stage] ?? 0) ?? 0;
-    if (!seen.has(c)) seen.set(c, n.stage);
-  });
-  return [...seen.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([c, stage]) => ({ x: c * COL_W, stage }));
-}

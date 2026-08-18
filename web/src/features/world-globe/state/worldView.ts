@@ -25,13 +25,6 @@ export interface WorldCamera {
   zoom: number;
 }
 
-export interface WorldViewState extends WorldCamera {
-  mode: WorldMode;
-  selectedFlowId: string | null;
-  selectedHubId: string | null;
-  hoveredId: string | null;
-}
-
 /** Khung nhìn mở đầu: châu Âu và châu Phi ở giữa, châu Á phải, Bắc Mỹ trái. */
 export const INITIAL_CAMERA: WorldCamera = { longitude: 20, latitude: 18, zoom: 1.1 };
 
