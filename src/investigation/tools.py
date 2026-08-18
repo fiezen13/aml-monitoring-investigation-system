@@ -605,8 +605,8 @@ class InvestigationTools:
             components,
             False,
             (
-                "No score-fusion release covers this alert; the alert detector score is the authoritative "
-                "final score. Other branches are unavailable, not inferred."
+                "Không có bản hợp nhất điểm nào phủ cảnh báo này; điểm của bộ phát hiện là điểm cuối cùng "
+                "chính thức. Các nhánh còn lại là không có dữ liệu, không phải được suy đoán bằng 0."
             ),
         )
 

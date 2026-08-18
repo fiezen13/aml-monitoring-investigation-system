@@ -79,6 +79,39 @@ REPEATED_AMOUNT_RATIO = 0.3
 RETAINED_OUTFLOW_RATIO = 0.5
 
 
+def _signal_measurements(grouped: dict[EvidenceType, list[EvidenceEnvelope]]) -> dict[str, str]:
+    """Số đo và ngưỡng đứng sau mỗi tín hiệu, viết cho người đọc.
+
+    Câu "không thấy phân tán ra nhiều đích" là một khẳng định trần trụi: chuyên
+    viên nhìn thấy hai đối tác nhận tiền trong sổ giao dịch liền đọc thành mâu
+    thuẫn, và tác tử phản biện cũng vậy — quan sát được trên hồ sơ thật, nó nêu
+    CONTRADICTION đúng vì lý do đó. Kèm phép đo thì câu ấy thành một phép đo có
+    ngưỡng, kiểm chứng được, chứ không phải lời phủ nhận.
+    """
+    behavior = grouped.get(EvidenceType.BEHAVIOR_FEATURE, [])
+    observed = next((item.payload["observed"] for item in behavior if item.payload.get("observed")), None)
+    if not observed:
+        return {}
+    dwell = observed.get("median_dwell_hours")
+    measurements = {
+        "fan_in": f"{observed['unique_in_counterparties']} đối tác gửi, ngưỡng ≥ {FAN_COUNTERPARTIES}",
+        "fan_out": f"{observed['unique_out_counterparties']} đối tác nhận, ngưỡng ≥ {FAN_COUNTERPARTIES}",
+        "rapid_outflow": (
+            f"{observed['rapid_outflow_percent']:.0f}% tiền ra đi nhanh, ngưỡng ≥ {RAPID_OUTFLOW_PERCENT:.0f}%"
+        ),
+        "new_counterparties": f"{observed['new_counterparties']} đối tác mới, ngưỡng > 0",
+    }
+    if dwell is not None:
+        measurements["short_dwell_time"] = f"tiền nằm lại trung vị {dwell:.1f} giờ, ngưỡng ≤ {SHORT_DWELL_HOURS:.0f}"
+        measurements["short_duration"] = measurements["short_dwell_time"]
+    if observed["inflow_amount"] > 0:
+        share = observed["outflow_amount"] / observed["inflow_amount"]
+        measurements["value_retention"] = (
+            f"chuyển đi {share:.0%} số nhận vào, ngưỡng giữ lại < {RETAINED_OUTFLOW_RATIO:.0%}"
+        )
+    return measurements
+
+
 def _observed_signals(grouped: dict[EvidenceType, list[EvidenceEnvelope]]) -> dict[str, bool]:
     """Which typology signals the collected evidence can actually speak to.
 
@@ -225,6 +258,13 @@ def _mask_identifiers(claim: str, cited: list[EvidenceEnvelope]) -> str:
 #: Định danh (mã tài khoản, mã bằng chứng) đã được ``_mask_identifiers`` xoá
 #: trước khi quét.
 _CLAIM_NUMBER_RE = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?![\w-])")
+
+
+_EVIDENCE_ID_RE = re.compile(r"\bEV-[A-Za-z0-9_]{3,}\b")
+_DENIES_EXISTENCE_RE = re.compile(
+    r"không tồn tại|không có trong|không nằm trong|thiếu trong|does not exist|not present|absent",
+    re.IGNORECASE,
+)
 
 
 def _numeric_values(value: Any) -> Iterable[float]:
@@ -699,6 +739,7 @@ class ExplanationAgent:
                 )
 
         signals = _observed_signals(grouped)
+        measurements = _signal_measurements(grouped)
         for item in grouped.get(EvidenceType.TYPOLOGY_MAPPING, []):
             code = item.payload["typology_code"]
             typologies.append(code)
@@ -711,15 +752,22 @@ class ExplanationAgent:
             # ``fan_in`` không nói lên điều gì, nên luôn dịch trước khi ghép câu.
             labels = item.payload.get("signal_labels_vi") or {}
 
-            def _vi(names: list[str], _labels: dict[str, str] = labels) -> str:
-                return ", ".join(_labels.get(name, name) for name in names)
+            def _vi(names: list[str], _labels: dict[str, str] = labels, *, with_measure: bool = False) -> str:
+                parts = []
+                for name in names:
+                    label = _labels.get(name, name)
+                    measure = measurements.get(name) if with_measure else None
+                    parts.append(f"{label} ({measure})" if measure else label)
+                return ", ".join(parts)
 
             if matched:
                 status = f"khớp {len(matched)} trên {len(expected)} tín hiệu đặc trưng của nhóm này ({_vi(matched)})"
             else:
                 status = "chưa khớp tín hiệu đặc trưng nào của nhóm này"
             if unmatched:
-                status += f"; không thấy {_vi(unmatched)}"
+                # Kèm phép đo: đây là tín hiệu KHÔNG ĐẠT NGƯỠNG, không phải
+                # tín hiệu vắng mặt. Hai điều đó khác nhau với người rà soát.
+                status += f"; chưa đạt ngưỡng {_vi(unmatched, with_measure=True)}"
             if absent:
                 status += f"; chưa kiểm tra được {_vi(absent)} vì thiếu bằng chứng tương ứng"
 
@@ -781,6 +829,17 @@ class EvidenceCriticAgent:
             trusted_context={
                 "explanation": explanation.model_dump(mode="json"),
                 "evidence": [item.model_dump(mode="json") for item in evidence if not item.is_untrusted_content],
+                # Mục lục của MỌI chứng cứ, kể cả chứng cứ không tin cậy. Không có
+                # nó, tác tử phản biện thấy dữ liệu giao dịch trong khối untrusted
+                # nhưng không biết mã chứng cứ nào phủ dữ liệu ấy, nên kết luận
+                # "mã không tồn tại" và đánh trượt mọi khẳng định về giao dịch —
+                # tức là mọi hồ sơ, kể từ khi GetTransactions thành bắt buộc.
+                # Chỉ đưa mã, loại và nguồn: nội dung do người dùng nhập vẫn nằm
+                # nguyên trong khối untrusted, không rò sang khối tin cậy.
+                "evidence_index": [
+                    {"evidence_id": item.evidence_id, "type": item.type.value, "source": item.source}
+                    for item in evidence
+                ],
                 "risk_breakdown": [item.payload for item in evidence if item.type == EvidenceType.RISK_BREAKDOWN],
                 "deterministic_backend_validation": deterministic.model_dump(mode="json"),
                 "allow_listed_tools": sorted(InvestigationTools.ALLOWED),
@@ -843,9 +902,22 @@ class EvidenceCriticAgent:
         is refutable this way, and only when every reference on the named claim
         resolves — a genuine gap still fails the run.
         """
+        known = {item.evidence_id for item in evidence}
+
+        # Cáo buộc "mã chứng cứ này không tồn tại" là mệnh đề về sổ bằng chứng,
+        # và sổ bằng chứng là bên nói lời cuối. Tác tử phản biện đôi khi phát
+        # biểu nó dưới nhãn UNSUPPORTED_CLAIM thay vì MISSING_EVIDENCE; xét theo
+        # nội dung chứ không theo nhãn, nếu không cùng một lỗi lại lọt lưới chỉ
+        # vì được gọi tên khác.
+        cited_in_detail = set(_EVIDENCE_ID_RE.findall(issue.detail or ""))
+        if cited_in_detail and _DENIES_EXISTENCE_RE.search(issue.detail or ""):
+            # Chỉ bác bỏ khi MỌI mã bị nêu đều có thật. Còn một mã thiếu thật
+            # thì khiếu nại vẫn đứng vững và phiên vẫn phải trượt.
+            if cited_in_detail <= known:
+                return True
+
         if issue.type != "MISSING_EVIDENCE":
             return False
-        known = {item.evidence_id for item in evidence}
         if issue.evidence_ref and issue.evidence_ref not in known:
             return False
         return any(
@@ -874,12 +946,16 @@ class EvidenceCriticAgent:
             if claim.claim_type == "FACT":
                 cited_numbers = [number for item in cited for number in _numeric_values(item.payload)]
                 claim_numbers = _CLAIM_NUMBER_RE.findall(_mask_identifiers(claim.claim, cited))
+                # Dung sai bằng nửa đơn vị của chữ số cuối cùng ĐƯỢC VIẾT RA —
+                # áp cho cả số nguyên. Trước đây số có thập phân được nới theo
+                # chữ số cuối còn số nguyên bị ép khớp tuyệt đối, nên viết
+                # "104324" cho số liệu 104324,50 bị coi là bịa. Làm tròn tới
+                # đơn vị là cách viết bình thường của một bản tường trình.
                 unsupported_numbers = [
                     float(number)
                     for number in claim_numbers
                     if not any(
-                        abs(float(number) - cited_number)
-                        <= (0.5 * 10 ** -len(number.partition(".")[2]) if "." in number else 1e-6) + 1e-9
+                        abs(float(number) - cited_number) <= 0.5 * 10 ** -len(number.partition(".")[2]) + 1e-9
                         for cited_number in cited_numbers
                     )
                 ]
@@ -888,7 +964,7 @@ class EvidenceCriticAgent:
                         ValidationIssue(
                             type="UNSUPPORTED_CLAIM",
                             claim=claim.claim,
-                            detail=f"Numeric values {unsupported_numbers} do not occur in cited evidence.",
+                            detail=(f"Các con số {unsupported_numbers} không có trong bằng chứng được trích dẫn."),
                         )
                     )
             if "money laundering" in lower and claim.claim_type == "FACT":

@@ -108,9 +108,32 @@ function RuleTrigger({ p }: { p: Payload }) {
   );
 }
 
+/** Các khoá tiền tệ trong `features` được lưu ở thang log để mô hình dùng.
+ *
+ * Hiện thẳng ra màn hình thì "Tổng tiền vào 8,71" trong khi số thật là 6.041,01
+ * — chuyên viên đọc con số đó không hiểu gì, mà tệ hơn là tin nhầm. Khối
+ * `observed` giữ số nguyên bản; ưu tiên lấy từ đó.
+ */
+const RAW_AMOUNT_FROM_OBSERVED: Record<string, string> = {
+  total_inflow: "inflow_amount",
+  total_outflow: "outflow_amount",
+};
+
+/** Khoá tiền tệ không có số nguyên bản trong `observed`: nói rõ là thang log. */
+const LOG_SCALE_ONLY = new Set(["net_flow", "median_amount", "p90_amount", "amount_std"]);
+
+function labelFor(key: string, label: string): string {
+  return LOG_SCALE_ONLY.has(key) ? `${label} (thang log)` : label;
+}
+
 /** Đặc trưng hành vi, nhóm lại và dịch sang tiếng Việt kèm đơn vị. */
 function BehaviorFeature({ p }: { p: Payload }) {
-  const features = (p.features ?? {}) as Record<string, unknown>;
+  const raw = (p.features ?? {}) as Record<string, unknown>;
+  const observed = (p.observed ?? {}) as Record<string, unknown>;
+  const features: Record<string, unknown> = { ...raw };
+  for (const [key, observedKey] of Object.entries(RAW_AMOUNT_FROM_OBSERVED)) {
+    if (key in features && observed[observedKey] != null) features[key] = observed[observedKey];
+  }
   const shown = new Set<string>();
 
   return (
@@ -127,7 +150,7 @@ function BehaviorFeature({ p }: { p: Payload }) {
             <h5 className="mb-1 text-micro font-semibold uppercase tracking-wider text-ink-low">{group.title}</h5>
             {keys.map((k) => {
               const meta = featureMeta(k);
-              return <Line key={k} label={meta.label} value={formatFeature(features[k], meta.format)} hint={meta.hint} />;
+              return <Line key={k} label={labelFor(k, meta.label)} value={formatFeature(features[k], meta.format)} hint={meta.hint} />;
             })}
           </div>
         );
@@ -136,7 +159,7 @@ function BehaviorFeature({ p }: { p: Payload }) {
         .filter((k) => !shown.has(k))
         .map((k) => {
           const meta = featureMeta(k);
-          return <Line key={k} label={meta.label} value={formatFeature(features[k], meta.format)} hint={meta.hint} />;
+          return <Line key={k} label={labelFor(k, meta.label)} value={formatFeature(features[k], meta.format)} hint={meta.hint} />;
         })}
     </div>
   );

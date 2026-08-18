@@ -418,6 +418,62 @@ async def test_critic_ignores_a_hallucinated_missing_evidence_objection():
 
 
 @pytest.mark.asyncio
+async def test_critic_objection_is_refuted_whatever_label_it_arrives_under():
+    """Cáo buộc "mã này không tồn tại" bị bác bỏ kể cả khi mang nhãn khác.
+
+    Quan sát trên hồ sơ thật: tác tử phản biện nêu đúng cáo buộc ấy dưới nhãn
+    UNSUPPORTED_CLAIM thay vì MISSING_EVIDENCE, và lọt qua bộ lọc chỉ xét nhãn.
+    Hệ quả là hồ sơ có đủ chứng cứ vẫn bị đánh trượt.
+    """
+    risk = risk_evidence("rule")
+    explanation = ExplanationAgent(FakeGeminiService(), "INV-1")._deterministic(alert("rule"), [risk])
+    mislabelled = ValidationResult(
+        status="FAIL",
+        confidence=0.9,
+        issues=[
+            ValidationIssue(
+                type="UNSUPPORTED_CLAIM",
+                claim=explanation.claims[0].claim,
+                detail=f"Evidence_ref {risk.evidence_id} không tồn tại trong evidence_index.",
+            )
+        ],
+        missing_evidence=[],
+        unsupported_claims=[],
+        next_action="RETURN_TO_INVESTIGATION",
+    )
+    service = FakeGeminiService({"evidence_critic": mislabelled.model_dump(mode="json")})
+    result = (await EvidenceCriticAgent(MagicMock(), service, "INV-1").validate(explanation, [risk])).output
+
+    assert result.status == "PASS"
+    assert result.issues == []
+
+
+@pytest.mark.asyncio
+async def test_critic_objection_about_a_genuinely_absent_id_still_fails():
+    """Bác bỏ chỉ dành cho mã có thật. Mã bịa vẫn phải làm phiên trượt."""
+    risk = risk_evidence("rule")
+    explanation = ExplanationAgent(FakeGeminiService(), "INV-1")._deterministic(alert("rule"), [risk])
+    genuine = ValidationResult(
+        status="FAIL",
+        confidence=0.9,
+        issues=[
+            ValidationIssue(
+                type="UNSUPPORTED_CLAIM",
+                claim=explanation.claims[0].claim,
+                detail="Evidence_ref EV-deadbeefdeadbeef không tồn tại trong evidence_index.",
+            )
+        ],
+        missing_evidence=[],
+        unsupported_claims=[],
+        next_action="RETURN_TO_INVESTIGATION",
+    )
+    service = FakeGeminiService({"evidence_critic": genuine.model_dump(mode="json")})
+    result = (await EvidenceCriticAgent(MagicMock(), service, "INV-1").validate(explanation, [risk])).output
+
+    assert result.status == "FAIL"
+
+
+@pytest.mark.asyncio
 async def test_critic_keeps_a_missing_evidence_objection_it_cannot_refute():
     risk = risk_evidence("rule")
     explanation = ExplanationAgent(FakeGeminiService(), "INV-1")._deterministic(alert("rule"), [risk])

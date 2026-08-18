@@ -80,7 +80,7 @@ export function DashboardPage() {
         label: "Cảnh báo chưa xử lý",
         value: d.open_alerts,
         tone: "risk" as Tone,
-        note: "từ ba nhánh: luật, bất thường, đồ thị",
+        note: "đang mở, chưa gom vào vụ việc",
       },
       {
         label: "Vụ việc đang xử lý",

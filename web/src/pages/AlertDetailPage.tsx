@@ -225,8 +225,8 @@ export function AlertDetailPage() {
               <div className="mt-4 flex items-start gap-1.5 border-t border-line pt-3 text-2xs text-ink-low">
                 <Info size={12} className="mt-0.5 shrink-0" aria-hidden />
                 <p>
-                  NT7 — mỗi điểm rủi ro luôn kèm danh sách yếu tố đóng góp có giá trị số. Điểm này đến từ bộ
-                  model currency-native transaction edge; vẫn cần người phân tích xác nhận.
+                  NT7 — mỗi điểm rủi ro luôn kèm danh sách yếu tố đóng góp có giá trị số. Điểm do bộ phát hiện
+                  của chính cảnh báo này chấm; vẫn cần người phân tích xác nhận.
                 </p>
               </div>
             </Panel>

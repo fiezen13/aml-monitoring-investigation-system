@@ -178,7 +178,7 @@ def test_risk_breakdown_falls_back_to_the_detector_score_without_a_fusion_releas
     assert fusion_available is False
     assert components["anomaly"].contribution == 1.0
     assert components["graph"].available is False
-    assert limitation and "not inferred" in limitation
+    assert limitation and "không phải được suy đoán" in limitation
 
 
 def test_a_snapshot_without_the_full_fusion_key_set_is_not_treated_as_fusion():
@@ -189,7 +189,7 @@ def test_a_snapshot_without_the_full_fusion_key_set_is_not_treated_as_fusion():
     )
 
     assert fusion_available is False
-    assert limitation and "No score-fusion release" in limitation
+    assert limitation and "Không có bản hợp nhất điểm" in limitation
 
 
 def test_a_branch_with_zero_percentile_does_not_divide_by_zero():
