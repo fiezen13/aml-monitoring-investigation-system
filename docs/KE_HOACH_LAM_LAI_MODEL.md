@@ -175,6 +175,25 @@ Bốn vấn đề, đọc thẳng từ sơ đồ:
 
 ## 6. Kiến trúc đích
 
+> ## ⚠️ MỤC NÀY ĐÃ BỊ THAY THẾ — ĐỌC [KIEN_TRUC_HUONG_B.md](KIEN_TRUC_HUONG_B.md)
+>
+> Kiến trúc mô tả bên dưới — **một mô hình cạnh duy nhất, bỏ hợp nhất, bỏ
+> Isolation Forest, hạ luật xuống chỉ chú giải** — tối ưu F1 nhưng **cắt mất đầu
+> vào của tầng tác tử**.
+>
+> Dòng `Risk 0.93 = 0.48 (Graph) + 0.22 (Anomaly) + 0.08 (Rule)` chính là thứ
+> `GetRiskBreakdown` trả về và **Agent 2** phân rã. Bỏ hợp nhất thì
+> `_risk_components` trả `available: false` cho mọi nhánh, Agent 2 mất chức năng
+> chính, `Top signal = CYCLE` biến mất, và ràng buộc
+> `CHECK (detector IN ('rule','ml','graph'))` chặn thẳng việc nạp.
+>
+> Đơn vị cũng sai: `alert.account_key` là **bắt buộc**, còn mô hình cạnh chấm
+> **giao dịch**.
+>
+> **Hướng đúng (B):** MEGA-PNA thay chỗ Isolation Forest — nhánh đang mang trọng
+> số 0,00 nên bỏ đi không mất gì — và giữ nguyên hợp nhất, luật, đồ thị, ba agent.
+
+
 ```mermaid
 flowchart TD
     TX["<b>Giao dịch</b><br/>thời điểm · ngân hàng · tài khoản<br/>số tiền · loại tiền · hình thức"]
