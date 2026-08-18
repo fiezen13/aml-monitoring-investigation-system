@@ -33,7 +33,7 @@ x-app-env: &app-env
   APP_ENV: ${APP_ENV:-development}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   LOG_FORMAT: ${LOG_FORMAT:-json}
-  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fin07}:${POSTGRES_PASSWORD:-fin07_dev_password}@postgres:5432/${POSTGRES_DB:-fin07}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fin07}:${POSTGRES_PASSWORD:-fin07_dev_password}@postgres:5432/${POSTGRES_DB:-fin07_hi_medium}
   REDIS_URL: redis://redis:6379/0
   CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
   LLM_MODE: ${LLM_MODE:-mock}
@@ -42,7 +42,7 @@ x-app-env: &app-env
   GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
   GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-2}
   AML_AGENT_MAX_ITERATIONS: ${AML_AGENT_MAX_ITERATIONS:-3}
-  AML_AGENT_MAX_TOOL_CALLS: ${AML_AGENT_MAX_TOOL_CALLS:-8}
+  AML_AGENT_MAX_TOOL_CALLS: ${AML_AGENT_MAX_TOOL_CALLS:-12}
   MAX_GRAPH_HOPS: ${MAX_GRAPH_HOPS:-2}
   MAX_GRAPH_NODES: ${MAX_GRAPH_NODES:-100}
   MAX_GRAPH_EDGES: ${MAX_GRAPH_EDGES:-250}
@@ -70,7 +70,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-fin07}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fin07_dev_password}
-      POSTGRES_DB: ${POSTGRES_DB:-fin07}
+      POSTGRES_DB: ${POSTGRES_DB:-fin07_hi_medium}
       # Mật khẩu vai trò chỉ đọc của agent, dùng trong db/init/003.
       FIN07_AGENT_DB_PASSWORD: ${FIN07_AGENT_DB_PASSWORD:-fin07_agent_dev_password}
       TZ: UTC
@@ -88,7 +88,7 @@ services:
       # pg_isready qua socket sẽ báo xanh ngay lúc đó, và dịch vụ migrate lao vào
       # một cơ sở dữ liệu chưa có bảng nào. Hỏi qua TCP thì chỉ xanh khi server
       # thật đã lên.
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-fin07} -d ${POSTGRES_DB:-fin07}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-fin07} -d ${POSTGRES_DB:-fin07_hi_medium}"]
       interval: 5s
       timeout: 5s
       retries: 20
