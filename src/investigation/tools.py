@@ -953,14 +953,32 @@ class InvestigationTools:
                     """WITH alert_time AS (
                            SELECT created_at FROM alert WHERE alert_id = :alert
                        ),
-                       latest AS (
+                       -- Ưu tiên mốc detector TẠI HOẶC TRƯỚC cảnh báo: đó là
+                       -- thứ tồn tại vào lúc cảnh báo nổ, và giữ tính toàn vẹn
+                       -- theo thời điểm.
+                       before AS (
                            SELECT max(g.as_of_time) AS as_of
                              FROM graph_detector_evidence g, alert_time a
                             WHERE g.account_key = :account AND g.as_of_time <= a.created_at
+                       ),
+                       -- Không có thì lấy mốc SỚM NHẤT sau cảnh báo, trong 14
+                       -- ngày. Một chu trình khép lại hai ngày sau khi cảnh báo
+                       -- nổ vẫn là cấu trúc của chính tài khoản ấy, và chuyên
+                       -- viên điều tra hôm nay cần thấy nó. Giấu đi thì tab Chu
+                       -- trình trống trong khi bộ dò đã tìm ra vòng.
+                       after AS (
+                           SELECT min(g.as_of_time) AS as_of
+                             FROM graph_detector_evidence g, alert_time a
+                            WHERE g.account_key = :account
+                              AND g.as_of_time > a.created_at
+                              AND g.as_of_time <= a.created_at + INTERVAL '14 days'
+                       ),
+                       chosen AS (
+                           SELECT COALESCE((SELECT as_of FROM before), (SELECT as_of FROM after)) AS as_of
                        )
                        SELECT g.evidence_id, g.payload
-                         FROM graph_detector_evidence g, latest
-                        WHERE g.account_key = :account AND g.as_of_time = latest.as_of
+                         FROM graph_detector_evidence g, chosen
+                        WHERE g.account_key = :account AND g.as_of_time = chosen.as_of
                         ORDER BY g.created_at DESC"""
                 ),
                 {"account": self.state.account_key, "alert": self.state.alert_id},
