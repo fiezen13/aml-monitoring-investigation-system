@@ -1584,7 +1584,11 @@ async def model_branches() -> list[ModelBranchOut]:
         # Chỉ số đầu bảng chọn theo LOẠI model — hai loại khác nhau thật sự,
         # nên không cố nhét vào cùng một khung F1.
         headline: list[dict[str, Any]] = []
-        if kind == "graph_edge_classifier":
+        # RandomForest (Bitcoin) và mạng đồ thị (IBM) đều là bộ phân loại từng
+        # giao dịch, nên cùng họ chỉ số F1/PR-AUC — dù đo trên hai vùng khác nhau
+        # bằng hai model khác nhau. Gộp hai kind ở đây, không phải để trộn kết
+        # quả mà để trình bày cùng một khuôn chỉ số.
+        if kind in ("graph_edge_classifier", "random_forest_classifier"):
             primary = b.get("primary_seed") or {}
             for key, label in (("f1", "F1"), ("pr_auc", "PR-AUC"), ("precision", "Precision"), ("recall", "Recall")):
                 value = primary.get(key)

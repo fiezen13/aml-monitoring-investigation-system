@@ -139,6 +139,10 @@ POLICY: dict[str, frozenset[str]] = {
     # Đối chiếu nhiều nhánh, mỗi nhánh benchmark trên vùng của nó. Cùng quyền
     # với /fc/benchmarks: đây là dữ liệu chất lượng mô hình.
     "/fc/model-branches": MODEL_QUALITY,
+    # --- Nhánh Bitcoin AML (Elliptic++) ---
+    # Suy luận là công việc điều tra: cùng quyền với đọc cảnh báo/đồ thị.
+    "/aml/bitcoin/predict": INVESTIGATION,
+    "/aml/bitcoin/predict/batch": INVESTIGATION,
     "/fc/model-monitor": MODEL_QUALITY,
     "/fc/edge-model/release": MODEL_QUALITY,
     "/fc/data-quality": MODEL_QUALITY,

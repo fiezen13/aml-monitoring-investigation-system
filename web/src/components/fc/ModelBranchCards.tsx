@@ -19,6 +19,7 @@ import { Eyebrow, Panel } from "./primitives";
 const KIND_META: Record<string, { label: string; color: string }> = {
   graph_edge_classifier: { label: "Mạng đồ thị · chấm từng cạnh", color: C.agent },
   geo_rule_ranker: { label: "Bộ luật · xếp hạng theo ngân sách", color: C.info },
+  random_forest_classifier: { label: "Random Forest · chấm từng giao dịch", color: C.risk },
 };
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
