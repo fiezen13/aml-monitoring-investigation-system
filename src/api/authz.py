@@ -124,6 +124,9 @@ POLICY: dict[str, frozenset[str]] = {
     # tài khoản đang hiển thị, không mở thêm dữ liệu nào. Thiếu dòng này thì bảng
     # chính sách mặc-định-đóng chặn mọi vai trò và tab Chu trình luôn báo 401.
     "/fc/graph/patterns": INVESTIGATION,
+    # Bản kể của tác tử cho vùng đồ thị: đọc đúng những giao dịch mà /fc/graph
+    # đã vẽ, chỉ diễn đạt lại, nên cùng quyền điều tra.
+    "/fc/graph/narrative": INVESTIGATION,
     "/fc/graph/edges/{edge_id}/transactions": INVESTIGATION,
     "/fc/graph/nodes/{node_id}/transactions": INVESTIGATION,
     "/fc/crypto": INVESTIGATION,

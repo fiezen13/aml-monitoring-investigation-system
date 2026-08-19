@@ -123,7 +123,17 @@ FROM labelled GROUP BY 1, 2 HAVING count(*) >= {min_support}
 UNION ALL
 SELECT 'fx', CASE WHEN fx THEN 'yes' ELSE 'no' END, count(*),
        avg(is_laundering::numeric) / (SELECT rate FROM base)
-FROM labelled GROUP BY 1, 2 HAVING count(*) >= {min_support};
+FROM labelled GROUP BY 1, 2 HAVING count(*) >= {min_support}
+-- Hai dòng 'baseline' giữ MẪU SỐ, không phải mức nâng: cột ``lift`` ở đây là
+-- tỉ lệ nhãn tuyệt đối. Không có chúng thì câu "gấp 5,1 lần mức nền" trên màn
+-- hình không nói được mức nền là gì, và chuyên viên không kiểm chứng được.
+-- 'all' là mẫu số dùng để chấm điểm; 'cross_border' là mẫu số so sánh đúng
+-- cho một nhánh chỉ xét giao dịch xuyên biên giới. Bản giải thích nêu cả hai.
+UNION ALL
+SELECT 'baseline', 'all', count(*), avg(is_laundering::numeric) FROM labelled
+UNION ALL
+SELECT 'baseline', 'cross_border', count(*), avg(is_laundering::numeric)
+FROM labelled WHERE from_country <> to_country;
 
 DROP TABLE IF EXISTS geo_cell;
 CREATE TABLE geo_cell AS
@@ -309,7 +319,7 @@ def main() -> int:
                LEAST(round(corridor_lift * 12.0, 2), 100.00), 1.00 FROM a
         UNION ALL
         SELECT alert_id, 'GEO_COUNTRIES',
-               country_count || ' quốc gia đối tác trong cửa sổ ' || {args.window_days} || ' ngày',
+               country_count || ' quốc gia đối tác trong khoảng ' || {args.window_days} || ' ngày',
                LEAST(round(country_count * 8.0, 2), 100.00), 0.60 FROM a
         UNION ALL
         SELECT alert_id, 'GEO_CASH', cash_count || ' giao dịch tiền mặt',

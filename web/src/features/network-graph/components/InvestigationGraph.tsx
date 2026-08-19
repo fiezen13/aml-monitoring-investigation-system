@@ -23,6 +23,7 @@ import { GraphLayerPanel } from "./GraphLayerPanel";
 import { GraphLegend } from "./GraphLegend";
 import { GraphTimeline } from "./GraphTimeline";
 import { GraphToolbar } from "./GraphToolbar";
+import { GraphNarrativePanel } from "./GraphNarrativePanel";
 import { GraphTopologySummary } from "./GraphTopologySummary";
 import { GraphStoryStrip } from "./GraphStoryStrip";
 import { EdgeInspector } from "./EdgeInspector";
@@ -381,6 +382,17 @@ export function InvestigationGraph() {
   const clusters = useMemo(() => (model ? activeClusters(model, filter) : []), [model, filter]);
 
   const selectedNode = state.focus.nodeId && model ? (model.byId[state.focus.nodeId] ?? null) : null;
+
+  /**
+   * Tài khoản mà bản kể tổng quan nói tới: đỉnh rủi ro cao nhất đang vẽ.
+   *
+   * Chưa chọn gì thì màn hình vẫn phải trả lời được "đây là chuyện gì". Chọn
+   * đỉnh rủi ro nhất là chọn đúng lý do vùng đồ thị này được dựng ra.
+   */
+  const narrativeAccount = useMemo(() => {
+    if (!model?.nodes.length) return null;
+    return model.nodes.reduce((best, node) => (node.risk > best.risk ? node : best), model.nodes[0]).id;
+  }, [model]);
   const selectedEdge = state.focus.edgeId ? (graph.edges.find((e) => e.id === state.focus.edgeId) ?? null) : null;
 
   return (
@@ -651,6 +663,10 @@ export function InvestigationGraph() {
                 health={health}
                 onOpenQuestions={() => dispatch({ type: "bottomTab", tab: "evidence" })}
               />
+              {/* Bản kể đứng TRƯỚC gợi ý điều tra có chủ đích: gợi ý nói
+                  "nhìn vào đâu", còn bản kể nói "đang nhìn cái gì". Đọc gợi ý
+                  trước khi biết mình đang xem gì thì cũng như không. */}
+              <GraphNarrativePanel accountKey={narrativeAccount} onPickAccount={focusNode} />
               <GraphInvestigationLeads
                 leads={leads}
                 onPick={(lead) => {
@@ -687,6 +703,8 @@ export function InvestigationGraph() {
               onIsolate={() => dispatch({ type: "isolate", on: !state.focus.isolated })}
             />
           )}
+
+          {model && selectedNode && <GraphNarrativePanel accountKey={selectedNode.id} onPickAccount={focusNode} />}
 
           {model && selectedTx && (
             <TransactionDetail

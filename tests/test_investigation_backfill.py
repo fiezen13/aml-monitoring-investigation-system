@@ -31,9 +31,12 @@ from src.investigation.workflow import InvestigationWorkflow  # noqa: E402
 
 
 class _Evidence:
-    def __init__(self, evidence_type: EvidenceType, evidence_id: str = "EV-1") -> None:
+    def __init__(self, evidence_type: EvidenceType, evidence_id: str = "EV-1", *, window_days: int = 30) -> None:
         self.type = evidence_type
         self.evidence_id = evidence_id
+        # ``window_days`` để bước bổ sung phân biệt cửa sổ hành vi đủ rộng với
+        # cửa sổ hẹp: có bằng chứng chưa đủ, nó phải phủ được tập giao dịch.
+        self.payload = {"observed": {"window_days": window_days}}
 
 
 class _Execution:
@@ -114,6 +117,28 @@ def test_backfill_is_skipped_when_evidence_already_present(monkeypatch: pytest.M
     count = _run(monkeypatch, repo, GRAPH_ALERT)
     assert repo.called == []  # type: ignore[attr-defined]
     assert count == 5
+
+
+def test_narrow_behavior_window_is_widened_even_though_evidence_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cửa sổ 7 ngày có sẵn KHÔNG được tính là đã đủ.
+
+    Đây là nguồn mâu thuẫn đã quan sát trên hồ sơ thật: tác tử tự gọi cửa sổ mặc
+    định 7 ngày, bước bổ sung thấy "đã có BEHAVIOR_FEATURE" rồi bỏ qua, và câu
+    tóm tắt viết "chuyển đi 0,00 Euro tới 0 đối tác" ngay phía trên hai dòng dữ
+    kiện ghi rõ hai lần chuyển 30.101,17 Euro nằm ngoài bảy ngày ấy.
+    """
+    repo = _Repo([])
+    repo.existing = [
+        _Evidence(EvidenceType.BEHAVIOR_FEATURE, window_days=7),
+        _Evidence(EvidenceType.TRANSACTION),
+        _Evidence(EvidenceType.GRAPH_PATTERN),
+    ]
+    _run(monkeypatch, repo, GRAPH_ALERT)
+    assert repo.called == [  # type: ignore[attr-defined]
+        ("GetAccountBehavior", {"account_key": "1:A", "window": "30d"}),
+    ]
 
 
 def test_ml_alert_backfills_anomaly_explanation_with_account_key(monkeypatch: pytest.MonkeyPatch) -> None:

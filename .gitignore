@@ -174,3 +174,6 @@ fin07-mega-pna-*.zip
 # Bộ dữ liệu SAML-D tải từ Kaggle — 950 MB, không đưa vào git.
 SAML-D.csv
 aml-prediction.ipynb
+
+# Kết xuất thô của đợt rà soát tác tử — README giữ phần tóm tắt
+reports/agent-audit/*.jsonl

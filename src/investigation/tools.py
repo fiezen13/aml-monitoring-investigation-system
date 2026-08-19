@@ -547,9 +547,9 @@ class InvestigationTools:
                     components,
                     True,
                     (
-                        f"Final score is the weighted fusion of the {branches} branch(es) recorded in "
-                        f"{source_ref} (fusion model {snapshot['model_version']}). A branch with zero weight "
-                        "was evaluated and selected out on validation, not omitted."
+                        f"Điểm cuối cùng là kết quả hợp nhất có trọng số của nhánh {branches}, ghi trong "
+                        f"{source_ref} (mô hình hợp nhất {snapshot['model_version']}). Nhánh có trọng số 0 là "
+                        "nhánh đã được đánh giá rồi bị loại ở bước kiểm định, không phải nhánh bị bỏ sót."
                     ),
                 )
             # Bản phát hành có chạy hợp nhất nhưng một nhánh đơn thắng ở bước
@@ -570,9 +570,8 @@ class InvestigationTools:
                 components,
                 False,
                 (
-                    f"Fusion was evaluated for this release but the single '{champion}' detector was selected "
-                    f"as champion on validation, so its score is the authoritative final score. Recorded in "
-                    f"{source_ref}."
+                    f"Bản phát hành này có chạy hợp nhất điểm, nhưng riêng bộ phát hiện '{champion}' thắng ở "
+                    f"bước kiểm định, nên điểm của nó là điểm cuối cùng chính thức. Ghi trong {source_ref}."
                 ),
             )
 
@@ -669,15 +668,108 @@ class InvestigationTools:
             ).mappings()
         ]
         if reasons:
+            payload: dict[str, Any] = {
+                "alert_id": args.alert_id,
+                "detector": row["detector"],
+                "triggered_rules": reasons,
+            }
+            geo = self._geo_context(args.alert_id)
+            if geo:
+                payload["geo_context"] = geo
             self.repository.add_evidence(
                 self.investigation_id,
                 evidence_type=EvidenceType.RULE_TRIGGER,
                 source=f"{row['detector']}_engine",
                 account_key=row["account_key"],
-                payload={"alert_id": args.alert_id, "detector": row["detector"], "triggered_rules": reasons},
+                payload=payload,
                 source_record_ids=[args.alert_id, *[reason["factor_code"] for reason in reasons]],
             )
         return ToolExecution(result=result.model_dump(mode="json"), evidence=evidence)
+
+    def _geo_context(self, alert_id: str) -> dict[str, Any] | None:
+        """Hành lang quốc gia của cảnh báo địa lý, dưới dạng SỐ chứ không phải câu chữ.
+
+        ``alert_reason.factor_label`` đã có sẵn chuỗi "Hành lang UK→UAE — rủi ro
+        gấp 5,1 lần mức nền", nhưng đó là câu để hiển thị. Tách quốc gia ra khỏi
+        câu ấy bằng biểu thức chính quy là thứ hỏng im lặng vào đúng ngày ai đó
+        sửa chữ "Hành lang". Ở đây đọc thẳng ``geo_cell`` — chính bảng mà bộ luật
+        đã chấm điểm — nên hai bên không thể lệch nhau.
+
+        Khoá nối là (tài khoản, ngày): ``build_geo_rule_alerts.py`` đặt
+        ``alert.created_at = geo_cell.as_of``, và mã cảnh báo cũng băm từ đúng
+        cặp ấy.
+
+        Hai mẫu số được trả về cùng lúc, cố ý. Điểm rủi ro tính theo mức nền của
+        **toàn bộ** giao dịch (0,10%), trong khi nhánh này chỉ xét giao dịch
+        **xuyên biên giới**, nơi mức nền là 0,31% — cao gấp ba. Cùng một hành
+        lang vì thế đọc ra 5,1 lần hay 1,7 lần tuỳ mẫu số. Giấu đi một trong hai
+        là để chuyên viên tự suy ra con số họ không có cách nào kiểm chứng.
+        """
+        row = (
+            self.session.execute(
+                text(
+                    """SELECT c.top_corridor, c.corridor_lift, c.country_count, c.cash_count,
+                              c.fx_count, c.txn_count, c.top_transaction_id, a.transaction_id
+                         FROM alert a
+                         JOIN geo_cell c ON c.account_key = a.account_key
+                                        AND c.as_of = (a.created_at AT TIME ZONE 'UTC')::date
+                        WHERE a.alert_id = :id"""
+                ),
+                {"id": alert_id},
+            )
+            .mappings()
+            .first()
+        )
+        if not row or not row["top_corridor"]:
+            return None
+        corridor = str(row["top_corridor"])
+        from_country, _, to_country = corridor.partition("\u2192")
+        baselines = {
+            str(key): float(rate)
+            for key, rate in self.session.execute(text("SELECT key, lift FROM geo_weight WHERE kind = 'baseline'"))
+        }
+        base_all = baselines.get("all")
+        base_cross = baselines.get("cross_border")
+        lift_all = float(row["corridor_lift"])
+        # Tỉ lệ nhãn tuyệt đối của hành lang. Suy ra được từ mức nâng và mẫu số,
+        # nên không phải đo lại; đây mới là con số chuyên viên đối chiếu được.
+        corridor_rate = lift_all * base_all if base_all else None
+        support = self.session.execute(
+            text("SELECT n FROM geo_weight WHERE kind = 'corridor' AND key = :k"), {"k": corridor}
+        ).scalar_one_or_none()
+        lift_cross = (corridor_rate / base_cross) if (corridor_rate and base_cross) else None
+
+        def _pct(value: float | None) -> float | None:
+            """Tỉ lệ dưới dạng phần trăm đã làm tròn, lưu THẲNG vào bằng chứng.
+
+            Bộ phản biện đối chiếu từng con số trong câu với payload đã trích
+            dẫn. Một câu viết "0,52%" trong khi payload chỉ có ``0.005224`` là
+            câu không kiểm chứng được, và nó bị đánh trượt UNSUPPORTED_CLAIM —
+            đúng theo luật, dù nội dung không sai. Ai muốn viết phần trăm ra màn
+            hình thì phải lưu phần trăm vào bằng chứng.
+            """
+            return None if value is None else round(value * 100, 2)
+
+        return {
+            "corridor": corridor,
+            "from_country": from_country or None,
+            "to_country": to_country or None,
+            "cross_border": bool(from_country and to_country and from_country != to_country),
+            "corridor_transactions": int(support) if support is not None else None,
+            "corridor_label_rate": corridor_rate,
+            "corridor_label_percent": _pct(corridor_rate),
+            "lift_vs_all": lift_all,
+            "lift_vs_cross_border": lift_cross,
+            "baseline_all": base_all,
+            "baseline_all_percent": _pct(base_all),
+            "baseline_cross_border": base_cross,
+            "baseline_cross_border_percent": _pct(base_cross),
+            "country_count": int(row["country_count"]),
+            "cash_count": int(row["cash_count"]),
+            "fx_count": int(row["fx_count"]),
+            "window_transactions": int(row["txn_count"]),
+            "driving_transaction_id": str(row["transaction_id"] or row["top_transaction_id"] or "") or None,
+        }
 
     #: Lấy giao dịch của **nhiều** tài khoản trong một lượt.
     #:
@@ -1015,11 +1107,31 @@ class InvestigationTools:
                     transaction_refs=transaction_refs,
                 )
                 return ToolExecution(result=result.model_dump(mode="json", by_alias=True), evidence=evidence)
+        # "Đã kiểm tra, không có" phải được GHI LẠI, không được im lặng.
+        #
+        # Bản trước trả về ``evidence=None``, nên sổ bằng chứng không còn dấu vết
+        # nào của lần tra cứu này. Tác tử diễn giải chỉ nhìn sổ bằng chứng, nên
+        # nó không phân biệt được "bộ dò đồ thị không tìm thấy gì" với "chưa ai
+        # hỏi bộ dò đồ thị", và viết ra câu thứ hai cho cả hai trường hợp:
+        # "chưa kiểm tra được tiền đi qua tài khoản trung gian vì thiếu bằng
+        # chứng tương ứng". Với chuyên viên rà soát, hai câu ấy dẫn tới hai hành
+        # động khác hẳn nhau — một bên là đi tìm thêm, một bên là loại giả thuyết.
         result = GraphEvidenceResult(
             available=False,
-            missing_reason="No structured graph-detector evidence exists for this alert; no graph pattern may be claimed.",
+            missing_reason=(
+                "Bộ phát hiện đồ thị không ghi nhận mẫu hình nào cho tài khoản này tại mốc của cảnh báo; "
+                "đã tra cứu và không có kết quả, nên không được khẳng định bất kỳ mẫu hình đồ thị nào."
+            ),
         )
-        return ToolExecution(result=result.model_dump(mode="json"), evidence=None, status="PARTIAL")
+        evidence = self.repository.add_evidence(
+            self.investigation_id,
+            evidence_type=EvidenceType.GRAPH_PATTERN,
+            source="graph_detector",
+            account_key=self.state.account_key,
+            payload=result.model_dump(mode="json", by_alias=True),
+            source_record_ids=[f"graph_detector:{self.state.account_key}:no-pattern"],
+        )
+        return ToolExecution(result=result.model_dump(mode="json"), evidence=evidence, status="PARTIAL")
 
     def get_graph_neighborhood(self, raw: dict[str, Any]) -> ToolExecution:
         args = NeighborhoodArgs.model_validate(raw)
@@ -1183,7 +1295,9 @@ class InvestigationTools:
                 top_anomalous_features=[],
                 method="unavailable",
                 available=False,
-                missing_reason="No Isolation Forest detector result exists for this alert/account.",
+                missing_reason=(
+                    "Không có kết quả Isolation Forest cho cảnh báo/tài khoản này; đã tra cứu và không có bản ghi nào."
+                ),
             )
             return ToolExecution(result=result.model_dump(mode="json"), evidence=None, status="PARTIAL")
 

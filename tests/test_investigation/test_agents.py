@@ -559,3 +559,256 @@ async def test_a_thinner_model_response_does_not_replace_the_sourced_baseline():
     facts = [claim for claim in output.claims if claim.claim_type == "FACT"]
     assert len(facts) > 1
     assert all(claim.evidence_refs for claim in facts)
+
+
+# --- Những lỗi đã đo được trên hồ sơ thật, khoá lại để không quay lại ---------
+
+
+def _behavior(*, incoming: int, outgoing: int, window_days: int = 30) -> EvidenceEnvelope:
+    return evidence(
+        EvidenceType.BEHAVIOR_FEATURE,
+        {
+            "account_key": "001:A",
+            "window": f"{window_days}d",
+            "features": {},
+            "observed": {
+                "window_start": "2022-08-29T00:00:00Z",
+                "window_end": "2022-09-28T00:00:00Z",
+                "window_days": window_days,
+                "currency": "Euro",
+                "inflow_amount": 100.0 if incoming else 0.0,
+                "outflow_amount": 50.0 if outgoing else 0.0,
+                "largest_amount": 100.0,
+                "incoming_count": incoming,
+                "outgoing_count": outgoing,
+                "unique_in_counterparties": 1 if incoming else 0,
+                "unique_out_counterparties": 1 if outgoing else 0,
+                "new_counterparties": 0,
+                "rapid_outflow_amount": 0.0,
+                "rapid_outflow_percent": 0.0,
+                "rapid_window_hours": 2,
+                "median_dwell_hours": None,
+                "active_days": 1,
+            },
+        },
+        source="feature_service",
+    )
+
+
+def _transactions(items: list[dict]) -> EvidenceEnvelope:
+    return evidence(
+        EvidenceType.TRANSACTION,
+        {"items": items, "limit": 50, "next_cursor": None, "truncated": False},
+        source="transaction_service",
+    )
+
+
+def _tx(tid: str, *, out: bool, amount: float, src_country: str | None = None, dst_country: str | None = None) -> dict:
+    return {
+        "transaction_id": tid,
+        "source": "001:A" if out else "002:B",
+        "destination": "002:B" if out else "001:A",
+        "timestamp": "2022-09-16T00:00:00Z",
+        "amount": amount,
+        "currency": "Euro",
+        "payment_format": "CHEQUE",
+        "source_country": src_country,
+        "destination_country": dst_country,
+    }
+
+
+def test_summary_never_denies_transactions_that_the_ledger_shows():
+    """Câu mở đầu không được nói "không có giao dịch nào" khi sổ có giao dịch.
+
+    Đây là mâu thuẫn chuyên viên nhìn thấy đầu tiên trên màn hình chi tiết cảnh
+    báo: câu tóm tắt phủ nhận, ba dòng dữ kiện ngay bên dưới liệt kê giao dịch
+    có ngày, có số tiền, có mã. Hai phần đọc hai nguồn khác nhau và chỉ phần đầu
+    rỗng — nói "không có giao dịch nào của tài khoản" là sai phạm vi.
+    """
+    agent = ExplanationAgent(FakeGeminiService(), "INV-1")
+    explanation = agent._deterministic(
+        alert("mega_pna"),
+        [
+            risk_evidence("graph"),
+            _behavior(incoming=0, outgoing=0),
+            _transactions([_tx("16017462", out=True, amount=30101.17)]),
+        ],
+    )
+    assert "không có giao dịch nào của tài khoản" not in explanation.summary
+    assert "sổ giao dịch của tài khoản có 1 giao dịch" in explanation.summary
+
+
+#: Từ ngữ kỹ thuật không được xuất hiện trong câu chuyên viên tuân thủ đọc.
+#: Tên mô hình và mã nhóm hành vi vẫn còn nguyên ở bảng phân rã điểm và sổ bằng
+#: chứng — chỗ kiểm toán viên tìm đến — chỉ là không chiếm chỗ câu đầu tiên.
+_JARGON = ("MEGA-PNA", "mega_pna", "geo_rule", "nhánh", "cửa sổ đặc trưng", "ảnh chụp", "detector")
+
+
+def test_the_summary_speaks_to_a_compliance_officer_not_an_engineer():
+    agent = ExplanationAgent(FakeGeminiService(), "INV-1")
+    risk = risk_evidence("graph")
+    risk.payload["components"]["mega_pna"] = {
+        "score": 1.0,
+        "weight": 1.0,
+        "contribution": 1.0,
+        "available": True,
+        "source_ref": "alert:ALT-1",
+    }
+    risk.payload["components"]["graph"]["available"] = False
+    explanation = agent._deterministic(alert("mega_pna"), [risk, _behavior(incoming=1, outgoing=1)])
+    for word in _JARGON:
+        assert word not in explanation.summary, word
+    assert "T02" not in explanation.summary
+
+
+def test_the_summary_says_what_the_account_did_with_the_money():
+    """Câu quan trọng nhất: rốt cuộc tài khoản này làm gì.
+
+    Bản cũ kể đủ số liệu rồi dừng, để chuyên viên tự ghép thành câu chuyện. Một
+    người mở ba trăm cảnh báo mỗi ngày không có thời gian làm việc đó.
+    """
+    agent = ExplanationAgent(FakeGeminiService(), "INV-1")
+    funnel = _behavior(incoming=1, outgoing=1)
+    funnel.payload["observed"].update(
+        {
+            "unique_in_counterparties": 3,
+            "unique_out_counterparties": 1,
+            "inflow_amount": 19967.46,
+            "outflow_amount": 712081.05,
+        }
+    )
+    explanation = agent._deterministic(alert("mega_pna"), [risk_evidence("graph"), funnel])
+    assert "Hình phễu" in explanation.summary
+    assert "điểm gom tiền" in explanation.summary
+
+
+def _geo_rule_evidence() -> EvidenceEnvelope:
+    return evidence(
+        EvidenceType.RULE_TRIGGER,
+        {
+            "alert_id": "ALT-1",
+            "detector": "geo_rule",
+            "triggered_rules": [
+                {
+                    "factor_code": "GEO_CORRIDOR",
+                    "factor_label": "Hành lang UK→UAE — rủi ro gấp 5.1 lần mức nền",
+                    "contribution": 61.64,
+                    "weight": 1.0,
+                }
+            ],
+            "geo_context": {
+                "corridor": "UK→UAE",
+                "from_country": "UK",
+                "to_country": "UAE",
+                "cross_border": True,
+                "corridor_transactions": 27372,
+                "corridor_label_rate": 0.005224,
+                "corridor_label_percent": 0.52,
+                "lift_vs_all": 5.136,
+                "lift_vs_cross_border": 1.678,
+                "baseline_all": 0.0010171,
+                "baseline_all_percent": 0.1,
+                "baseline_cross_border": 0.0031132,
+                "baseline_cross_border_percent": 0.31,
+                "country_count": 3,
+                "cash_count": 0,
+                "fx_count": 3,
+                "window_transactions": 8,
+                "driving_transaction_id": "28104974",
+            },
+        },
+        source="geo_rule_engine",
+    )
+
+
+def test_geo_alert_names_both_countries_and_the_baseline_it_compares_against():
+    """ "Gấp 5,1 lần mức nền" không kiểm chứng được nếu không nói mức nền là gì."""
+    agent = ExplanationAgent(FakeGeminiService(), "INV-1")
+    explanation = agent._deterministic(
+        alert("geo_rule"), [risk_evidence("rule"), _geo_rule_evidence(), _behavior(incoming=1, outgoing=1)]
+    )
+    corridor = next(claim for claim in explanation.claims if "UK → UAE" in claim.claim)
+    assert "0.52%" in corridor.claim
+    assert "0.31%" in corridor.claim and "xuyên biên giới" in corridor.claim
+    assert "0.1%" in corridor.claim
+    # Không dấu phân cách hàng nghìn: "27.372" bị đọc thành 27,372.
+    assert "27372" in corridor.claim
+
+
+def test_geo_signals_come_from_the_corridor_that_raised_the_alert():
+    """T06 đòi jurisdiction_signal; không nhánh nào sinh ra thì mọi cảnh báo địa
+    lý đều kết luận "chưa kiểm tra được" rồi trượt phản biện — cả 5.004 cảnh báo.
+    """
+    from src.investigation.agents import _evidence_by_type, _observed_signals
+
+    grouped = _evidence_by_type(
+        [_geo_rule_evidence(), _transactions([_tx("1", out=True, amount=5.0, src_country="UK", dst_country="UAE")])]
+    )
+    signals = _observed_signals(grouped)
+    assert signals["jurisdiction_signal"] is True
+    assert signals["cross_border_flow"] is True
+
+
+def test_a_graph_lookup_that_found_nothing_reads_as_checked_not_as_missing():
+    """ "Đã tra cứu, không thấy" và "chưa tra cứu" dẫn tới hai hành động khác nhau."""
+    from src.investigation.agents import _evidence_by_type, _observed_signals
+
+    empty = evidence(
+        EvidenceType.GRAPH_PATTERN,
+        {"available": False, "missing_reason": "Bộ phát hiện đồ thị không ghi nhận mẫu hình nào"},
+        source="graph_detector",
+    )
+    signals = _observed_signals(_evidence_by_type([empty]))
+    assert signals["network_flow"] is False
+    assert "network_flow" in signals  # có mặt = đã kiểm tra
+
+
+def test_repeated_transaction_lookups_do_not_duplicate_the_same_facts():
+    """Tác tử gọi GetTransactions hai lần thì giao dịch không được kể hai lần."""
+    agent = ExplanationAgent(FakeGeminiService(), "INV-1")
+    page = [_tx("16017462", out=True, amount=30101.17), _tx("16695722", out=False, amount=9257.95)]
+    explanation = agent._deterministic(
+        alert("mega_pna"),
+        [risk_evidence("graph"), _behavior(incoming=1, outgoing=1), _transactions(page), _transactions(page)],
+    )
+    cited = [claim.claim for claim in explanation.claims if "mã giao dịch 16017462" in claim.claim]
+    assert len(cited) == 1
+
+
+def test_the_identifier_mask_never_eats_a_number_the_claim_must_prove():
+    """``next_cursor`` là chuỗi "50", và nó từng cắt 5016.80 thành 16.80.
+
+    Bộ quét số sau đó đi tìm 16,8 trong bằng chứng, không thấy, rồi đánh trượt
+    một câu hoàn toàn đúng. Đo trên 163 phiên: đây là nguyên nhân
+    UNSUPPORTED_CLAIM nhiều nhất.
+    """
+    from src.investigation.agents import _mask_identifiers
+
+    page = _transactions([_tx("27571046", out=True, amount=5016.80)])
+    page.payload["next_cursor"] = "50"
+    masked = _mask_identifiers("tài khoản chuyển 5016.80 UK pounds (mã giao dịch 27571046).", [page])
+    assert "5016.80" in masked
+
+
+def test_critic_objection_about_a_transaction_id_in_the_ledger_is_refuted():
+    """Sổ bằng chứng là bên nói lời cuối, kể cả với mã giao dịch."""
+    page = _transactions([_tx("26005546", out=True, amount=21198.23)])
+    page.integrity.source_record_ids = ["26005546"]
+    issue = ValidationIssue(
+        type="UNSUPPORTED_CLAIM",
+        claim="Ngày 2023-06-08, tài khoản chuyển 21198.23 UK pounds (mã giao dịch 26005546).",
+        detail="Giao dịch 26005546 không có trong danh mục evidence_index.",
+    )
+    explanation = Explanation(
+        summary="x",
+        risk_drivers=[],
+        claims=[],
+        facts=[],
+        inferences=[],
+        missing_information=[],
+        typologies=[],
+        confidence=0.9,
+        recommended_action="ESCALATE_TO_L2",
+        requires_human_review=True,
+    )
+    assert EvidenceCriticAgent._is_refuted(issue, explanation, [page]) is True

@@ -21,6 +21,12 @@ from src.observability.redaction import stable_fingerprint
 
 logger = logging.getLogger("fin07.investigation")
 
+#: Cửa sổ hành vi mà bản giải thích luôn có, đủ rộng để phủ tập giao dịch mà
+#: ``GetTransactions`` trả về (50 dòng gần nhất). Hai phần đọc lệch cửa sổ nhau
+#: là nguồn mâu thuẫn số một trong các bản giải thích đã đo.
+BEHAVIOR_WINDOW = "30d"
+BEHAVIOR_WINDOW_DAYS = 30
+
 
 class InvestigationWorkflow:
     """Explicit bounded Supervisor → Explanation → Critic state machine."""
@@ -40,7 +46,18 @@ class InvestigationWorkflow:
     #:
     #: Không sửa bằng cách nhắc trong prompt. Prompt là gợi ý, còn đây là bảo đảm:
     #: thiếu bằng chứng bắt buộc thì quy trình tự gọi, tác tử không có cơ hội bỏ qua.
+    #: Khoá là giá trị THẬT của ``alert.detector``, không phải tên nhánh trong
+    #: tài liệu. Bản trước khoá theo ``"graph"`` và ``"ml"`` — hai giá trị không
+    #: tồn tại trong bảng ``alert``, nơi chỉ có ``mega_pna`` (5.000 cảnh báo) và
+    #: ``geo_rule`` (5.004). Cả khối này vì thế chưa bao giờ chạy một lần nào.
+    #:
+    #: Hậu quả đo được: nhóm hành vi T02 đòi tín hiệu ``network_flow``, mà tín
+    #: hiệu ấy chỉ sinh ra từ bằng chứng đồ thị. Không nhánh nào lấy bằng chứng
+    #: đồ thị, nên **mọi** cảnh báo MEGA-PNA đều kết luận "chưa kiểm tra được
+    #: tiền đi qua tài khoản trung gian vì thiếu bằng chứng tương ứng" — kể cả
+    #: 388 tài khoản có sẵn mẫu hình trong ``graph_detector_evidence``.
     REQUIRED_EVIDENCE: dict[str, tuple[tuple[str, EvidenceType], ...]] = {
+        "mega_pna": (("GetGraphEvidence", EvidenceType.GRAPH_PATTERN),),
         "graph": (("GetGraphEvidence", EvidenceType.GRAPH_PATTERN),),
         "ml": (("GetAnomalyExplanation", EvidenceType.ANOMALY_EXPLANATION),),
     }
@@ -84,7 +101,29 @@ class InvestigationWorkflow:
         if not required:
             return tool_count
 
-        present = {item.type for item in self.repository.list_evidence(investigation_id)}
+        evidence = self.repository.list_evidence(investigation_id)
+        present = {item.type for item in evidence}
+        # Cửa sổ hành vi phải đủ RỘNG, không chỉ đủ CÓ.
+        #
+        # Tác tử điều phối hay tự gọi GetAccountBehavior với cửa sổ mặc định 7
+        # ngày. Kiểm tra "đã có bằng chứng loại này chưa" liền thấy có, nên bước
+        # bổ sung bỏ qua, và bản giải thích tóm tắt tài khoản bằng đúng bảy ngày
+        # cuối trong khi sổ giao dịch bên dưới trải ra cả tháng.
+        #
+        # Quan sát trên hồ sơ thật: câu tóm tắt viết "chuyển đi 0,00 Euro tới 0
+        # đối tác" ngay phía trên bốn dòng dữ kiện ghi hai lần chuyển 30.101,17
+        # Euro. Cả hai đều đúng trong cửa sổ của mình, và chính bộ phản biện nêu
+        # CONTRADICTION vì đọc chúng cạnh nhau. Người rà soát cũng đọc y như vậy.
+        widest = max(
+            (
+                int(((getattr(item, "payload", None) or {}).get("observed") or {}).get("window_days") or 0)
+                for item in evidence
+                if item.type == EvidenceType.BEHAVIOR_FEATURE
+            ),
+            default=0,
+        )
+        if widest < BEHAVIOR_WINDOW_DAYS:
+            present.discard(EvidenceType.BEHAVIOR_FEATURE)
         for tool_name, evidence_type in required:
             if evidence_type in present:
                 continue
@@ -92,7 +131,7 @@ class InvestigationWorkflow:
             if tool_name == "GetAnomalyExplanation":
                 arguments["account_key"] = alert["account_key"]
             elif tool_name == "GetAccountBehavior":
-                arguments = {"account_key": alert["account_key"], "window": "30d"}
+                arguments = {"account_key": alert["account_key"], "window": BEHAVIOR_WINDOW}
             elif tool_name == "GetTransactions":
                 arguments = {"account_key": alert["account_key"]}
 

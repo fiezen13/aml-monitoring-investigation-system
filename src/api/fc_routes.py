@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.db.session import get_session
+from src.investigation.graph_narrative import narrate, read_neighbourhood
 from src.models.fc_schemas import (
     AgentRunDetailOut,
     AgentRunOut,
@@ -34,6 +35,7 @@ from src.models.fc_schemas import (
     ExposureOut,
     FlowOut,
     GraphEdgeOut,
+    GraphNarrativeOut,
     GraphNodeOut,
     GraphOut,
     HubOut,
@@ -1962,3 +1964,45 @@ async def detected_patterns(
             )
         )
     return results
+
+
+@router.get("/fc/graph/narrative", response_model=GraphNarrativeOut)
+async def graph_narrative(
+    account_key: str = Query(min_length=3, max_length=128),
+    window_days: int = Query(default=30, ge=1, le=90),
+) -> GraphNarrativeOut:
+    """Đọc hộ chuyên viên vùng đồ thị quanh một tài khoản.
+
+    Vì sao cần: màn hình đồ thị vẽ đúng nhưng không nói gì. Người rà soát nhìn
+    vào một mớ đỉnh và mũi tên rồi phải tự trả lời tiền vào từ đâu, tiền đi đâu,
+    ai đứng giữa, vì sao chỗ này đáng nghi và nên nhìn vào đâu trước. Không ai
+    làm được việc đó trong vài phút, nên cả màn hình trở thành trang trí.
+
+    Mốc thời gian là giao dịch gần nhất của chính tài khoản, không phải giờ hệ
+    thống. Dữ liệu là lịch sử: neo vào ``now()`` thì cửa sổ nằm hoàn toàn sau
+    giao dịch cuối cùng và mọi phép đo trả về 0.
+    """
+    with get_session() as session:
+        as_of = session.execute(
+            text(
+                """SELECT max(occurred_at) FROM transaction
+                    WHERE from_account_key = :account OR to_account_key = :account"""
+            ),
+            {"account": account_key},
+        ).scalar_one_or_none()
+        if as_of is None:
+            raise HTTPException(status_code=404, detail=f"Không có giao dịch nào của tài khoản {account_key}")
+        reading = read_neighbourhood(session, account_key, as_of=as_of, window_days=window_days)
+
+    narrative, source = await narrate(reading)
+    return GraphNarrativeOut(
+        account_key=account_key,
+        window_start=reading["window_start"],
+        window_end=reading["window_end"],
+        flow_in=narrative.flow_in,
+        flow_out=narrative.flow_out,
+        why_suspicious=narrative.why_suspicious,
+        how_to_read=narrative.how_to_read,
+        source=source,
+        reading=reading,
+    )

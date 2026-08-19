@@ -313,7 +313,10 @@ class FakeGeminiService(GeminiService):
 class GoogleGeminiService(GeminiService):
     """Official Google Gen AI SDK adapter; owns one reusable client."""
 
-    _AGENTS = {"investigation_supervisor", "explanation_agent", "evidence_critic"}
+    #: ``graph_narrator`` không nằm trong quy trình điều tra ba tác tử: nó phục
+    #: vụ màn hình đồ thị, chạy đồng bộ theo thao tác của người dùng, và có bản
+    #: dự phòng tất định nên hỏng cũng không làm trống màn hình.
+    _AGENTS = {"investigation_supervisor", "explanation_agent", "evidence_critic", "graph_narrator"}
 
     def __init__(self, settings: Settings | None = None, *, client: genai.Client | None = None):
         self.settings = settings or get_settings()

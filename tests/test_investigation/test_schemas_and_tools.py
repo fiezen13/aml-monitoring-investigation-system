@@ -153,7 +153,7 @@ def test_a_branch_with_zero_weight_is_reported_as_evaluated_not_omitted():
         alert_id="ALT-1", account_key="001:A", detector="graph", score=0.70, as_of_time="2022-09-17T00:00:00Z"
     )
 
-    assert limitation and "selected out on validation" in limitation
+    assert limitation and "bị loại ở bước kiểm định" in limitation
 
 
 def test_risk_breakdown_names_the_single_champion_instead_of_claiming_fusion():
@@ -166,7 +166,7 @@ def test_risk_breakdown_names_the_single_champion_instead_of_claiming_fusion():
     assert fusion_available is False
     assert components["graph"].available is True
     assert components["anomaly"].available is False
-    assert limitation and "champion" in limitation
+    assert limitation and "thắng ở bước kiểm định" in limitation
 
 
 def test_risk_breakdown_falls_back_to_the_detector_score_without_a_fusion_release():

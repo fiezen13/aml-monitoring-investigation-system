@@ -121,10 +121,18 @@ def reasons_for(row: dict[str, Any]) -> list[tuple[str, str, float, float]]:
     over = int(row["edges_over_threshold"])
     amount = float(row["flagged_amount"] or 0.0)
     return [
-        ("MP_SCORE_MAX", f"Giao dịch rủi ro nhất trong cửa sổ đạt {score:.3f}", round(score * 100, 2), 1.0),
+        ("MP_SCORE_MAX", f"Giao dịch rủi ro nhất trong khoảng quan sát đạt {score:.3f}", round(score * 100, 2), 1.0),
         ("MP_SCORE_TOP5", f"Trung bình 5 giao dịch rủi ro nhất đạt {top5:.3f}", round(top5 * 100, 2), 0.0),
         ("MP_EDGES_OVER", f"{over} giao dịch vượt ngưỡng cảnh báo", 0.0, 0.0),
-        ("MP_FLAGGED_AMOUNT", f"Tổng {amount:,.0f} đơn vị tiền trên các giao dịch bị gắn cờ", 0.0, 0.0),
+        # Không dấu phân cách hàng nghìn. "9,258" đọc trong tiếng Việt là chín
+        # phẩy hai năm tám, và bộ đối chiếu số của tác tử phản biện cũng đọc đúng
+        # như vậy rồi kết luận con số ấy không có trong bằng chứng nào.
+        (
+            "MP_FLAGGED_AMOUNT",
+            f"Tổng {amount:.0f} trên các giao dịch bị gắn cờ, cộng thô theo nguyên tệ (chưa quy đổi)",
+            0.0,
+            0.0,
+        ),
     ]
 
 

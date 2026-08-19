@@ -394,3 +394,25 @@ class EdgeModelReleaseOut(BaseModel):
     status: str
     trained_at: datetime
     activated_at: datetime | None
+
+
+class GraphNarrativeOut(BaseModel):
+    """Bản kể của tác tử cho một vùng đồ thị.
+
+    Màn hình đồ thị vẽ đúng nhưng không giải thích gì: chuyên viên nhìn vào một
+    mớ đỉnh và mũi tên rồi phải tự trả lời tiền vào từ đâu, đi đâu, ai đứng
+    giữa, vì sao đáng nghi. Bốn trường dưới đây là bốn câu trả lời ấy.
+
+    ``source`` cho biết bản kể do mô hình viết hay do phần đo tự dựng. Đây là
+    thông tin của kiểm toán, và cũng để chuyên viên biết mình đang đọc gì.
+    """
+
+    account_key: str
+    window_start: datetime
+    window_end: datetime
+    flow_in: str
+    flow_out: str
+    why_suspicious: list[str]
+    how_to_read: list[str]
+    source: Literal["gemini", "deterministic"]
+    reading: dict[str, Any]

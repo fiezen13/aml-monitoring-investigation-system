@@ -362,6 +362,24 @@ export interface DetectedPattern {
   hops: PatternHop[];
 }
 
+/**
+ * Bản kể của tác tử cho một vùng đồ thị.
+ *
+ * `source` cho biết bản kể do mô hình viết hay do phần đo tất định tự dựng.
+ * Màn hình phải nói rõ điều đó: người rà soát cần biết mình đang đọc gì.
+ */
+export interface GraphNarrative {
+  account_key: string;
+  window_start: string;
+  window_end: string;
+  flow_in: string;
+  flow_out: string;
+  why_suspicious: string[];
+  how_to_read: string[];
+  source: "gemini" | "deterministic";
+  reading: Record<string, unknown>;
+}
+
 export interface FcGraphNode {
   id: string;
   type: string;
@@ -867,6 +885,9 @@ export const api = {
   entityGraph: (limit = 400) => request<FcGraph>(`/fc/graph${query({ limit })}`),
   graphPatterns: (accounts: string[], pattern?: string, limit = 25) =>
     request<DetectedPattern[]>(`/fc/graph/patterns${query({ accounts: accounts.join(","), pattern, limit })}`),
+
+  graphNarrative: (accountKey: string, windowDays = 30) =>
+    request<GraphNarrative>(`/fc/graph/narrative${query({ account_key: accountKey, window_days: windowDays })}`),
 
   crypto: (limit = 200) => request<FcCrypto>(`/fc/crypto${query({ limit })}`),
 
