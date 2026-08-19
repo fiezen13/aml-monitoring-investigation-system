@@ -68,7 +68,7 @@ export function ModelsPage() {
     <PageShell variant="dense">
       <ScreenTitle
         title="Mô hình đang phục vụ"
-        meta="Artifact, benchmark và policy contract của đúng release nối vào giao diện"
+        meta="Chỉ số của MỘT nhánh — nhánh đang chấm điểm cho hàng đợi chính. Các nhánh khác xem ở Đánh giá chuẩn"
       />
 
       {release.loading ? (
@@ -79,6 +79,20 @@ export function ModelsPage() {
         </div>
       ) : (
         <>
+          {/* Gắn nhãn DATASET/nhánh ngay đầu trang: mọi con số bên dưới là của
+              đúng bộ dữ liệu này, không phải chỉ số chung. F1 ở đây (IBM, phát
+              hiện rửa tiền trong ngân hàng) tình cờ gần với F1 nhánh Bitcoin,
+              nên nếu không nói rõ dataset thì rất dễ đọc nhầm. */}
+          <div className="flex flex-wrap items-center gap-2.5 rounded-panel border border-line bg-sunken px-4 py-3">
+            <span className="rounded-control bg-agent/15 px-2 py-0.5 text-2xs font-medium text-agent">
+              Nhánh đang phục vụ
+            </span>
+            <span className="text-sm font-semibold text-ink-hi">{release.data?.dataset ?? "—"}</span>
+            <span className="text-2xs text-ink-low">
+              · mọi chỉ số dưới đây đo trên bộ dữ liệu này, không phải số gộp của cả ba nhánh
+            </span>
+          </div>
+
           <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               label="Phiên bản model"
@@ -154,7 +168,7 @@ export function ModelsPage() {
 
       <Panel
         title="Trôi phân phối điểm theo tuần"
-        subtitle="PSI so với tuần đầu tiên của bộ dữ liệu. Dưới 0,1 coi như không đổi; trên 0,25 là đã lệch"
+        subtitle={`Chỉ nhánh ${release.data?.dataset ?? "đang phục vụ"} · PSI so với tuần đầu. Dưới 0,1 coi như không đổi; trên 0,25 là đã lệch`}
         bodyClassName="space-y-2"
       >
         {monitor.loading && <Skeleton rows={3} />}
