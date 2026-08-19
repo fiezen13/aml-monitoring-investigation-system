@@ -607,7 +607,15 @@ export interface EdgeModelRelease {
   feature_count: number;
   benchmark: {
     primary_seed: Record<string, number>;
-    over_seeds: { count: number; f1_mean: number; f1_sample_std: number };
+    // Hình dạng thật của payload: một mảng `runs`, mỗi seed một dòng. Các trường
+    // tổng hợp `f1_mean` / `f1_sample_std` CHỈ có khi chạy nhiều seed, nên khai
+    // là tuỳ chọn — giao diện tự tính lại từ `runs` để chịu được cả hai.
+    over_seeds: {
+      count?: number;
+      f1_mean?: number;
+      f1_sample_std?: number | null;
+      runs: Array<{ seed: number; f1: number; pr_auc: number; precision: number; recall: number }>;
+    };
     operating_points: Array<Record<string, number>>;
   };
   policy: Record<string, boolean | string>;

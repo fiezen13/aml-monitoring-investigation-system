@@ -21,10 +21,26 @@ export function ModelsPage() {
   const release = useApi(() => api.edgeModelRelease(), []);
   const monitor = useApi(() => api.modelMonitor(), []);
   const primary = release.data?.benchmark.primary_seed;
-  const seeded = release.data?.benchmark.over_seeds;
   const alertRate = release.data
     ? (release.data.triggered_rows / release.data.transaction_rows) * 100
     : null;
+
+  /**
+   * F1 trung bình và độ lệch, tính TỪ danh sách seed thật.
+   *
+   * Bản trước đọc thẳng `over_seeds.f1_mean` / `f1_sample_std`. Nhưng release
+   * hiện tại chạy 1 seed nên payload chỉ có `over_seeds.runs`, không có hai
+   * trường ấy — và `undefined.toFixed()` làm hỏng toàn bộ render, cả trang đen
+   * kịt. Tính lại từ `runs` vừa chịu được mọi số seed, vừa trung thực: một seed
+   * thì KHÔNG bịa ra độ lệch, vì độ lệch mẫu của một điểm là vô nghĩa.
+   */
+  const runs = release.data?.benchmark.over_seeds?.runs ?? [];
+  const f1Values = runs.map((r) => r.f1).filter((v): v is number => typeof v === "number");
+  const f1Mean = f1Values.length ? f1Values.reduce((sum, v) => sum + v, 0) / f1Values.length : null;
+  const f1Std =
+    f1Values.length > 1 && f1Mean != null
+      ? Math.sqrt(f1Values.reduce((sum, v) => sum + (v - f1Mean) ** 2, 0) / (f1Values.length - 1))
+      : null;
 
   /**
    * Gộp các chỉ số giám sát về từng tuần dữ liệu.
@@ -71,10 +87,16 @@ export function ModelsPage() {
               delta={`${release.data?.status ?? "—"} · ${release.data?.feature_count ?? 0} features`}
             />
             <KpiCard
-              label="F1 · 5 seeds"
-              value={seeded ? seeded.f1_mean.toFixed(4) : "—"}
+              label={`F1 · ${f1Values.length} seed${f1Values.length === 1 ? "" : "s"}`}
+              value={f1Mean != null ? f1Mean.toFixed(4) : "—"}
               valueColor={C.ok}
-              delta={seeded ? `sample std ±${seeded.f1_sample_std.toFixed(4)}` : "—"}
+              delta={
+                f1Std != null
+                  ? `sample std ±${f1Std.toFixed(4)}`
+                  : f1Values.length === 1
+                    ? "1 seed · chưa ước lượng dao động"
+                    : "—"
+              }
             />
             <KpiCard
               label="PR-AUC · seed 42"
