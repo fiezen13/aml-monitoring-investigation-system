@@ -154,7 +154,16 @@ export function WorldPage() {
       },
       { l: "Nghiêm trọng", v: String(crit.length), t: "risk" as Tone, d: "cần xử lý ngay" },
       { l: "Giao dịch", v: int(flows.reduce((sum, f) => sum + f.txn_count, 0)), t: "neutral" as Tone, d: "trong cửa sổ" },
-      { l: "Cảnh báo", v: String(flows.reduce((sum, f) => sum + f.alert_count, 0)), t: "risk" as Tone, d: "trên hành lang" },
+      // Cộng dồn alert_count qua các hành lang là ĐẾM TRÙNG: một cảnh báo chạm
+      // nhiều hành lang thì được cộng nhiều lần. Số đo đúng cho một tấm thẻ là
+      // cao nhất trên một hành lang, không phải tổng — 5.004 cảnh báo thật từng
+      // hiện thành 19.258 vì phép cộng này.
+      {
+        l: "Cảnh báo",
+        v: String(flows.reduce((peak, f) => Math.max(peak, f.alert_count), 0)),
+        t: "risk" as Tone,
+        d: "trên hành lang nặng nhất",
+      },
       { l: "Trung tâm", v: String(world.data?.hubs.length ?? 0), t: "info" as Tone, d: "đang theo dõi" },
     ];
   }, [world.data]);
@@ -587,7 +596,11 @@ export function WorldPage() {
                   className="flex items-center gap-2 rounded-[7px] px-1.5 py-1.5 text-left text-sm transition-colors hover:bg-elev"
                 >
                   <span className="truncate-1 flex-1 text-ink-mid">{hubNameVi(h.name)}</span>
-                  <span className="tabular flex-none font-mono text-2xs text-ink-low">{int(h.inbound + h.outbound)} GD</span>
+                  {/* inbound + outbound là số LƯỢT chạm quốc gia, không phải số giao dịch:
+                        một giao dịch nội địa tính cả chiều đi lẫn chiều đến. */}
+                    <span className="tabular flex-none font-mono text-2xs text-ink-low">
+                      {int(h.inbound + h.outbound)} lượt
+                    </span>
                 </button>
               ))}
           </div>

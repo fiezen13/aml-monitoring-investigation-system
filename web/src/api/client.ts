@@ -749,7 +749,8 @@ export const api = {
 
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 
-  dashboard: () => request<ApiDashboard>("/dashboard"),
+  dashboard: (params: { dataset?: string } = {}) =>
+    request<ApiDashboard>(`/dashboard${query(params)}`),
 
   alerts: (
     params: {

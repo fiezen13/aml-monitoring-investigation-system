@@ -86,7 +86,9 @@ export function AlertsPage() {
       }),
     [typology, queryText, dataset, page],
   );
-  const dashboard = useApi(() => api.dashboard(), []);
+  // Thẻ số liệu phải theo cùng bộ lọc với bảng, nếu không màn hình tự mâu thuẫn:
+  // bảng hiện 5.004 dòng SAML-D còn thẻ ghi 10.004 cảnh báo.
+  const dashboard = useApi(() => api.dashboard({ dataset: dataset || undefined }), [dataset]);
 
   const rows = alerts.data?.rows ?? [];
   const total = alerts.data?.total ?? 0;

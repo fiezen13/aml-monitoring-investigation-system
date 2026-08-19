@@ -627,8 +627,15 @@ async def list_audit(
 
 
 @router.get("/dashboard", response_model=DashboardOut)
-async def dashboard() -> DashboardOut:
-    """Số liệu Trung tâm Điều hành — đếm thật, không cứng hoá con số nào."""
+async def dashboard(
+    dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
+) -> DashboardOut:
+    """Số liệu Trung tâm Điều hành — đếm thật, không cứng hoá con số nào.
+
+    ``dataset`` phải đi cùng bộ lọc của hàng đợi. Lọc bảng mà bốn thẻ số liệu
+    trên đầu vẫn là tổng của mọi bộ thì màn hình tự mâu thuẫn: hàng đợi hiện
+    5.004 dòng SAML-D còn thẻ ghi 10.004 cảnh báo.
+    """
     with get_session() as session:
         counts = (
             session.execute(
@@ -647,12 +654,15 @@ async def dashboard() -> DashboardOut:
                          -- khoản nên `alert.transaction_id` là NULL; điều kiện cũ loại
                          -- sạch chúng, và bảng điều khiển báo 0 trong khi hàng đợi có
                          -- hai vạn cảnh báo. Các số liệu theo lô nằm riêng bên dưới.
-                         (SELECT count(*) FROM alert WHERE status <> 'closed')                  AS open_alerts,
+                         (SELECT count(*) FROM alert WHERE status <> 'closed'
+                            AND (CAST(:dataset AS text) IS NULL OR dataset = CAST(:dataset AS text)))  AS open_alerts,
                          -- Cùng phạm vi với open_alerts. Không lọc `closed` ở đây từng
                          -- khiến bảng điều khiển báo 14.592 cảnh báo rủi ro cao trên tổng
                          -- 10.414 đang mở — một con số không thể đúng.
                          (SELECT count(*) FROM alert
-                           WHERE status <> 'closed' AND risk_score >= 80)                       AS high_risk_alerts,
+                           WHERE status <> 'closed' AND risk_score >= 80
+                             AND (CAST(:dataset AS text) IS NULL
+                                  OR dataset = CAST(:dataset AS text)))                         AS high_risk_alerts,
                          (SELECT count(*) FROM aml_case
                            WHERE state NOT IN ('XuatHoSo', 'DongKhongBaoCao')
                              AND EXISTS (
@@ -664,7 +674,9 @@ async def dashboard() -> DashboardOut:
                              AND EXISTS (
                                  SELECT 1 FROM alert al WHERE al.case_id = sd.case_id))         AS sar_pending,
                          (SELECT coalesce(avg(risk_score), 0) FROM alert
-                           WHERE status <> 'closed')                                            AS avg_risk_score,
+                           WHERE status <> 'closed'
+                             AND (CAST(:dataset AS text) IS NULL
+                                  OR dataset = CAST(:dataset AS text)))                         AS avg_risk_score,
                          -- Số liệu theo lô: chỉ có nghĩa khi đang có một edge-model
                          -- release hoạt động. Không có thì phải trả 0, không được trả
                          -- NULL — DashboardOut khai kiểu int, và NULL làm cả endpoint
@@ -677,6 +689,7 @@ async def dashboard() -> DashboardOut:
                          coalesce((SELECT triggered_rows FROM latest), 0)                       AS subjects_triggered,
                          coalesce((SELECT triggered_rows FROM latest), 0)                       AS batch_alerts_created"""
                 ),
+                {"dataset": dataset},
             )
             .mappings()
             .one()
@@ -692,9 +705,11 @@ async def dashboard() -> DashboardOut:
                     """SELECT typology_code, count(*) AS alert_count
                          FROM alert
                         WHERE status <> 'closed'
+                          AND (CAST(:dataset AS text) IS NULL OR dataset = CAST(:dataset AS text))
                         GROUP BY typology_code
                         ORDER BY count(*) DESC, typology_code"""
                 ),
+                {"dataset": dataset},
             )
             .mappings()
             .all()
