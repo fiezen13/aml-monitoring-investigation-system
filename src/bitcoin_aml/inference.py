@@ -15,6 +15,7 @@ from pathlib import Path
 import joblib
 
 from src.bitcoin_aml.config import BitcoinAmlConfig, get_bitcoin_config
+from src.bitcoin_aml.explain import build_explanation
 from src.bitcoin_aml.model import illicit_probability
 from src.bitcoin_aml.schemas import (
     BitcoinAmlResult,
@@ -88,22 +89,33 @@ class BitcoinAmlPredictor:
         ]
         return PredictionEvidence(timestep=item.timestep, top_features=top, pattern_evidence=[])
 
-    def predict_one(self, item: TransactionFeatures) -> BitcoinAmlResult:
-        """Chấm một giao dịch và dựng bằng chứng có cấu trúc."""
-        self._validate(item)
-        score = illicit_probability(self.model, [item.features])[0]
+    def _build_result(self, item: TransactionFeatures, score: float) -> BitcoinAmlResult:
+        """Dựng kết quả đầy đủ từ một điểm số — chấm đơn và chấm lô dùng chung.
+
+        Gộp một chỗ để prediction/decision/explanation không lệch nhau giữa hai
+        đường gọi.
+        """
         label = "illicit" if score >= 0.5 else "licit"
         # confidence = độ tự tin về nhãn ĐƯỢC chọn: xa 0.5 là chắc, gần 0.5 là lưỡng lự.
         confidence = score if label == "illicit" else 1.0 - score
         level = self.thresholds.level(score)
+        prediction = Prediction(label=label, risk_score=round(score, 6), confidence=round(confidence, 6))
+        feature_values = dict(zip(self.selected_features, item.features, strict=True))
         return BitcoinAmlResult(
             model=self.model_name,
             model_id=self.model_id,
             transaction_id=item.transaction_id,
-            prediction=Prediction(label=label, risk_score=round(score, 6), confidence=round(confidence, 6)),
+            prediction=prediction,
             evidence=self._evidence(item),
             decision=Decision(risk_level=level, requires_review=level in ("HIGH", "CRITICAL")),
+            explanation=build_explanation(feature_values, self.feature_importance, prediction),
         )
+
+    def predict_one(self, item: TransactionFeatures) -> BitcoinAmlResult:
+        """Chấm một giao dịch, kèm bằng chứng có cấu trúc và giải thích đời thường."""
+        self._validate(item)
+        score = illicit_probability(self.model, [item.features])[0]
+        return self._build_result(item, score)
 
     def predict_batch(self, items: list[TransactionFeatures]) -> list[BitcoinAmlResult]:
         """Chấm nhiều giao dịch trong MỘT lượt ``predict_proba`` (vector hoá).
@@ -115,19 +127,4 @@ class BitcoinAmlPredictor:
             self._validate(item)
         matrix = [item.features for item in items]
         scores = illicit_probability(self.model, matrix)
-        results: list[BitcoinAmlResult] = []
-        for item, score in zip(items, scores, strict=True):
-            label = "illicit" if score >= 0.5 else "licit"
-            confidence = score if label == "illicit" else 1.0 - score
-            level = self.thresholds.level(score)
-            results.append(
-                BitcoinAmlResult(
-                    model=self.model_name,
-                    model_id=self.model_id,
-                    transaction_id=item.transaction_id,
-                    prediction=Prediction(label=label, risk_score=round(score, 6), confidence=round(confidence, 6)),
-                    evidence=self._evidence(item),
-                    decision=Decision(risk_level=level, requires_review=level in ("HIGH", "CRITICAL")),
-                )
-            )
-        return results
+        return [self._build_result(item, score) for item, score in zip(items, scores, strict=True)]

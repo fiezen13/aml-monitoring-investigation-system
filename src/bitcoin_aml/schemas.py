@@ -67,6 +67,19 @@ class Decision(BaseModel):
     requires_review: bool
 
 
+class BitcoinExplanation(BaseModel):
+    """Giải thích đời thường cho chuyên viên non-tech.
+
+    ``headline`` một câu tóm tắt; ``reasons`` các ý cụ thể từ đặc trưng ĐỌC ĐƯỢC
+    (số địa chỉ gửi/nhận, số BTC, phí…); ``caveat`` nói thẳng phần căn cứ là đặc
+    trưng ẩn danh và không có nhãn mẫu hình — để không ngộ nhận.
+    """
+
+    headline: str
+    reasons: list[str] = Field(default_factory=list)
+    caveat: str
+
+
 class BitcoinAmlResult(BaseModel):
     """Kết quả một giao dịch — đúng dạng bằng chứng có cấu trúc cho tác tử.
 
@@ -86,6 +99,8 @@ class BitcoinAmlResult(BaseModel):
     prediction: Prediction
     evidence: PredictionEvidence
     decision: Decision
+    #: Giải thích đời thường cho chuyên viên — trung thực, không bịa mẫu hình.
+    explanation: BitcoinExplanation
 
 
 class BatchPredictResponse(BaseModel):

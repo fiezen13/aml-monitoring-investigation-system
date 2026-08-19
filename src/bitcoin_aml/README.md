@@ -152,6 +152,23 @@ Ví dụ response (bằng chứng cho tác tử):
 - 503 nếu chưa huấn luyện (thiếu artifact) — khác với 422 do đầu vào sai.
 - `risk_score` = `P(illicit)` từ `predict_proba`. **Không** cộng với điểm IBM/SAML-D.
 
+## Giải thích đời thường
+
+Mỗi kết quả kèm khối `explanation` (headline / reasons / caveat) viết bằng tiếng
+Việt thường cho chuyên viên non-tech — **không** nhắc tên cột kỹ thuật, **không**
+bịa tên mẫu hình rửa tiền (Elliptic++ không có nhãn đó). Chỉ 17/182 đặc trưng
+của Elliptic++ là đọc được (số địa chỉ gửi/nhận, tổng BTC, phí, kích thước…),
+nên câu giải thích chỉ nói về những đặc trưng ấy và kèm lưu ý rằng phần lớn căn
+cứ là đặc trưng ẩn danh. Ví dụ:
+
+> *"Hệ thống nghi ngờ đây là giao dịch bất hợp pháp — mức nghi ngờ 61/100. Đây
+> là nhận định thống kê, cần chuyên viên rà soát."*
+> • Giao dịch gom tiền từ 8 địa chỉ khác nhau rồi dồn về 2 địa chỉ — dáng gom
+> tiền, nên soi kỹ.
+
+Tất định, không gọi mô hình ngôn ngữ (đặc trưng là số có nghĩa rõ, không có chỗ
+để bịa).
+
 ## Agent integration
 
 Kết quả trên là bằng chứng có cấu trúc mà tác tử tiêu thụ riêng theo domain
@@ -175,6 +192,9 @@ Ngưỡng là **vận hành** (khi nào đẩy lên rà soát), không phải nh
 
 ## Giới hạn hiện tại
 
+- **Không nối vào quy trình điều tra 3-tác-tử** như IBM/SAML-D: Bitcoin có
+  giải thích đời thường riêng (khối `explanation`) nhưng không chạy qua workflow
+  điều tra vì Elliptic++ ẩn danh (không có tài khoản/giao dịch thật để tra công cụ).
 - **Transaction-level only.** Actor/wallet-level (P2) chưa làm — sẽ dùng
   `wallets_features.csv` / `wallets_classes.csv` với cùng khuôn, giữ riêng
   `wallet_risk` khỏi `transaction_risk`, không tự hợp nhất.
