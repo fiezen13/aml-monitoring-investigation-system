@@ -29,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_ID = "REL-GEO-SAMLD-V1"
-SMOOTHING = 200  # số giao dịch sạch giả định, chặn hành lang bé đạt điểm tuyệt đối
+MIN_SUPPORT = 2000  # số giao dịch tối thiểu để một hành lang được tính mức nâng
 MAX_FLOWS = 400
 
 
@@ -118,6 +118,33 @@ ROLLUP_SQL = """
 DELETE FROM edge_country_flow WHERE release_id = '{release}';
 DELETE FROM edge_country_hub  WHERE release_id = '{release}';
 
+-- Mức rủi ro của hành lang = MỨC NÂNG so với nền, quy về thang 0-100.
+--
+-- Trước đây risk_score là tỉ lệ cảnh_báo/giao_dịch. Đó là một TỈ LỆ, không phải
+-- một thang mức độ, và giao diện thì đọc nó như thang mức độ: ≥60 là đáng ngờ,
+-- ≥80 là nghiêm trọng. Tỉ lệ trần trụi cho hành lang bốn giao dịch điểm tuyệt
+-- đối; làm mượt xong thì mọi hành lang tụt xuống 0-27 và cả bản đồ xanh hết,
+-- không còn hành lang nào đáng ngờ. Cả hai đều sai.
+--
+-- Mức nâng thì trả lời đúng câu hỏi của bản đồ: đi qua hành lang này thì xác
+-- suất dính rửa tiền cao gấp mấy lần mức chung. Đo trên train+validation, có
+-- ngưỡng số giao dịch tối thiểu, rồi quy tuyến tính về 0-100 theo hành lang
+-- nặng nhất.
+DROP TABLE IF EXISTS geo_corridor_lift;
+CREATE TABLE geo_corridor_lift AS
+WITH labelled AS (
+    SELECT t.from_country, t.to_country, l.is_laundering
+    FROM transaction t
+    JOIN label.saml_d_truth l ON l.source_line_number = t.source_line_number
+    WHERE t.source_dataset = 'SAML-D'
+      AND t.dataset_split IN ('train', 'validation')
+      AND t.from_country <> t.to_country
+),
+base AS (SELECT avg(is_laundering::numeric) AS rate FROM labelled)
+SELECT from_country, to_country, count(*) AS n,
+       avg(is_laundering::numeric) / NULLIF((SELECT rate FROM base), 0) AS lift
+FROM labelled GROUP BY 1, 2 HAVING count(*) >= {min_support};
+
 -- Hành lang: gộp theo (nguồn, đích, tiền tệ, kênh). alert_count đếm số cảnh báo
 -- geo_rule mà tài khoản GỬI của hành lang ấy đang mở — nối bản đồ với hàng đợi.
 INSERT INTO edge_country_flow (release_id, source_country_code, target_country_code,
@@ -125,12 +152,9 @@ INSERT INTO edge_country_flow (release_id, source_country_code, target_country_c
                                first_seen, last_seen, alert_count, risk_score, typology_code)
 SELECT '{release}', src, dst, currency, channel, txn_count, amount_native,
        first_seen, last_seen, alert_count,
-       -- Làm mượt bằng SMOOTHING giao dịch giả định sạch.
-       --
-       -- Tỉ lệ trần trụi cho một hành lang 4 giao dịch với 4 cảnh báo ra đúng
-       -- 100 điểm, và nó đứng đầu bảng xếp hạng trên mọi hành lang thật có hàng
-       -- chục nghìn giao dịch. Bốn quan sát không đủ để nói bất cứ điều gì.
-       LEAST(round(100.0 * alert_count / (txn_count + {smoothing}), 2), 100.00),
+       -- Hành lang AN TOÀN HƠN mức nền cho lift < 1, tức điểm âm. Sàn là 0:
+       -- thang này đo mức nguy, không đo mức an toàn.
+       GREATEST(LEAST(round(risk_scaled, 2), 100.00), 0.00),
        typology_code
 FROM (
     SELECT {t_src} AS src, {t_dst} AS dst,
@@ -138,10 +162,16 @@ FROM (
            count(*) AS txn_count, sum(t.amount) AS amount_native,
            min(t.occurred_at) AS first_seen, max(t.occurred_at) AS last_seen,
            count(DISTINCT a.alert_id) AS alert_count,
-           mode() WITHIN GROUP (ORDER BY a.typology_code) AS typology_code
+           mode() WITHIN GROUP (ORDER BY a.typology_code) AS typology_code,
+           -- Hành lang chưa đủ số giao dịch tối thiểu thì coi như mức nền (lift 1),
+           -- không cho nó điểm cao chỉ vì mẫu bé.
+           100.0 * (COALESCE(max(cl.lift), 1.0) - 1.0)
+                 / NULLIF((SELECT max(lift) - 1.0 FROM geo_corridor_lift), 0) AS risk_scaled
     FROM transaction t
     LEFT JOIN alert a
            ON a.account_key = t.from_account_key AND a.detector = 'geo_rule'
+    LEFT JOIN geo_corridor_lift cl
+           ON cl.from_country = t.from_country AND cl.to_country = t.to_country
     -- Ràng buộc của bảng chặn hành lang nội địa: bản đồ chỉ vẽ dòng chảy GIỮA
     -- các quốc gia. Lọc ngay tại đây thay vì để ràng buộc ném lỗi.
     WHERE t.source_dataset = 'SAML-D'
@@ -195,7 +225,7 @@ def main() -> int:
         ROLLUP_SQL.format(
             release=RELEASE_ID,
             max_flows=MAX_FLOWS,
-            smoothing=SMOOTHING,
+            min_support=MIN_SUPPORT,
             t_src=ISO_CASE.format(col="t.from_country"),
             t_dst=ISO_CASE.format(col="t.to_country"),
             p_src=ISO_CASE.format(col="from_country"),
