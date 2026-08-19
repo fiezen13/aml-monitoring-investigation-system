@@ -84,6 +84,26 @@ export function WorldPage() {
 
   // Chuyển hợp đồng API sang hình dạng mà engine canvas mong đợi. Giữ phép
   // chuyển ở một chỗ để engine không phải biết gì về API, và ngược lại.
+  /** Một dòng mỗi CẶP QUỐC GIA, giữ tổ hợp tiền tệ/kênh nặng nhất.
+   *
+   * `edge_country_flow` tách theo (nguồn, đích, tiền tệ, kênh), còn điểm rủi ro
+   * tính theo cặp quốc gia — nên mọi tổ hợp của cùng một cặp có điểm bằng nhau.
+   * Xếp hạng thẳng trên danh sách ấy cho ra mười bốn dòng "Anh → Morocco 100"
+   * chồng lên nhau, và bản đồ Top 25 vẽ đúng vài cặp lặp lại. Gộp trước khi xếp.
+   */
+  const uniqueFlows = useMemo(() => {
+    const all = world.data?.flows ?? [];
+    const best = new Map<string, (typeof all)[number]>();
+    for (const f of all) {
+      const key = `${f.source_hub}→${f.target_hub}`;
+      const cur = best.get(key);
+      if (!cur || f.alert_count > cur.alert_count || (f.alert_count === cur.alert_count && f.txn_count > cur.txn_count)) {
+        best.set(key, f);
+      }
+    }
+    return [...best.values()];
+  }, [world.data]);
+
   const mapData = useMemo<MapData | null>(() => {
     if (!world.data) return null;
     return {
@@ -103,7 +123,7 @@ export function WorldPage() {
         cases: h.alerts,
         riskN: h.risk_score,
       })),
-      flows: world.data.flows.map((f, i) => ({
+      flows: uniqueFlows.map((f, i) => ({
         id: f.id,
         sn: hubNameVi(f.source_name),
         tn: hubNameVi(f.target_name),
@@ -553,7 +573,7 @@ export function WorldPage() {
             <span className="text-body font-semibold text-ink-hi">Hành lang rủi ro cao</span>
           </div>
           <div className="flex flex-col gap-[3px] px-2.5 pb-1.5">
-            {[...(world.data?.flows ?? [])]
+            {[...uniqueFlows]
               .filter((f) => f.risk_score >= 60)
               .sort((a, b) => b.risk_score - a.risk_score)
               .map((f) => (
