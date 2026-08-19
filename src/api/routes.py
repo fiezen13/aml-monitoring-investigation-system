@@ -368,6 +368,7 @@ async def investigate(case_id: str) -> InvestigateOut:
 _ALERT_SELECT = """
     SELECT al.alert_id, al.account_key, ac.customer_id, c.occupation, c.risk_rating,
            al.typology_code, al.detector, al.risk_score, al.status, al.case_id, al.created_at,
+           al.dataset,
            (SELECT count(*) FROM alert_reason r WHERE r.alert_id = al.alert_id) AS factor_count
       FROM alert al
       JOIN account ac  ON ac.account_key = al.account_key
@@ -421,13 +422,21 @@ async def list_alerts_page(
     typology_code: str | None = Query(default=None, description="Mã typology T01–T10"),
     min_risk: float = Query(default=0, ge=0, le=100),
     q: str | None = Query(default=None, max_length=160),
+    dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=10, le=200),
 ) -> AlertPageOut:
-    """Hàng đợi cảnh báo phân trang trên DB, bao phủ toàn bộ active release."""
+    """Hàng đợi cảnh báo phân trang trên DB.
+
+    ``dataset`` lọc theo bộ dữ liệu. Không lọc thì hàng đợi trộn hai vũ trụ tài
+    khoản không liên quan gì đến nhau: một cảnh báo ví ngân hàng SAML-D nằm cạnh
+    một cảnh báo IBM, và chuyên viên mở ra thấy hồ sơ khách hàng trống thì tưởng
+    hệ thống hỏng.
+    """
     where = """
          WHERE (CAST(:status AS text) IS NULL OR al.status = CAST(:status AS text))
            AND (CAST(:typology_code AS text) IS NULL OR al.typology_code = CAST(:typology_code AS text))
+           AND (CAST(:dataset AS text) IS NULL OR al.dataset = CAST(:dataset AS text))
            AND al.risk_score >= :min_risk
            AND (
                CAST(:q AS text) IS NULL
@@ -442,6 +451,7 @@ async def list_alerts_page(
     params = {
         "status": status,
         "typology_code": typology_code,
+        "dataset": dataset,
         "min_risk": min_risk,
         "q": clean_q,
         "q_like": f"%{clean_q}%" if clean_q else None,

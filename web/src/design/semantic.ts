@@ -108,6 +108,8 @@ export const DETECTOR_TONE: Record<string, Tone> = {
   rule: "neutral",
   ml: "primary",
   graph: "info",
+  mega_pna: "info",
+  geo_rule: "warn",
   agent: "agent",
 };
 

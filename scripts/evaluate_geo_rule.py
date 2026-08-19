@@ -66,7 +66,16 @@ TRUTH_SQL = """
 DROP TABLE IF EXISTS geo_cell_truth;
 CREATE TABLE geo_cell_truth AS
 SELECT c.account_key, c.as_of, c.score,
-       COALESCE(max(l.is_laundering), 0) AS y
+       COALESCE(max(l.is_laundering), 0) AS y,
+       -- Phạm vi và mục tiêu của nhánh này là XUYÊN BIÊN GIỚI.
+       --
+       -- `y` tính mọi giao dịch dương trong cửa sổ, kể cả giao dịch nội địa mà
+       -- nhánh này không có nhiệm vụ bắt — chấm bằng nó là bắt bộ luật chịu
+       -- trách nhiệm cho việc của nhánh khác. Cấu trúc đồ thị đã do MEGA-PNA
+       -- đảm nhiệm trên bộ IBM. `y_xb` mới là mục tiêu thật của nhánh này.
+       max(CASE WHEN t.from_country <> t.to_country THEN 1 ELSE 0 END) AS co_xb,
+       max(CASE WHEN t.from_country <> t.to_country
+                 AND l.is_laundering = 1 THEN 1 ELSE 0 END) AS y_xb
 FROM geo_cell c
 LEFT JOIN transaction t
        ON t.from_account_key = c.account_key
@@ -84,9 +93,11 @@ def main() -> int:
     print("gắn nhãn đối chứng cho lưới điểm…")
     sql(args, TRUTH_SQL.format(window=args.window_days))
 
-    cells = int(sql(args, "SELECT count(*) FROM geo_cell_truth"))
-    positives = int(sql(args, "SELECT sum(y) FROM geo_cell_truth"))
-    print(f"lưới test: {cells:,} ô · {positives:,} ô dương ({100 * positives / cells:.3f}%)")
+    all_cells = int(sql(args, "SELECT count(*) FROM geo_cell_truth"))
+    cells = int(sql(args, "SELECT count(*) FROM geo_cell_truth WHERE co_xb = 1"))
+    positives = int(sql(args, "SELECT sum(y_xb) FROM geo_cell_truth"))
+    print(f"lưới test: {all_cells:,} ô, trong đó {cells:,} ô có giao dịch xuyên biên giới")
+    print(f"mục tiêu : {positives:,} ô có giao dịch xuyên biên giới bị gắn nhãn ({100 * positives / cells:.3f}%)")
 
     rows = []
     print(f"\n{'ngân sách':>10} {'bắt đúng':>9} {'precision':>10} {'recall':>8} {'nâng':>7}")
@@ -97,8 +108,8 @@ def main() -> int:
         caught = int(
             sql(
                 args,
-                f"""SELECT COALESCE(sum(y), 0) FROM (
-                    SELECT y FROM geo_cell_truth
+                f"""SELECT COALESCE(sum(y_xb), 0) FROM (
+                    SELECT y_xb FROM geo_cell_truth WHERE co_xb = 1
                     ORDER BY score DESC, account_key, as_of LIMIT {budget}) s""",
             )
         )
@@ -125,16 +136,17 @@ def main() -> int:
         "created_at": datetime.now(UTC).isoformat(),
         "dataset": "SAML-D",
         "detector": "geo_rule",
-        "unit": "account_window",
+        "unit": "account_window_cross_border",
         "window_days": args.window_days,
         "note": (
             "Bộ luật, không huấn luyện. Trọng số hành lang và hình thức thanh toán đo trên "
             "train+validation rồi áp nguyên lên test. Laundering_type chỉ dùng làm nhãn đối "
             "chứng — nó trùng khớp hoàn toàn với nhãn nên đưa vào đặc trưng là rò rỉ đáp án."
         ),
-        "test_cells": cells,
-        "test_positive_cells": positives,
-        "test_positive_rate": round(positives / cells, 6),
+        "test_cells_all": all_cells,
+        "test_cells_cross_border": cells,
+        "test_positive_cells_cross_border": positives,
+        "test_positive_rate_cross_border": round(positives / cells, 6),
         "operational_budget": rows,
         "top_corridors": [
             {"corridor": part.split("|")[0], "lift": float(part.split("|")[1]), "n": int(part.split("|")[2])}

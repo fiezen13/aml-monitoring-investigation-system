@@ -82,7 +82,19 @@ const DETECTOR_LABELS: Record<string, string> = {
   rule: "Luật",
   ml: "Học máy",
   graph: "Đồ thị",
+  mega_pna: "MEGA-PNA",
+  geo_rule: "Luật địa lý",
 };
+
+/** Nhãn bộ dữ liệu, cho hàng đợi phục vụ nhiều nguồn cùng lúc. */
+const DATASET_LABELS: Record<string, string> = {
+  ibm_hi_medium: "Ngân hàng",
+  saml_d: "Xuyên biên giới",
+};
+
+export function datasetLabel(dataset: string): string {
+  return DATASET_LABELS[dataset] ?? dataset;
+}
 
 export function detectorLabel(detector: string): string {
   return DETECTOR_LABELS[detector] ?? detector;

@@ -94,12 +94,14 @@ export interface ApiAlert {
   risk_rating: "low" | "medium" | "high";
   typology_code: string;
   typology_label: string;
-  detector: "rule" | "ml" | "graph";
+  detector: "rule" | "ml" | "graph" | "mega_pna" | "geo_rule";
   risk_score: string;
   status: "open" | "grouped" | "closed";
   case_id: string | null;
   created_at: string;
   factor_count: number;
+  /** Bộ dữ liệu của cảnh báo — hàng đợi phục vụ nhiều bộ cùng lúc. */
+  dataset: string;
 }
 
 export interface ApiAlertPage {
@@ -114,7 +116,7 @@ export interface ApiAlertReason {
   factor_label: string;
   contribution: string;
   weight: string;
-  detector: "rule" | "ml" | "graph";
+  detector: "rule" | "ml" | "graph" | "mega_pna" | "geo_rule";
   typology_code: string;
 }
 
@@ -765,6 +767,7 @@ export const api = {
       typology_code?: string;
       min_risk?: number;
       q?: string;
+      dataset?: string;
       page?: number;
       page_size?: number;
     } = {},

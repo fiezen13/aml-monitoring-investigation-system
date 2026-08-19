@@ -69,6 +69,9 @@ class AlertOut(BaseModel):
     case_id: str | None = None
     created_at: datetime
     factor_count: int
+    # Bộ dữ liệu của cảnh báo. Hàng đợi phục vụ nhiều bộ, và một cảnh báo SAML-D
+    # đứng cạnh một cảnh báo IBM mà không có nhãn thì không ai phân biệt được.
+    dataset: str = "ibm_hi_medium"
 
 
 class AlertPageOut(BaseModel):
