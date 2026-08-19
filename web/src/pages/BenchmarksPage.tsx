@@ -6,6 +6,7 @@ import { useApi } from "../api/useApi";
 import { ErrorState, PageShell } from "../components/ui";
 import { type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
+import { ModelBranchCards } from "../components/fc/ModelBranchCards";
 import { Empty, KpiCard, Panel, ProgressBar, ScreenTitle, Skeleton } from "../components/fc/primitives";
 import { C } from "../design/palette";
 
@@ -67,7 +68,9 @@ function aggregate(values: number[]): Omit<Aggregate, "metric" | "values"> {
 
 export function BenchmarksPage() {
   const data = useApi(() => api.benchmarks(), []);
+  const branchData = useApi(() => api.modelBranches(), []);
   const rows = data.data ?? [];
+  const branches = branchData.data ?? [];
 
   /**
    * Gộp theo chỉ số, giữ lại từng giá trị.
@@ -113,7 +116,19 @@ export function BenchmarksPage() {
     <PageShell variant="dense">
       <ScreenTitle
         title="Đánh giá chuẩn"
-        meta="Kết quả đã ký của bản mô hình đang phục vụ — cùng lô với mã băm mô hình và mã băm điểm số"
+        meta="Mỗi nhánh có model và benchmark riêng, đo trên đúng vùng nó đặc trưng — không cộng gộp"
+      />
+
+      {branchData.loading && <Skeleton rows={4} />}
+      {branchData.error && <ErrorState detail={branchData.error} onRetry={branchData.reload} />}
+      <ModelBranchCards branches={branches} />
+
+      {/* Phần dưới đây đi sâu vào ĐỘ ỔN ĐỊNH của riêng nhánh IBM: mô hình đồ thị
+          chạy nhiều seed, và độ lệch giữa các seed mới nói mô hình chắc hay ăn
+          may. Nhánh geo_rule là bộ luật tất định nên không có khái niệm seed. */}
+      <ScreenTitle
+        title="Chi tiết ổn định — nhánh IBM (MEGA-PNA)"
+        meta="Kết quả đã ký của bản mô hình đang phục vụ, chạy qua nhiều seed độc lập"
       />
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>

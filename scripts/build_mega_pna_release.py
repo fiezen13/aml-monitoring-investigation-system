@@ -246,6 +246,19 @@ def main(argv: list[str] | None = None) -> int:
         "dataset": dataset,
         "arm": arm,
         "model_version": MODEL_VERSION,
+        # Mô tả NHÁNH, để giao diện đối chiếu chuẩn trình bày được cạnh nhánh
+        # SAML-D mà không gộp chung. MEGA-PNA là mạng đồ thị chấm từng cạnh, đo
+        # trên toàn bộ đồ thị giao dịch trong ngân hàng — vùng đặc trưng của nó.
+        "model_kind": "graph_edge_classifier",
+        "region_label": "Giao dịch trong ngân hàng",
+        "region_description": (
+            "Đo trên toàn bộ đồ thị giao dịch của tập test IBM HI-Medium — dòng tiền chuyển khoản giữa "
+            "các tài khoản trong hệ thống ngân hàng."
+        ),
+        "not_comparable_note": (
+            "Không so trực tiếp với nhánh SAML-D: khác vùng (giao dịch trong ngân hàng vs xuyên biên "
+            "giới), khác loại model (mạng đồ thị chấm cạnh vs bộ luật xếp hạng), khác bộ chỉ số."
+        ),
         "seed": report.get("seed"),
         "best_epoch": report.get("best_epoch"),
         "config": report.get("config"),

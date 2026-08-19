@@ -416,3 +416,48 @@ class GraphNarrativeOut(BaseModel):
     how_to_read: list[str]
     source: Literal["gemini", "deterministic"]
     reading: dict[str, Any]
+
+
+class OperatingPointOut(BaseModel):
+    """Một điểm vận hành: cho một ngân sách cảnh báo, bắt được bao nhiêu.
+
+    Cả hai nhánh đều dùng chung dạng này, nên giao diện vẽ được một đường
+    precision/recall theo ngân sách cho từng nhánh mà không cần biết bên trong
+    là model gì. ``lift`` chỉ có ở nhánh xếp hạng (geo_rule); để None cho nhánh
+    chấm cạnh (MEGA-PNA) vì lift không phải chỉ số của nó.
+    """
+
+    alerts: int
+    caught: int
+    precision: float
+    recall: float
+    lift: float | None = None
+
+
+class ModelBranchOut(BaseModel):
+    """Một nhánh phát hiện, kèm benchmark đo trên đúng VÙNG nó đặc trưng.
+
+    Ba nhánh của hệ thống — IBM HI-Medium (rửa tiền trong ngân hàng), SAML-D
+    (xuyên biên giới), Elliptic++ (bitcoin) — mỗi nhánh có model và benchmark
+    riêng. Chúng KHÔNG cộng gộp được: khác vùng, khác loại model, khác bộ chỉ
+    số. Schema này cố tình để mỗi nhánh tự khai vùng và loại model của mình,
+    thay vì ép một con số chung.
+    """
+
+    release_id: str
+    dataset: str
+    model_version: str
+    model_kind: str
+    region_label: str
+    region_description: str
+    region_rows: int | None = None
+    positive_rows: int | None = None
+    positive_rate: float | None = None
+    triggered_rows: int
+    status: str
+    #: Chỉ số đầu bảng, đã chọn sẵn cho từng loại model (F1/PR-AUC cho MEGA-PNA,
+    #: precision/recall/lift @ ngân sách cho geo_rule). Nhãn kèm sẵn để hiển thị.
+    headline: list[dict[str, Any]]
+    operating_points: list[OperatingPointOut]
+    note: str | None = None
+    not_comparable_note: str | None = None

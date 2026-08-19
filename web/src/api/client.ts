@@ -592,6 +592,39 @@ export interface FcTxPage {
   pageSize: number;
 }
 
+export interface OperatingPoint {
+  alerts: number;
+  caught: number;
+  precision: number;
+  recall: number;
+  lift: number | null;
+}
+
+/**
+ * Một nhánh phát hiện với benchmark đo trên đúng vùng nó đặc trưng.
+ *
+ * Ba nhánh — IBM (rửa tiền trong ngân hàng), SAML-D (xuyên biên giới),
+ * Elliptic++ (bitcoin) — không cộng gộp được: khác vùng, khác loại model, khác
+ * bộ chỉ số. Mỗi phần tử tự khai vùng và loại model của mình.
+ */
+export interface ModelBranch {
+  release_id: string;
+  dataset: string;
+  model_version: string;
+  model_kind: string;
+  region_label: string;
+  region_description: string;
+  region_rows: number | null;
+  positive_rows: number | null;
+  positive_rate: number | null;
+  triggered_rows: number;
+  status: string;
+  headline: Array<{ label: string; value: number; kind: string }>;
+  operating_points: OperatingPoint[];
+  note: string | null;
+  not_comparable_note: string | null;
+}
+
 export interface EdgeModelRelease {
   release_id: string;
   model_version: string;
@@ -906,6 +939,8 @@ export const api = {
   agentRun: (runId: string) => request<FcAgentRunDetail>(`/fc/agent-runs/${encodeURIComponent(runId)}`),
 
   benchmarks: () => request<FcBenchmark[]>("/fc/benchmarks"),
+
+  modelBranches: () => request<ModelBranch[]>("/fc/model-branches"),
 
   modelMonitor: () => request<FcModelMonitor[]>("/fc/model-monitor"),
 

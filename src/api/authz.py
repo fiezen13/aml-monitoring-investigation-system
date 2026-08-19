@@ -136,6 +136,9 @@ POLICY: dict[str, frozenset[str]] = {
     "/fc/agent-runs/{run_id}": INVESTIGATION_READ,
     # --- Chất lượng và mô hình ---
     "/fc/benchmarks": MODEL_QUALITY,
+    # Đối chiếu nhiều nhánh, mỗi nhánh benchmark trên vùng của nó. Cùng quyền
+    # với /fc/benchmarks: đây là dữ liệu chất lượng mô hình.
+    "/fc/model-branches": MODEL_QUALITY,
     "/fc/model-monitor": MODEL_QUALITY,
     "/fc/edge-model/release": MODEL_QUALITY,
     "/fc/data-quality": MODEL_QUALITY,

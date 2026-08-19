@@ -39,9 +39,11 @@ from src.models.fc_schemas import (
     GraphNodeOut,
     GraphOut,
     HubOut,
+    ModelBranchOut,
     ModelMonitorOut,
     NavCountsOut,
     ObservationOut,
+    OperatingPointOut,
     PatternHopOut,
     ProjectOut,
     SearchHitOut,
@@ -52,6 +54,14 @@ from src.models.fc_schemas import (
 )
 
 router = APIRouter()
+
+
+def _as_int(value: Any) -> int | None:
+    """Ép về int khi có thể, None khi không — dùng cho các trường tuỳ chọn."""
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _f(value: Any) -> float:
@@ -1523,6 +1533,94 @@ async def model_monitor() -> list[ModelMonitorOut]:
         )
         for r in rows
     ]
+
+
+@router.get("/fc/model-branches", response_model=list[ModelBranchOut])
+async def model_branches() -> list[ModelBranchOut]:
+    """Các nhánh phát hiện, mỗi nhánh với benchmark trên đúng vùng nó đặc trưng.
+
+    Vì sao có endpoint riêng thay vì mở rộng /fc/edge-model/release: kiến trúc
+    của hệ thống là NHIỀU nhánh song song — IBM (rửa tiền trong ngân hàng),
+    SAML-D (xuyên biên giới), sắp tới Elliptic++ (bitcoin). Mỗi nhánh có model
+    và bộ chỉ số riêng, không cộng gộp được. Trả về một danh sách, một phần tử
+    một nhánh, để giao diện bày cạnh nhau chứ không trộn thành một con số.
+
+    Đọc từ ``edge_model_release`` (mọi status, không chỉ 'active'): nhánh
+    SAML-D geo_rule là 'reference' vì nó không chấm cho hàng đợi chính, nhưng
+    vẫn là một nhánh thật cần hiển thị.
+    """
+    with get_session() as session:
+        rows = (
+            session.execute(
+                text(
+                    """SELECT release_id, model_version, dataset, benchmark,
+                              transaction_rows, positive_rows, triggered_rows, status
+                         FROM edge_model_release
+                        WHERE benchmark ? 'model_kind'
+                        ORDER BY (status = 'active') DESC, dataset"""
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    out: list[ModelBranchOut] = []
+    for row in rows:
+        b = row["benchmark"] if isinstance(row["benchmark"], dict) else {}
+        kind = str(b.get("model_kind", "unknown"))
+
+        points = [
+            OperatingPointOut(
+                alerts=int(p["alerts"]),
+                caught=int(p.get("caught", 0)),
+                precision=float(p.get("precision", 0.0)),
+                recall=float(p.get("recall", 0.0)),
+                lift=float(p["lift"]) if isinstance(p.get("lift"), (int, float)) else None,
+            )
+            for p in (b.get("operating_points") or [])
+            if isinstance(p, dict) and "alerts" in p
+        ]
+
+        # Chỉ số đầu bảng chọn theo LOẠI model — hai loại khác nhau thật sự,
+        # nên không cố nhét vào cùng một khung F1.
+        headline: list[dict[str, Any]] = []
+        if kind == "graph_edge_classifier":
+            primary = b.get("primary_seed") or {}
+            for key, label in (("f1", "F1"), ("pr_auc", "PR-AUC"), ("precision", "Precision"), ("recall", "Recall")):
+                value = primary.get(key)
+                if isinstance(value, (int, float)):
+                    headline.append({"label": label, "value": round(float(value), 4), "kind": "ratio"})
+        elif kind == "geo_rule_ranker":
+            # Bộ xếp hạng: lấy mốc ngân sách 250 cảnh báo làm điểm trình bày —
+            # cỡ một ngày rà soát. precision/recall/lift tại đúng mốc đó.
+            pick = next((p for p in points if p.alerts == 250), points[0] if points else None)
+            if pick:
+                headline = [
+                    {"label": f"Precision @ {pick.alerts}", "value": round(pick.precision, 4), "kind": "ratio"},
+                    {"label": f"Recall @ {pick.alerts}", "value": round(pick.recall, 4), "kind": "ratio"},
+                    {"label": f"Lift @ {pick.alerts}", "value": round(pick.lift or 0.0, 2), "kind": "multiple"},
+                ]
+
+        out.append(
+            ModelBranchOut(
+                release_id=row["release_id"],
+                dataset=row["dataset"],
+                model_version=row["model_version"],
+                model_kind=kind,
+                region_label=str(b.get("region_label", row["dataset"])),
+                region_description=str(b.get("region_description", "")),
+                region_rows=_as_int(b.get("region_rows")) or _as_int(row["transaction_rows"]),
+                positive_rows=_as_int(b.get("positive_rows")) or _as_int(row["positive_rows"]),
+                positive_rate=float(b["positive_rate"]) if isinstance(b.get("positive_rate"), (int, float)) else None,
+                triggered_rows=int(row["triggered_rows"]),
+                status=row["status"],
+                headline=headline,
+                operating_points=points,
+                note=b.get("note") or None,
+                not_comparable_note=b.get("not_comparable_note") or None,
+            )
+        )
+    return out
 
 
 @router.get("/fc/edge-model/release", response_model=EdgeModelReleaseOut)
