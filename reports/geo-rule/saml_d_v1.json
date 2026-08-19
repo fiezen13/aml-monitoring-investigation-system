@@ -1,6 +1,6 @@
 {
   "schema_version": "fin07.geo_rule.benchmark.v1",
-  "created_at": "2026-08-19T04:11:12.244453+00:00",
+  "created_at": "2026-08-19T04:39:58.879214+00:00",
   "dataset": "SAML-D",
   "detector": "geo_rule",
   "unit": "account_window_cross_border",
@@ -13,66 +13,66 @@
   "operational_budget": [
     {
       "alerts": 100,
-      "caught": 0,
-      "precision": 0.0,
-      "recall": 0.0,
-      "lift": 0.0
+      "caught": 28,
+      "precision": 0.28,
+      "recall": 0.019718,
+      "lift": 30.525
     },
     {
       "alerts": 250,
-      "caught": 2,
-      "precision": 0.008,
-      "recall": 0.001408,
-      "lift": 0.872
+      "caught": 74,
+      "precision": 0.296,
+      "recall": 0.052113,
+      "lift": 32.27
     },
     {
       "alerts": 500,
-      "caught": 15,
-      "precision": 0.03,
-      "recall": 0.010563,
-      "lift": 3.271
+      "caught": 89,
+      "precision": 0.178,
+      "recall": 0.062676,
+      "lift": 19.405
     },
     {
       "alerts": 1000,
-      "caught": 34,
-      "precision": 0.034,
-      "recall": 0.023944,
-      "lift": 3.707
+      "caught": 125,
+      "precision": 0.125,
+      "recall": 0.088028,
+      "lift": 13.627
     },
     {
       "alerts": 2500,
-      "caught": 96,
-      "precision": 0.0384,
-      "recall": 0.067606,
-      "lift": 4.186
+      "caught": 140,
+      "precision": 0.056,
+      "recall": 0.098592,
+      "lift": 6.105
     },
     {
       "alerts": 5000,
-      "caught": 167,
-      "precision": 0.0334,
-      "recall": 0.117606,
-      "lift": 3.641
+      "caught": 182,
+      "precision": 0.0364,
+      "recall": 0.128169,
+      "lift": 3.968
     },
     {
       "alerts": 10000,
-      "caught": 280,
-      "precision": 0.028,
-      "recall": 0.197183,
-      "lift": 3.053
+      "caught": 258,
+      "precision": 0.0258,
+      "recall": 0.18169,
+      "lift": 2.813
     },
     {
       "alerts": 25000,
-      "caught": 476,
-      "precision": 0.01904,
-      "recall": 0.335211,
-      "lift": 2.076
+      "caught": 485,
+      "precision": 0.0194,
+      "recall": 0.341549,
+      "lift": 2.115
     },
     {
       "alerts": 50000,
-      "caught": 719,
-      "precision": 0.01438,
-      "recall": 0.506338,
-      "lift": 1.568
+      "caught": 777,
+      "precision": 0.01554,
+      "recall": 0.547183,
+      "lift": 1.694
     }
   ],
   "top_corridors": [
