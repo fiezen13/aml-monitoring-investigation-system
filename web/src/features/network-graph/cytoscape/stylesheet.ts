@@ -178,11 +178,17 @@ export function buildStylesheet(): StylesheetStyle[] {
         "line-color": T.edge.base,
         "curve-style": "bezier",
         "control-point-step-size": 28,
-        // Mũi tên nhỏ — hướng tiền phải đọc được, không phải phải hét lên (§24).
+        // Mũi tên phải đọc được ở mức phóng mặc định.
+        //
+        // Bản trước đặt arrow-scale 0.6 và opacity 0.35 với lý do "hướng tiền
+        // phải đọc được, không phải hét lên". Dùng thật thì ngược lại: chuyên
+        // viên phải phóng to mới thấy mũi tên, và câu hỏi đầu tiên khi mở đồ thị
+        // — tiền vào hay tiền ra — không trả lời được. Hướng là thông tin bắt
+        // buộc của một đồ thị dòng tiền, không phải chi tiết trang trí.
         "target-arrow-shape": "triangle",
         "target-arrow-color": T.edge.base,
-        "arrow-scale": 0.6,
-        opacity: 0.35,
+        "arrow-scale": 1.3,
+        opacity: 0.55,
         label: "",
         "font-family": T.font.mono,
         "font-size": 9.5,
@@ -211,15 +217,55 @@ export function buildStylesheet(): StylesheetStyle[] {
         },
         "line-color": T.edge.money,
         "target-arrow-color": T.edge.money,
-        opacity: 0.55,
+        // Cạnh dòng tiền là lớp mang thông tin hướng; nó phải nổi hơn cạnh cấu
+        // trúc chứ không chìm cùng một mức mờ.
+        "arrow-scale": 1.5,
+        opacity: 0.85,
       },
     },
     // Cạnh suy luận: nét đứt. Analyst phải phân biệt được "quan sát thấy" với
     // "suy ra" mà không cần bấm vào.
     { selector: "edge.inferred", style: { "line-style": "dashed" } },
     { selector: "edge.device-link", style: { "line-style": "dotted" } },
-    { selector: "edge.risk-warn", style: { "line-color": T.tone.warn, "target-arrow-color": T.tone.warn, opacity: 0.75 } },
-    { selector: "edge.risk-crit", style: { "line-color": T.tone.crit, "target-arrow-color": T.tone.crit, opacity: 0.9, width: 2.2 } },
+    {
+      selector: "edge.risk-warn",
+      style: { "line-color": T.tone.warn, "target-arrow-color": T.tone.warn, opacity: 0.9, "arrow-scale": 1.5 },
+    },
+    {
+      selector: "edge.risk-crit",
+      style: {
+        "line-color": T.tone.crit,
+        "target-arrow-color": T.tone.crit,
+        opacity: 1,
+        width: 2.6,
+        "arrow-scale": 1.7,
+      },
+    },
+
+    // Hướng tiền so với đỉnh đang chọn. Xanh lá = chảy VÀO, hổ phách = chảy RA.
+    // Đặt trước khối .selected/.on-path để đường tiền đang xem vẫn thắng về màu.
+    {
+      selector: "edge.flow-in",
+      style: {
+        "line-color": T.tone.verified,
+        "target-arrow-color": T.tone.verified,
+        opacity: 1,
+        width: 2.6,
+        "arrow-scale": 1.6,
+        "z-index": 20,
+      },
+    },
+    {
+      selector: "edge.flow-out",
+      style: {
+        "line-color": T.tone.warn,
+        "target-arrow-color": T.tone.warn,
+        opacity: 1,
+        width: 2.6,
+        "arrow-scale": 1.6,
+        "z-index": 20,
+      },
+    },
 
     // Nhãn cạnh CHỈ khi được chọn hoặc nằm trên đường tiền đang xem (§18).
     {
@@ -230,6 +276,7 @@ export function buildStylesheet(): StylesheetStyle[] {
         "target-arrow-color": T.tone.selected,
         width: 4,
         opacity: 1,
+        "arrow-scale": 1.8,
         "z-index": 30,
       },
     },

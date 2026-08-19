@@ -35,6 +35,10 @@ export function GraphLegend() {
         <LineKey label="suy luận" dash="5,4" color={C.agent} />
         <LineKey label="thiếu liên kết" dash="1,4" color={C.inkSoft} gap />
         <LineKey label="đường tiền chính" dash="none" color={C.risk} />
+        {/* Hai màu này chỉ bật khi có đỉnh được chọn — chúng trả lời câu hỏi đầu
+            tiên của chuyên viên: tiền vào hay tiền ra khỏi tài khoản đang xem. */}
+        <LineKey label="tiền vào (khi chọn 1 tài khoản)" dash="none" color={C.ok} />
+        <LineKey label="tiền ra" dash="none" color={C.warn} />
         <span className="flex items-center gap-1 text-3xs text-ink-low">
           <span
             className="flex h-2.5 w-2.5 items-center justify-center rounded-full text-[6px]"

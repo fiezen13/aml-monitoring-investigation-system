@@ -425,7 +425,9 @@ export function CytoscapeCanvas({
 
     cy.batch(() => {
       cy.elements().removeStyle("opacity");
-      cy.elements().removeClass("selected on-path dimmed neighbour second-hop replaying replay-node");
+      cy.elements().removeClass(
+        "selected on-path dimmed neighbour second-hop replaying replay-node flow-in flow-out",
+      );
 
       cy.nodes().forEach((n) => {
         n.toggleClass("on-path", pathNodes.has(n.id()));
@@ -440,6 +442,14 @@ export function CytoscapeCanvas({
         const node = cy.getElementById(selectedNodeId);
         if (node.nonempty()) {
           node.addClass("selected");
+          // Tiền VÀO và tiền RA của đỉnh đang chọn được tô khác màu.
+          //
+          // Mũi tên trả lời được câu hỏi hướng, nhưng phải nhìn từng cạnh một.
+          // Câu hỏi đầu tiên của chuyên viên khi mở một tài khoản là "tiền vào
+          // hay ra", và câu đó phải trả lời được trong một cái liếc — bằng màu,
+          // không bằng cách dò mũi tên quanh đỉnh.
+          node.incomers("edge").addClass("flow-in");
+          node.outgoers("edge").addClass("flow-out");
           // 1 chặng quanh đỉnh đang chọn giữ nguyên độ rõ; phần còn lại lùi hẳn
           // xuống nhưng KHÔNG bị xoá — mất bối cảnh thì mất luôn ý nghĩa (§12).
           const near = node.closedNeighborhood();
