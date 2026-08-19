@@ -135,14 +135,21 @@ export function DashboardPage() {
   const corridorSpec = useMemo<ChartSpec | null>(() => {
     const flows = world.data?.flows;
     if (!flows?.length) return null;
-    const top = [...flows].sort((a, b) => b.risk_score - a.risk_score).slice(0, 6);
+    // Vẽ SỐ CẢNH BÁO, không vẽ volume_usd.
+    //
+    // volume_usd luôn bằng 0 vì dự án cố ý không quy đổi giữa các loại tiền —
+    // biểu đồ vì thế hiện sáu cột 0 bên cạnh sáu tên hành lang. Xếp hạng cũng
+    // đổi sang số cảnh báo: xếp theo risk_score đẩy lên đầu những hành lang chỉ
+    // có ba bốn giao dịch, tỉ lệ 100% nhưng không nói lên điều gì.
+    const top = [...flows].sort((a, b) => b.alert_count - a.alert_count).slice(0, 6);
+    if (!top.some((flow) => flow.alert_count > 0)) return null;
     return {
       type: "hbars",
       items: top.map((flow) => ({
         label: `${flow.source_name} → ${flow.target_name}`,
-        value: Math.round(flow.volume_usd / 1e6),
+        value: flow.alert_count,
         color: toneColor(flow.risk_score >= 80 ? "risk" : flow.risk_score >= 60 ? "warn" : "ok"),
-        sub: `${flow.channel} · rủi ro ${flow.risk_score}`,
+        sub: `${flow.channel} · ${int(flow.txn_count)} giao dịch · rủi ro ${flow.risk_score}`,
       })),
     };
   }, [world.data]);
@@ -310,7 +317,10 @@ export function DashboardPage() {
                         {hub.inbound}↓ {hub.outbound}↑
                       </span>
                       <b className="tabular w-24 flex-none text-right font-mono text-ink-hi">
-                        {int(hub.inbound + hub.outbound)} GD
+                        {/* Lượt chạm quốc gia, không phải số giao dịch: một giao dịch
+                            nội địa tính cả chiều đi lẫn chiều đến, nên tổng đúng bằng
+                            gấp đôi số giao dịch của bộ dữ liệu. */}
+                        {int(hub.inbound + hub.outbound)} lượt
                       </b>
                     </div>
                   ))}

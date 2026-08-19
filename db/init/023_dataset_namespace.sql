@@ -108,3 +108,15 @@ BEGIN
         CHECK (status IN ('loading', 'active', 'retired', 'failed', 'reference'));
 END
 $$;
+
+-- Nhóm hành vi của hành lang, thay cho một mã ghim cứng trong mã nguồn.
+--
+-- `_operational_geography` đang gán typology_hint = 'T02' cho mọi hành lang có
+-- cảnh báo. Cảnh báo của nhánh địa lý mang mã T06; bộ lọc trên bản đồ vì thế
+-- ghi "T02 · 300 hành lang" — sai toàn bộ, và không ai kiểm được vì nó là hằng
+-- số nằm trong code chứ không phải dữ liệu.
+ALTER TABLE edge_country_flow ADD COLUMN IF NOT EXISTS typology_code TEXT;
+
+COMMENT ON COLUMN edge_country_flow.typology_code IS
+    'Mã nhóm hành vi chiếm đa số trong các cảnh báo của hành lang này. NULL khi '
+    'hành lang chưa sinh cảnh báo nào — để trống chứ không đoán.';

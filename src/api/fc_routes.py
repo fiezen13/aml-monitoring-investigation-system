@@ -242,7 +242,7 @@ def _operational_geography(session: Any) -> _Geography:
             text(
                 """SELECT source_country_code AS src, target_country_code AS dst,
                           currency, channel, txn_count, amount_native,
-                          first_seen, last_seen, alert_count, risk_score
+                          first_seen, last_seen, alert_count, risk_score, typology_code
                      FROM edge_country_flow
                     WHERE release_id=:release
                     ORDER BY alert_count DESC, txn_count DESC
@@ -314,7 +314,7 @@ def _operational_geography(session: Any) -> _Geography:
             volume_usd=0,
             txn_count=int(row["txn_count"]),
             risk_score=int(row["risk_score"]),
-            typology_hint="T02" if int(row["alert_count"]) > 0 else None,
+            typology_hint=row["typology_code"],
             alert_count=int(row["alert_count"]),
             first_seen=row["first_seen"],
             last_seen=row["last_seen"],

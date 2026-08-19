@@ -29,6 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_ID = "REL-GEO-SAMLD-V1"
+SMOOTHING = 200  # số giao dịch sạch giả định, chặn hành lang bé đạt điểm tuyệt đối
 MAX_FLOWS = 400
 
 
@@ -121,16 +122,23 @@ DELETE FROM edge_country_hub  WHERE release_id = '{release}';
 -- geo_rule mà tài khoản GỬI của hành lang ấy đang mở — nối bản đồ với hàng đợi.
 INSERT INTO edge_country_flow (release_id, source_country_code, target_country_code,
                                currency, channel, txn_count, amount_native,
-                               first_seen, last_seen, alert_count, risk_score)
+                               first_seen, last_seen, alert_count, risk_score, typology_code)
 SELECT '{release}', src, dst, currency, channel, txn_count, amount_native,
        first_seen, last_seen, alert_count,
-       LEAST(round(100.0 * alert_count / GREATEST(txn_count, 1), 2), 100.00)
+       -- Làm mượt bằng SMOOTHING giao dịch giả định sạch.
+       --
+       -- Tỉ lệ trần trụi cho một hành lang 4 giao dịch với 4 cảnh báo ra đúng
+       -- 100 điểm, và nó đứng đầu bảng xếp hạng trên mọi hành lang thật có hàng
+       -- chục nghìn giao dịch. Bốn quan sát không đủ để nói bất cứ điều gì.
+       LEAST(round(100.0 * alert_count / (txn_count + {smoothing}), 2), 100.00),
+       typology_code
 FROM (
     SELECT {t_src} AS src, {t_dst} AS dst,
            t.receiving_currency AS currency, t.channel AS channel,
            count(*) AS txn_count, sum(t.amount) AS amount_native,
            min(t.occurred_at) AS first_seen, max(t.occurred_at) AS last_seen,
-           count(DISTINCT a.alert_id) AS alert_count
+           count(DISTINCT a.alert_id) AS alert_count,
+           mode() WITHIN GROUP (ORDER BY a.typology_code) AS typology_code
     FROM transaction t
     LEFT JOIN alert a
            ON a.account_key = t.from_account_key AND a.detector = 'geo_rule'
@@ -187,6 +195,7 @@ def main() -> int:
         ROLLUP_SQL.format(
             release=RELEASE_ID,
             max_flows=MAX_FLOWS,
+            smoothing=SMOOTHING,
             t_src=ISO_CASE.format(col="t.from_country"),
             t_dst=ISO_CASE.format(col="t.to_country"),
             p_src=ISO_CASE.format(col="from_country"),
