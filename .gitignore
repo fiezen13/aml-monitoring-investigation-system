@@ -170,3 +170,7 @@ infra/terraform/gpu/*.tfvars.example.bak
 
 # Gói bàn giao sinh ra từ script, không đưa vào git.
 fin07-mega-pna-*.zip
+
+# Bộ dữ liệu SAML-D tải từ Kaggle — 950 MB, không đưa vào git.
+SAML-D.csv
+aml-prediction.ipynb

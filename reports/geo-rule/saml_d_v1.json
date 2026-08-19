@@ -1,0 +1,129 @@
+{
+  "schema_version": "fin07.geo_rule.benchmark.v1",
+  "created_at": "2026-08-19T03:28:35.456845+00:00",
+  "dataset": "SAML-D",
+  "detector": "geo_rule",
+  "unit": "account_window",
+  "window_days": 7,
+  "note": "Bộ luật, không huấn luyện. Trọng số hành lang và hình thức thanh toán đo trên train+validation rồi áp nguyên lên test. Laundering_type chỉ dùng làm nhãn đối chứng — nó trùng khớp hoàn toàn với nhãn nên đưa vào đặc trưng là rò rỉ đáp án.",
+  "test_cells": 750069,
+  "test_positive_cells": 3540,
+  "test_positive_rate": 0.00472,
+  "operational_budget": [
+    {
+      "alerts": 100,
+      "caught": 3,
+      "precision": 0.03,
+      "recall": 0.000847,
+      "lift": 6.357
+    },
+    {
+      "alerts": 250,
+      "caught": 5,
+      "precision": 0.02,
+      "recall": 0.001412,
+      "lift": 4.238
+    },
+    {
+      "alerts": 500,
+      "caught": 19,
+      "precision": 0.038,
+      "recall": 0.005367,
+      "lift": 8.052
+    },
+    {
+      "alerts": 1000,
+      "caught": 39,
+      "precision": 0.039,
+      "recall": 0.011017,
+      "lift": 8.263
+    },
+    {
+      "alerts": 2500,
+      "caught": 103,
+      "precision": 0.0412,
+      "recall": 0.029096,
+      "lift": 8.73
+    },
+    {
+      "alerts": 5000,
+      "caught": 186,
+      "precision": 0.0372,
+      "recall": 0.052542,
+      "lift": 7.882
+    },
+    {
+      "alerts": 10000,
+      "caught": 309,
+      "precision": 0.0309,
+      "recall": 0.087288,
+      "lift": 6.547
+    },
+    {
+      "alerts": 25000,
+      "caught": 533,
+      "precision": 0.02132,
+      "recall": 0.150565,
+      "lift": 4.517
+    },
+    {
+      "alerts": 50000,
+      "caught": 815,
+      "precision": 0.0163,
+      "recall": 0.230226,
+      "lift": 3.454
+    }
+  ],
+  "top_corridors": [
+    {
+      "corridor": "UK→Morocco",
+      "lift": 6.175,
+      "n": 29137
+    },
+    {
+      "corridor": "UK→Nigeria",
+      "lift": 5.669,
+      "n": 28790
+    },
+    {
+      "corridor": "UK→Albania",
+      "lift": 5.484,
+      "n": 29584
+    },
+    {
+      "corridor": "UK→UAE",
+      "lift": 5.136,
+      "n": 27372
+    },
+    {
+      "corridor": "UK→Mexico",
+      "lift": 4.482,
+      "n": 29834
+    },
+    {
+      "corridor": "UK→Turkey",
+      "lift": 4.466,
+      "n": 27740
+    },
+    {
+      "corridor": "UK→India",
+      "lift": 3.932,
+      "n": 28756
+    },
+    {
+      "corridor": "UK→Pakistan",
+      "lift": 3.93,
+      "n": 31020
+    },
+    {
+      "corridor": "UK→Italy",
+      "lift": 3.818,
+      "n": 27297
+    },
+    {
+      "corridor": "UK→Austria",
+      "lift": 3.769,
+      "n": 29218
+    }
+  ]
+}

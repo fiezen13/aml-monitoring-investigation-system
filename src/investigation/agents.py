@@ -559,6 +559,7 @@ class ExplanationAgent:
                     "rule": "Bộ luật nghiệp vụ",
                     "graph": "Bộ phát hiện đồ thị mạng lưới",
                     "mega_pna": "Mô hình đồ thị MEGA-PNA",
+                    "geo_rule": "Bộ luật địa lý",
                 }.get(source, source)
                 reason = f"{branch} là nhánh sinh ra cảnh báo này và là nguồn điểm chính thức."
                 drivers.append(

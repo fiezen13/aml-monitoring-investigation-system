@@ -228,7 +228,7 @@ class RiskDriver(BaseModel):
     #: buộc cũ chỉ có ba giá trị và Pydantic từ chối bản ghi ngay ở tầng lược
     #: đồ — sau khi đã sửa hai chỗ khác, đây là chốt thứ ba cùng một nguyên nhân:
     #: danh sách nhánh bị viết cứng ở nhiều nơi thay vì một chỗ.
-    source: Literal["rule", "anomaly", "graph", "mega_pna"]
+    source: Literal["rule", "anomaly", "graph", "mega_pna", "geo_rule"]
     score: float = Field(ge=0, le=1)
     weight: float = Field(ge=0, le=1)
     contribution: float = Field(ge=0, le=1)

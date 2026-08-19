@@ -582,8 +582,14 @@ class InvestigationTools:
         # khi gặp `mega_pna`, làm hỏng CẢ phiên điều tra chứ không chỉ một công
         # cụ. Một nhánh mới không được phép đánh sập cả quy trình — chưa biết thì
         # ghi là chưa biết.
-        source = {"rule": "rule", "ml": "anomaly", "graph": "graph", "mega_pna": "mega_pna"}.get(detector)
-        branches = ("rule", "anomaly", "graph", "mega_pna")
+        source = {
+            "rule": "rule",
+            "ml": "anomaly",
+            "graph": "graph",
+            "mega_pna": "mega_pna",
+            "geo_rule": "geo_rule",
+        }.get(detector)
+        branches = ("rule", "anomaly", "graph", "mega_pna", "geo_rule")
         components = {
             name: RiskComponent(
                 score=score if name == source else 0,

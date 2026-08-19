@@ -181,21 +181,38 @@ def _operational_geography(session: Any) -> _Geography:
     Trả về bản đồ rỗng nếu chưa chạy `scripts/load_bank_geography.py` — không
     dựng bản đồ nửa vời từ dữ liệu chưa nạp.
     """
-    if not session.execute(text("SELECT EXISTS (SELECT 1 FROM bank)")).scalar_one():
+    # Bản rollup địa lý KHÔNG tra theo release đang hoạt động.
+    #
+    # Bộ IBM AML không mang quốc gia — nó phải suy từ tên ngân hàng, và bước ấy
+    # chưa chạy được, nên trang này trống suốt. SAML-D thì có sẵn vị trí ngân
+    # hàng trên từng giao dịch, và bản rollup dựng từ đó mang một release riêng
+    # trạng thái 'reference': nó cung cấp bản đồ chứ không chấm điểm cạnh, nên
+    # không được chiếm chỗ release đang phục vụ ba trang khác.
+    release_id = session.execute(
+        text(
+            """SELECT release_id FROM edge_model_release
+                WHERE status = 'reference'
+                  AND release_id IN (SELECT release_id FROM edge_country_hub)
+                ORDER BY trained_at DESC LIMIT 1"""
+        )
+    ).scalar_one_or_none()
+    if release_id is None:
         return _Geography(
             hubs=[],
             flows=[],
             limitation=(
-                "Chưa nạp địa lý ngân hàng. Chạy scripts/load_bank_geography.py để "
-                "suy quốc gia từ tên ngân hàng trong *_accounts.csv."
+                "Chưa dựng bản đồ hành lang. Chạy scripts/build_geo_rollup.py sau khi "
+                "đã nạp một bộ dữ liệu có quốc gia."
             ),
         )
 
-    release_id = session.execute(
-        text("""SELECT release_id FROM edge_model_release WHERE status='active' LIMIT 1""")
-    ).scalar_one_or_none()
-    if release_id is None:
-        return _Geography(hubs=[], flows=[], limitation="Chưa có edge-model release đang hoạt động.")
+    release_source = (
+        session.execute(
+            text("SELECT dataset FROM edge_model_release WHERE release_id = :r"),
+            {"r": release_id},
+        ).scalar_one_or_none()
+        or "nguồn chưa rõ"
+    )
 
     hub_rows = (
         session.execute(
@@ -217,7 +234,7 @@ def _operational_geography(session: Any) -> _Geography:
         return _Geography(
             hubs=[],
             flows=[],
-            limitation="Chưa dựng geography rollup; chạy lại scripts/load_bank_geography.py.",
+            limitation="Chưa dựng geography rollup; chạy lại scripts/build_geo_rollup.py.",
         )
 
     flow_rows = (
@@ -237,14 +254,21 @@ def _operational_geography(session: Any) -> _Geography:
         .all()
     )
 
+    # Độ phủ quốc gia phải đo trên CHÍNH bộ dữ liệu dựng nên bản đồ.
+    #
+    # Truy vấn cũ đếm trên toàn bộ `account` rồi nối sang `bank` — với dữ liệu
+    # SAML-D thì phép nối ấy không khớp gì và trang báo "0,0% tài khoản có quốc
+    # gia" ngay bên cạnh một bản đồ 18 quốc gia đầy dữ liệu. Số liệu tự mâu
+    # thuẫn còn tệ hơn không có số liệu.
     coverage = (
         session.execute(
             text(
                 """SELECT count(*) AS total,
-                          count(b.country_code) AS located,
-                          count(*) FILTER (WHERE b.country_source = 'assigned') AS assigned
-                     FROM account a LEFT JOIN bank b ON b.bank_code = a.bank_code"""
-            )
+                          count(*) FILTER (WHERE t.from_country IS NOT NULL) AS located
+                     FROM transaction t
+                    WHERE t.source_dataset = :source"""
+            ),
+            {"source": release_source},
         )
         .mappings()
         .one()
@@ -301,18 +325,23 @@ def _operational_geography(session: Any) -> _Geography:
 
     total = int(coverage["total"]) or 1
     located = int(coverage["located"])
-    assigned = int(coverage["assigned"])
     limitation = (
-        f"Quốc gia suy ra từ tên ngân hàng: {located:,}/{total:,} tài khoản có quốc gia "
-        f"({located / total:.1%}), trong đó {assigned / total:.1%} là quốc gia do dự án gán "
-        "cho ngân hàng hư cấu chứ không đọc được từ dữ liệu. Chưa gán mức rủi ro pháp vực."
+        f"Bản đồ dựng từ {release_source}: {located:,}/{total:,} giao dịch có quốc gia "
+        f"đọc thẳng từ dữ liệu gốc ({located / total:.1%}), không suy từ tên ngân hàng. "
+        "Chỉ vẽ hành lang giữa hai quốc gia khác nhau; luồng nội địa không lên bản đồ. "
+        "Chưa gán mức rủi ro pháp vực."
     )
     return _Geography(hubs=hubs, flows=flows, limitation=limitation)
 
 
 @router.get("/world", response_model=WorldOut)
 async def world() -> WorldOut:
-    """Currency-native geographic rollup for the active HI-Medium release."""
+    """Bản đồ hành lang dòng tiền, dựng từ bộ dữ liệu có sẵn quốc gia.
+
+    Nhãn nguồn phải lấy từ CHÍNH release dựng nên bản đồ. Lấy từ release đang
+    hoạt động thì trang ghi "Dữ liệu IBM AML HI-Medium" ngay trên một bản đồ vẽ
+    bằng SAML-D — sai nguồn là lỗi nặng hơn thiếu nhãn.
+    """
     with get_session() as session:
         batch = (
             session.execute(
@@ -320,7 +349,9 @@ async def world() -> WorldOut:
                     """SELECT release_id AS batch_id, dataset AS source_name,
                               transaction_rows AS transaction_count
                          FROM edge_model_release
-                        WHERE status='active' LIMIT 1"""
+                        WHERE status = 'reference'
+                          AND release_id IN (SELECT release_id FROM edge_country_hub)
+                        ORDER BY trained_at DESC LIMIT 1"""
                 )
             )
             .mappings()
@@ -337,7 +368,7 @@ async def world() -> WorldOut:
         source_name=batch["source_name"] if batch else None,
         transaction_count=int(batch["transaction_count"]) if batch else 0,
         geography_available=bool(geography.hubs),
-        limitation=(geography.limitation if batch else "Chưa có edge-model release đang hoạt động."),
+        limitation=(geography.limitation if batch else "Chưa dựng bản đồ hành lang; chạy scripts/build_geo_rollup.py."),
     )
 
 

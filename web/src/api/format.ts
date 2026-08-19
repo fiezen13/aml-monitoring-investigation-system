@@ -246,6 +246,8 @@ const RISK_COMPONENT_LABELS: Record<string, string> = {
   graph: "Đồ thị",
   rules: "Luật nghiệp vụ",
   rule: "Luật nghiệp vụ",
+  mega_pna: "Mô hình đồ thị MEGA-PNA",
+  geo_rule: "Bộ luật địa lý",
 };
 
 export function riskComponentLabel(component: string): string {

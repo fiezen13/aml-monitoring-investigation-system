@@ -181,6 +181,30 @@ def test_risk_breakdown_falls_back_to_the_detector_score_without_a_fusion_releas
     assert limitation and "không phải được suy đoán" in limitation
 
 
+def test_every_declared_detector_maps_to_a_scoring_branch():
+    """Nhánh mới phải có mặt ở CẢ hai bảng, nếu không điểm rơi vào hư không.
+
+    Bảng ánh xạ detector→nhánh và tuple các nhánh được khai báo tách rời nhau.
+    Thêm nhánh mà chỉ sửa một trong hai thì cảnh báo vẫn chạy, vẫn có điểm, mà
+    phần phân rã ghi mọi nhánh đều không khả dụng — sai lặng lẽ, không ai thấy.
+    """
+    tools = _tools_with_snapshot(None)
+    for detector, branch in (
+        ("rule", "rule"),
+        ("ml", "anomaly"),
+        ("graph", "graph"),
+        ("mega_pna", "mega_pna"),
+        ("geo_rule", "geo_rule"),
+    ):
+        components, _, _ = tools._risk_components(
+            alert_id="ALT-1", account_key="001:A", detector=detector, score=0.8, as_of_time="2022-09-27T14:22:00Z"
+        )
+        assert branch in components, f"{detector} không có nhánh điểm tương ứng"
+        assert components[branch].available is True, f"{detector} không gán được điểm vào {branch}"
+        assert components[branch].contribution == 0.8
+        assert components[branch].score == 0.8
+
+
 def test_a_snapshot_without_the_full_fusion_key_set_is_not_treated_as_fusion():
     """Ảnh chụp đặc trưng thường (không có hợp nhất) không được đọc nhầm."""
     tools = _tools_with_snapshot({"rapid_outflow_ratio": 0.6})
