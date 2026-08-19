@@ -261,6 +261,9 @@ _CLAIM_NUMBER_RE = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?![\w-])")
 
 
 _EVIDENCE_ID_RE = re.compile(r"\bEV-[A-Za-z0-9_]{3,}\b")
+_TRUNCATION_RE = re.compile(
+    r"cắt ngắn|cắt bớt|truncat|phân trang|trang tiếp theo|chỉ hiển thị|chỉ trích xuất", re.IGNORECASE
+)
 _DENIES_EXISTENCE_RE = re.compile(
     r"không tồn tại|không có trong|không nằm trong|thiếu trong|does not exist|not present|absent",
     re.IGNORECASE,
@@ -577,7 +580,12 @@ class ExplanationAgent:
             for rule in item.payload.get("triggered_rules", []):
                 claim = Claim(
                     claim_id=_claim_id(),
-                    claim=f"Yếu tố luật {rule['factor_code']} được ghi nhận với mức đóng góp {float(rule['contribution']):.2f}.",
+                    # Nhãn, không phải mã. "GEO_CORRIDOR" không nói gì với chuyên
+                    # viên; "Hành lang UK→Morocco — rủi ro gấp 6,2 lần mức nền" thì có.
+                    claim=(
+                        f"{rule.get('factor_label') or rule['factor_code']} "
+                        f"(mức đóng góp {float(rule['contribution']):.2f}, mã {rule['factor_code']})."
+                    ),
                     claim_type="FACT",
                     evidence_refs=[item.evidence_id],
                     confidence=1.0,
@@ -714,17 +722,40 @@ class ExplanationAgent:
                 continue
 
             account = alert["account_key"]
-            for record in sorted(records, key=lambda row: float(row["amount"]), reverse=True)[:3]:
+            # Lấy giao dịch lớn nhất của CẢ HAI CHIỀU, không phải ba dòng lớn
+            # nhất nói chung.
+            #
+            # Sổ giao dịch trả về 50 dòng mới nhất, và với tài khoản chuyển đi
+            # nhiều thì cả 50 dòng đều là tiền ra. Bản giải thích khi ấy nói
+            # "nhận 54.154 từ 2 đối tác" mà không dẫn nổi một giao dịch nhận
+            # nào — tác tử phản biện bắt đúng lỗi đó.
+            outs = [r for r in records if r["source"] == account]
+            ins = [r for r in records if r["source"] != account]
+
+            def by_amount(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+                return sorted(rows, key=lambda row: float(row["amount"]), reverse=True)
+
+            chosen = by_amount(ins)[:2] + by_amount(outs)[:2]
+            for record in by_amount(chosen):
                 outgoing = record["source"] == account
                 direction = "chuyển" if outgoing else "nhận"
                 counterparty = record["destination"] if outgoing else record["source"]
                 preposition = "tới" if outgoing else "từ"
+                # Hành lang quốc gia, khi bộ dữ liệu có. Với một cảnh báo địa lý
+                # thì đây CHÍNH là lý do nó nổ; thiếu nó thì câu dữ kiện kể đúng
+                # số tiền mà không kể được điều quan trọng nhất.
+                src_c = record.get("source_country")
+                dst_c = record.get("destination_country")
+                corridor = ""
+                if src_c and dst_c:
+                    corridor = f", hành lang {src_c} → {dst_c}" if src_c != dst_c else f", nội địa {src_c}"
                 claim = Claim(
                     claim_id=_claim_id(),
                     claim=(
                         f"Ngày {_day(record['timestamp'])}, tài khoản {direction} "
                         f"{_amount(record['amount'])} {record['currency']} {preposition} {counterparty} "
-                        f"qua kênh {record['payment_format']} (mã giao dịch {record['transaction_id']})."
+                        f"qua kênh {record['payment_format']}{corridor} "
+                        f"(mã giao dịch {record['transaction_id']})."
                     ),
                     claim_type="FACT",
                     evidence_refs=[item.evidence_id],
@@ -904,6 +935,17 @@ class EvidenceCriticAgent:
         resolves — a genuine gap still fails the run.
         """
         known = {item.evidence_id for item in evidence}
+
+        # Hạn chế mà bản giải thích ĐÃ TỰ KHAI thì không phải khiếm khuyết.
+        #
+        # Sổ giao dịch bị cắt ở 50 dòng là giới hạn phân trang đã biết, và bản
+        # giải thích ghi nó ở mục "thông tin còn thiếu". Tác tử phản biện nêu
+        # lại đúng điều đó rồi đánh trượt cả phiên là đếm hai lần một hạn chế đã
+        # công bố — chuyên viên mở ra thấy "KHÔNG ĐẠT" mà không có lỗi nào thật.
+        if _TRUNCATION_RE.search(issue.detail or "") and any(
+            _TRUNCATION_RE.search(note) for note in explanation.missing_information
+        ):
+            return True
 
         # Cáo buộc "mã chứng cứ này không tồn tại" là mệnh đề về sổ bằng chứng,
         # và sổ bằng chứng là bên nói lời cuối. Tác tử phản biện đôi khi phát

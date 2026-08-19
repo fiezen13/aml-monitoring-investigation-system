@@ -651,23 +651,30 @@ class InvestigationTools:
             payload=result.model_dump(mode="json"),
             source_record_ids=[args.alert_id],
         )
-        if row["detector"] == "rule":
-            reasons = [
-                dict(reason)
-                for reason in self.session.execute(
-                    text(
-                        """SELECT factor_code, factor_label, contribution, weight
+        # MỌI nhánh có yếu tố đóng góp đều sinh bằng chứng, không chỉ 'rule'.
+        #
+        # Điều kiện cũ khoá cứng vào detector 'rule', nên cảnh báo địa lý và
+        # cảnh báo MEGA-PNA không bao giờ đưa được lý do có tên tới tác tử. Hậu
+        # quả nhìn thấy trên màn hình: một cảnh báo hành lang UK→Morocco mà bản
+        # giải thích chỉ nói về tỉ lệ chuyển tiền nhanh — đúng thứ KHÔNG phải
+        # nguyên nhân cảnh báo nổ.
+        reasons = [
+            dict(reason)
+            for reason in self.session.execute(
+                text(
+                    """SELECT factor_code, factor_label, contribution, weight
                              FROM alert_reason WHERE alert_id = :id ORDER BY contribution DESC"""
-                    ),
-                    {"id": args.alert_id},
-                ).mappings()
-            ]
+                ),
+                {"id": args.alert_id},
+            ).mappings()
+        ]
+        if reasons:
             self.repository.add_evidence(
                 self.investigation_id,
                 evidence_type=EvidenceType.RULE_TRIGGER,
-                source="rule_engine",
+                source=f"{row['detector']}_engine",
                 account_key=row["account_key"],
-                payload={"alert_id": args.alert_id, "triggered_rules": reasons},
+                payload={"alert_id": args.alert_id, "detector": row["detector"], "triggered_rules": reasons},
                 source_record_ids=[args.alert_id, *[reason["factor_code"] for reason in reasons]],
             )
         return ToolExecution(result=result.model_dump(mode="json"), evidence=evidence)
@@ -869,7 +876,7 @@ class InvestigationTools:
             self.session.execute(
                 text(
                     f"""SELECT transaction_id, occurred_at, from_account_key, to_account_key,
-                               amount, currency, channel
+                               amount, currency, channel, from_country, to_country
                           FROM transaction WHERE {" AND ".join(conditions)}
                          ORDER BY occurred_at DESC, transaction_id DESC
                          LIMIT :limit OFFSET :offset"""
@@ -888,6 +895,8 @@ class InvestigationTools:
                 amount=float(row["amount"]),
                 currency=row["currency"],
                 payment_format=row["channel"],
+                source_country=row["from_country"],
+                destination_country=row["to_country"],
             )
             for row in rows
         ]

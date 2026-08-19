@@ -449,6 +449,39 @@ async def test_critic_objection_is_refuted_whatever_label_it_arrives_under():
 
 
 @pytest.mark.asyncio
+async def test_critic_does_not_fail_a_truncation_the_explanation_already_declared():
+    """Hạn chế đã tự khai không được tính là khiếm khuyết.
+
+    Sổ giao dịch cắt ở 50 dòng là giới hạn phân trang đã biết và bản giải thích
+    ghi nó ở mục thông tin còn thiếu. Tác tử phản biện nêu lại rồi đánh trượt cả
+    phiên là đếm hai lần một hạn chế đã công bố.
+    """
+    risk = risk_evidence("rule")
+    explanation = ExplanationAgent(FakeGeminiService(), "INV-1")._deterministic(alert("rule"), [risk])
+    explanation.missing_information.append(
+        "Chỉ trích xuất được 50 giao dịch đầu tiên; cần truy vấn thêm trang tiếp theo."
+    )
+    objection = ValidationResult(
+        status="FAIL",
+        confidence=0.9,
+        issues=[
+            ValidationIssue(
+                type="OTHER",
+                claim="Sổ giao dịch",
+                detail="Dữ liệu giao dịch bị cắt bớt (chỉ hiển thị 50 giao dịch).",
+            )
+        ],
+        missing_evidence=[],
+        unsupported_claims=[],
+        next_action="RETURN_TO_INVESTIGATION",
+    )
+    service = FakeGeminiService({"evidence_critic": objection.model_dump(mode="json")})
+    result = (await EvidenceCriticAgent(MagicMock(), service, "INV-1").validate(explanation, [risk])).output
+
+    assert result.status == "PASS"
+
+
+@pytest.mark.asyncio
 async def test_critic_objection_about_a_genuinely_absent_id_still_fails():
     """Bác bỏ chỉ dành cho mã có thật. Mã bịa vẫn phải làm phiên trượt."""
     risk = risk_evidence("rule")

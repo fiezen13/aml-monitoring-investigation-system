@@ -120,6 +120,10 @@ class TransactionRecord(BaseModel):
     amount: float = Field(gt=0)
     currency: str
     payment_format: str
+    # Quốc gia hai đầu, chỉ có với bộ dữ liệu mang sẵn thông tin này. Để None
+    # thì bản giải thích không nhắc tới — không suy đoán pháp vực từ mã ngân hàng.
+    source_country: str | None = None
+    destination_country: str | None = None
 
 
 class TransactionPage(BaseModel):
