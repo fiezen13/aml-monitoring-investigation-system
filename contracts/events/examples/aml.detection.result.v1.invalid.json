@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "result_id": "DR-IF-bad",
+  "entity": {
+    "entity_type": "ACCOUNT",
+    "entity_id": "70:10042B660"
+  },
+  "detector": {
+    "detector_id": "isolation_forest_account_behavior",
+    "detector_type": "ML_UNSUPERVISED",
+    "version": "if_baseline_7d_v1"
+  },
+  "evaluated_at": "2026-08-12T03:00:00.000Z",
+  "as_of_time": "2022-09-06T23:59:59.000Z",
+  "score": 0.81,
+  "triggered": true,
+  "reason_codes": []
+}

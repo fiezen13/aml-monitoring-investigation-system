@@ -15,6 +15,8 @@ set -euo pipefail
 BOOTSTRAP="${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}"
 RAW_TOPIC="${AML_RAW_TOPIC:-aml.transactions.raw.v1}"
 DLQ_TOPIC="${AML_DLQ_TOPIC:-aml.transactions.dlq.v1}"
+# Detection plane (IF / rules / graph → fusion). Key = entity_id.
+DETECTION_RESULT_TOPIC="${AML_DETECTION_RESULT_TOPIC:-aml.detection.result.v1}"
 PARTITIONS="${AML_TOPIC_PARTITIONS:-3}"
 REPLICATION="${AML_TOPIC_REPLICATION_FACTOR:-1}"
 RETENTION_MS="${AML_TOPIC_RETENTION_MS:-604800000}"
@@ -57,6 +59,8 @@ create_topic() {
 create_topic "$RAW_TOPIC" "$PARTITIONS"
 # DLQ nhận rất ít dữ liệu; một partition là đủ và giữ được thứ tự lỗi.
 create_topic "$DLQ_TOPIC" "${AML_DLQ_TOPIC_PARTITIONS:-1}"
+# Kết quả từng detector (kể cả không vượt ngưỡng) — đầu vào score fusion.
+create_topic "$DETECTION_RESULT_TOPIC" "$PARTITIONS"
 
 echo
 echo "Topic hiện có:"
