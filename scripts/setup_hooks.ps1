@@ -14,8 +14,14 @@ bash scripts/_pyrun.sh scripts/submit_log.py || true
 exit 0
 '@
 
-Set-Content -Path $HookFile -Value $HookBody -Encoding UTF8 -NoNewline
-Write-Host "[ai-log] Git pre-push hook installed."
+# UTF8 with BOM + CRLF breaks Git on Windows ("cannot spawn pre-push").
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText(
+    (Resolve-Path -LiteralPath '.').Path + '\' + ($HookFile -replace '/', '\'),
+    ($HookBody -replace "`r`n", "`n" -replace "`r", "`n"),
+    $utf8NoBom
+)
+Write-Host "[ai-log] Git pre-push hook installed (UTF-8 no BOM, LF)."
 
 if (-not (Test-Path .ai-log)) { New-Item -ItemType Directory -Path .ai-log | Out-Null }
 if (-not (Test-Path .ai-log/.gitkeep)) { New-Item -ItemType File -Path .ai-log/.gitkeep | Out-Null }
