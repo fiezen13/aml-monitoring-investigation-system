@@ -790,7 +790,7 @@ async def list_sars() -> list[dict[str, Any]]:
 async def get_sar(sar_id: str) -> dict[str, Any]:
     return _sar_payload(sar_id)
 
-
+ 
 @router.post("/cases/{case_id}/sar")
 async def create_sar(case_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     user = _require_user(authorization)
