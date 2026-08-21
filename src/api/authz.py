@@ -30,34 +30,38 @@ from sqlalchemy import text
 
 from src.db.session import get_session
 
-ANALYST = "analyst"
-COMPLIANCE = "compliance_officer"
-MLRO = "mlro"
-AUDITOR = "auditor"
-ADMIN = "admin"
+ANALYST = "analyst"  # Chuyên viên
+MANAGER = "manager"  # Quản lý (gộp compliance_officer + mlro + auditor cũ)
+ADMIN = "admin"  # Quản trị hệ thống
 
-ALL_ROLES = frozenset({ANALYST, COMPLIANCE, MLRO, AUDITOR, ADMIN})
+ALL_ROLES = frozenset({ANALYST, MANAGER, ADMIN})
 
-#: Công việc điều tra hằng ngày: xem cảnh báo, vụ việc, đồ thị, tài sản mã hoá.
-#: Cố ý không có ``auditor`` — kiểm toán viên rà lại quyết định đã ra chứ không
-#: tham gia ra quyết định; và không có ``admin`` — quản trị hạ tầng không cần
-#: đọc hồ sơ khách hàng.
-INVESTIGATION = frozenset({ANALYST, COMPLIANCE, MLRO})
+#: HÀNH ĐỘNG điều tra (ghi) và dữ liệu điều tra: khởi chạy điều tra, tài sản mã
+#: hoá. Chỉ Chuyên viên và Quản lý — quản trị hệ thống (admin) không đọc hồ sơ
+#: khách hàng, không ra quyết định AML.
+INVESTIGATION = frozenset({ANALYST, MANAGER})
 
-#: Dữ liệu điều tra ở chế độ chỉ đọc — kiểm toán viên được xem để đối chiếu.
-INVESTIGATION_READ = INVESTIGATION | {AUDITOR}
+#: XEM dữ liệu điều tra — cảnh báo, vụ việc, đồ thị, giao dịch. Sau khi gộp vai
+#: trò, người xem cũng chính là người điều tra (Chuyên viên + Quản lý); không còn
+#: vai trò "chỉ đọc" tách riêng.
+INVESTIGATION_READ = INVESTIGATION
 
-#: Chất lượng dữ liệu, đánh giá chuẩn, giám sát mô hình. Analyst không cần.
-MODEL_QUALITY = frozenset({COMPLIANCE, MLRO, AUDITOR, ADMIN})
+#: Tab KỸ THUẬT: chất lượng dữ liệu, đánh giá chuẩn, giám sát mô hình, lượt chạy
+#: tác tử. Theo yêu cầu sản phẩm — CHỈ ADMIN. Chuyên viên và Quản lý đều KHÔNG thấy.
+MODEL_QUALITY = frozenset({ADMIN})
 
-#: Hồ sơ SAR và phê duyệt — chỉ người ký chịu trách nhiệm.
-SAR = frozenset({COMPLIANCE, MLRO})
+#: Vòng đời hồ sơ SAR (soạn/kiểm tra/nộp/xem/xuất): Chuyên viên soạn và nộp, Quản
+#: lý cũng thao tác được. QUYẾT ĐỊNH phê duyệt thì tách riêng — chỉ Quản lý (xem
+#: "/approvals/{approval_id}/decision" bên dưới).
+SAR = INVESTIGATION
 
-#: Nhật ký kiểm toán — mọi vai trò giám sát, trừ analyst.
-AUDIT = frozenset({COMPLIANCE, MLRO, AUDITOR, ADMIN})
+#: Nhật ký kiểm toán nghiệp vụ — Quản lý giám sát, Admin xem dấu vết hệ thống.
+AUDIT = frozenset({MANAGER, ADMIN})
 
-USER_ADMIN = frozenset({ADMIN, COMPLIANCE})
-SETTINGS = frozenset({ADMIN, MLRO})
+# Quản trị người dùng/hệ thống là THẨM QUYỀN KỸ THUẬT — chỉ ADMIN (khớp
+# MANAGE_USERS/MANAGE_SYSTEM = admin trong src/api/permissions.py).
+USER_ADMIN = frozenset({ADMIN})
+SETTINGS = frozenset({ADMIN})
 
 #: Route ai cũng gọi được, kể cả khi chưa đăng nhập.
 PUBLIC: frozenset[str] = frozenset(
@@ -87,17 +91,17 @@ POLICY: dict[str, frozenset[str]] = {
     "/queue": ALL_ROLES,
     "/status": ALL_ROLES,
     "/search": INVESTIGATION_READ,
-    # --- Cảnh báo ---
-    "/alerts": INVESTIGATION,
-    "/alerts/page": INVESTIGATION,
-    "/alerts/{alert_id}": INVESTIGATION,
+    # --- Cảnh báo --- (Chuyên viên + Quản lý; quản trị hệ thống không đọc)
+    "/alerts": INVESTIGATION_READ,
+    "/alerts/page": INVESTIGATION_READ,
+    "/alerts/{alert_id}": INVESTIGATION_READ,
     "/alerts/{alert_id}/investigate": INVESTIGATION,
     "/alerts/{alert_id}/investigation": INVESTIGATION_READ,
-    # --- Vụ việc ---
-    "/cases": INVESTIGATION,
-    "/cases/{case_id}": INVESTIGATION,
+    # --- Vụ việc --- (Chuyên viên + Quản lý; quản trị hệ thống không đọc)
+    "/cases": INVESTIGATION_READ,
+    "/cases/{case_id}": INVESTIGATION_READ,
     "/cases/{case_id}/investigate": INVESTIGATION,
-    "/cases/{case_id}/network": INVESTIGATION,
+    "/cases/{case_id}/network": INVESTIGATION_READ,
     "/cases/{case_id}/sar": SAR,
     # --- Phiên điều tra của tác tử ---
     "/investigations/{investigation_id}": INVESTIGATION_READ,
@@ -105,8 +109,10 @@ POLICY: dict[str, frozenset[str]] = {
     "/investigations/{investigation_id}/trace": INVESTIGATION_READ,
     "/investigations/{investigation_id}/explanation": INVESTIGATION_READ,
     "/investigations/{investigation_id}/package": INVESTIGATION_READ,
-    "/investigations/{investigation_id}/review": frozenset({COMPLIANCE, MLRO}),
-    "/feedback/labels": MODEL_QUALITY,
+    "/investigations/{investigation_id}/review": frozenset({MANAGER}),
+    # Nhãn rà soát: vòng phản hồi của Quản lý (giám sát nghiệp vụ) và Admin (theo
+    # dõi chất lượng mô hình). Chuyên viên không tham gia gắn nhãn.
+    "/feedback/labels": AUDIT,
     # --- Hồ sơ SAR và phê duyệt ---
     "/sars": SAR,
     "/sars/{sar_id}": SAR,
@@ -115,34 +121,37 @@ POLICY: dict[str, frozenset[str]] = {
     "/sars/{sar_id}/export": SAR,
     # Màn hình "Phê duyệt SAR" dựng từ /sars — bảng `approval` đi kèm mỗi hồ sơ
     # trong payload đó. Không có endpoint danh sách riêng và cũng không cần.
-    "/approvals/{approval_id}/decision": frozenset({MLRO, ADMIN}),
+    # Quyết định phê duyệt hồ sơ rủi ro cao là THẨM QUYỀN NGHIỆP VỤ AML — chỉ
+    # Quản lý. Admin (quản trị hệ thống) không ra quyết định AML (khớp APPROVE_CASE/
+    # DECIDE_SAR = manager trong permissions.py).
+    "/approvals/{approval_id}/decision": frozenset({MANAGER}),
     # --- Tra cứu giao dịch ---
     "/transactions": INVESTIGATION_READ,
     # --- Đồ thị và tài sản mã hoá ---
-    "/fc/graph": INVESTIGATION,
+    # Đồ thị là dữ liệu điều tra — Chuyên viên + Quản lý, khớp VIEW_ENTITY_GRAPH.
+    "/fc/graph": INVESTIGATION_READ,
     # Cùng quyền với /fc/graph: nó đọc chính bằng chứng của bộ dò đồ thị cho các
     # tài khoản đang hiển thị, không mở thêm dữ liệu nào. Thiếu dòng này thì bảng
     # chính sách mặc-định-đóng chặn mọi vai trò và tab Chu trình luôn báo 401.
-    "/fc/graph/patterns": INVESTIGATION,
+    "/fc/graph/patterns": INVESTIGATION_READ,
     # Bản kể của tác tử cho vùng đồ thị: đọc đúng những giao dịch mà /fc/graph
-    # đã vẽ, chỉ diễn đạt lại, nên cùng quyền điều tra.
-    "/fc/graph/narrative": INVESTIGATION,
-    "/fc/graph/edges/{edge_id}/transactions": INVESTIGATION,
-    "/fc/graph/nodes/{node_id}/transactions": INVESTIGATION,
+    # đã vẽ, chỉ diễn đạt lại, nên cùng quyền xem đồ thị.
+    "/fc/graph/narrative": INVESTIGATION_READ,
+    "/fc/graph/edges/{edge_id}/transactions": INVESTIGATION_READ,
+    "/fc/graph/nodes/{node_id}/transactions": INVESTIGATION_READ,
     "/fc/crypto": INVESTIGATION,
+    # Giải thích Gemini on-demand cho một giao dịch Bitcoin — cùng quyền điều tra.
+    "/fc/bitcoin/{tx_id}/explain": INVESTIGATION,
+    "/fc/bitcoin": INVESTIGATION_READ,
     "/fc/projects": INVESTIGATION,
     # --- Tác tử AI ---
-    "/fc/agent-runs": INVESTIGATION_READ,
-    "/fc/agent-runs/{run_id}": INVESTIGATION_READ,
+    "/fc/agent-runs": MODEL_QUALITY,
+    "/fc/agent-runs/{run_id}": MODEL_QUALITY,
     # --- Chất lượng và mô hình ---
     "/fc/benchmarks": MODEL_QUALITY,
     # Đối chiếu nhiều nhánh, mỗi nhánh benchmark trên vùng của nó. Cùng quyền
     # với /fc/benchmarks: đây là dữ liệu chất lượng mô hình.
     "/fc/model-branches": MODEL_QUALITY,
-    # --- Nhánh Bitcoin AML (Elliptic++) ---
-    # Suy luận là công việc điều tra: cùng quyền với đọc cảnh báo/đồ thị.
-    "/aml/bitcoin/predict": INVESTIGATION,
-    "/aml/bitcoin/predict/batch": INVESTIGATION,
     "/fc/model-monitor": MODEL_QUALITY,
     "/fc/edge-model/release": MODEL_QUALITY,
     "/fc/data-quality": MODEL_QUALITY,

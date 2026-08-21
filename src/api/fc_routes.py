@@ -27,11 +27,17 @@ from src.models.fc_schemas import (
     AgentRunOut,
     AgentStepOut,
     BenchmarkOut,
+    BitcoinDriverOut,
+    BitcoinNeighbourOut,
+    BitcoinPageOut,
+    BitcoinScoredRowOut,
+    BitcoinSummaryOut,
     CryptoOut,
     CryptoTransferOut,
     DataQualityOut,
     DetectedPatternOut,
     EdgeModelReleaseOut,
+    EvidenceReasonOut,
     ExposureOut,
     FlowOut,
     GraphEdgeOut,
@@ -518,7 +524,7 @@ _NEIGHBOURHOOD_SQL = """
 """
 
 
-def _operational_transaction_graph(session: Session, limit: int) -> GraphOut:
+def _operational_transaction_graph(session: Session, limit: int, dataset: str | None = None) -> GraphOut:
     """Đồ thị quanh các cảnh báo rủi ro cao, dựng từ giao dịch đã chấm điểm.
 
     Hạt giống lấy **trực tiếp từ bảng alert**, không nối qua
@@ -550,11 +556,16 @@ def _operational_transaction_graph(session: Session, limit: int) -> GraphOut:
                      FROM alert a
                      LEFT JOIN graph_detector_evidence g ON g.account_key = a.account_key
                     WHERE a.status <> 'closed'
+                      -- Gieo mầm theo đúng bộ dữ liệu đang xem: cả đồ thị nở ra
+                      -- từ hạt giống nên lọc ở đây là scope toàn bộ. Không lọc thì
+                      -- một cụm tài khoản IBM và một cụm SAML-D nằm chung khung vẽ,
+                      -- vốn là hai vũ trụ không có cạnh nào nối nhau.
+                      AND (CAST(:dataset AS text) IS NULL OR a.dataset = CAST(:dataset AS text))
                     GROUP BY a.account_key
                     ORDER BY has_pattern DESC, max(a.risk_score) DESC, a.account_key
                     LIMIT :lim"""
             ),
-            {"lim": seed_limit},
+            {"lim": seed_limit, "dataset": dataset},
         )
         .mappings()
         .all()
@@ -652,12 +663,17 @@ def _operational_transaction_graph(session: Session, limit: int) -> GraphOut:
 @router.get("/fc/graph", response_model=GraphOut)
 async def entity_graph(
     limit: int = Query(default=400, le=2000),
+    dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
 ) -> GraphOut:
-    """Toàn bộ đồ thị thực thể của lần chạy mô phỏng gần nhất."""
+    """Toàn bộ đồ thị thực thể của lần chạy mô phỏng gần nhất.
+
+    ``dataset`` chỉ áp cho đồ thị vận hành (dựng từ cảnh báo thật). Lần chạy mô
+    phỏng là một vũ trụ thực thể riêng, không gắn bộ dữ liệu vận hành nào.
+    """
     with get_session() as session:
         sim = _current_simulation(session)
         if not sim:
-            return _operational_transaction_graph(session, limit)
+            return _operational_transaction_graph(session, limit, dataset)
 
         nodes = (
             session.execute(
@@ -1225,6 +1241,187 @@ async def crypto(limit: int = Query(default=200, le=1000)) -> CryptoOut:
     )
 
 
+@router.get("/fc/bitcoin", response_model=BitcoinPageOut)
+async def bitcoin_queue(
+    view: str = Query(default="flagged", description="flagged | review | all"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=10, le=200),
+) -> BitcoinPageOut:
+    """Hàng đợi giao dịch Bitcoin bị Random Forest chấm nghi ngờ (nhánh Elliptic gốc).
+
+    Đọc thẳng bảng ``bitcoin_scored_tx`` — điểm tập test chấm sẵn bằng script,
+    KHÔNG chấm lúc gọi. Đây là nhánh riêng, tách khỏi cảnh báo–tài khoản của
+    IBM/SAML-D vì Elliptic ẩn danh (không địa chỉ ví, không tài khoản).
+
+    ``view``: ``flagged`` (model gắn cờ bất hợp pháp — mặc định, đây là việc cần
+    làm), ``review`` (chỉ mức HIGH/CRITICAL), ``all`` (toàn tập test).
+    """
+    # Bộ lọc hàng đợi. Tóm tắt LUÔN tính trên toàn tập, không theo bộ lọc.
+    row_filter = {
+        "flagged": "predicted_label = 'illicit'",
+        "review": "requires_review",
+        "all": "TRUE",
+    }.get(view, "predicted_label = 'illicit'")
+
+    with get_session() as session:
+        # Chưa nạp điểm thì trả tóm tắt rỗng có nghĩa, không phải 500 — trang tự
+        # hiện trạng thái "chưa nạp" kèm hướng dẫn chạy script.
+        scored_total = session.execute(text("SELECT count(*) FROM bitcoin_scored_tx")).scalar_one()
+        if not scored_total:
+            empty = BitcoinSummaryOut(
+                release_id="REL-BTC-ELLIPTICPP-V1",
+                model_version="—",
+                total_scored=0,
+                flagged_illicit=0,
+                requires_review=0,
+                illicit_true_total=0,
+                flagged_true_positive=0,
+            )
+            return BitcoinPageOut(summary=empty, rows=[], total=0, page=page, page_size=page_size)
+
+        agg = (
+            session.execute(
+                text(
+                    """SELECT
+                         count(*)                                                   AS total_scored,
+                         count(*) FILTER (WHERE predicted_label='illicit')          AS flagged_illicit,
+                         count(*) FILTER (WHERE requires_review)                     AS requires_review,
+                         count(*) FILTER (WHERE true_label='illicit')               AS illicit_true_total,
+                         count(*) FILTER (WHERE predicted_label='illicit'
+                                            AND true_label='illicit')               AS flagged_true_positive,
+                         count(*) FILTER (WHERE risk_level='CRITICAL')              AS lvl_critical,
+                         count(*) FILTER (WHERE risk_level='HIGH')                  AS lvl_high,
+                         count(*) FILTER (WHERE risk_level='MEDIUM')                AS lvl_medium,
+                         count(*) FILTER (WHERE risk_level='LOW')                   AS lvl_low,
+                         min(timestep)                                              AS ts_min,
+                         max(timestep)                                              AS ts_max,
+                         max(release_id)                                            AS release_id
+                       FROM bitcoin_scored_tx"""
+                )
+            )
+            .mappings()
+            .one()
+        )
+        # Chỉ số đầu bảng lấy từ release đã ký — cùng nguồn với trang Đánh giá
+        # chuẩn, để hai chỗ không lệch số.
+        rel = (
+            session.execute(
+                text(
+                    """SELECT model_version, benchmark
+                         FROM edge_model_release WHERE release_id = :rid"""
+                ),
+                {"rid": agg["release_id"]},
+            )
+            .mappings()
+            .one_or_none()
+        )
+        primary = ((rel or {}).get("benchmark") or {}).get("primary_seed", {}) if rel else {}
+
+        total = session.execute(
+            text(f"SELECT count(*) FROM bitcoin_scored_tx WHERE {row_filter}")  # noqa: S608
+        ).scalar_one()
+        rows = (
+            session.execute(
+                text(
+                    f"""SELECT tx_id, timestep, illicit_prob, predicted_label, true_label,
+                               risk_level, requires_review, headline, reasons, caveat,
+                               drivers, meaningful_push_share, interpretable_ratio,
+                               explanation_quality, graph_in_degree, graph_out_degree,
+                               graph_flagged_neighbours, graph_known_illicit_neighbours,
+                               graph_neighbours, evidence_strength, graph_evidence,
+                               evidence_reasons, recommended_steps
+                          FROM bitcoin_scored_tx
+                         WHERE {row_filter}
+                         ORDER BY illicit_prob DESC, tx_id
+                         LIMIT :limit OFFSET :offset"""  # noqa: S608
+                ),
+                {"limit": page_size, "offset": (page - 1) * page_size},
+            )
+            .mappings()
+            .all()
+        )
+
+    summary = BitcoinSummaryOut(
+        release_id=agg["release_id"],
+        model_version=(rel or {}).get("model_version", "—"),
+        total_scored=agg["total_scored"],
+        flagged_illicit=agg["flagged_illicit"],
+        requires_review=agg["requires_review"],
+        by_level={
+            "CRITICAL": agg["lvl_critical"],
+            "HIGH": agg["lvl_high"],
+            "MEDIUM": agg["lvl_medium"],
+            "LOW": agg["lvl_low"],
+        },
+        illicit_true_total=agg["illicit_true_total"],
+        flagged_true_positive=agg["flagged_true_positive"],
+        f1=primary.get("f1"),
+        precision=primary.get("precision"),
+        recall=primary.get("recall"),
+        pr_auc=primary.get("pr_auc"),
+        test_timestep_min=agg["ts_min"],
+        test_timestep_max=agg["ts_max"],
+    )
+    return BitcoinPageOut(
+        summary=summary,
+        rows=[
+            BitcoinScoredRowOut(
+                tx_id=r["tx_id"],
+                timestep=r["timestep"],
+                illicit_prob=_f(r["illicit_prob"]),
+                predicted_label=r["predicted_label"],
+                true_label=r["true_label"],
+                risk_level=r["risk_level"],
+                requires_review=r["requires_review"],
+                headline=r["headline"],
+                reasons=list(r["reasons"] or []),
+                caveat=r["caveat"],
+                drivers=[
+                    BitcoinDriverOut(
+                        name=d["name"],
+                        label=d.get("label"),
+                        meaningful=bool(d.get("meaningful")),
+                        value=float(d.get("value", 0.0)),
+                        contribution=float(d.get("contribution", 0.0)),
+                    )
+                    for d in (r["drivers"] or [])
+                ],
+                meaningful_push_share=(
+                    float(r["meaningful_push_share"]) if r["meaningful_push_share"] is not None else None
+                ),
+                interpretable_ratio=(float(r["interpretable_ratio"]) if r["interpretable_ratio"] is not None else None),
+                explanation_quality=r["explanation_quality"],
+                graph_in_degree=r["graph_in_degree"],
+                graph_out_degree=r["graph_out_degree"],
+                graph_flagged_neighbours=r["graph_flagged_neighbours"],
+                graph_known_illicit_neighbours=r["graph_known_illicit_neighbours"],
+                graph_neighbours=[
+                    BitcoinNeighbourOut(
+                        id=n["id"], dir=n["dir"], flag=n.get("flag"), known_illicit=bool(n.get("known_illicit"))
+                    )
+                    for n in (r["graph_neighbours"] or [])
+                ],
+                evidence_strength=r["evidence_strength"],
+                graph_evidence=r["graph_evidence"] or {},
+                evidence_reasons=[
+                    EvidenceReasonOut(
+                        priority=er.get("priority", 9),
+                        badges=list(er.get("badges", [])),
+                        title=er.get("title", ""),
+                        text=er.get("text", ""),
+                    )
+                    for er in (r["evidence_reasons"] or [])
+                ],
+                recommended_steps=list(r["recommended_steps"] or []),
+            )
+            for r in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
 @router.get("/fc/projects", response_model=list[ProjectOut])
 async def projects() -> list[ProjectOut]:
     with get_session() as session:
@@ -1541,7 +1738,7 @@ async def model_branches() -> list[ModelBranchOut]:
 
     Vì sao có endpoint riêng thay vì mở rộng /fc/edge-model/release: kiến trúc
     của hệ thống là NHIỀU nhánh song song — IBM (rửa tiền trong ngân hàng),
-    SAML-D (xuyên biên giới), sắp tới Elliptic++ (bitcoin). Mỗi nhánh có model
+    SAML-D (xuyên biên giới), sắp tới Elliptic (bitcoin). Mỗi nhánh có model
     và bộ chỉ số riêng, không cộng gộp được. Trả về một danh sách, một phần tử
     một nhánh, để giao diện bày cạnh nhau chứ không trộn thành một con số.
 
@@ -1848,6 +2045,7 @@ async def transactions(
     min_score: float = Query(default=0, ge=0, le=1),
     currency: str = Query(default="all", max_length=64),
     triggered: bool | None = Query(default=None),
+    dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> TxPageOut:
@@ -1855,9 +2053,36 @@ async def transactions(
 
     Đếm tổng bằng một truy vấn riêng thay vì `count(*) OVER ()`: trên bảng vài
     triệu dòng, window function buộc phải quét hết ngay cả khi chỉ lấy 50 dòng.
+
+    ``dataset`` lọc theo bộ dữ liệu vận hành. Không lọc thì bảng trộn giao dịch
+    IBM và SAML-D, chuyên viên không biết dòng nào thuộc bộ nào. Cột
+    ``source_dataset`` lưu tên người đọc nên khớp bằng ILIKE thay vì mã.
     """
-    where = ["r.status = 'active'"]
     params: dict[str, Any] = {"limit": page_size, "offset": (page - 1) * page_size}
+
+    # Hai chế độ duyệt, vì hai nhánh chấm điểm khác nhau về BẢN CHẤT:
+    #  • Nhánh đang phục vụ (IBM, chấm từng giao dịch): duyệt ĐÚNG tập đã chấm
+    #    của release active — INNER JOIN, giữ nguyên hành vi cũ.
+    #  • SAML-D chấm theo hành lang địa lý (geo_rule), KHÔNG có điểm cấp giao
+    #    dịch. Ép nó vào khuôn "tập đã chấm" thì ra 0 dòng, trông như hỏng. Nên
+    #    duyệt giao dịch SAML-D thô: LEFT JOIN bảng điểm (luôn NULL ở nhánh này),
+    #    cột điểm để trống một cách trung thực thay vì bịa số 0.
+    saml_browse = dataset == "saml_d"
+    if saml_browse:
+        # So khớp CHÍNH XÁC tên bộ, không ILIKE: giá trị cột là hằng
+        # 'SAML-D', và equality mới dùng được chỉ mục thay vì quét cả bảng.
+        join_sql = """FROM transaction t
+                       LEFT JOIN transaction_model_score s ON s.transaction_id = t.transaction_id
+                       LEFT JOIN edge_model_release r ON r.release_id = s.release_id"""
+        where = ["t.source_dataset = 'SAML-D'"]
+    else:
+        # IBM (hoặc không chọn): INNER JOIN tập đã chấm của release active. Tập
+        # này vốn đã HOÀN TOÀN là IBM nên KHÔNG thêm bộ lọc source_dataset —
+        # thêm vào chỉ ép quét 28 triệu dòng cho một điều kiện luôn đúng.
+        join_sql = """FROM transaction t
+                       JOIN transaction_model_score s USING (transaction_id)
+                       JOIN edge_model_release r USING (release_id)"""
+        where = ["r.status = 'active'"]
 
     if q:
         where.append(
@@ -1881,18 +2106,20 @@ async def transactions(
         where.append("s.triggered = :triggered")
         params["triggered"] = triggered
     clause = " AND ".join(where)
-    has_filters = bool(
+    real_filters = bool(
         q or channel != "all" or min_amount > 0 or min_score > 0 or currency != "all" or triggered is not None
     )
 
     with get_session() as session:
-        if has_filters:
+        # count(*) chỉ khi thật sự cần: có bộ lọc, hoặc đang duyệt SAML thô (tổng
+        # của nó là số dòng thô, không có sẵn trong metadata release). Còn xem IBM
+        # trơn thì đọc thẳng `transaction_rows` — tránh đếm 6,75 triệu dòng mỗi
+        # lần mở trang, vốn khiến trang mặc định treo ~16 giây.
+        if saml_browse or real_filters:
             total = session.execute(
                 text(
                     f"""SELECT count(*)
-                           FROM transaction t
-                           JOIN transaction_model_score s USING (transaction_id)
-                           JOIN edge_model_release r USING (release_id)
+                           {join_sql}
                           WHERE {clause}"""  # noqa: S608
                 ),
                 params,
@@ -1912,9 +2139,7 @@ async def transactions(
                                t.from_account_key, t.to_account_key, t.amount, t.currency,
                                t.amount_received, t.receiving_currency, t.channel, t.remarks,
                                s.model_score, s.threshold, s.triggered, r.model_version
-                          FROM transaction t
-                          JOIN transaction_model_score s USING (transaction_id)
-                          JOIN edge_model_release r USING (release_id)
+                          {join_sql}
                          WHERE {clause}
                          ORDER BY t.occurred_at DESC
                          LIMIT :limit OFFSET :offset"""  # noqa: S608
@@ -1939,8 +2164,9 @@ async def transactions(
                 receiving_currency=r["receiving_currency"],
                 channel=r["channel"],
                 remarks=r["remarks"],
-                model_score=_f(r["model_score"]),
-                threshold=_f(r["threshold"]),
+                # Để NULL đúng nghĩa "chưa chấm" (SAML-D), không phải điểm 0.
+                model_score=_f(r["model_score"]) if r["model_score"] is not None else None,
+                threshold=_f(r["threshold"]) if r["threshold"] is not None else None,
                 triggered=r["triggered"],
                 model_version=r["model_version"],
             )
@@ -2108,3 +2334,45 @@ async def graph_narrative(
         source=source,
         reading=reading,
     )
+
+
+@router.post("/fc/bitcoin/{tx_id}/explain")
+async def explain_bitcoin(tx_id: str):
+    """Giải thích ngôn ngữ tự nhiên (Gemini) cho MỘT giao dịch — gọi ON-DEMAND.
+
+    KHÔNG precompute 67k lệnh LLM: chỉ chạy khi chuyên viên bấm "AI giải thích".
+    Agent CHỈ diễn đạt lại structured evidence đã chấm (RF + TreeSHAP + registry
+    phục hồi + graph), rào chắn §37 ở system prompt + schema. Trả 503 nếu chưa
+    cấu hình GOOGLE_API_KEY (giao diện hiển thị trạng thái, không treo).
+    """
+    from src.bitcoin_aml.agent import explain as _explain
+    from src.investigation.llm import gemini_is_configured, get_gemini_service
+
+    with get_session() as session:
+        row = (
+            session.execute(
+                text(
+                    """SELECT tx_id, timestep, illicit_prob, risk_level, explanation_quality,
+                              true_label, headline, drivers, graph_evidence, recommended_steps
+                         FROM bitcoin_scored_tx WHERE tx_id = :id"""
+                ),
+                {"id": tx_id},
+            )
+            .mappings()
+            .first()
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Không thấy giao dịch {tx_id}")
+    if not gemini_is_configured():
+        raise HTTPException(status_code=503, detail="Agent Gemini chưa cấu hình (GOOGLE_API_KEY).")
+
+    record = dict(row)
+    record["illicit_prob"] = float(record["illicit_prob"])
+    service = get_gemini_service()
+    try:
+        result = await _explain(service, record)
+    except Exception as exc:  # noqa: BLE001 - lỗi LLM → 502 rõ ràng, không treo giao diện
+        raise HTTPException(status_code=502, detail=f"Agent lỗi khi giải thích: {exc}") from exc
+    finally:
+        await service.close()
+    return result.model_dump()

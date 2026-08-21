@@ -5,7 +5,7 @@ CREATE TABLE app_user (
     user_id       TEXT PRIMARY KEY,
     name          TEXT NOT NULL,
     email         TEXT NOT NULL UNIQUE,
-    role          TEXT NOT NULL CHECK (role IN ('compliance_officer', 'mlro', 'auditor', 'admin', 'analyst')),
+    role          TEXT NOT NULL CHECK (role IN ('analyst', 'manager', 'admin')),
     role_label    TEXT NOT NULL,
     password_salt TEXT NOT NULL,
     password_hash TEXT NOT NULL,
@@ -34,13 +34,16 @@ CREATE TABLE system_setting (
 );
 
 INSERT INTO app_user (user_id, name, email, role, role_label, password_salt, password_hash, active) VALUES
-('U-001', 'Nguyễn Quang Hưng', 'hung.nq@velrix.vn', 'compliance_officer', 'Compliance Officer', '66696e30372d757365722d303031', 'a92eb7ec038b1ad4d3a3bfed5b11baaeb9b4fc0f1b1431d4429a963afcfcd61e', true),
-('U-002', 'Trần Hoàng Quân', 'quan.th@velrix.vn', 'compliance_officer', 'Compliance Officer', '66696e30372d757365722d303032', 'b4c27bd20cc64b9132ab20d4209d05bf79ec5f715b26edc389f4afc74d63a4ab', true),
-('U-003', 'Đàm Minh Tuấn', 'tuan.dm@velrix.vn', 'mlro', 'MLRO', '66696e30372d757365722d303033', '0cff822800d5b118defee5462e00f62c88fca7a4f16c1f68196ef6d9ed62d627', true),
-('U-004', 'Lê Minh Khiêm', 'khiem.lm@velrix.vn', 'auditor', 'Auditor', '66696e30372d757365722d303034', '0a29df626256ca7d5fc08c68f77b30e2e046f7b2c1d07d091f6751704179ae77', true),
-('U-005', 'Đinh Huy Mạnh', 'manh.dh@velrix.vn', 'admin', 'Administrator', '66696e30372d757365722d303035', '386c9edf90593ec0b62bf6289c91035057a51011750d30c819071f8e9fa6b22c', true),
-('U-006', 'Lê Anh Tuấn', 'tuan.la@velrix.vn', 'analyst', 'Senior Analyst', '66696e30372d757365722d303036', '855332943348d781d35c18520a1677f199bdfdfe631bd92330d3e0d47518fc34', true),
-('U-007', 'Phạm Văn Vĩnh', 'vinh.pv@velrix.vn', 'analyst', 'Analyst', '66696e30372d757365722d303037', '869ad05e155634818f13c196a4b23dad6db7a97a16d8918d3efc1b42bfc2e8b4', false);
+-- Ba vai trò duy nhất: Chuyên viên (analyst) · Quản lý (manager) · Quản trị hệ
+-- thống (admin). Các tài khoản demo dư thừa để active=false cho gọn màn đăng nhập
+-- (mỗi vai trò hiển thị đúng một người), dữ liệu gán cho họ vẫn còn để đối chiếu.
+('U-001', 'Nguyễn Quang Hưng', 'hung.nq@velrix.vn', 'manager', 'Quản lý', '66696e30372d757365722d303031', 'a92eb7ec038b1ad4d3a3bfed5b11baaeb9b4fc0f1b1431d4429a963afcfcd61e', true),
+('U-002', 'Trần Hoàng Quân', 'quan.th@velrix.vn', 'manager', 'Quản lý', '66696e30372d757365722d303032', 'b4c27bd20cc64b9132ab20d4209d05bf79ec5f715b26edc389f4afc74d63a4ab', false),
+('U-003', 'Đàm Minh Tuấn', 'tuan.dm@velrix.vn', 'manager', 'Quản lý', '66696e30372d757365722d303033', '0cff822800d5b118defee5462e00f62c88fca7a4f16c1f68196ef6d9ed62d627', false),
+('U-004', 'Lê Minh Khiêm', 'khiem.lm@velrix.vn', 'manager', 'Quản lý', '66696e30372d757365722d303034', '0a29df626256ca7d5fc08c68f77b30e2e046f7b2c1d07d091f6751704179ae77', false),
+('U-005', 'Đinh Huy Mạnh', 'manh.dh@velrix.vn', 'admin', 'Quản trị hệ thống', '66696e30372d757365722d303035', '386c9edf90593ec0b62bf6289c91035057a51011750d30c819071f8e9fa6b22c', true),
+('U-006', 'Lê Anh Tuấn', 'tuan.la@velrix.vn', 'analyst', 'Chuyên viên', '66696e30372d757365722d303036', '855332943348d781d35c18520a1677f199bdfdfe631bd92330d3e0d47518fc34', true),
+('U-007', 'Phạm Văn Vĩnh', 'vinh.pv@velrix.vn', 'analyst', 'Chuyên viên', '66696e30372d757365722d303037', '869ad05e155634818f13c196a4b23dad6db7a97a16d8918d3efc1b42bfc2e8b4', false);
 
 INSERT INTO system_setting (code, label, value, unit, source) VALUES
 ('T01-AMT', 'Ngưỡng báo cáo giao dịch tiền mặt', '200000000', 'VNĐ', 'Quy định nội bộ QD3'),

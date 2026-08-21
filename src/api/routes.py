@@ -5,10 +5,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi.responses import Response
 from opentelemetry import trace
 from sqlalchemy import text
 
 from src.api import authz
+from src.api.permissions import data_scope_for, permission_codes, scope_own_records
+from src.api.sar_pdf import build_sar_pdf
 from src.config import get_settings
 from src.db.session import get_session
 from src.domain import (
@@ -72,15 +75,20 @@ def _user_out(row: dict[str, Any]) -> UserOut:
         role_label=row["role_label"],
         active=row["active"],
         last_login=row.get("last_login"),
+        # Quyền + phạm vi tính từ vai trò ở máy chủ — không tin client.
+        permissions=permission_codes(row["role"]),
+        data_scope=data_scope_for(row["role"]).value,
     )
 
 
 def _audit_role(role: str) -> str:
+    # Ánh xạ vai trò -> actor_role của audit_log. Cột này bị ràng buộc CHECK vào
+    # tập giá trị lịch sử (analyst/investigator/mlro/auditor/system/agent); "manager"
+    # (gộp các vai trò nghiệp vụ cũ) ghi nhận là "investigator" để không phải nới
+    # ràng buộc và không làm hỏng các bản ghi kiểm toán đã có.
     return {
-        "mlro": "mlro",
-        "auditor": "auditor",
         "analyst": "analyst",
-        "compliance_officer": "investigator",
+        "manager": "investigator",
         "admin": "system",
     }.get(role, "system")
 
@@ -94,6 +102,21 @@ def _require_user(authorization: str | None) -> dict[str, Any]:
     chứ không chỉ vai trò — ví dụ "người gửi không được tự phê duyệt hồ sơ".
     """
     return authz.resolve_user(authorization)
+
+
+def _enforce_case_scope(authorization: str | None, assigned_to: str | None) -> None:
+    """Phạm vi cấp-BẢN-GHI cho vụ việc.
+
+    ``/cases`` (danh sách) đã lọc theo người được giao với vai trò phạm vi
+    ASSIGNED (analyst). Các endpoint CHI TIẾT vụ việc phải áp CÙNG điều kiện —
+    nếu không, analyst có thể đọc vụ việc không được giao chỉ bằng cách đoán
+    ``case_id`` (IDOR ở cấp đối tượng). Trả 404 (không phải 403) để không tiết
+    lộ sự tồn tại của vụ việc ngoài phạm vi. Compliance/MLRO/Auditor thấy toàn
+    bộ nên không bị chặn.
+    """
+    user = _require_user(authorization)
+    if scope_own_records(user["role"]) and assigned_to != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Không tìm thấy vụ việc")
 
 
 @router.get("/auth/users", response_model=list[UserOut])
@@ -189,9 +212,22 @@ _CUSTOMER_SELECT = """
 @router.get("/cases", response_model=list[CaseOut])
 async def list_cases(
     state: str | None = Query(default=None, description="Lọc theo trạng thái máy trạng thái"),
+    dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
     limit: int = Query(default=50, ge=1, le=200),
+    authorization: str | None = Header(default=None),
 ) -> list[CaseOut]:
-    """Hàng đợi vụ việc, xếp theo điểm rủi ro giảm dần."""
+    """Hàng đợi vụ việc, xếp theo điểm rủi ro giảm dần.
+
+    ``dataset``: aml_case không có cột bộ dữ liệu riêng — một vụ việc thuộc bộ
+    nào là do các cảnh báo gom vào nó quyết định. Lọc qua ``EXISTS`` trên
+    ``alert.dataset``.
+
+    PHẠM VI DỮ LIỆU: vai trò phạm vi ASSIGNED (analyst) chỉ thấy vụ việc ĐƯỢC
+    GIAO cho mình (``assigned_to = user``). Điều kiện này áp ở MÁY CHỦ từ vai trò
+    của token, KHÔNG nhận từ tham số client. Compliance/MLRO/Auditor thấy toàn bộ.
+    """
+    user = _require_user(authorization)
+    own_only = scope_own_records(user["role"])
     sql = """
         SELECT c.case_id, c.subject_account_key, c.title, c.state, c.risk_score,
                c.priority, c.assigned_to, c.created_at,
@@ -200,19 +236,34 @@ async def list_cases(
          -- Ép kiểu tường minh: với tham số NULL không có ngữ cảnh, PostgreSQL
          -- không suy ra được kiểu và từ chối câu lệnh.
          WHERE (CAST(:state AS text) IS NULL OR c.state = CAST(:state AS text))
+           AND (CAST(:dataset AS text) IS NULL
+                OR EXISTS (SELECT 1 FROM alert a
+                            WHERE a.case_id = c.case_id
+                              AND a.dataset = CAST(:dataset AS text)))
+           -- Phạm vi ASSIGNED: chỉ vụ việc được giao cho chính người dùng.
+           AND (CAST(:assignee AS text) IS NULL OR c.assigned_to = CAST(:assignee AS text))
          ORDER BY c.risk_score DESC, c.created_at DESC
          LIMIT :limit
     """
+    params = {
+        "state": state,
+        "dataset": dataset,
+        "limit": limit,
+        "assignee": user["user_id"] if own_only else None,
+    }
     with get_session() as session:
-        rows = session.execute(text(sql), {"state": state, "limit": limit}).mappings().all()
+        rows = session.execute(text(sql), params).mappings().all()
     return [CaseOut(**row) for row in rows]
 
 
 @router.get("/cases/{case_id}", response_model=CaseDetailOut)
-async def get_case(case_id: str) -> CaseDetailOut:
+async def get_case(case_id: str, authorization: str | None = Header(default=None)) -> CaseDetailOut:
     """Chi tiết một vụ việc kèm các yếu tố đóng góp.
 
     Mọi cảnh báo trả về ở đây phải có tối thiểu ba yếu tố có giá trị số (NT7).
+
+    PHẠM VI DỮ LIỆU: áp cùng điều kiện với danh sách ``/cases`` — vai trò
+    ASSIGNED (analyst) chỉ mở được vụ việc được giao cho mình.
     """
     with get_session() as session:
         case = (
@@ -229,6 +280,7 @@ async def get_case(case_id: str) -> CaseDetailOut:
         )
         if case is None:
             raise HTTPException(status_code=404, detail=f"Không tìm thấy vụ việc {case_id}")
+        _enforce_case_scope(authorization, case["assigned_to"])
 
         reasons = (
             session.execute(
@@ -641,9 +693,21 @@ async def dashboard(
             session.execute(
                 text(
                     """WITH latest AS (
+                           -- Chọn release ĐÚNG bộ dữ liệu đang xem, không cứng
+                           -- lấy release 'active'. Trước đây bốn thẻ trên đầu lọc
+                           -- theo SAML-D nhưng thẻ "nguồn/lô" vẫn khai IBM MEGA-PNA
+                           -- với 6,75 triệu dòng — màn hình tự mâu thuẫn. Mã dataset
+                           -- (ibm_hi_medium/saml_d) khớp với release qua tên; NULL thì
+                           -- quay về release đang phục vụ hàng đợi chính.
                            SELECT release_id, dataset, transaction_rows, triggered_rows
                              FROM edge_model_release
-                            WHERE status = 'active' LIMIT 1
+                            WHERE CASE
+                                    WHEN CAST(:dataset AS text) = 'ibm_hi_medium' THEN dataset ILIKE '%IBM%'
+                                    WHEN CAST(:dataset AS text) = 'saml_d'        THEN dataset ILIKE '%SAML%'
+                                    ELSE status = 'active'
+                                  END
+                            ORDER BY (status = 'active') DESC
+                            LIMIT 1
                        )
                        SELECT
                          -- "Chưa xử lý" là mọi cảnh báo chưa đóng, không chỉ cái chưa gom
@@ -717,7 +781,14 @@ async def dashboard(
 
         top = (
             session.execute(
-                text(_ALERT_SELECT + """ ORDER BY al.risk_score DESC, al.created_at DESC LIMIT 5"""),
+                # Top 5 cũng phải theo đúng bộ dữ liệu đang xem, nếu không thẻ
+                # "cảnh báo nổi bật" lại kéo cảnh báo IBM vào lúc đang xem SAML-D.
+                text(
+                    _ALERT_SELECT
+                    + """ WHERE (CAST(:dataset AS text) IS NULL OR al.dataset = CAST(:dataset AS text))
+                          ORDER BY al.risk_score DESC, al.created_at DESC LIMIT 5"""
+                ),
+                {"dataset": dataset},
             )
             .mappings()
             .all()
@@ -845,7 +916,7 @@ async def list_review_feedback(
     thì nhãn nằm chết trong DB và mũi tên "learning loop" chỉ là hình vẽ.
     """
     user = _require_user(authorization)
-    if user["role"] not in {"analyst", "compliance_officer", "mlro"}:
+    if user["role"] not in {"manager", "admin"}:
         raise HTTPException(status_code=403, detail="Vai trò này không được đọc nhãn rà soát")
 
     filters = ["1=1"]
@@ -959,7 +1030,7 @@ async def review_investigation(
     authorization: str | None = Header(default=None),
 ) -> InvestigationOut:
     user = _require_user(authorization)
-    if user["role"] not in {"analyst", "compliance_officer", "mlro"}:
+    if user["role"] not in {"manager"}:
         raise HTTPException(status_code=403, detail="Vai trò này không được rà soát phiên điều tra")
     try:
         with get_session() as session:
@@ -1193,7 +1264,7 @@ async def get_sar(sar_id: str) -> dict[str, Any]:
 @router.post("/cases/{case_id}/sar")
 async def create_sar(case_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     user = _require_user(authorization)
-    if user["role"] not in {"analyst", "compliance_officer", "admin"}:
+    if user["role"] not in {"analyst", "manager"}:
         raise HTTPException(status_code=403, detail="Vai trò hiện tại không được tạo SAR")
     sar_id = f"SAR-{case_id}"
     with get_session() as session:
@@ -1374,8 +1445,8 @@ async def decide_approval(
     approval_id: str, request: ApprovalDecisionRequest, authorization: str | None = Header(default=None)
 ) -> dict[str, Any]:
     user = _require_user(authorization)
-    if user["role"] not in {"mlro", "admin"}:
-        raise HTTPException(status_code=403, detail="Chỉ MLRO hoặc Quản trị viên được ra quyết định")
+    if user["role"] not in {"manager"}:
+        raise HTTPException(status_code=403, detail="Chỉ Quản lý được ra quyết định phê duyệt")
     with get_session() as session:
         approval = (
             session.execute(text("SELECT * FROM approval WHERE approval_id = :id FOR UPDATE"), {"id": approval_id})
@@ -1437,9 +1508,20 @@ async def decide_approval(
     return _sar_payload(sar_id)
 
 
-@router.post("/sars/{sar_id}/export")
-async def export_sar(sar_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+@router.post(
+    "/sars/{sar_id}/export",
+    responses={200: {"content": {"application/pdf": {}}, "description": "Hồ sơ SAR dạng PDF tải về"}},
+)
+async def export_sar(sar_id: str, authorization: str | None = Header(default=None)) -> Response:
+    """Xuất hồ sơ SAR đã phê duyệt thành PDF tải về được.
+
+    Trả về CHÍNH file PDF (không phải JSON): dựng từ ``_sar_payload`` — cùng dữ
+    liệu giao diện hiển thị — nên tài liệu khớp màn hình. Vẫn giữ nguyên hai điều
+    kiện nghiệp vụ: chỉ hồ sơ ``approved`` mới xuất được; và mỗi lần xuất ghi
+    ``file_exported`` vào audit + chuyển vụ việc sang ``XuatHoSo``.
+    """
     user = _require_user(authorization)
+    exported_at = datetime.now(UTC)
     with get_session() as session:
         draft = (
             session.execute(text("SELECT case_id, status FROM sar_draft WHERE sar_draft_id = :id"), {"id": sar_id})
@@ -1463,19 +1545,28 @@ async def export_sar(sar_id: str, authorization: str | None = Header(default=Non
                 "case_id": draft["case_id"],
                 "actor": user["user_id"],
                 "role": _audit_role(user["role"]),
-                "payload": json.dumps({"sar_draft_id": sar_id}),
+                "payload": json.dumps({"sar_draft_id": sar_id, "format": "pdf"}),
             },
         )
-    return {"sar_id": sar_id, "case_id": draft["case_id"], "status": "exported", "filename": f"{sar_id}.json"}
+
+    # Dựng PDF SAU khi commit trạng thái/audit; nội dung là ảnh chụp dữ liệu hiện tại.
+    payload = _sar_payload(sar_id)
+    pdf_bytes = build_sar_pdf(payload, exported_by=user.get("name") or user["user_id"], exported_at=exported_at)
+    filename = f"{sar_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/cases/{case_id}/network")
-async def case_network(case_id: str) -> dict[str, Any]:
+async def case_network(case_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     with get_session() as session:
         case = (
             session.execute(
                 text(
-                    """SELECT c.case_id, c.subject_account_key, c.risk_score, cu.customer_id
+                    """SELECT c.case_id, c.subject_account_key, c.risk_score, c.assigned_to, cu.customer_id
                      FROM aml_case c JOIN account a ON a.account_key = c.subject_account_key
                      JOIN customer cu ON cu.customer_id = a.customer_id WHERE c.case_id = :id"""
                 ),
@@ -1486,6 +1577,9 @@ async def case_network(case_id: str) -> dict[str, Any]:
         )
         if case is None:
             raise HTTPException(status_code=404, detail=f"Không tìm thấy vụ việc {case_id}")
+        # Cùng phạm vi cấp-bản-ghi với chi tiết vụ việc: chặn đọc đồ thị của vụ
+        # việc không được giao (IDOR).
+        _enforce_case_scope(authorization, case["assigned_to"])
         txs = (
             session.execute(
                 text(
@@ -1639,8 +1733,8 @@ async def update_setting(
     code: str, request: SettingUpdateRequest, authorization: str | None = Header(default=None)
 ) -> dict[str, Any]:
     user = _require_user(authorization)
-    if user["role"] not in {"admin", "mlro"}:
-        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên hoặc MLRO được sửa cấu hình")
+    if user["role"] not in {"admin"}:
+        raise HTTPException(status_code=403, detail="Chỉ Quản trị viên được sửa cấu hình")
     with get_session() as session:
         before = session.execute(
             text("SELECT value FROM system_setting WHERE code = :code"), {"code": code}

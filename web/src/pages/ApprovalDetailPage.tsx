@@ -50,15 +50,15 @@ export function ApprovalDetailPage() {
   const isPending = status === "PENDING_REVIEW";
   const isSelfApproval =
     currentUser != null && currentUser.name === sar.submittedBy;
-  const isMlro = currentUser?.role === "mlro";
-  const canApprove = isPending && !isSelfApproval && isMlro;
+  const isManager = currentUser?.role === "manager";
+  const canApprove = isPending && !isSelfApproval && isManager;
 
   const approveBlockedReason = !isPending
     ? "Báo cáo không ở trạng thái chờ phê duyệt"
     : isSelfApproval
       ? "Người gửi không được tự phê duyệt SAR do chính mình gửi"
-      : !isMlro
-        ? "Chỉ vai trò MLRO mới có quyền phê duyệt SAR"
+      : !isManager
+        ? "Chỉ vai trò Quản lý mới có quyền phê duyệt SAR"
         : "";
 
   return (
@@ -115,7 +115,7 @@ export function ApprovalDetailPage() {
                 try {
                   const result = await api.exportSar(sar.sar_id);
                   await sarQuery.reload();
-                  pushToast({ tone: "success", title: `Đã xuất ${result.filename}`, detail: "State XuatHoSo và audit đã được ghi vào PostgreSQL." });
+                  pushToast({ tone: "success", title: `Đã tải ${result.filename}`, detail: "PDF hồ sơ đã tải về; vụ việc chuyển XuatHoSo và audit đã ghi." });
                 } catch (cause) {
                   pushToast({ tone: "error", title: "Không xuất được hồ sơ", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
                 }

@@ -3,8 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { api, num } from "../api/client";
 import { int } from "../api/fcFormat";
-import { alertStatusLabel, detectorLabel, formatRelative } from "../api/format";
+import { alertStatusLabel, datasetLabel, detectorLabel, formatRelative } from "../api/format";
 import { useApi } from "../api/useApi";
+import { useConsole } from "../context/ConsoleContext";
 import { Chart, type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
 import {
@@ -36,7 +37,10 @@ import type { ApiAlert } from "../api/client";
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const dashboard = useApi(() => api.dashboard(), []);
+  const { dataset } = useConsole();
+  // `dataset` nằm trong deps: đổi bộ dữ liệu ở header thì Tổng quan hỏi lại
+  // ngay, không còn cảnh thẻ số một bộ mà biểu đồ lại bộ khác.
+  const dashboard = useApi(() => api.dashboard({ dataset }), [dataset]);
   const world = useApi(() => api.world(), []);
 
   const d = dashboard.data;
@@ -211,8 +215,9 @@ export function DashboardPage() {
       variant="dense"
       subtitle={
         <>
-          Lô dữ liệu {d?.latest_source_name ?? "chưa có nguồn"} · toàn bộ số liệu dưới đây là tổng của một lượt chạy,
-          không phải chuỗi thời gian
+          <span className="font-semibold text-ink-hi">Bộ dữ liệu: {datasetLabel(dataset)}</span> · lô{" "}
+          {d?.latest_source_name ?? "chưa có nguồn"} · toàn bộ số liệu dưới đây là tổng của một lượt chạy trên
+          đúng bộ này, không phải chuỗi thời gian
         </>
       }
     >

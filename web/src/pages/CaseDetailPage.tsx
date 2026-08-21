@@ -41,6 +41,20 @@ const RISK_RATING_TONE: Record<string, "risk" | "warn" | "ok"> = {
 const POLL_INTERVAL_MS = 1200;
 const POLL_ATTEMPTS = 15;
 
+/** Trần số bước tự chạy — chuỗi tự động dài 8 bước (Tiếp nhận → Chờ phê duyệt);
+ *  đặt dư để chặn vòng lặp vô hạn nếu worker kẹt. */
+const MAX_AUTO_STEPS = 12;
+
+/** Trạng thái mà chuỗi tự động phải DỪNG: cổng phê duyệt của con người và mọi
+ *  trạng thái kết thúc. Không có cung máy nào bước qua đây — vào Xuất hồ sơ đòi
+ *  quyết định có người ký tên (NT3). Khớp src/domain.py (next_state → None). */
+const AUTO_STOP_STATES = new Set([
+  "ChoNguoiPheDuyet",
+  "XuatHoSo",
+  "DongKhongBaoCao",
+  "DieuTraBoSung",
+]);
+
 export function CaseDetailPage() {
   const { caseId } = useParams();
   const navigate = useNavigate();
@@ -59,56 +73,101 @@ export function CaseDetailPage() {
     audit.reload();
   }, [detail, audit]);
 
+  /** Ngủ `ms` mili-giây, có đăng ký timer để dọn khi rời trang giữa chừng. */
+  const sleep = useCallback(
+    (ms: number) =>
+      new Promise<void>((resolve) => {
+        const timer = window.setTimeout(resolve, ms);
+        timers.current.push(timer);
+      }),
+    [],
+  );
+
+  // Chạy TOÀN BỘ chuỗi điều tra bằng một lần bấm: lặp lại "đẩy một bước → chờ
+  // worker chuyển trạng thái" cho tới CỔNG phê duyệt của con người. Mỗi bước vẫn
+  // là một tác vụ Redis riêng và một dòng nhật ký kiểm toán riêng — chỉ tự động
+  // hoá thao tác bấm, không gộp bước, không bước qua NT3 (chuỗi tự dừng ở
+  // ChoNguoiPheDuyet vì backend trả 409 khi next_state là None).
   const runInvestigation = useCallback(async () => {
     if (!caseId || running) return;
-    const before = detail.data?.state;
     setRunning(true);
 
-    try {
-      await api.investigate(caseId);
-      pushToast({
-        tone: "info",
-        title: "Đã giao tác vụ cho worker",
-        detail: "Tác vụ vào hàng đợi Redis, worker nền đang xử lý.",
-      });
-    } catch (cause) {
-      setRunning(false);
-      pushToast({
-        tone: "error",
-        title: "Không giao được tác vụ",
-        detail: cause instanceof ApiError ? cause.message : "Lỗi không xác định",
-      });
-      return;
-    }
+    let stepsRun = 0;
+    let lastState = detail.data?.state ?? "";
+    let hadError = false;
 
-    // Hỏi lại tới khi trạng thái khác lúc bấm, hoặc hết lượt.
-    for (let attempt = 1; attempt <= POLL_ATTEMPTS; attempt++) {
-      const settled = await new Promise<boolean>((resolve) => {
-        const timer = window.setTimeout(async () => {
+    try {
+      for (let guard = 0; guard < MAX_AUTO_STEPS; guard++) {
+        // Đọc trạng thái mới nhất từ server, không tin bản cache trong lúc lặp.
+        let current: string;
+        try {
+          current = (await api.case(caseId)).state;
+        } catch {
+          break;
+        }
+        lastState = current;
+        // Tới cổng phê duyệt / trạng thái kết thúc thì dừng — không tự bước qua NT3.
+        if (AUTO_STOP_STATES.has(current)) break;
+
+        try {
+          await api.investigate(caseId);
+        } catch (cause) {
+          // 409 = worker đã ở cổng phê duyệt: dừng êm, không coi là lỗi.
+          if (cause instanceof ApiError && cause.status === 409) break;
+          hadError = true;
+          pushToast({
+            tone: "error",
+            title: "Không giao được tác vụ",
+            detail: cause instanceof ApiError ? cause.message : "Lỗi không xác định",
+          });
+          break;
+        }
+
+        // Chờ worker nhích sang trạng thái mới; reload timeline để thấy tiến độ
+        // ngay khi từng bước xong, thay vì đợi tới cuối.
+        let advanced = false;
+        for (let attempt = 1; attempt <= POLL_ATTEMPTS; attempt++) {
+          await sleep(POLL_INTERVAL_MS);
           try {
             const fresh = await api.case(caseId);
-            if (fresh.state !== before) {
-              pushToast({
-                tone: "success",
-                title: "Worker đã chạy xong một bước",
-                detail: `${caseStateLabel(before ?? "")} → ${caseStateLabel(fresh.state)}`,
-              });
-              resolve(true);
-              return;
+            if (fresh.state !== current) {
+              advanced = true;
+              stepsRun += 1;
+              lastState = fresh.state;
+              detail.reload();
+              audit.reload();
+              break;
             }
           } catch {
             /* thử lại ở lượt sau */
           }
-          resolve(false);
-        }, POLL_INTERVAL_MS);
-        timers.current.push(timer);
-      });
-      if (settled) break;
+        }
+        if (!advanced) break; // worker chưa xong sau nhiều lượt → dừng để không kẹt vòng
+      }
+    } finally {
+      setRunning(false);
+      reloadAll();
     }
 
-    setRunning(false);
-    reloadAll();
-  }, [caseId, running, detail.data?.state, pushToast, reloadAll]);
+    if (!hadError) {
+      pushToast(
+        stepsRun === 0
+          ? {
+              tone: "info",
+              title: "Không có bước nào để chạy",
+              detail: "Vụ việc đã ở cổng phê duyệt hoặc đã kết thúc.",
+            }
+          : {
+              tone: "success",
+              title: `Đã chạy xong ${stepsRun} bước điều tra`,
+              detail:
+                lastState === "ChoNguoiPheDuyet"
+                  ? "Dừng ở Chờ người phê duyệt — cần người ký duyệt (NT3)."
+                  : `Dừng ở ${caseStateLabel(lastState)}.`,
+            },
+      );
+    }
+  }, [caseId, running, detail, audit, pushToast, reloadAll, sleep]);
 
   if (detail.loading) {
     return (
@@ -187,7 +246,7 @@ export function CaseDetailPage() {
                   ) : (
                     <>
                       <PlayCircle size={12} aria-hidden />
-                      Chạy bước điều tra
+                      Chạy toàn bộ điều tra
                     </>
                   )}
                 </button>
@@ -240,9 +299,9 @@ export function CaseDetailPage() {
             <div className="mt-4 flex items-start gap-1.5 border-t border-line pt-3 text-2xs text-ink-low">
               <ShieldAlert size={12} className="mt-0.5 shrink-0" aria-hidden />
               <p>
-                Mỗi lần bấm đẩy một tác vụ vào Redis; worker nền chuyển vụ việc sang trạng thái kế tiếp và ghi
-                một dòng vào nhật ký kiểm toán. Chuỗi dừng ở <em>Chờ người phê duyệt</em> — lối vào{" "}
-                <em>Xuất hồ sơ</em> phải là quyết định có người ký tên (NT3), không phải một lượt chạy tự động.
+                Một lần bấm sẽ chạy tuần tự HẾT các bước: mỗi bước là một tác vụ Redis riêng và một dòng
+                nhật ký kiểm toán riêng, worker nền xử lý lần lượt. Chuỗi tự dừng ở <em>Chờ người phê duyệt</em>{" "}
+                — lối vào <em>Xuất hồ sơ</em> phải là quyết định có người ký tên (NT3), không phải một lượt chạy tự động.
               </p>
             </div>
           </Panel>

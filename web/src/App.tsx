@@ -15,7 +15,9 @@ import { AuditPage } from "./pages/AuditPage";
 import { BenchmarksPage } from "./pages/BenchmarksPage";
 import { CaseDetailPage } from "./pages/CaseDetailPage";
 import { CasesPage } from "./pages/CasesPage";
-import { DashboardPage } from "./pages/DashboardPage";
+import { DashboardRouter } from "./pages/dashboard/DashboardRouter";
+import { RequirePermission } from "./rbac/guards";
+import { PERMISSIONS as PERM } from "./rbac/permissions";
 import { DataQualityPage } from "./pages/DataQualityPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ModelsPage } from "./pages/ModelsPage";
@@ -83,28 +85,28 @@ export default function App() {
             />
             <Route element={<AppLayout />}>
               {/* Giám sát */}
-              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/dashboard" element={<DashboardRouter />} />
               <Route
                 path="/world"
                 element={
                   <HeavyRoute label="Đang nạp bộ dựng bản đồ…">
-                    <WorldPage />
+                    <RequirePermission permission={PERM.VIEW_DASHBOARD}><WorldPage /></RequirePermission>
                   </HeavyRoute>
                 }
               />
 
               {/* Điều tra */}
-              <Route path="/alerts" element={<AlertsPage />} />
-              <Route path="/alerts/:alertId" element={<AlertDetailPage />} />
-              <Route path="/cases" element={<CasesPage />} />
-              <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+              <Route path="/alerts" element={<RequirePermission permission={PERM.VIEW_ALERTS}><AlertsPage /></RequirePermission>} />
+              <Route path="/alerts/:alertId" element={<RequirePermission permission={PERM.VIEW_ALERTS}><AlertDetailPage /></RequirePermission>} />
+              <Route path="/cases" element={<RequirePermission permission={PERM.VIEW_CASES}><CasesPage /></RequirePermission>} />
+              <Route path="/cases/:caseId" element={<RequirePermission permission={PERM.VIEW_CASES}><CaseDetailPage /></RequirePermission>} />
               {/* Hai đồ thị khác nhau có chủ đích: `/network` là toàn bộ mạng
                   lưới mô phỏng, `/network/:caseId` là đồ thị gọn của một vụ việc. */}
               <Route
                 path="/network"
                 element={
                   <HeavyRoute label="Đang nạp bộ dựng đồ thị…">
-                    <EntityNetworkPage />
+                    <RequirePermission permission={PERM.VIEW_ENTITY_GRAPH}><EntityNetworkPage /></RequirePermission>
                   </HeavyRoute>
                 }
               />
@@ -112,39 +114,39 @@ export default function App() {
                 path="/network/:caseId"
                 element={
                   <HeavyRoute label="Đang nạp bộ dựng đồ thị…">
-                    <NetworkPage />
+                    <RequirePermission permission={PERM.VIEW_ENTITY_GRAPH}><NetworkPage /></RequirePermission>
                   </HeavyRoute>
                 }
               />
-              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/transactions" element={<RequirePermission permission={PERM.VIEW_TRANSACTIONS}><TransactionsPage /></RequirePermission>} />
 
               {/* Tài sản mã hoá */}
               <Route
                 path="/crypto"
                 element={
                   <HeavyRoute label="Đang nạp màn truy vết…">
-                    <CryptoPage />
+                    <RequirePermission permission={PERM.VIEW_CRYPTO}><CryptoPage /></RequirePermission>
                   </HeavyRoute>
                 }
               />
-              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects" element={<RequirePermission permission={PERM.VIEW_CRYPTO}><ProjectsPage /></RequirePermission>} />
 
               {/* AI Agent */}
-              <Route path="/agents" element={<AgentsPage />} />
-              <Route path="/agents/:runId" element={<AgentRunPage />} />
+              <Route path="/agents" element={<RequirePermission permission={PERM.VIEW_MODEL_QUALITY}><AgentsPage /></RequirePermission>} />
+              <Route path="/agents/:runId" element={<RequirePermission permission={PERM.VIEW_MODEL_QUALITY}><AgentRunPage /></RequirePermission>} />
 
               {/* Chất lượng và mô hình */}
-              <Route path="/benchmarks" element={<BenchmarksPage />} />
-              <Route path="/models" element={<ModelsPage />} />
-              <Route path="/data-quality" element={<DataQualityPage />} />
+              <Route path="/benchmarks" element={<RequirePermission permission={PERM.VIEW_MODEL_QUALITY}><BenchmarksPage /></RequirePermission>} />
+              <Route path="/models" element={<RequirePermission permission={PERM.VIEW_MODEL_QUALITY}><ModelsPage /></RequirePermission>} />
+              <Route path="/data-quality" element={<RequirePermission permission={PERM.VIEW_MODEL_QUALITY}><DataQualityPage /></RequirePermission>} />
 
               {/* Quản trị */}
-              <Route path="/sar/:sarId/edit" element={<SarEditPage />} />
-              <Route path="/approvals" element={<ApprovalsPage />} />
-              <Route path="/approvals/:sarId" element={<ApprovalDetailPage />} />
-              <Route path="/audit" element={<AuditPage />} />
-              <Route path="/users" element={<UsersPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/sar/:sarId/edit" element={<RequirePermission permission={PERM.PREPARE_SAR}><SarEditPage /></RequirePermission>} />
+              <Route path="/approvals" element={<RequirePermission permission={PERM.APPROVE_CASE}><ApprovalsPage /></RequirePermission>} />
+              <Route path="/approvals/:sarId" element={<RequirePermission permission={PERM.APPROVE_CASE}><ApprovalDetailPage /></RequirePermission>} />
+              <Route path="/audit" element={<RequirePermission permission={PERM.VIEW_AUDIT_LOG}><AuditPage /></RequirePermission>} />
+              <Route path="/users" element={<RequirePermission permission={PERM.MANAGE_USERS}><UsersPage /></RequirePermission>} />
+              <Route path="/settings" element={<RequirePermission permission={PERM.MANAGE_SYSTEM}><SettingsPage /></RequirePermission>} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
             <Route path="/" element={<Navigate to="/login" replace />} />

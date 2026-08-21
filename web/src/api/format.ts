@@ -89,7 +89,7 @@ const DETECTOR_LABELS: Record<string, string> = {
 /** Nhãn bộ dữ liệu, cho hàng đợi phục vụ nhiều nguồn cùng lúc. */
 const DATASET_LABELS: Record<string, string> = {
   ibm_hi_medium: "Ngân hàng",
-  saml_d: "Xuyên biên giới",
+  saml_d: "SAML-D",
 };
 
 export function datasetLabel(dataset: string): string {
@@ -310,10 +310,13 @@ export function recommendedActionLabel(action: string): string {
 }
 
 const ROLE_LABELS: Record<string, string> = {
-  admin: "Quản trị viên",
+  // Ba vai trò hiện hành.
+  analyst: "Chuyên viên",
+  manager: "Quản lý",
+  admin: "Quản trị hệ thống",
+  // Giá trị actor_role lịch sử trong audit_log (bản ghi cũ vẫn hiển thị đúng).
   mlro: "MLRO",
   compliance_officer: "Chuyên viên tuân thủ",
-  analyst: "Chuyên viên phân tích",
   auditor: "Kiểm toán viên",
   system: "Hệ thống",
   agent: "Tác tử",

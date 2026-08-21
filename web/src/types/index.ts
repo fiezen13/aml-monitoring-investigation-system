@@ -7,12 +7,10 @@
  *  - typology T01–T10 (FIN-07-BUS-001)
  */
 
-export type Role =
-  | "compliance_officer"
-  | "mlro"
-  | "auditor"
-  | "admin"
-  | "analyst";
+export type Role = "analyst" | "manager" | "admin";
+
+/** Phạm vi dữ liệu — khớp DataScope của backend (src/api/permissions.py). */
+export type DataScope = "assigned" | "all" | "read_only_all" | "system";
 
 export interface User {
   id: string;
@@ -22,6 +20,10 @@ export interface User {
   roleLabel: string;
   active: boolean;
   lastLogin: string | null;
+  /** Quyền do MÁY CHỦ cấp (từ /auth/me). Nguồn sự thật cho RBAC giao diện. */
+  permissions: string[];
+  /** Phạm vi bản ghi được xem, do máy chủ tính từ vai trò. */
+  dataScope: DataScope;
 }
 
 /** Trạng thái vụ việc — đúng danh sách CHECK trong db/init/001_schema.sql. */

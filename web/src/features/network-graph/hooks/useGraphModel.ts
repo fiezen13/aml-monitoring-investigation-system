@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../../../api/client";
 import { useApi } from "../../../api/useApi";
+import { useConsole } from "../../../context/ConsoleContext";
 import type { GraphModel } from "../types/graph.types";
 import { buildModel } from "../utils/graphHierarchy";
 import { splitGraphComponents } from "../utils/graphComponents";
@@ -14,7 +15,10 @@ import { splitGraphComponents } from "../utils/graphComponents";
  * trong cùng memo với filter thì mỗi lần kéo thanh trượt lại tính lại từ đầu.
  */
 export function useGraphModel(limit = 600) {
-  const state = useApi(() => api.entityGraph(limit), [limit]);
+  // Đồ thị mạng lưới bám theo bộ dữ liệu toàn cục ở header: đổi bộ thì cả đồ
+  // thị gieo lại từ cảnh báo của đúng bộ đó.
+  const { dataset } = useConsole();
+  const state = useApi(() => api.entityGraph(limit, dataset), [limit, dataset]);
   const [activeComponentId, setActiveComponentId] = useState<string | null>(null);
 
   const components = useMemo(() => (state.data ? splitGraphComponents(state.data) : []), [state.data]);

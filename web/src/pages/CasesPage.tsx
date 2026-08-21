@@ -3,8 +3,9 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api, num } from "../api/client";
-import { caseStateLabel, formatDateTime, priorityLabel } from "../api/format";
+import { caseStateLabel, datasetLabel, formatDateTime, priorityLabel } from "../api/format";
 import { useApi } from "../api/useApi";
+import { useConsole } from "../context/ConsoleContext";
 import { PageShell } from "../components/ui";
 import { RiskBadge, StatusBadge } from "../components/common/Badges";
 import { Panel } from "../components/common/Panel";
@@ -43,10 +44,14 @@ const stateTone = (state: string): "ok" | "warn" | "info" | "muted" =>
 /** Hàng đợi vụ việc theo điểm rủi ro giảm dần (GET /api/v1/cases). */
 export function CasesPage() {
   const navigate = useNavigate();
+  const { dataset } = useConsole();
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState("");
 
-  const cases = useApi(() => api.cases({ state: stateFilter || undefined, limit: 200 }), [stateFilter]);
+  const cases = useApi(
+    () => api.cases({ state: stateFilter || undefined, dataset, limit: 200 }),
+    [stateFilter, dataset],
+  );
   const rows = cases.data ?? [];
 
   const filtered = useMemo(() => {
@@ -105,7 +110,7 @@ export function CasesPage() {
     <PageShell>
       <PageHeader
         title="Hồ sơ vụ việc"
-        subtitle="Cảnh báo được gom theo chủ thể thành vụ việc; mỗi vụ việc đi qua máy trạng thái 12 bước."
+        subtitle={`Bộ dữ liệu ${datasetLabel(dataset)} · cảnh báo được gom theo chủ thể thành vụ việc; mỗi vụ việc đi qua máy trạng thái 12 bước.`}
         actions={
           <button
             type="button"

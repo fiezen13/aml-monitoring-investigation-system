@@ -202,6 +202,10 @@ class UserOut(BaseModel):
     role_label: str = Field(alias="roleLabel")
     active: bool
     last_login: datetime | None = Field(default=None, alias="lastLogin")
+    #: Quyền + phạm vi dữ liệu do MÁY CHỦ tính từ vai trò (nguồn sự thật cho RBAC
+    #: giao diện). Frontend đọc từ đây, không tự suy từ role trong localStorage.
+    permissions: list[str] = Field(default_factory=list)
+    data_scope: str = Field(default="assigned", alias="dataScope")
 
 
 class LoginOut(BaseModel):

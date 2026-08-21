@@ -8,7 +8,7 @@ import { Eyebrow, Panel } from "./primitives";
  *
  * Kiến trúc của hệ thống là nhiều nhánh song song: IBM HI-Medium bắt rửa tiền
  * qua giao dịch TRONG ngân hàng (mạng đồ thị MEGA-PNA), SAML-D bắt rửa tiền
- * XUYÊN BIÊN GIỚI (bộ luật địa lý), sắp tới Elliptic++ bắt rửa tiền bitcoin.
+ * XUYÊN BIÊN GIỚI (bộ luật địa lý), Elliptic bắt rửa tiền bitcoin.
  *
  * Ba nhánh KHÔNG cộng gộp thành một con số, và màn hình này cố tình không cho
  * làm thế: mỗi thẻ tự khai vùng đo, loại model, và bộ chỉ số của riêng nó. Một

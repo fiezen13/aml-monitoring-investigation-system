@@ -454,6 +454,128 @@ export interface FcCrypto {
   source_mode: "on_chain" | "ledger";
 }
 
+/** Một đặc trưng và đóng góp của nó vào điểm của chính giao dịch này (Saabas). */
+export interface FcBitcoinDriver {
+  name: string;
+  label: string | null; // null = đặc trưng ẩn danh
+  meaningful: boolean;
+  value: number;
+  contribution: number; // dương = đẩy về nghi ngờ, âm = kéo về bình thường
+}
+
+/** Láng giềng 1 chặng trên đồ thị giao dịch Bitcoin (txs_edgelist). */
+export interface FcBitcoinNeighbour {
+  id: string;
+  dir: string; // 'in' | 'out' | 'both'
+  flag: boolean | null; // MODEL DỰ ĐOÁN: true=model gắn cờ, false=không, null=ngoài tập đã chấm
+  known_illicit: boolean; // GROUND TRUTH: có nhãn thật bất hợp pháp (khác hẳn flag)
+}
+
+/** Nhánh Bitcoin (Elliptic gốc + ngữ nghĩa DFRWS 2026): một giao dịch RF chấm nghi ngờ. */
+export interface FcBitcoinRow {
+  tx_id: string;
+  timestep: number | null;
+  illicit_prob: number;
+  predicted_label: string;
+  true_label: string | null;
+  risk_level: string;
+  requires_review: boolean;
+  headline: string;
+  reasons: string[];
+  caveat: string;
+  drivers: FcBitcoinDriver[];
+  meaningful_push_share: number | null;
+  interpretable_ratio: number | null; // tỷ phần |SHAP| đọc được — "phần giải thích được", KHÔNG phải xác suất
+  explanation_quality: string | null; // HIGH | MEDIUM | LIMITED — tách khỏi điểm rủi ro
+  graph_in_degree: number | null;
+  graph_out_degree: number | null;
+  graph_flagged_neighbours: number | null; // MODEL DỰ ĐOÁN
+  graph_known_illicit_neighbours: number | null; // GROUND TRUTH
+  graph_neighbours: FcBitcoinNeighbour[];
+  // --- Interpretable Investigation Evidence Layer (tính SAU suy luận) ---
+  evidence_strength: string | null; // NONE|WEAK|MODERATE|STRONG — bằng chứng ĐIỀU TRA, tách khỏi rủi ro
+  graph_evidence: FcGraphEvidence;
+  evidence_reasons: FcEvidenceReason[]; // lý do tất định, có badge nguồn
+  recommended_steps: string[];
+}
+
+/** Giải thích ngôn ngữ tự nhiên do agent Gemini sinh từ structured evidence. */
+export interface FcBitcoinExplanation {
+  summary: string;
+  key_reasons: string[];
+  next_steps: string[];
+  caveat: string;
+}
+
+/** Một lý do tất định + badge nguồn (GROUND_TRUTH/GRAPH/MODEL/PREDICTION/TEMPORAL). */
+export interface FcEvidenceReason {
+  priority: number;
+  badges: string[];
+  title: string;
+  text: string;
+}
+
+interface FcHopBreakdown {
+  total: number;
+  known_illicit: number;
+  known_licit: number;
+  model_high_risk: number;
+  unknown: number;
+}
+
+/** Object bằng chứng đồ thị có cấu trúc (§20). */
+export interface FcGraphEvidence {
+  direct_context?: { upstream_count: number; downstream_count: number; total: number };
+  ground_truth_exposure?: {
+    direct_known_illicit_upstream: number;
+    direct_known_illicit_downstream: number;
+    direct_known_illicit_total: number;
+    nearest_known_illicit_hop: number | null;
+  };
+  model_risk_context?: {
+    direct_high_risk_total: number;
+    nearest_model_high_risk_hop: number | null;
+    mean_neighbor_risk: number | null;
+    max_neighbor_risk: number | null;
+    high_risk_neighbor_count: number;
+  };
+  neighborhood?: { one_hop: FcHopBreakdown; two_hop: FcHopBreakdown };
+  topology?: {
+    in_degree: number;
+    out_degree: number;
+    total_degree: number;
+    max_linear_chain: number;
+    observed_patterns: Array<{ type: string; confidence: string; evidence: Record<string, number> }>;
+  };
+  strength?: string;
+}
+
+export interface FcBitcoinSummary {
+  release_id: string;
+  model_version: string;
+  region_label: string;
+  total_scored: number;
+  flagged_illicit: number;
+  requires_review: number;
+  by_level: Record<string, number>;
+  illicit_true_total: number;
+  flagged_true_positive: number;
+  f1: number | null;
+  precision: number | null;
+  recall: number | null;
+  pr_auc: number | null;
+  test_timestep_min: number | null;
+  test_timestep_max: number | null;
+}
+
+export interface FcBitcoinPage {
+  summary: FcBitcoinSummary;
+  rows: FcBitcoinRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface FcProject {
   id: string;
   name: string;
@@ -603,9 +725,9 @@ export interface OperatingPoint {
 /**
  * Một nhánh phát hiện với benchmark đo trên đúng vùng nó đặc trưng.
  *
- * Ba nhánh — IBM (rửa tiền trong ngân hàng), SAML-D (xuyên biên giới),
- * Elliptic++ (bitcoin) — không cộng gộp được: khác vùng, khác loại model, khác
- * bộ chỉ số. Mỗi phần tử tự khai vùng và loại model của mình.
+ * Ba nhánh — IBM (rửa tiền trong ngân hàng), SAML-D, Elliptic (bitcoin) —
+ * không cộng gộp được: khác vùng, khác loại model, khác bộ chỉ số. Mỗi phần tử
+ * tự khai vùng và loại model của mình.
  */
 export interface ModelBranch {
   release_id: string;
@@ -859,7 +981,8 @@ export const api = {
       body: JSON.stringify({ decision, reason }),
     }),
 
-  cases: (params: { state?: string; limit?: number } = {}) => request<ApiCase[]>(`/cases${query(params)}`),
+  cases: (params: { state?: string; dataset?: string; limit?: number } = {}) =>
+    request<ApiCase[]>(`/cases${query(params)}`),
 
   case: (caseId: string) => request<ApiCaseDetail>(`/cases/${encodeURIComponent(caseId)}`),
 
@@ -890,8 +1013,41 @@ export const api = {
       body: JSON.stringify({ decision, reason }),
     }),
 
-  exportSar: (sarId: string) =>
-    request<{ filename: string; status: string }>(`/sars/${encodeURIComponent(sarId)}/export`, { method: "POST" }),
+  /**
+   * Xuất SAR ra PDF và TẢI VỀ. Endpoint trả về chính bytes PDF (không phải
+   * JSON), nên gọi fetch trực tiếp thay vì `request` (vốn luôn parse JSON): đọc
+   * blob, tạo link tải tạm rồi bấm. Ném `ApiError` với `detail` từ backend nếu
+   * bị từ chối (vd 409 khi hồ sơ chưa phê duyệt).
+   */
+  exportSar: async (sarId: string): Promise<{ filename: string }> => {
+    const token = window.sessionStorage.getItem(SESSION_TOKEN_KEY);
+    const response = await fetch(`${BASE}/sars/${encodeURIComponent(sarId)}/export`, {
+      method: "POST",
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!response.ok) {
+      let detail = `Máy chủ trả về ${response.status}`;
+      try {
+        const body = await response.json();
+        if (typeof body?.detail === "string") detail = body.detail;
+      } catch {
+        /* thân phản hồi không phải JSON */
+      }
+      if (response.status === 401) window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, { detail }));
+      throw new ApiError(response.status, detail);
+    }
+    const filename = `${sarId}.pdf`;
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    return { filename };
+  },
 
   users: () => request<User[]>("/users"),
 
@@ -923,7 +1079,7 @@ export const api = {
 
   world: () => request<FcWorld>("/world"),
 
-  entityGraph: (limit = 400) => request<FcGraph>(`/fc/graph${query({ limit })}`),
+  entityGraph: (limit = 400, dataset?: string) => request<FcGraph>(`/fc/graph${query({ limit, dataset })}`),
   graphPatterns: (accounts: string[], pattern?: string, limit = 25) =>
     request<DetectedPattern[]>(`/fc/graph/patterns${query({ accounts: accounts.join(","), pattern, limit })}`),
 
@@ -931,6 +1087,13 @@ export const api = {
     request<GraphNarrative>(`/fc/graph/narrative${query({ account_key: accountKey, window_days: windowDays })}`),
 
   crypto: (limit = 200) => request<FcCrypto>(`/fc/crypto${query({ limit })}`),
+
+  bitcoin: (params: { view?: string; page?: number; page_size?: number } = {}) =>
+    request<FcBitcoinPage>(`/fc/bitcoin${query(params)}`),
+
+  /** Giải thích Gemini on-demand cho một giao dịch Bitcoin (diễn đạt structured evidence). */
+  explainBitcoin: (txId: string) =>
+    request<FcBitcoinExplanation>(`/fc/bitcoin/${encodeURIComponent(txId)}/explain`, { method: "POST" }),
 
   projects: () => request<FcProject[]>("/fc/projects"),
 
@@ -960,6 +1123,7 @@ export const api = {
       min_score?: number;
       currency?: string;
       triggered?: boolean;
+      dataset?: string;
       page?: number;
       page_size?: number;
     } = {},

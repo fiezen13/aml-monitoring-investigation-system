@@ -256,8 +256,8 @@ def main(argv: list[str] | None = None) -> int:
             "các tài khoản trong hệ thống ngân hàng."
         ),
         "not_comparable_note": (
-            "Không so trực tiếp với nhánh SAML-D: khác vùng (giao dịch trong ngân hàng vs xuyên biên "
-            "giới), khác loại model (mạng đồ thị chấm cạnh vs bộ luật xếp hạng), khác bộ chỉ số."
+            "Không so trực tiếp với nhánh SAML-D: khác vùng (giao dịch trong ngân hàng vs hành lang "
+            "quốc gia rủi ro), khác loại model (mạng đồ thị chấm cạnh vs bộ luật xếp hạng), khác bộ chỉ số."
         ),
         "seed": report.get("seed"),
         "best_epoch": report.get("best_epoch"),

@@ -17,7 +17,7 @@ def production_flow_state():
             case = (
                 conn.execute(
                     text(
-                        """SELECT c.case_id, c.state, c.updated_at
+                        """SELECT c.case_id, c.state, c.updated_at, c.assigned_to
                              FROM aml_case c
                             WHERE NOT EXISTS (SELECT 1 FROM sar_draft d WHERE d.case_id = c.case_id)
                               AND EXISTS (
@@ -33,6 +33,12 @@ def production_flow_state():
             )
             if case is None:
                 pytest.skip("Không có case chưa tạo SAR để chạy luồng production")
+            # Chuyên viên (U-006) chỉ thấy hồ sơ ĐƯỢC GIAO. Giao tạm case này cho họ
+            # để luồng "chuyên viên soạn SAR" chạy đúng; teardown trả lại người cũ.
+            conn.execute(
+                text("UPDATE aml_case SET assigned_to = 'U-006' WHERE case_id = :cid"),
+                {"cid": case["case_id"]},
+            )
             audit_before = conn.execute(text("SELECT coalesce(max(audit_id), 0) FROM audit_log")).scalar_one()
             last_logins = dict(conn.execute(text("SELECT user_id, last_login FROM app_user")).all())
             setting_before = conn.execute(
@@ -45,6 +51,7 @@ def production_flow_state():
         "case_id": case["case_id"],
         "case_state": case["state"],
         "case_updated_at": case["updated_at"],
+        "case_assigned_to": case["assigned_to"],
         "audit_before": audit_before,
         "last_logins": last_logins,
         "setting_before": setting_before,
@@ -73,8 +80,16 @@ def production_flow_state():
             {"case_id": state["case_id"], "pattern": f"EV-{state['case_id']}-LIVE-%"},
         )
         conn.execute(
-            text("UPDATE aml_case SET state = :state, updated_at = :updated WHERE case_id = :case_id"),
-            {"state": state["case_state"], "updated": state["case_updated_at"], "case_id": state["case_id"]},
+            text(
+                """UPDATE aml_case SET state = :state, updated_at = :updated, assigned_to = :assigned
+                    WHERE case_id = :case_id"""
+            ),
+            {
+                "state": state["case_state"],
+                "updated": state["case_updated_at"],
+                "assigned": state["case_assigned_to"],
+                "case_id": state["case_id"],
+            },
         )
         for user_id, last_login in state["last_logins"].items():
             conn.execute(
@@ -95,13 +110,13 @@ async def _login(client, email: str) -> dict[str, str]:
 
 @pytest.mark.asyncio
 async def test_full_production_flow_and_cleanup(client, production_flow_state):
-    """Đăng nhập → network → SAR → validate → submit → MLRO duyệt → export."""
+    """Chuyên viên: đăng nhập → network → soạn SAR → kiểm tra → nộp; Quản lý duyệt → xuất."""
     case_id = production_flow_state["case_id"]
-    analyst = await _login(client, "hung.nq@velrix.vn")
+    analyst = await _login(client, "tuan.la@velrix.vn")
 
     me = await client.get("/api/v1/auth/me", headers=analyst)
     assert me.status_code == 200
-    assert me.json()["role"] == "compliance_officer"
+    assert me.json()["role"] == "analyst"
 
     network = await client.get(f"/api/v1/cases/{case_id}/network", headers=analyst)
     assert network.status_code == 200, network.text
@@ -136,22 +151,25 @@ async def test_full_production_flow_and_cleanup(client, production_flow_state):
     )
     assert self_decision.status_code == 403
 
-    mlro = await _login(client, "tuan.dm@velrix.vn")
+    manager = await _login(client, "hung.nq@velrix.vn")
     approved = await client.post(
         f"/api/v1/approvals/{approval_id}/decision",
-        headers=mlro,
+        headers=manager,
         json={"decision": "approved", "reason": "Đã đối chiếu bằng chứng và chấp thuận hồ sơ E2E."},
     )
     assert approved.status_code == 200, approved.text
     assert approved.json()["status"] == "APPROVED"
 
-    exported = await client.post(f"/api/v1/sars/{sar['sar_id']}/export", headers=mlro)
+    exported = await client.post(f"/api/v1/sars/{sar['sar_id']}/export", headers=manager)
     assert exported.status_code == 200, exported.text
-    assert exported.json()["status"] == "exported"
+    # Xuất trả về CHÍNH file PDF tải về được, không phải JSON.
+    assert exported.headers["content-type"] == "application/pdf"
+    assert 'attachment; filename="' in exported.headers["content-disposition"]
+    assert exported.content[:5] == b"%PDF-"
 
-    detail = await client.get(f"/api/v1/sars/{sar['sar_id']}", headers=mlro)
+    detail = await client.get(f"/api/v1/sars/{sar['sar_id']}", headers=manager)
     assert detail.status_code == 200
-    assert detail.json()["approval"]["decided_by"] == "U-003"
+    assert detail.json()["approval"]["decided_by"] == "U-001"
     with get_engine().connect() as conn:
         assert (
             conn.execute(text("SELECT state FROM aml_case WHERE case_id = :case_id"), {"case_id": case_id}).scalar_one()
@@ -175,18 +193,18 @@ async def test_full_production_flow_and_cleanup(client, production_flow_state):
 
 @pytest.mark.asyncio
 async def test_users_and_settings_are_database_backed(client, production_flow_state):
-    mlro = await _login(client, "tuan.dm@velrix.vn")
-    users = await client.get("/api/v1/users", headers=mlro)
+    admin = await _login(client, "manh.dh@velrix.vn")
+    users = await client.get("/api/v1/users", headers=admin)
     assert users.status_code == 200
     assert len(users.json()) == 7
 
-    settings = await client.get("/api/v1/settings", headers=mlro)
+    settings = await client.get("/api/v1/settings", headers=admin)
     assert settings.status_code == 200
     assert any(item["code"] == "SLA-ALERT" for item in settings.json()["settings"])
 
     changed = await client.put(
         "/api/v1/settings/SLA-ALERT",
-        headers=mlro,
+        headers=admin,
         json={"value": "5", "reason": "Kiểm thử ghi cấu hình thật và audit trail."},
     )
     assert changed.status_code == 200, changed.text

@@ -1,10 +1,15 @@
 import { Bell, Menu, Search } from "lucide-react";
 import { useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import { useApp } from "../../context/AppContext";
-import { useConsole } from "../../context/ConsoleContext";
+import { OPERATIONAL_DATASETS, useConsole } from "../../context/ConsoleContext";
 import { TEXT } from "../../design/typography";
 import { Badge, IconButton, Popover, PulseDot, Select } from "../ui";
+
+// Bộ chọn "môi trường mô phỏng" đã gỡ: chỉ còn một môi trường thật nên nó là
+// một dropdown chết (không nối vào truy vấn nào). Nhãn POC + kỳ dữ liệu bên phải
+// đã nói đủ đây là bản trình diễn.
 
 interface Props {
   /** Tên màn hình hiện tại. Đây là chỗ DUY NHẤT hiển thị nó. */
@@ -17,7 +22,6 @@ interface Props {
   dataPeriod?: { start: string | null; end: string | null };
 }
 
-const WORLDS = ["FIN-07 Chính", "FIN-07 Mô phỏng sức chịu đựng"];
 /** `2022-09-01` → `01/09/2022`. Giữ nguyên chuỗi ISO nếu định dạng lạ. */
 function viDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -27,8 +31,18 @@ function viDate(iso: string | null | undefined): string | null {
 
 export function Header({ crumb, criticalCount = 0, onOpenNav, dataPeriod }: Props) {
   const { currentUser } = useApp();
-  const { world, setWorld, setPaletteOpen } = useConsole();
+  const { dataset, setDataset, setPaletteOpen } = useConsole();
   const [bellOpen, setBellOpen] = useState(false);
+
+  // Bộ chọn bộ dữ liệu chỉ có nghĩa ở các trang vận hành ĐỌC theo bộ dữ liệu:
+  // Tổng quan, Cảnh báo, Vụ việc, Tra cứu giao dịch. Mọi trang khác — Giám sát
+  // địa lý (chỉ SAML-D), Tài sản mã hoá (Bitcoin), Đồ thị mạng lưới, và các trang
+  // KỸ THUẬT/QUẢN TRỊ — không đọc giá trị này, nên ẩn bộ chọn cho nhất quán (chọn
+  // ở đó không đổi gì mà còn âm thầm đổi trạng thái toàn cục cho trang khác).
+  const pathname = useLocation().pathname;
+  const showDatasetSelector = ["/dashboard", "/alerts", "/cases", "/transactions"].some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
 
   const start = viDate(dataPeriod?.start);
   const end = viDate(dataPeriod?.end);
@@ -62,20 +76,23 @@ export function Header({ crumb, criticalCount = 0, onOpenNav, dataPeriod }: Prop
 
       <div className="flex-1" />
 
-      {/* Môi trường mô phỏng lùi xuống dưới 1280px: nó đổi rất hiếm, còn cửa sổ
-          thời gian thì analyst chạm liên tục. */}
-      <Select
-        aria-label="Thế giới mô phỏng"
-        value={world}
-        onChange={(event) => setWorld(event.target.value)}
-        className="hidden w-[210px] xl:block"
-      >
-        {WORLDS.map((name) => (
-          <option key={name} value={name}>
-            Môi trường: {name}
-          </option>
-        ))}
-      </Select>
+      {/* Bộ dữ liệu đang xem — bộ chọn TOÀN CỤC cho các trang vận hành đọc theo
+          bộ dữ liệu (Tổng quan, Cảnh báo, Vụ việc, Tra cứu giao dịch). Ẩn ở mọi
+          trang khác vì chúng không dùng giá trị này. */}
+      {showDatasetSelector && (
+        <Select
+          aria-label="Bộ dữ liệu đang xem"
+          value={dataset}
+          onChange={(event) => setDataset(event.target.value)}
+          className="w-[150px] sm:w-[190px]"
+        >
+          {OPERATIONAL_DATASETS.map((ds) => (
+            <option key={ds.value} value={ds.value}>
+              Bộ dữ liệu: {ds.label}
+            </option>
+          ))}
+        </Select>
+      )}
 
       {/* Đây từng là bộ chọn 1h/24h/7d/30d. Nó không nối vào truy vấn nào —
           `/dashboard` chỉ trả tổng của một lô chạy, không có trường nào theo

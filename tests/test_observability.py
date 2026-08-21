@@ -93,8 +93,11 @@ def test_single_dashboard_is_correlated_and_question_driven() -> None:
         assert panel.get("description"), f"panel {panel.get('title')} has no operational question"
         assert panel.get("targets"), f"panel {panel.get('title')} has no query"
 
-    cockpit = (ROOT / "web/src/components/observability/GrafanaCockpit.tsx").read_text(encoding="utf-8")
-    assert 'type CockpitView = "overview" | "logs" | "traces"' in cockpit
-    assert 'type: "loki", uid: "loki"' in cockpit
-    assert 'type: "jaeger", uid: "jaeger"' in cockpit
-    assert "/grafana/explore?" in cockpit
+    # Kiến trúc trình bày MỚI: Grafana CHỈ để trực quan hoá metrics; Logs và
+    # Traces là giao diện GỐC đọc thẳng lượt chạy tác tử (không nhúng Grafana
+    # Explore/Loki/Jaeger ở tầng giao diện nữa — tầng collector vẫn xuất đi Loki/
+    # Jaeger, kiểm ở test phía trên).
+    panel = (ROOT / "web/src/components/observability/ObservabilityPanel.tsx").read_text(encoding="utf-8")
+    assert 'type Tab = "metrics" | "logs" | "traces"' in panel
+    assert "GRAFANA_OVERVIEW" in panel  # Grafana chỉ cho tab metrics
+    assert "api.agentRuns" in panel  # logs/traces gốc, đọc lượt chạy tác tử

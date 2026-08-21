@@ -177,3 +177,9 @@ aml-prediction.ipynb
 
 # Kết xuất thô của đợt rà soát tác tử — README giữ phần tóm tắt
 reports/agent-audit/*.jsonl
+
+# QA ảnh chụp/đầu ra — không đưa vào repo.
+/qa/
+# Hạ tầng train GPU (terraform, có state/tfvars nhạy cảm) — thêm có chủ đích
+# riêng, không lẫn vào commit deploy ứng dụng.
+/deploy/samld-gpu/

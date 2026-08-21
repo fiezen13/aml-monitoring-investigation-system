@@ -87,10 +87,10 @@ def main() -> int:
     benchmark = {
         "schema_version": "fin07.geo_rule.release.v1",
         "model_kind": "geo_rule_ranker",
-        "region_label": "Giao dịch xuyên biên giới",
+        "region_label": "SAML-D · luật địa lý",
         "region_description": (
-            "Chỉ đo trên các ô (tài khoản, cửa sổ) có giao dịch xuyên biên giới — vùng mà nhánh này đặc "
-            "trưng. Giao dịch nội địa không thuộc phạm vi của bộ luật địa lý."
+            "Bộ luật địa lý trên bộ SAML-D: xếp hạng cảnh báo theo hành lang quốc gia rủi ro. "
+            "Đo trên đúng vùng luật này áp dụng."
         ),
         "region_rows": region_rows,
         "region_all_rows": int(report["test_cells_all"]),
@@ -104,8 +104,8 @@ def main() -> int:
         "top_corridors": report.get("top_corridors", []),
         "note": report.get("note", ""),
         "not_comparable_note": (
-            "Không so trực tiếp với nhánh IBM: khác vùng (xuyên biên giới vs toàn bộ giao dịch trong "
-            "ngân hàng), khác loại model (bộ luật xếp hạng vs mạng đồ thị chấm cạnh), khác bộ chỉ số."
+            "Không so trực tiếp với nhánh IBM: khác vùng (hành lang quốc gia rủi ro vs toàn bộ giao dịch "
+            "trong ngân hàng), khác loại model (bộ luật xếp hạng vs mạng đồ thị chấm cạnh), khác bộ chỉ số."
         ),
     }
 

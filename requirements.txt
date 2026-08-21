@@ -57,5 +57,9 @@ networkx>=3.0
 duckdb>=1.1.0
 pytz>=2024.1
 
+# Dựng PDF báo cáo SAR (thuần Python, không phụ thuộc hệ thống). Nhúng TTF
+# DejaVu (src/api/assets/fonts) để render dấu tiếng Việt.
+fpdf2>=2.7.9
+
 # Vector Store (mở khi cần)
 # chromadb>=0.5.0

@@ -19,7 +19,7 @@ export function SettingsPage() {
   const { currentUser, pushToast } = useApp();
   const settingsQuery = useApi(() => api.settings(), []);
   const [saving, setSaving] = useState<string | null>(null);
-  const canEdit = currentUser?.role === "admin" || currentUser?.role === "mlro";
+  const canEdit = currentUser?.role === "admin";
   const settings = settingsQuery.data?.settings ?? [];
   const thresholds = settings.filter((setting) => setting.code !== "NOTIFY-INTERNAL");
   const notification = settings.find((setting) => setting.code === "NOTIFY-INTERNAL");

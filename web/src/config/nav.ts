@@ -40,17 +40,15 @@ export interface NavItem {
 }
 
 export const NAV: NavItem[] = [
-  // Phân quyền theo việc, không theo cấp bậc.
+  // Ba vai trò, tách bạch NGHIỆP VỤ khỏi KỸ THUẬT:
   //
-  //   analyst            rà soát cảnh báo và vụ việc — công việc hằng ngày
-  //   compliance_officer analyst + phê duyệt SAR + quản trị người dùng
-  //   mlro               người chịu trách nhiệm cuối, thấy toàn bộ
-  //   auditor            CHỈ ĐỌC dấu vết: kiểm toán, mô hình, chất lượng dữ liệu.
-  //                      Cố ý không thấy hàng đợi cảnh báo — kiểm toán viên rà
-  //                      lại quyết định đã ra, không tham gia ra quyết định.
-  //   admin              vận hành hệ thống: người dùng, cấu hình, sức khoẻ mô hình.
-  //                      Cố ý không thấy dữ liệu điều tra — quản trị hạ tầng
-  //                      không cần đọc hồ sơ khách hàng.
+  //   analyst  Chuyên viên — rà soát cảnh báo, điều tra, dòng tiền, vụ việc.
+  //            KHÔNG thấy tab kỹ thuật/mô hình.
+  //   manager  Quản lý — mọi việc của Chuyên viên + soạn/duyệt SAR + phê duyệt
+  //            + nhật ký kiểm toán nghiệp vụ. Vẫn KHÔNG thấy tab kỹ thuật.
+  //   admin    Quản trị hệ thống — TẤT CẢ tab kỹ thuật (đánh giá chuẩn, giám sát
+  //            mô hình, chất lượng dữ liệu, lượt chạy tác tử) + người dùng + cấu
+  //            hình. KHÔNG ra quyết định AML, không đọc hồ sơ điều tra.
   //
   // Bỏ trống `roles` nghĩa là mọi vai trò đều thấy.
 
@@ -63,20 +61,20 @@ export const NAV: NavItem[] = [
     label: "Trung tâm cảnh báo",
     icon: Bell,
     badge: "alerts",
-    roles: ["analyst", "compliance_officer", "mlro"],
+    roles: ["analyst", "manager"],
   },
-  { to: "/cases", label: "Vụ việc", icon: ClipboardCheck, roles: ["analyst", "compliance_officer", "mlro"] },
+  { to: "/cases", label: "Vụ việc", icon: ClipboardCheck, roles: ["analyst", "manager"] },
   {
     to: "/network",
     label: "Đồ thị mạng lưới",
     icon: Network,
-    roles: ["analyst", "compliance_officer", "mlro"],
+    roles: ["analyst", "manager"],
   },
   {
     to: "/transactions",
     label: "Tra cứu giao dịch",
     icon: Receipt,
-    roles: ["analyst", "compliance_officer", "mlro", "auditor"],
+    roles: ["analyst", "manager"],
   },
 
   {
@@ -84,36 +82,35 @@ export const NAV: NavItem[] = [
     to: "/crypto",
     label: "Truy vết tài sản mã hoá",
     icon: Coins,
-    roles: ["analyst", "compliance_officer", "mlro"],
+    roles: ["analyst", "manager"],
   },
-  { to: "/projects", label: "Rủi ro dự án", icon: Blocks, roles: ["analyst", "compliance_officer", "mlro"] },
+  { to: "/projects", label: "Rủi ro dự án", icon: Blocks, roles: ["analyst", "manager"] },
 
+  // Tab KỸ THUẬT — chỉ Quản trị hệ thống (admin). Chuyên viên và Quản lý không thấy.
   {
-    section: "Tác tử AI",
+    section: "Kỹ thuật · Mô hình",
     to: "/agents",
     label: "Lượt chạy tác tử",
     icon: Sparkles,
-    roles: ["analyst", "compliance_officer", "mlro", "auditor"],
+    roles: ["admin"],
   },
-
   {
-    section: "Chất lượng & mô hình",
     to: "/benchmarks",
     label: "Đánh giá chuẩn",
     icon: Target,
-    roles: ["compliance_officer", "mlro", "auditor", "admin"],
+    roles: ["admin"],
   },
   {
     to: "/models",
     label: "Giám sát mô hình",
     icon: Gauge,
-    roles: ["compliance_officer", "mlro", "auditor", "admin"],
+    roles: ["admin"],
   },
   {
     to: "/data-quality",
     label: "Chất lượng dữ liệu",
     icon: Database,
-    roles: ["compliance_officer", "mlro", "auditor", "admin"],
+    roles: ["admin"],
   },
 
   {
@@ -122,11 +119,11 @@ export const NAV: NavItem[] = [
     label: "Phê duyệt SAR",
     icon: FileCheck2,
     badge: "approvals",
-    roles: ["compliance_officer", "mlro"],
+    roles: ["manager"],
   },
-  { to: "/audit", label: "Nhật ký kiểm toán", icon: History, roles: ["compliance_officer", "mlro", "auditor", "admin"] },
-  { to: "/users", label: "Người dùng", icon: Users, roles: ["admin", "compliance_officer"] },
-  { to: "/settings", label: "Cấu hình", icon: Settings, roles: ["admin", "mlro"] },
+  { to: "/audit", label: "Nhật ký kiểm toán", icon: History, roles: ["manager", "admin"] },
+  { to: "/users", label: "Người dùng", icon: Users, roles: ["admin"] },
+  { to: "/settings", label: "Cấu hình", icon: Settings, roles: ["admin"] },
 ];
 /**
  * Vai trò được vào từng route, khớp theo tiền tố (dài trước ngắn).
@@ -140,22 +137,26 @@ export const NAV: NavItem[] = [
  * liệu không tới thì trang có mở ra cũng trống. Giữ hai bên khớp nhau để người
  * dùng gặp màn 403 rõ ràng thay vì một trang lỗi tải.
  */
+// Giữ KHỚP với ma trận quyền (src/api/permissions.py + authz.py). Ba vai trò:
+// Chuyên viên (analyst) và Quản lý (manager) làm nghiệp vụ AML; tab kỹ thuật
+// (tác tử / đánh giá chuẩn / mô hình / chất lượng dữ liệu) và quản trị hệ thống
+// chỉ dành cho admin. Nhật ký kiểm toán: Quản lý + admin.
 export const ROUTE_ROLES: [string, string[]][] = [
-  ["/alerts", ["analyst", "compliance_officer", "mlro"]],
-  ["/cases", ["analyst", "compliance_officer", "mlro"]],
-  ["/network", ["analyst", "compliance_officer", "mlro"]],
-  ["/transactions", ["analyst", "compliance_officer", "mlro", "auditor"]],
-  ["/crypto", ["analyst", "compliance_officer", "mlro"]],
-  ["/projects", ["analyst", "compliance_officer", "mlro"]],
-  ["/agents", ["analyst", "compliance_officer", "mlro", "auditor"]],
-  ["/benchmarks", ["compliance_officer", "mlro", "auditor", "admin"]],
-  ["/models", ["compliance_officer", "mlro", "auditor", "admin"]],
-  ["/data-quality", ["compliance_officer", "mlro", "auditor", "admin"]],
-  ["/sar", ["compliance_officer", "mlro"]],
-  ["/approvals", ["compliance_officer", "mlro"]],
-  ["/audit", ["compliance_officer", "mlro", "auditor", "admin"]],
-  ["/users", ["admin", "compliance_officer"]],
-  ["/settings", ["admin", "mlro"]],
+  ["/alerts", ["analyst", "manager"]],
+  ["/cases", ["analyst", "manager"]],
+  ["/network", ["analyst", "manager"]],
+  ["/transactions", ["analyst", "manager"]],
+  ["/crypto", ["analyst", "manager"]],
+  ["/projects", ["analyst", "manager"]],
+  ["/agents", ["admin"]],
+  ["/benchmarks", ["admin"]],
+  ["/models", ["admin"]],
+  ["/data-quality", ["admin"]],
+  ["/sar", ["analyst", "manager"]],
+  ["/approvals", ["manager"]],
+  ["/audit", ["manager", "admin"]],
+  ["/users", ["admin"]],
+  ["/settings", ["admin"]],
 ];
 
 /**

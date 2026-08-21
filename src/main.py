@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from src.api.authz import enforce_policy
-from src.api.bitcoin_routes import router as bitcoin_router
 from src.api.fc_routes import router as fc_router
 from src.api.routes import router
 from src.config import get_settings
@@ -55,9 +54,9 @@ _authz = [Depends(enforce_policy)]
 
 app.include_router(router, prefix="/api/v1", dependencies=_authz)
 # Màn hình "Thành phố tài chính" — đọc dữ liệu vận hành từ schema `public`.
+# Nhánh Bitcoin AML (Elliptic gốc + DFRWS 2026) phục vụ qua fc_router: hàng đợi
+# đọc bảng `bitcoin_scored_tx`, giải thích on-demand gọi src/bitcoin_aml/agent.py.
 app.include_router(fc_router, prefix="/api/v1", dependencies=_authz)
-# Nhánh Bitcoin AML (Elliptic++) — độc lập, cùng tiền tố /api/v1, cùng phân quyền.
-app.include_router(bitcoin_router, prefix="/api/v1", dependencies=_authz)
 
 
 @app.get("/health", response_model=HealthOut)

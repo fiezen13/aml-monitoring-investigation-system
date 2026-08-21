@@ -1,38 +1,51 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 /**
- * Trạng thái dùng chung của cả console: thế giới mô phỏng đang xem và sidebar
+ * Trạng thái dùng chung của cả console: bộ dữ liệu vận hành đang xem và sidebar
  * thu gọn hay không.
  *
- * Từng có thêm "cửa sổ thời gian" (1h/24h/7d/30d). Đã gỡ vì không truy vấn nào
- * nhận nó: mọi số liệu trên console là tổng của một lượt chạy trên một bộ dữ
- * liệu cố định, không có trục thời gian để cắt. Header giờ hiển thị đúng kỳ dữ
- * liệu thay vì một bộ chọn bấm vào không đổi gì.
+ * Từng có thêm "cửa sổ thời gian" (1h/24h/7d/30d) và "môi trường mô phỏng". Đã gỡ
+ * cả hai vì không truy vấn nào nhận: mọi số liệu trên console là tổng của một
+ * lượt chạy trên một bộ dữ liệu cố định. Header giờ hiển thị đúng kỳ dữ liệu.
  *
  * Tách khỏi `AppContext` (vốn lo phiên đăng nhập và toast) vì hai nhóm này có
- * vòng đời khác nhau: đăng xuất thì xoá phiên, nhưng cửa sổ thời gian người
- * dùng vừa chọn thì nên giữ lại cho lần sau.
+ * vòng đời khác nhau: đăng xuất thì xoá phiên, nhưng bộ dữ liệu người dùng vừa
+ * chọn thì nên giữ lại cho lần sau.
  */
 
 interface ConsoleState {
-  world: string;
-  setWorld: (w: string) => void;
+  /**
+   * Bộ dữ liệu vận hành đang xem — chọn MỘT LẦN ở header, mọi trang dùng chung
+   * (Tổng quan, Cảnh báo, Giao dịch, Vụ việc, Mạng lưới) cùng đọc. Trước đây chỉ
+   * Alerts có bộ chọn riêng nên các trang khác trộn hai vũ trụ tài khoản không
+   * liên quan, chuyên viên không biết mình đang nhìn bộ nào. Chỉ gồm các bộ CÓ
+   * dữ liệu vận hành trong ngân hàng: nhánh Bitcoin (Elliptic) ẩn danh và tách
+   * riêng ở trang Tài sản mã hoá nên không nằm ở đây.
+   */
+  dataset: string;
+  setDataset: (d: string) => void;
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
 }
 
+/** Các bộ dữ liệu có mặt trong hàng đợi vận hành. Nhãn khớp `datasetLabel`. */
+export const OPERATIONAL_DATASETS = [
+  { value: "ibm_hi_medium", label: "Ngân hàng (IBM)" },
+  { value: "saml_d", label: "SAML-D" },
+] as const;
+
 const ConsoleContext = createContext<ConsoleState | null>(null);
 
 const PREF_KEY = "fin07.console.prefs";
 
 interface Prefs {
-  world: string;
+  dataset: string;
   sidebarCollapsed: boolean;
 }
 
-const DEFAULTS: Prefs = { world: "FIN-07 Primary", sidebarCollapsed: false };
+const DEFAULTS: Prefs = { dataset: "ibm_hi_medium", sidebarCollapsed: false };
 
 function readPrefs(): Prefs {
   try {
@@ -73,8 +86,8 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ConsoleState>(
     () => ({
-      world: prefs.world,
-      setWorld: (w) => setPrefs((p) => ({ ...p, world: w })),
+      dataset: prefs.dataset,
+      setDataset: (d) => setPrefs((p) => ({ ...p, dataset: d })),
       sidebarCollapsed: prefs.sidebarCollapsed,
       toggleSidebar: () => setPrefs((p) => ({ ...p, sidebarCollapsed: !p.sidebarCollapsed })),
       paletteOpen,

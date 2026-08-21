@@ -58,10 +58,13 @@ def main() -> int:
     if any(not chart.get("targets") for chart in charts):
         missing = [chart.get("title") for chart in charts if not chart.get("targets")]
         raise RuntimeError(f"Biểu đồ không có truy vấn là biểu đồ luôn trống; thiếu ở {missing}")
-    cockpit = (ROOT / "web/src/components/observability/GrafanaCockpit.tsx").read_text(encoding="utf-8")
-    for required in ('"overview" | "logs" | "traces"', 'uid: "loki"', 'uid: "jaeger"', "/grafana/explore?"):
-        if required not in cockpit:
-            raise RuntimeError(f"Focused logs/traces integration is missing {required}")
+    # Kiến trúc mới (theo yêu cầu sản phẩm): Grafana CHỈ để trực quan hoá metrics;
+    # Logs và Traces là giao diện GỐC đọc thẳng lượt chạy tác tử (không nhúng
+    # Grafana Explore/Loki/Jaeger nữa). Kiểm đúng ba mặt đó có mặt.
+    panel = (ROOT / "web/src/components/observability/ObservabilityPanel.tsx").read_text(encoding="utf-8")
+    for required in ('type Tab = "metrics" | "logs" | "traces"', "GRAFANA_OVERVIEW", "api.agentRuns"):
+        if required not in panel:
+            raise RuntimeError(f"Observability panel thiếu thành phần bắt buộc: {required}")
     print(f"đã kiểm {len(yaml_files)} file YAML, {len(rows)} nhóm chỉ số và {len(charts)} biểu đồ")
     return 0
 

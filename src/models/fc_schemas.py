@@ -438,7 +438,7 @@ class ModelBranchOut(BaseModel):
     """Một nhánh phát hiện, kèm benchmark đo trên đúng VÙNG nó đặc trưng.
 
     Ba nhánh của hệ thống — IBM HI-Medium (rửa tiền trong ngân hàng), SAML-D
-    (xuyên biên giới), Elliptic++ (bitcoin) — mỗi nhánh có model và benchmark
+    (xuyên biên giới), Elliptic (bitcoin) — mỗi nhánh có model và benchmark
     riêng. Chúng KHÔNG cộng gộp được: khác vùng, khác loại model, khác bộ chỉ
     số. Schema này cố tình để mỗi nhánh tự khai vùng và loại model của mình,
     thay vì ép một con số chung.
@@ -461,3 +461,120 @@ class ModelBranchOut(BaseModel):
     operating_points: list[OperatingPointOut]
     note: str | None = None
     not_comparable_note: str | None = None
+
+
+# ---------------------------------------------------------------------
+# Nhánh Bitcoin (Elliptic) — trình bày vận hành.
+#
+# Elliptic ẩn danh: chỉ có mã giao dịch và đặc trưng che tên, không địa chỉ /
+# tài khoản / nhãn dịch vụ. Nên nhánh này KHÔNG dùng khuôn cảnh báo–tài khoản
+# của IBM/SAML-D; nó là một hàng đợi giao dịch bị Random Forest chấm nghi ngờ,
+# đọc từ bảng ``bitcoin_scored_tx`` (điểm tập test, chấm sẵn bằng script).
+# ---------------------------------------------------------------------
+class BitcoinNeighbourOut(BaseModel):
+    """Một láng giềng 1 chặng trên đồ thị giao dịch Bitcoin."""
+
+    id: str
+    #: 'in' (gửi tới giao dịch này), 'out' (nhận từ nó), 'both'.
+    dir: str
+    #: MODEL DỰ ĐOÁN: true = model gắn cờ; false = không; null = ngoài tập đã chấm.
+    flag: bool | None = None
+    #: GROUND TRUTH: true = có NHÃN THẬT bất hợp pháp (Elliptic). Khác hẳn `flag`.
+    known_illicit: bool = False
+
+
+class BitcoinDriverOut(BaseModel):
+    """Một đặc trưng và đóng góp của nó vào điểm của CHÍNH giao dịch này (Saabas)."""
+
+    name: str
+    #: Nhãn tiếng Việt nếu đặc trưng ĐỌC ĐƯỢC; null nếu ẩn danh (không bịa nghĩa).
+    label: str | None = None
+    meaningful: bool
+    value: float
+    #: Đóng góp có dấu vào P(illicit): dương = đẩy về nghi ngờ, âm = kéo về bình thường.
+    contribution: float
+
+
+class EvidenceReasonOut(BaseModel):
+    """Một lý do TẤT ĐỊNH kèm badge nguồn (GROUND_TRUTH/GRAPH/MODEL/PREDICTION/…)."""
+
+    priority: int
+    badges: list[str] = Field(default_factory=list)
+    title: str
+    text: str
+
+
+class BitcoinScoredRowOut(BaseModel):
+    tx_id: str
+    timestep: int | None = None
+    #: P(illicit) từ predict_proba. Không cộng gộp với điểm nhánh khác.
+    illicit_prob: float
+    predicted_label: str  # 'illicit' | 'licit'
+    #: Nhãn công khai Elliptic (không bịa) — để đối chiếu, không phải căn cứ.
+    true_label: str | None = None
+    risk_level: str  # LOW | MEDIUM | HIGH | CRITICAL
+    requires_review: bool
+    headline: str
+    reasons: list[str] = Field(default_factory=list)
+    caveat: str
+    # Quy kết theo TỪNG giao dịch (Saabas): đặc trưng nào đẩy điểm của chính nó.
+    drivers: list[BitcoinDriverOut] = Field(default_factory=list)
+    #: Phần lực đẩy "nghi ngờ" đến từ đặc trưng ĐỌC ĐƯỢC (còn lại là ẩn danh).
+    meaningful_push_share: float | None = None
+    #: Tỷ phần |SHAP| đến từ đặc trưng CÓ NGHĨA — "phần giải thích được của model",
+    #: KHÔNG phải xác suất/nguyên nhân. Dùng cho thanh "Share of model explanation".
+    interpretable_ratio: float | None = None
+    #: CHẤT LƯỢNG GIẢI THÍCH (HIGH/MEDIUM/LIMITED) — TÁCH khỏi điểm rủi ro.
+    explanation_quality: str | None = None
+    # Bằng chứng đồ thị THẬT (txs_edgelist). NGỮ CẢNH cho chuyên viên — model
+    # KHÔNG dùng đồ thị để chấm; điểm số hoàn toàn từ đặc trưng.
+    graph_in_degree: int | None = None
+    graph_out_degree: int | None = None
+    #: MODEL DỰ ĐOÁN gắn cờ (khác known-illicit bên dưới).
+    graph_flagged_neighbours: int | None = None
+    #: GROUND TRUTH: số láng giềng có NHÃN THẬT bất hợp pháp.
+    graph_known_illicit_neighbours: int | None = None
+    graph_neighbours: list[BitcoinNeighbourOut] = Field(default_factory=list)
+    # --- Interpretable Investigation Evidence Layer (tính SAU suy luận) -------
+    #: NONE/WEAK/MODERATE/STRONG — sức mạnh bằng chứng ĐIỀU TRA, TÁCH khỏi rủi ro model.
+    evidence_strength: str | None = None
+    #: Object bằng chứng đồ thị có cấu trúc (multi-hop, hop-distance, topology…).
+    graph_evidence: dict[str, Any] = Field(default_factory=dict)
+    #: Lý do tất định kèm badge nguồn (ưu tiên bằng chứng mạnh trước tín hiệu ẩn danh).
+    evidence_reasons: list[EvidenceReasonOut] = Field(default_factory=list)
+    #: Gợi ý điều tra sinh từ bằng chứng thật.
+    recommended_steps: list[str] = Field(default_factory=list)
+
+
+class BitcoinSummaryOut(BaseModel):
+    release_id: str
+    model_version: str
+    region_label: str = "Giao dịch Bitcoin"
+    #: Toàn tập test đã chấm.
+    total_scored: int
+    #: Số giao dịch MODEL gắn cờ bất hợp pháp (predicted illicit).
+    flagged_illicit: int
+    #: Trong nhóm gắn cờ, bao nhiêu ở mức HIGH/CRITICAL (cần rà soát).
+    requires_review: int
+    #: Đếm theo mức rủi ro trên toàn tập.
+    by_level: dict[str, int] = Field(default_factory=dict)
+    #: Số giao dịch THẬT là bất hợp pháp trong tập test (nhãn Elliptic).
+    illicit_true_total: int
+    #: Trong nhóm gắn cờ, bao nhiêu trùng nhãn thật (dự đoán đúng).
+    flagged_true_positive: int
+    #: Chỉ số đã ký của release (tập test) — cùng nguồn với trang Đánh giá chuẩn.
+    f1: float | None = None
+    precision: float | None = None
+    recall: float | None = None
+    pr_auc: float | None = None
+    test_timestep_min: int | None = None
+    test_timestep_max: int | None = None
+
+
+class BitcoinPageOut(BaseModel):
+    summary: BitcoinSummaryOut
+    rows: list[BitcoinScoredRowOut]
+    #: Số dòng khớp bộ lọc hiện tại (để phân trang).
+    total: int
+    page: int
+    page_size: int

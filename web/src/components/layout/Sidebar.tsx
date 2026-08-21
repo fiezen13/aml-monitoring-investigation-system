@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 import { NAV } from "../../config/nav";
+import { NAV_PERMISSION } from "../../rbac/navPermissions";
+import { useRbac } from "../../rbac/useRbac";
 import { transitions, useReduced } from "../../design/motion";
 import { TEXT } from "../../design/typography";
 import { useApp } from "../../context/AppContext";
@@ -24,8 +26,14 @@ export function Sidebar({ counts = {}, onNavigate }: Props) {
   const { sidebarCollapsed: collapsed, toggleSidebar } = useConsole();
   const navigate = useNavigate();
   const reduced = useReduced();
+  const rbac = useRbac();
 
-  const items = NAV.filter((it) => !it.roles || (currentUser && it.roles.includes(currentUser.role)));
+  // Lọc theo QUYỀN (khớp route guard), không theo mảng roles cũ. Mục không có
+  // trong bảng quyền thì mọi người đã đăng nhập đều thấy.
+  const items = NAV.filter((it) => {
+    const need = NAV_PERMISSION[it.to];
+    return need ? rbac.can(need) : true;
+  });
 
   return (
     <motion.nav
@@ -63,6 +71,9 @@ export function Sidebar({ counts = {}, onNavigate }: Props) {
         {items.map((item) => {
           const badge = item.badge ? counts[item.badge] : undefined;
           const hasBadge = badge != null && badge > 0;
+          // Huy hiệu là chip nhỏ: số hàng nghìn (vd 10004 cảnh báo) sẽ tràn và
+          // khó đọc. Chặn trên ở "999+" để giữ khuôn, con số đầy đủ ở trang tương ứng.
+          const badgeText = badge != null && badge > 999 ? "999+" : badge;
 
           const link = (
             <NavLink
@@ -108,7 +119,7 @@ export function Sidebar({ counts = {}, onNavigate }: Props) {
                   </AnimatePresence>
                   {!collapsed && hasBadge && (
                     <span className="tabular flex-none rounded-chip bg-risk/15 px-1.5 font-mono text-micro leading-[17px] text-risk-soft">
-                      {badge}
+                      {badgeText}
                     </span>
                   )}
                   {/* Ở dạng thu gọn con số không đọc nổi, nhưng "đang có việc

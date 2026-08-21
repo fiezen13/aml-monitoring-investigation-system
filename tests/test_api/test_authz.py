@@ -73,12 +73,22 @@ async def test_dang_nhap_va_health_khong_can_token(raw_client) -> None:
 @pytest.mark.parametrize(
     ("role", "path"),
     [
-        ("auditor", "/api/v1/alerts"),  # kiểm toán viên không vào hàng đợi cảnh báo
+        ("admin", "/api/v1/alerts"),  # quản trị hạ tầng không đọc cảnh báo
         ("admin", "/api/v1/cases"),  # quản trị hạ tầng không đọc hồ sơ điều tra
         ("analyst", "/api/v1/users"),  # analyst không quản trị người dùng
         ("analyst", "/api/v1/settings"),
         ("analyst", "/api/v1/audit"),
+        # Tab KỸ THUẬT chỉ dành cho ADMIN — Chuyên viên VÀ Quản lý đều bị chặn.
         ("analyst", "/api/v1/fc/benchmarks"),
+        ("analyst", "/api/v1/fc/agent-runs"),
+        ("analyst", "/api/v1/fc/data-quality"),
+        ("manager", "/api/v1/fc/benchmarks"),
+        ("manager", "/api/v1/fc/agent-runs"),
+        ("manager", "/api/v1/fc/data-quality"),
+        ("manager", "/api/v1/fc/model-monitor"),
+        # Quản trị user/hệ thống là thẩm quyền KỸ THUẬT — chỉ ADMIN.
+        ("manager", "/api/v1/users"),
+        ("manager", "/api/v1/settings"),
     ],
 )
 async def test_vai_tro_bi_chan(raw_client, as_role, role: str, path: str) -> None:
@@ -88,9 +98,13 @@ async def test_vai_tro_bi_chan(raw_client, as_role, role: str, path: str) -> Non
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("role", ["analyst", "auditor", "compliance_officer"])
-async def test_chi_mlro_va_admin_ra_quyet_dinh_phe_duyet(raw_client, as_role, role: str) -> None:
-    """Chặn ngay ở cổng, trước cả khi đọc thân yêu cầu."""
+@pytest.mark.parametrize("role", ["analyst", "admin"])
+async def test_chi_quan_ly_ra_quyet_dinh_phe_duyet(raw_client, as_role, role: str) -> None:
+    """Quyết định phê duyệt là thẩm quyền NGHIỆP VỤ AML — chỉ Quản lý.
+
+    Chuyên viên chưa đủ thẩm quyền; Admin (quản trị hệ thống) không ra quyết định
+    AML. Chặn ngay ở cổng, trước cả khi đọc thân yêu cầu.
+    """
     as_role(role)
     response = await raw_client.post(
         "/api/v1/approvals/APR-1/decision",
@@ -101,17 +115,35 @@ async def test_chi_mlro_va_admin_ra_quyet_dinh_phe_duyet(raw_client, as_role, ro
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/alerts/A-1/investigate", "/api/v1/cases/C-1/investigate"])
+async def test_admin_khong_duoc_dieu_tra(raw_client, as_role, path: str) -> None:
+    """Admin (quản trị hệ thống) KHÔNG khởi chạy điều tra — không đọc hồ sơ khách hàng."""
+    as_role("admin")
+    response = await raw_client.post(path, headers={"Authorization": "Bearer x"}, json={})
+    assert response.status_code == 403, response.text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("role", "path"),
     [
+        # Chuyên viên + Quản lý làm nghiệp vụ điều tra.
         ("analyst", "/api/v1/alerts"),
-        ("mlro", "/api/v1/alerts"),
-        ("auditor", "/api/v1/audit"),
-        ("auditor", "/api/v1/transactions"),
+        ("analyst", "/api/v1/cases"),
+        ("analyst", "/api/v1/fc/graph"),
+        ("analyst", "/api/v1/transactions"),
+        ("manager", "/api/v1/alerts"),
+        ("manager", "/api/v1/cases"),
+        ("manager", "/api/v1/fc/graph"),
+        ("manager", "/api/v1/transactions"),
+        ("manager", "/api/v1/audit"),  # Quản lý xem nhật ký kiểm toán nghiệp vụ
+        # Admin: quản trị hệ thống + toàn bộ tab kỹ thuật.
         ("admin", "/api/v1/users"),
-        ("compliance_officer", "/api/v1/users"),
-        ("mlro", "/api/v1/settings"),
-        ("auditor", "/api/v1/fc/data-quality"),
+        ("admin", "/api/v1/settings"),
+        ("admin", "/api/v1/audit"),
+        ("admin", "/api/v1/fc/data-quality"),
+        ("admin", "/api/v1/fc/benchmarks"),
+        ("admin", "/api/v1/fc/agent-runs"),
     ],
 )
 async def test_vai_tro_duoc_qua_cong(raw_client, as_role, role: str, path: str) -> None:

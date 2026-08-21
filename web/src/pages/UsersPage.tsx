@@ -13,12 +13,15 @@ import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/St
 import { useApp } from "../context/AppContext";
 import type { User } from "../types";
 
+// Cột theo ba vai trò hiện hành. Tách bạch NGHIỆP VỤ (Chuyên viên/Quản lý) khỏi
+// KỸ THUẬT (Quản trị hệ thống) — khớp src/api/permissions.py.
 const PERMISSION_MATRIX = [
-  { action: "Xem báo cáo SAR", admin: true, mlro: true, analyst: true },
-  { action: "Phê duyệt vụ việc", admin: true, mlro: true, analyst: false },
-  { action: "Xóa nhật ký hệ thống", admin: false, mlro: false, analyst: false },
-  { action: "Quản lý người dùng", admin: true, mlro: false, analyst: false },
-  { action: "Cấu hình bộ máy rủi ro", admin: true, mlro: true, analyst: false },
+  { action: "Rà soát cảnh báo & điều tra", analyst: true, manager: true, admin: false },
+  { action: "Soạn & phê duyệt SAR", analyst: false, manager: true, admin: false },
+  { action: "Phê duyệt vụ việc rủi ro cao", analyst: false, manager: true, admin: false },
+  { action: "Nhật ký kiểm toán", analyst: false, manager: true, admin: true },
+  { action: "Tab kỹ thuật (mô hình · tác tử · chất lượng dữ liệu)", analyst: false, manager: false, admin: true },
+  { action: "Quản lý người dùng & cấu hình", analyst: false, manager: false, admin: true },
 ] as const;
 
 function downloadUsers(users: User[]) {
@@ -93,7 +96,7 @@ export function UsersPage() {
         <Panel padded={false} title="Danh sách người dùng" action={
           <label className="flex items-center gap-1.5 text-2xs text-ink-low">Lọc theo vai trò:
             <select value={role} onChange={(event) => setRole(event.target.value)} className="rounded-control border border-line bg-elev px-1.5 py-1 text-2xs text-ink-hi focus:outline-none">
-              <option value="">Tất cả</option><option value="admin">Quản trị viên</option><option value="mlro">MLRO</option><option value="compliance_officer">Chuyên viên tuân thủ</option><option value="analyst">Chuyên viên phân tích</option><option value="auditor">Kiểm toán viên</option>
+              <option value="">Tất cả</option><option value="analyst">Chuyên viên</option><option value="manager">Quản lý</option><option value="admin">Quản trị hệ thống</option>
             </select>
           </label>
         }>
@@ -121,7 +124,7 @@ export function UsersPage() {
         </Panel>
 
         <Panel padded={false} title="Ma trận Phân quyền">
-          <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-line"><th className="px-3 py-2.5 text-2xs font-semibold uppercase tracking-wider text-ink-mid">Hành động \ Vai trò</th>{["Quản trị viên", "MLRO", "Chuyên viên phân tích"].map((item) => <th key={item} className="px-2 py-2.5 text-center text-2xs font-semibold uppercase tracking-wider text-ink-mid">{item}</th>)}</tr></thead><tbody>{PERMISSION_MATRIX.map((row) => <tr key={row.action} className="border-b border-line/60 last:border-0"><td className="px-3 py-2.5 text-body text-ink-hi">{row.action}</td>{[row.admin, row.mlro, row.analyst].map((allowed, index) => <td key={index} className="px-2 py-2.5 text-center"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${allowed ? "bg-ok/15 text-ok" : "bg-ink-low/10 text-ink-low"}`}>{allowed ? <Check size={11} /> : <X size={11} />}</span></td>)}</tr>)}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-line"><th className="px-3 py-2.5 text-2xs font-semibold uppercase tracking-wider text-ink-mid">Hành động \ Vai trò</th>{["Chuyên viên", "Quản lý", "Quản trị hệ thống"].map((item) => <th key={item} className="px-2 py-2.5 text-center text-2xs font-semibold uppercase tracking-wider text-ink-mid">{item}</th>)}</tr></thead><tbody>{PERMISSION_MATRIX.map((row) => <tr key={row.action} className="border-b border-line/60 last:border-0"><td className="px-3 py-2.5 text-body text-ink-hi">{row.action}</td>{[row.analyst, row.manager, row.admin].map((allowed, index) => <td key={index} className="px-2 py-2.5 text-center"><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${allowed ? "bg-ok/15 text-ok" : "bg-ink-low/10 text-ink-low"}`}>{allowed ? <Check size={11} /> : <X size={11} />}</span></td>)}</tr>)}</tbody></table></div>
           <p className="border-t border-line p-3 text-2xs leading-relaxed text-ink-mid">ⓘ Đây là chính sách phân quyền của hệ thống; mọi thay đổi tài khoản đều ghi vào nhật ký kiểm toán.</p>
         </Panel>
       </div>

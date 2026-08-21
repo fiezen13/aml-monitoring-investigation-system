@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import { int } from "../api/fcFormat";
-import { formatDateTime } from "../api/format";
+import { datasetLabel, formatDateTime } from "../api/format";
 import { useApi } from "../api/useApi";
+import { useConsole } from "../context/ConsoleContext";
 import { PageShell } from "../components/ui";
 import { Empty, Panel, ScreenTitle, Skeleton } from "../components/fc/primitives";
 
@@ -19,12 +20,17 @@ const CHANNELS = ["all", "CHEQUE", "CREDIT_CARD", "ACH", "CASH", "WIRE", "BITCOI
 const PAGE_SIZE = 50;
 
 export function TransactionsPage() {
+  const { dataset } = useConsole();
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState("all");
   const [minAmount, setMinAmount] = useState("");
   const [minScore, setMinScore] = useState("");
   const [decision, setDecision] = useState("all");
   const [page, setPage] = useState(1);
+
+  // Đổi bộ dữ liệu ở header thì về trang 1: số trang của bộ cũ không có nghĩa
+  // với bộ mới (SAML-D ít dòng hơn IBM nhiều lần).
+  useEffect(() => setPage(1), [dataset]);
 
   // `q` và `minAmount` đi thẳng vào deps: mỗi ký tự là một lượt gọi. Với bảng
   // này thì chấp nhận được vì truy vấn có chỉ mục và giới hạn 50 dòng; nếu sau
@@ -37,10 +43,11 @@ export function TransactionsPage() {
         min_amount: minAmount ? Number(minAmount) : undefined,
         min_score: minScore ? Number(minScore) / 100 : undefined,
         triggered: decision === "all" ? undefined : decision === "alert",
+        dataset,
         page,
         page_size: PAGE_SIZE,
       }),
-    [q, channel, minAmount, minScore, decision, page],
+    [q, channel, minAmount, minScore, decision, dataset, page],
   );
 
   const total = data.data?.total ?? 0;
@@ -50,7 +57,7 @@ export function TransactionsPage() {
     <PageShell variant="dense">
       <ScreenTitle
         title="Tra cứu giao dịch"
-        meta={`${int(total)} giao dịch khớp bộ lọc · trang ${page}/${pageCount}`}
+        meta={`Bộ dữ liệu ${datasetLabel(dataset)} · ${int(total)} giao dịch khớp bộ lọc · trang ${page}/${pageCount}`}
       />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -131,6 +138,17 @@ export function TransactionsPage() {
           </button>
         )}
       </div>
+
+      {/* Reinvestment (tái đầu tư) trong bộ IBM đều là chuyển khoản tự-thân
+          (from = to). Đường ống ingestion cố ý loại mọi self-loop nên loại này
+          không xuất hiện — nói rõ để chuyên viên khỏi tưởng thiếu dữ liệu. */}
+      {dataset === "ibm_hi_medium" && (
+        <p className="-mt-0.5 text-2xs leading-relaxed text-ink-low">
+          Không thấy giao dịch <span className="font-medium text-ink-soft">Reinvestment</span> (tái đầu tư)? Trong bộ
+          IBM, đây là chuyển khoản tự-thân — tài khoản chuyển cho chính nó — nên đường ống cố ý loại khỏi bảng: self-loop
+          không phải dòng tiền giữa hai bên và không có tín hiệu cho phân tích mạng lưới.
+        </p>
+      )}
 
       <Panel bodyClassName="overflow-x-auto px-0">
         <div className="min-w-[1240px]">

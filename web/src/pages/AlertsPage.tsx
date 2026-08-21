@@ -6,6 +6,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { api, num } from "../api/client";
 import { alertStatusLabel, detectorLabel, formatRelative, initials, profileValueLabel, datasetLabel } from "../api/format";
 import { useApi } from "../api/useApi";
+import { useConsole } from "../context/ConsoleContext";
 import {
   Badge,
   Column,
@@ -61,10 +62,10 @@ export function AlertsPage() {
   const [search, setSearch] = useState("");
   const [queryText, setQueryText] = useState("");
   const [typology, setTypology] = useState("");
-  // Hàng đợi phục vụ nhiều bộ dữ liệu. Không lọc thì cảnh báo của hai vũ trụ
-  // tài khoản không liên quan gì nhau nằm lẫn lộn, và mọi thống kê ở đầu trang
-  // là tổng của hai thứ không cộng được với nhau.
-  const [dataset, setDataset] = useState("");
+  // Bộ dữ liệu lấy từ bộ chọn TOÀN CỤC ở header, không còn selector riêng của
+  // trang này. Hàng đợi phục vụ nhiều bộ dữ liệu là hai vũ trụ tài khoản không
+  // liên quan gì nhau; giờ mọi trang cùng đọc một lựa chọn nên không lệch nhau.
+  const { dataset } = useConsole();
   const [page, setPage] = useState(1);
   const pageSize = 50;
 
@@ -240,16 +241,6 @@ export function AlertsPage() {
               placeholder="Tìm mã cảnh báo, chủ thể, tài khoản…"
               className="w-64"
             />
-            <Select
-              aria-label="Lọc theo bộ dữ liệu"
-              value={dataset}
-              onChange={(event) => setDataset(event.target.value)}
-              className="w-56"
-            >
-              <option value="">Tất cả bộ dữ liệu</option>
-              <option value="ibm_hi_medium">Ngân hàng — IBM AML HI-Medium</option>
-              <option value="saml_d">Xuyên biên giới — SAML-D</option>
-            </Select>
             <Select
               aria-label="Lọc theo nhóm hành vi"
               value={typology}
