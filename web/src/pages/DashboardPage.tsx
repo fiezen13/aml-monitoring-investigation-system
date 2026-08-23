@@ -1,9 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api, num } from "../api/client";
 import { int } from "../api/fcFormat";
-import { alertStatusLabel, datasetLabel, detectorLabel, formatRelative } from "../api/format";
+import { alertStatusLabel, datasetLabel, detectorLabel, formatRelative, sourceBrand } from "../api/format";
 import { useApi } from "../api/useApi";
 import { useConsole } from "../context/ConsoleContext";
 import { Chart, type ChartSpec } from "../components/fc/Chart";
@@ -40,12 +40,14 @@ export function DashboardPage() {
   const { dataset } = useConsole();
   // `dataset` nằm trong deps: đổi bộ dữ liệu ở header thì Tổng quan hỏi lại
   // ngay, không còn cảnh thẻ số một bộ mà biểu đồ lại bộ khác.
-  const dashboard = useApi(() => api.dashboard({ dataset }), [dataset]);
-  const world = useApi(() => api.world(), []);
+  const dashboard = useApi(() => api.dashboard({ dataset }), [dataset], `dashboard:${dataset}`);
+  const world = useApi(() => api.world(), [], "world");
 
   const d = dashboard.data;
 
-  const kpis = useMemo(() => {
+  const kpis = useMemo<
+    { label: string; value: ReactNode; tone: Tone; note: ReactNode; onClick?: () => void }[]
+  >(() => {
     if (!d) return [];
     const normalPct = Math.round((d.subjects_below_threshold / Math.max(1, d.subjects_analyzed)) * 1000) / 10;
     const triggeredPct = Math.round((d.subjects_triggered / Math.max(1, d.subjects_analyzed)) * 1000) / 10;
@@ -61,7 +63,9 @@ export function DashboardPage() {
         label: "Giao dịch đã chấm điểm",
         value: d.transactions_analyzed,
         tone: "neutral" as Tone,
-        note: d.latest_source_name ?? "chưa có lô dữ liệu",
+        // Chỉ hiện thương hiệu nguồn ("IBM"), không lộ biến thể nội bộ
+        // (LI-Small/HI-Medium) — người dùng không cần và dễ hiểu nhầm là chất lượng.
+        note: d.latest_source_name ? sourceBrand(d.latest_source_name) : "chưa có lô dữ liệu",
       },
       {
         label: "Dưới ngưỡng",
@@ -70,36 +74,31 @@ export function DashboardPage() {
         note: `${normalPct}% giao dịch được chấm`,
       },
       {
-        label: "Vượt ngưỡng",
+        // "Vượt ngưỡng" CHÍNH LÀ cảnh báo: mỗi giao dịch mô hình chấm quá ngưỡng
+        // là một cảnh báo. Trước đây tách làm hai thẻ — "Vượt ngưỡng"
+        // (triggered_rows của release đang xem) và "Cảnh báo chưa xử lý"
+        // (đếm TOÀN bảng alert, cộng dồn mọi đợt chạy + mọi detector) — nên hai
+        // con số lệch nhau vô lý (3.085 so với 10.415) dù đáng lẽ là một. Gộp lại,
+        // lấy THEO RELEASE HIỆN TẠI: dưới ngưỡng + cảnh báo = đã chấm điểm, phễu
+        // Tổng quan khớp trong một lô, không kéo tồn đọng của đợt cũ vào.
+        label: "Cảnh báo",
         value: d.subjects_triggered,
-        tone: "warn" as Tone,
-        note: `${triggeredPct}% giao dịch được chấm`,
-      },
-      {
-        // Phải là hàng đợi thật, không phải số giao dịch vượt ngưỡng của mô hình
-        // cạnh: hai con số đó khác nhau và nhãn "Cảnh báo" thì người đọc luôn
-        // hiểu là hàng đợi. Trước đây thẻ này hiện `batch_alerts_created`, vốn
-        // trùng y hệt thẻ "Vượt ngưỡng" bên cạnh và lệch hẳn với Trung tâm cảnh
-        // báo — mô hình cạnh chấm điểm giao dịch nhưng không sinh cảnh báo nào.
-        label: "Cảnh báo chưa xử lý",
-        value: d.open_alerts,
         tone: "risk" as Tone,
-        note: "đang mở, chưa gom vào vụ việc",
+        note: `${triggeredPct}% giao dịch vượt ngưỡng · release đang xem`,
       },
       {
+        // Bấm vào để mở thẳng danh sách hồ sơ vụ việc — người dùng thấy con số
+        // "đang xử lý" thì việc kế tiếp luôn là xem đó là những vụ nào.
         label: "Vụ việc đang xử lý",
         value: d.cases_investigating,
         tone: "agent" as Tone,
-        note: "chưa kết luận",
+        note: "chưa kết luận · mở hồ sơ →",
+        onClick: () => navigate("/cases"),
       },
-      {
-        label: "Hàng lệnh worker",
-        value: d.queue_depth,
-        tone: (d.worker_alive ? "ok" : "risk") as Tone,
-        note: d.worker_alive ? "worker đang chạy" : "worker không phản hồi",
-      },
+      // Bỏ thẻ "Hàng lệnh worker": chiều sâu hàng đợi/trạng thái worker là việc
+      // nội bộ của hệ thống, không phải chỉ số nghiệp vụ mà analyst cần theo dõi.
     ];
-  }, [d]);
+  }, [d, navigate]);
 
   // Xu hướng dựng từ chính thời điểm tạo cảnh báo — số thật, không phải đường
   // cong minh hoạ.
@@ -216,7 +215,7 @@ export function DashboardPage() {
       subtitle={
         <>
           <span className="font-semibold text-ink-hi">Bộ dữ liệu: {datasetLabel(dataset)}</span> · lô{" "}
-          {d?.latest_source_name ?? "chưa có nguồn"} · toàn bộ số liệu dưới đây là tổng của một lượt chạy trên
+          {d?.latest_source_name ? sourceBrand(d.latest_source_name) : "chưa có nguồn"} · toàn bộ số liệu dưới đây là tổng của một lượt chạy trên
           đúng bộ này, không phải chuỗi thời gian
         </>
       }
@@ -229,10 +228,17 @@ export function DashboardPage() {
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(168px,1fr))" }}>
         {dashboard.loading && !d ? (
-          <CardSkeleton count={6} height={84} />
+          <CardSkeleton count={4} height={84} />
         ) : (
           kpis.map((kpi) => (
-            <MetricCard key={kpi.label} label={kpi.label} value={kpi.value} tone={kpi.tone} note={kpi.note} />
+            <MetricCard
+              key={kpi.label}
+              label={kpi.label}
+              value={kpi.value}
+              tone={kpi.tone}
+              note={kpi.note}
+              onClick={kpi.onClick}
+            />
           ))
         )}
       </div>
@@ -367,8 +373,6 @@ export function DashboardPage() {
                 ["Nguồn giao dịch", world.data?.source_name ?? "—"],
                 ["Giao dịch đã chấm điểm", world.data ? int(world.data.transaction_count) : "—"],
                 ["Dữ liệu địa lý", world.data?.geography_available ? "có" : "chưa có"],
-                ["Worker nền", d?.worker_alive ? "đang chạy" : "không phản hồi"],
-                ["Chiều sâu hàng lệnh", d ? String(d.queue_depth) : "—"],
               ].map(([key, value]) => (
                 <div key={key} className="flex items-center gap-2">
                   <dt className="flex-1 text-ink-low">{key}</dt>
@@ -380,7 +384,7 @@ export function DashboardPage() {
 
           <Panel title="Giới hạn cần biết" subtitle="Công bố kèm mọi kết quả">
             <p className="text-meta leading-relaxed text-ink-soft">
-              ML đang phục vụ release {d?.latest_source_name ?? "chưa xác định"}. Bản đồ dùng bảng tham chiếu
+              ML đang phục vụ nguồn {d?.latest_source_name ? sourceBrand(d.latest_source_name) : "chưa xác định"}. Bản đồ dùng bảng tham chiếu
               bank-country của dự án;
               một phần quốc gia được gán cho ngân hàng hư cấu và không phải dữ liệu pháp vực từ IBM. Không dùng bản đồ
               để kết luận thẩm quyền pháp lý hoặc cộng giá trị giữa các currency.

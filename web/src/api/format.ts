@@ -96,6 +96,22 @@ export function datasetLabel(dataset: string): string {
   return DATASET_LABELS[dataset] ?? dataset;
 }
 
+/**
+ * Rút gọn tên release/nguồn về thương hiệu bộ dữ liệu.
+ *
+ * `edge_model_release.dataset` là chuỗi tự do như "IBM AML LI-Small
+ * currency-native" — biến thể (LI-Small/HI-Medium) là chi tiết nội bộ, người
+ * dùng console chỉ cần biết nguồn là "IBM". Giữ nguyên tên nếu không nhận ra.
+ */
+export function sourceBrand(name: string | null | undefined): string {
+  if (!name) return "";
+  const s = name.toLowerCase();
+  if (s.includes("ibm")) return "IBM";
+  if (s.includes("saml")) return "SAML-D";
+  if (s.includes("bitcoin") || s.includes("elliptic")) return "Bitcoin";
+  return name;
+}
+
 export function detectorLabel(detector: string): string {
   return DETECTOR_LABELS[detector] ?? detector;
 }

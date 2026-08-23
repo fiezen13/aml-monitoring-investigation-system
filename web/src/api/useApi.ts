@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "./client";
+import { readCache, writeCache } from "./swrCache";
 
 export interface ApiState<T> {
   data: T | null;
@@ -26,8 +27,14 @@ export interface ApiState<T> {
  * bằng khung chờ hai giây một lần — người dùng thấy màn hình giật liên tục suốt
  * cả phút. `loading` vì vậy chỉ bật khi **chưa có gì để hiển thị**.
  */
-export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): ApiState<T> {
-  const [data, setData] = useState<T | null>(null);
+export function useApi<T>(
+  fetcher: () => Promise<T>,
+  deps: unknown[] = [],
+  cacheKey?: string,
+): ApiState<T> {
+  // Nạp bản cũ ngay từ lần render đầu: có cache thì `data` khác null nên
+  // `loading` = false, màn hình hiện dữ liệu cũ thay vì khung chờ khi F5.
+  const [data, setData] = useState<T | null>(() => (cacheKey ? readCache<T>(cacheKey) : null));
   const [error, setError] = useState<string | null>(null);
   const [inFlight, setInFlight] = useState(true);
   const [nonce, setNonce] = useState(0);
@@ -35,11 +42,16 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): ApiS
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
 
+  const cacheKeyRef = useRef(cacheKey);
+  cacheKeyRef.current = cacheKey;
+
   // Đổi `deps` nghĩa là đổi câu hỏi — dữ liệu cũ trả lời câu khác nên phải bỏ
   // đi, nếu không màn hình sẽ hiện dữ liệu của cảnh báo trước trong một nhịp.
+  // Có cacheKey thì thay bằng bản cũ của ĐÚNG khoá mới (nếu có) chứ không để
+  // trắng — vẫn giữ cảm giác tức thì khi quay lại bộ lọc đã từng xem.
   // Còn `reload()` chỉ hỏi lại **cùng một câu**, nên giữ nguyên dữ liệu đang có.
   useEffect(() => {
-    setData(null);
+    setData(cacheKey ? readCache<T>(cacheKey) : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
@@ -53,7 +65,11 @@ export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = []): ApiS
     fetcherRef
       .current()
       .then((result) => {
-        if (live) setData(result);
+        if (!live) return;
+        setData(result);
+        // Ghi bản mới để lần F5 sau vẽ được ngay. Dùng ref vì cacheKey có thể
+        // đã đổi trong lúc chờ phản hồi (đổi bộ lọc nhanh).
+        if (cacheKeyRef.current) writeCache(cacheKeyRef.current, result);
       })
       .catch((cause: unknown) => {
         if (!live) return;
