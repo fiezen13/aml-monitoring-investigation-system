@@ -163,9 +163,13 @@ export function AgentsPage() {
               <span className="font-mono text-xs text-primary" title={r.id}>
                 {r.id.length > 14 ? `${r.id.slice(0, 14)}…` : r.id}
               </span>
-              <span className="truncate-1 text-xs text-ink-soft">{TIER_LABEL[r.tier] ?? r.tier}</span>
-              <span className="font-mono text-xs">{r.case_id ?? "—"}</span>
-              <span className="text-xs text-ink-soft">{formatDateTime(r.started_at)}</span>
+              <span className="truncate-1 min-w-0 text-xs text-ink-soft">{TIER_LABEL[r.tier] ?? r.tier}</span>
+              {/* case_id dài (CASE-<hash>) phải cắt 1 dòng, nếu không nó xuống
+                  dòng và đè sang cột "Bắt đầu". min-w-0 để ô grid co lại được. */}
+              <span className="truncate-1 min-w-0 font-mono text-xs" title={r.case_id ?? undefined}>
+                {r.case_id ?? "—"}
+              </span>
+              <span className="truncate-1 min-w-0 text-xs text-ink-soft">{formatDateTime(r.started_at)}</span>
               <span className="tabular font-mono text-xs">{r.step_count}</span>
               <span
                 className="tabular font-mono text-xs"
