@@ -277,7 +277,7 @@
         {
           "refId": "A",
           "legendFormat": "tỷ lệ lỗi",
-          "expr": "100 * sum(rate(fin07_gemini_requests_total{status=\"failure\"}[5m])) / clamp_min(sum(rate(fin07_gemini_requests_total[5m])), 1e-9)"
+          "expr": "100 * (sum(rate(fin07_gemini_requests_total{status=\"failure\"}[5m])) or vector(0)) / clamp_min(sum(rate(fin07_gemini_requests_total[5m])), 1e-9)"
         }
       ]
     },
