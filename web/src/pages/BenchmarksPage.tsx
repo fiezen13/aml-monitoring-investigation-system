@@ -70,7 +70,10 @@ export function BenchmarksPage() {
   const data = useApi(() => api.benchmarks(), [], "benchmarks");
   const branchData = useApi(() => api.modelBranches(), [], "model-branches");
   const rows = data.data ?? [];
-  const branches = branchData.data ?? [];
+  // Bỏ nhánh luật địa lý (geo_rule_ranker) khỏi trang này — giống ModelsPage:
+  // nó là BỘ LUẬT tất định xếp hạng theo ngân sách, không phải model học máy,
+  // nên card benchmark của nó gây nhiễu ở màn đánh giá mô hình.
+  const branches = (branchData.data ?? []).filter((b) => b.model_kind !== "geo_rule_ranker");
 
   /**
    * Gộp theo chỉ số, giữ lại từng giá trị.
