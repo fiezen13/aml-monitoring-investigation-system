@@ -105,15 +105,23 @@ export function AgentsPage() {
     <PageShell variant="dense">
       <ScreenTitle title="Các lượt chạy tác tử AI" meta="Mọi kết luận của tác tử đều phải qua người có thẩm quyền" />
 
+      {/* Đặt kỳ vọng đúng: đây là view KỸ THUẬT/kiểm toán của đường ống tác tử,
+          không phải màn làm việc của chuyên viên. Phần diễn giải hướng nghiệp vụ
+          nằm ở tab "Điều tra bằng AI" trong từng cảnh báo/vụ việc. */}
+      <p className="text-xs leading-relaxed text-ink-low">
+        View kỹ thuật để kiểm toán/gỡ lỗi đường ống tác tử. Chuyên viên đọc kết luận hướng nghiệp vụ ở tab
+        “Điều tra bằng AI” của từng cảnh báo/vụ việc, không cần theo dõi từng lượt chạy ở đây.
+      </p>
+
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
         <KpiCard label="Tổng lần chạy" value={totalRuns} delta="trong hệ thống" />
         <KpiCard label="Lượt phản biện" value={criticRuns} valueColor={C.warn} delta="mỗi phiên đều bị soát lại" />
         <KpiCard label="Thất bại" value={failedTotal} valueColor={C.risk} delta="cần xem lại" />
         <KpiCard
-          label="Tổng đơn vị từ"
+          label="Token đã dùng"
           value={int(totalTokens)}
           valueColor={C.agent}
-          delta="chi phí suy luận"
+          delta="chi phí suy luận (kỹ thuật)"
         />
       </div>
 
@@ -128,7 +136,9 @@ export function AgentsPage() {
             <span>Vụ việc</span>
             <span>Bắt đầu</span>
             <span>Số bước</span>
-            <span>Độ tin cậy</span>
+            <span title="Mức tự đánh giá của tác tử về phần diễn giải — không phải xác suất khách quan hay độ chính xác.">
+              Tự đánh giá
+            </span>
             <span>Trạng thái</span>
           </div>
           {runs.loading && <Skeleton rows={4} />}
@@ -149,12 +159,20 @@ export function AgentsPage() {
               className="grid cursor-pointer items-center gap-2 border-b border-line-faint px-3 py-2 text-base transition-colors hover:bg-elev"
               style={{ gridTemplateColumns: LIST_COLS }}
             >
-              <span className="font-mono text-xs text-primary">{r.id}</span>
+              {/* Mã hash dài rút gọn để bảng quét dọc được; full id ở tooltip. */}
+              <span className="font-mono text-xs text-primary" title={r.id}>
+                {r.id.length > 14 ? `${r.id.slice(0, 14)}…` : r.id}
+              </span>
               <span className="truncate-1 text-xs text-ink-soft">{TIER_LABEL[r.tier] ?? r.tier}</span>
               <span className="font-mono text-xs">{r.case_id ?? "—"}</span>
               <span className="text-xs text-ink-soft">{formatDateTime(r.started_at)}</span>
               <span className="tabular font-mono text-xs">{r.step_count}</span>
-              <span className="tabular font-mono text-xs">{conf(r.confidence)}</span>
+              <span
+                className="tabular font-mono text-xs"
+                title="Mức tự đánh giá của tác tử — không phải xác suất khách quan."
+              >
+                {conf(r.confidence)}
+              </span>
               <Chip color={STATUS_COLOR[r.status] ?? C.inkSoft}>{STATUS_LABEL[r.status] ?? r.status}</Chip>
             </div>
           ))}
@@ -188,9 +206,9 @@ export function AgentRunPage() {
         <>
           <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
             <KpiCard label="Phiên bản mô hình" value={<span className="text-2xl">{r.model_version}</span>} />
-            <KpiCard label="Độ tin cậy" value={conf(r.confidence)} valueColor={C.agent} delta="tác tử tự khai báo" />
+            <KpiCard label="Tự đánh giá" value={conf(r.confidence)} valueColor={C.agent} delta="tác tử tự khai báo, không phải xác suất khách quan" />
             <KpiCard label="Số bước" value={r.step_count} />
-            <KpiCard label="Đơn vị từ" value={int(r.token_cost)} valueColor={C.agent} />
+            <KpiCard label="Token đã dùng" value={int(r.token_cost)} valueColor={C.agent} delta="chi phí suy luận (kỹ thuật)" />
             <KpiCard
               label="Thời lượng"
               value={
