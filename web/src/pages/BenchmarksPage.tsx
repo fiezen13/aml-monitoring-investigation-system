@@ -131,7 +131,7 @@ export function BenchmarksPage() {
           may. Nhánh geo_rule là bộ luật tất định nên không có khái niệm seed. */}
       <ScreenTitle
         title="Chi tiết ổn định — nhánh IBM (MEGA-PNA)"
-        meta="Kết quả đã ký của bản mô hình đang phục vụ, chạy qua nhiều seed độc lập"
+        meta="Kết quả đã ký của nhánh IBM MEGA-PNA — mô hình đồ thị chấm cạnh trên HI-Medium (nhánh tham chiếu chất lượng cao, không phải bộ luật đang phục vụ hàng đợi)"
       />
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>

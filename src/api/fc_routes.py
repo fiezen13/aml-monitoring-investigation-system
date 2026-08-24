@@ -24,6 +24,7 @@ from src.db.session import get_session
 from src.investigation.graph_narrative import narrate, read_neighbourhood
 from src.models.fc_schemas import (
     AgentRunDetailOut,
+    AgentRunListOut,
     AgentRunOut,
     AgentStepOut,
     BenchmarkOut,
@@ -97,7 +98,7 @@ def _current_simulation(session) -> dict[str, Any] | None:
 
 
 @router.get("/nav-counts", response_model=NavCountsOut)
-async def nav_counts() -> NavCountsOut:
+def nav_counts() -> NavCountsOut:
     """Số việc tồn đọng hiển thị trên badge sidebar."""
     with get_session() as session:
         row = (
@@ -127,7 +128,7 @@ async def nav_counts() -> NavCountsOut:
 
 
 @router.get("/search", response_model=list[SearchHitOut])
-async def search(q: str = Query(min_length=2, max_length=64)) -> list[SearchHitOut]:
+def search(q: str = Query(min_length=2, max_length=64)) -> list[SearchHitOut]:
     """Tra cứu nhanh cho bảng lệnh ⌘K.
 
     Chỉ khớp tiền tố hoặc chứa chuỗi, giới hạn 5 kết quả mỗi loại — bảng lệnh
@@ -278,19 +279,30 @@ def _operational_geography(session: Any) -> _Geography:
     # SAML-D thì phép nối ấy không khớp gì và trang báo "0,0% tài khoản có quốc
     # gia" ngay bên cạnh một bản đồ 18 quốc gia đầy dữ liệu. Số liệu tự mâu
     # thuẫn còn tệ hơn không có số liệu.
-    coverage = (
-        session.execute(
-            text(
-                """SELECT count(*) AS total,
-                          count(*) FILTER (WHERE t.from_country IS NOT NULL) AS located
-                     FROM transaction t
-                    WHERE t.source_dataset = :source"""
-            ),
-            {"source": release_source},
+    # Độ phủ quốc gia là thuộc tính TĨNH của bộ dữ liệu (chỉ để hiển thị một câu
+    # bên dưới). Đếm 9,5M dòng mỗi lần mở /world khiến trang treo ~11s. Đọc số đã
+    # tính sẵn trong metadata release; chỉ đếm live khi metadata chưa có.
+    meta = session.execute(
+        text("SELECT benchmark FROM edge_model_release WHERE release_id = :r"),
+        {"r": release_id},
+    ).scalar_one_or_none()
+    meta = meta if isinstance(meta, dict) else {}
+    if meta.get("coverage_total") is not None:
+        coverage = {"total": meta["coverage_total"], "located": meta.get("coverage_located", 0)}
+    else:
+        coverage = dict(
+            session.execute(
+                text(
+                    """SELECT count(*) AS total,
+                              count(*) FILTER (WHERE t.from_country IS NOT NULL) AS located
+                         FROM transaction t
+                        WHERE t.source_dataset = :source"""
+                ),
+                {"source": release_source},
+            )
+            .mappings()
+            .one()
         )
-        .mappings()
-        .one()
-    )
 
     names = {row["country_code"]: row["name"] for row in hub_rows}
     coords = {row["country_code"]: (float(row["lat"]), float(row["lon"])) for row in hub_rows}
@@ -353,7 +365,7 @@ def _operational_geography(session: Any) -> _Geography:
 
 
 @router.get("/world", response_model=WorldOut)
-async def world() -> WorldOut:
+def world() -> WorldOut:
     """Bản đồ hành lang dòng tiền, dựng từ bộ dữ liệu có sẵn quốc gia.
 
     Nhãn nguồn phải lấy từ CHÍNH release dựng nên bản đồ. Lấy từ release đang
@@ -661,7 +673,7 @@ def _operational_transaction_graph(session: Session, limit: int, dataset: str | 
 
 
 @router.get("/fc/graph", response_model=GraphOut)
-async def entity_graph(
+def entity_graph(
     limit: int = Query(default=400, le=2000),
     dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
 ) -> GraphOut:
@@ -806,7 +818,7 @@ async def entity_graph(
 
 
 @router.get("/fc/graph/edges/{edge_id}/transactions", response_model=TxPageOut)
-async def edge_transactions(
+def edge_transactions(
     edge_id: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
@@ -979,7 +991,7 @@ async def edge_transactions(
 
 
 @router.get("/fc/graph/nodes/{node_id}/transactions", response_model=TxPageOut)
-async def node_transactions(
+def node_transactions(
     node_id: str,
     direction: Literal["all", "in", "out"] = Query(default="all"),
     page: int = Query(default=1, ge=1),
@@ -1116,7 +1128,7 @@ async def node_transactions(
 
 
 @router.get("/fc/crypto", response_model=CryptoOut)
-async def crypto(limit: int = Query(default=200, le=1000)) -> CryptoOut:
+def crypto(limit: int = Query(default=200, le=1000)) -> CryptoOut:
     with get_session() as session:
         sim = _current_simulation(session)
         if not sim:
@@ -1242,7 +1254,7 @@ async def crypto(limit: int = Query(default=200, le=1000)) -> CryptoOut:
 
 
 @router.get("/fc/bitcoin", response_model=BitcoinPageOut)
-async def bitcoin_queue(
+def bitcoin_queue(
     view: str = Query(default="flagged", description="flagged | review | all"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=10, le=200),
@@ -1423,7 +1435,7 @@ async def bitcoin_queue(
 
 
 @router.get("/fc/projects", response_model=list[ProjectOut])
-async def projects() -> list[ProjectOut]:
+def projects() -> list[ProjectOut]:
     with get_session() as session:
         rows = (
             session.execute(
@@ -1566,8 +1578,13 @@ def _step_output(result: Mapping[str, Any] | None, status: str, error_type: str 
     return "Trả về kết quả rỗng"
 
 
-@router.get("/fc/agent-runs", response_model=list[AgentRunOut])
-async def agent_runs(limit: int = Query(default=200, ge=1, le=1000)) -> list[AgentRunOut]:
+@router.get("/fc/agent-runs", response_model=AgentRunListOut)
+def agent_runs(limit: int = Query(default=200, ge=1, le=1000)) -> AgentRunListOut:
+    """Danh sách lượt chạy gần nhất (giới hạn `limit`) + TỔNG THẬT của toàn bảng.
+
+    Các số tổng (tổng lần chạy, phản biện, thất bại, token) tính bằng aggregate
+    trên cả bảng — KHÔNG đếm số dòng lấy về, nếu không sẽ kẹt ở đúng `limit`.
+    """
     with get_session() as session:
         rows = (
             session.execute(
@@ -1577,11 +1594,26 @@ async def agent_runs(limit: int = Query(default=200, ge=1, le=1000)) -> list[Age
             .mappings()
             .all()
         )
-    return [_agent_run_out(row) for row in rows]
+        summary = session.execute(
+            text(
+                """SELECT count(*) AS total,
+                          count(*) FILTER (WHERE agent_name = 'evidence_critic') AS critic,
+                          count(*) FILTER (WHERE status IN ('failed', 'timeout')) AS failed,
+                          coalesce(sum(total_token_count), 0) AS tokens
+                     FROM investigation_agent_run"""
+            )
+        ).mappings().one()
+    return AgentRunListOut(
+        rows=[_agent_run_out(row) for row in rows],
+        total=int(summary["total"]),
+        critic_count=int(summary["critic"]),
+        failed_count=int(summary["failed"]),
+        total_tokens=int(summary["tokens"]),
+    )
 
 
 @router.get("/fc/agent-runs/{run_id}", response_model=AgentRunDetailOut)
-async def agent_run_detail(run_id: str) -> AgentRunDetailOut:
+def agent_run_detail(run_id: str) -> AgentRunDetailOut:
     with get_session() as session:
         run = session.execute(text(f"{_AGENT_RUN_SQL} WHERE r.run_id = :rid"), {"rid": run_id}).mappings().first()
         if not run:
@@ -1634,15 +1666,17 @@ _BENCHMARK_METRICS = ("f1", "pr_auc", "precision", "recall", "alert_rate")
 
 
 @router.get("/fc/benchmarks", response_model=list[BenchmarkOut])
-async def benchmarks() -> list[BenchmarkOut]:
-    """Kết quả đánh giá đã ký của release đang phục vụ.
+def benchmarks() -> list[BenchmarkOut]:
+    """Kết quả đánh giá đã ký của nhánh IBM MEGA-PNA (mô hình đồ thị chấm cạnh).
 
-    Nguồn là cột ``edge_model_release.benchmark`` — chính khối JSON được chốt
-    lúc huấn luyện, cùng lô với ``model_sha256`` và ``scores_sha256``. Đọc từ đó
-    thay vì từ thư mục ``reports/`` là có chủ đích: ảnh container không chứa
-    ``reports/``, và quan trọng hơn, con số hiển thị phải là con số gắn với
-    đúng bản mô hình đang chấm điểm chứ không phải file mới nhất trên đĩa ai đó.
+    Màn "Chi tiết ổn định" nói về nhánh IBM MEGA-PNA — mô hình học máy chất lượng
+    cao đo trên HI-Medium. TRƯỚC ĐÂY endpoint này đọc release ``status='active'``,
+    nhưng release đang phục vụ hàng đợi lại là bộ luật currency-native LI-Small
+    (F1 ~0,30) — thấp và không phải MEGA-PNA — nên màn hình hiện nhầm điểm của một
+    model khác hẳn tiêu đề. Giờ đọc ĐÚNG nhánh graph_edge_classifier trên IBM
+    (fall back về active nếu không có), để con số khớp với nhánh đang trình bày.
 
+    Nguồn là cột ``edge_model_release.benchmark`` — khối JSON đã ký lúc huấn luyện.
     Mỗi hạt giống ngẫu nhiên là một "gói kịch bản" riêng: một con số F1 duy nhất
     không nói được nó ổn định hay ăn may, nên bày cả dải ra.
     """
@@ -1652,7 +1686,10 @@ async def benchmarks() -> list[BenchmarkOut]:
                 text(
                     """SELECT release_id, model_version, dataset, split, benchmark, threshold, trained_at
                          FROM edge_model_release
-                        WHERE status = 'active'
+                        WHERE benchmark ? 'primary_seed'
+                        ORDER BY (coalesce(benchmark->>'model_kind', '') = 'graph_edge_classifier'
+                                  AND dataset ILIKE '%IBM%') DESC,
+                                 (status = 'active') DESC
                         LIMIT 1"""
                 )
             )
@@ -1698,7 +1735,7 @@ async def benchmarks() -> list[BenchmarkOut]:
 
 
 @router.get("/fc/model-monitor", response_model=list[ModelMonitorOut])
-async def model_monitor() -> list[ModelMonitorOut]:
+def model_monitor() -> list[ModelMonitorOut]:
     """Trôi phân phối điểm theo tuần, tính sẵn bởi ``scripts/run_data_quality.py``.
 
     Trục thời gian là ``occurred_at`` của giao dịch chứ không phải lúc chấm
@@ -1733,7 +1770,7 @@ async def model_monitor() -> list[ModelMonitorOut]:
 
 
 @router.get("/fc/model-branches", response_model=list[ModelBranchOut])
-async def model_branches() -> list[ModelBranchOut]:
+def model_branches() -> list[ModelBranchOut]:
     """Các nhánh phát hiện, mỗi nhánh với benchmark trên đúng vùng nó đặc trưng.
 
     Vì sao có endpoint riêng thay vì mở rộng /fc/edge-model/release: kiến trúc
@@ -1825,7 +1862,7 @@ async def model_branches() -> list[ModelBranchOut]:
 
 
 @router.get("/fc/edge-model/release", response_model=EdgeModelReleaseOut)
-async def edge_model_release() -> EdgeModelReleaseOut:
+def edge_model_release() -> EdgeModelReleaseOut:
     """Audited metadata for the release currently served by the console."""
     with get_session() as session:
         row = (
@@ -1851,7 +1888,7 @@ async def edge_model_release() -> EdgeModelReleaseOut:
 
 
 @router.get("/fc/data-quality", response_model=list[DataQualityOut])
-async def data_quality() -> list[DataQualityOut]:
+def data_quality() -> list[DataQualityOut]:
     with get_session() as session:
         rows = (
             session.execute(
@@ -1884,7 +1921,7 @@ async def data_quality() -> list[DataQualityOut]:
 
 
 @router.get("/fc/observations", response_model=list[ObservationOut])
-async def observations() -> list[ObservationOut]:
+def observations() -> list[ObservationOut]:
     """Nhật ký mở quyền truy cập bằng chứng.
 
     Đây là màn hình cho phép kiểm toán viên trả lời câu hỏi "tại thời điểm ra
@@ -1924,7 +1961,7 @@ async def observations() -> list[ObservationOut]:
 
 
 @router.get("/fc/sources", response_model=list[SourceOut])
-async def sources() -> list[SourceOut]:
+def sources() -> list[SourceOut]:
     """Sổ nguồn dữ liệu, dựng từ chính dấu vết nạp liệu.
 
     Không có bảng khai báo tay nào ở đây, và đó là chủ ý: một sổ nguồn viết tay
@@ -2038,7 +2075,7 @@ async def sources() -> list[SourceOut]:
 
 
 @router.get("/transactions", response_model=TxPageOut)
-async def transactions(
+def transactions(
     q: str = Query(default="", max_length=64),
     channel: str = Query(default="all", max_length=32),
     min_amount: float = Query(default=0, ge=0),
@@ -2068,21 +2105,52 @@ async def transactions(
     #    duyệt giao dịch SAML-D thô: LEFT JOIN bảng điểm (luôn NULL ở nhánh này),
     #    cột điểm để trống một cách trung thực thay vì bịa số 0.
     saml_browse = dataset == "saml_d"
+    # Cột dùng để sắp xếp trang. Mặc định theo thời gian; nhánh IBM đổi thành
+    # (source_dataset, occurred_at DESC) để ÉP index tổ hợp (xem chú thích dưới).
+    order_by = "t.occurred_at DESC"
+    ibm_src: str | None = None
     if saml_browse:
         # So khớp CHÍNH XÁC tên bộ, không ILIKE: giá trị cột là hằng
         # 'SAML-D', và equality mới dùng được chỉ mục thay vì quét cả bảng.
+        # SAML-D là bộ MỚI NHẤT nên ORDER BY occurred_at DESC gặp nó trước —
+        # không dính bẫy như IBM, giữ nguyên.
         join_sql = """FROM transaction t
                        LEFT JOIN transaction_model_score s ON s.transaction_id = t.transaction_id
                        LEFT JOIN edge_model_release r ON r.release_id = s.release_id"""
         where = ["t.source_dataset = 'SAML-D'"]
     else:
-        # IBM (hoặc không chọn): INNER JOIN tập đã chấm của release active. Tập
-        # này vốn đã HOÀN TOÀN là IBM nên KHÔNG thêm bộ lọc source_dataset —
-        # thêm vào chỉ ép quét 28 triệu dòng cho một điều kiện luôn đúng.
+        # IBM (hoặc không chọn): INNER JOIN tập đã chấm của release active.
+        #
+        # TRƯỚC ĐÂY bảng transaction chỉ có IBM nên không cần lọc source_dataset.
+        # Từ khi nạp 9,5M dòng SAML-D (mốc thời gian MỚI HƠN toàn bộ IBM), giả
+        # định đó sai: `ORDER BY occurred_at DESC` đi index thời gian sẽ lội qua
+        # hết 9,5M dòng SAML-D (không có điểm active-release → bị loại) trước khi
+        # chạm 50 dòng IBM → treo ~600s. Khoá theo source_dataset của chính
+        # release active (tra một lần, rẻ) để planner dùng index tổ hợp
+        # (source_dataset, occurred_at DESC) và chỉ đi trên vùng IBM.
         join_sql = """FROM transaction t
                        JOIN transaction_model_score s USING (transaction_id)
                        JOIN edge_model_release r USING (release_id)"""
         where = ["r.status = 'active'"]
+        with get_session() as _probe:
+            ibm_src = _probe.execute(
+                text(
+                    """SELECT t.source_dataset
+                         FROM transaction_model_score s
+                         JOIN transaction t USING (transaction_id)
+                         JOIN edge_model_release r USING (release_id)
+                        WHERE r.status = 'active' LIMIT 1"""
+                )
+            ).scalar()
+        if ibm_src:
+            # = ANY(ARRAY[...]) thay cho = :src là CỐ Ý: với equality đơn, planner
+            # const-fold source_dataset khỏi ORDER BY rồi quay lại dùng index thời
+            # gian (lội hết SAML-D mới hơn → treo 600s). Dạng ANY chặn const-fold,
+            # nên ORDER BY (source_dataset, occurred_at DESC) khớp và ÉP dùng index
+            # tổ hợp transaction_dataset_time_idx → quét đúng vùng IBM (~0,05s).
+            where.append("t.source_dataset = ANY(ARRAY[:ibm_src])")
+            params["ibm_src"] = ibm_src
+            order_by = "t.source_dataset, t.occurred_at DESC"
 
     if q:
         where.append(
@@ -2115,11 +2183,18 @@ async def transactions(
         # của nó là số dòng thô, không có sẵn trong metadata release). Còn xem IBM
         # trơn thì đọc thẳng `transaction_rows` — tránh đếm 6,75 triệu dòng mỗi
         # lần mở trang, vốn khiến trang mặc định treo ~16 giây.
+        #
+        # ĐẾM KHÔNG JOIN khi có thể: LEFT JOIN transaction_model_score (6,75M) cho
+        # từng dòng chỉ để ĐẾM là vô ích (left-join giữ nguyên số dòng transaction)
+        # mà khiến đếm 9,5M dòng SAML-D treo >40s. Chỉ giữ join khi bộ lọc chạm cột
+        # điểm (s.model_score / s.triggered) hoặc khi duyệt IBM (clause có r.status).
+        needs_score = min_score > 0 or triggered is not None
+        count_from = "FROM transaction t" if (saml_browse and not needs_score) else join_sql
         if saml_browse or real_filters:
             total = session.execute(
                 text(
                     f"""SELECT count(*)
-                           {join_sql}
+                           {count_from}
                           WHERE {clause}"""  # noqa: S608
                 ),
                 params,
@@ -2132,23 +2207,31 @@ async def transactions(
                 or 0
             )
 
-        rows = (
-            session.execute(
-                text(
-                    f"""SELECT t.transaction_id, t.source_transaction_id, t.occurred_at,
+        # Với SAML-D thô (không lọc điểm), LEFT JOIN transaction_model_score LUÔN ra
+        # NULL (SAML-D chấm theo geo-rule, không có điểm cấp giao dịch) mà lại khiến
+        # planner bỏ index tổ hợp (source_dataset, occurred_at) → sắp xếp 9,5M dòng,
+        # treo. Bỏ join, trả NULL cho cột điểm (đúng bản chất) để index chạy tức thì.
+        if saml_browse and not needs_score:
+            rows_sql = f"""SELECT t.transaction_id, t.source_transaction_id, t.occurred_at,
+                               t.from_account_key, t.to_account_key, t.amount, t.currency,
+                               t.amount_received, t.receiving_currency, t.channel, t.remarks,
+                               NULL::double precision AS model_score,
+                               NULL::double precision AS threshold,
+                               NULL::boolean AS triggered, NULL::text AS model_version
+                          FROM transaction t
+                         WHERE {clause}
+                         ORDER BY t.occurred_at DESC
+                         LIMIT :limit OFFSET :offset"""  # noqa: S608
+        else:
+            rows_sql = f"""SELECT t.transaction_id, t.source_transaction_id, t.occurred_at,
                                t.from_account_key, t.to_account_key, t.amount, t.currency,
                                t.amount_received, t.receiving_currency, t.channel, t.remarks,
                                s.model_score, s.threshold, s.triggered, r.model_version
                           {join_sql}
                          WHERE {clause}
-                         ORDER BY t.occurred_at DESC
+                         ORDER BY {order_by}
                          LIMIT :limit OFFSET :offset"""  # noqa: S608
-                ),
-                params,
-            )
-            .mappings()
-            .all()
-        )
+        rows = session.execute(text(rows_sql), params).mappings().all()
 
     return TxPageOut(
         rows=[
@@ -2188,7 +2271,7 @@ _PATTERN_SQL = """
 
 
 @router.get("/fc/graph/patterns", response_model=list[DetectedPatternOut])
-async def detected_patterns(
+def detected_patterns(
     accounts: str = Query(default="", description="Danh sách account_key, phân tách bằng dấu phẩy"),
     pattern: str | None = Query(default=None, description="CYCLE, FAN_IN, FAN_OUT"),
     limit: int = Query(default=25, le=200),
