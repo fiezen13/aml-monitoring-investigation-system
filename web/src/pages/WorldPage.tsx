@@ -19,7 +19,6 @@ import {
   PulseDot,
   SegmentedControl,
   StatTile,
-  Switch,
 } from "../components/ui";
 import { mapSurface } from "../design/adapters/mapTheme";
 import { CHANNEL, CHANNEL_LABEL, getRiskTone, severityOf, toneColor, type Tone } from "../design";
@@ -58,9 +57,9 @@ export function WorldPage() {
   const world = useApi(() => api.world(), [], "world");
 
   const [mode, setMode] = useState<"map" | "globe">("map");
-  const [layers, setLayers] = useState<Record<string, boolean>>(
-    Object.fromEntries(CHANNELS.map((c) => [c, true])),
-  );
+  // Mọi lớp dòng tiền luôn bật. Công tắc bật/tắt trước đây không đổi gì trên bản
+  // đồ nên đã bỏ khỏi giao diện; giữ layers=all-on để bộ dựng hình nhận đủ kênh.
+  const layers = useMemo(() => Object.fromEntries(CHANNELS.map((c) => [c, true])), []);
   const [sev, setSev] = useState("all");
   const [typ, setTyp] = useState("all");
   const [topN, setTopN] = useState(25);
@@ -329,27 +328,6 @@ export function WorldPage() {
             </div>
           </div>
 
-          <div>
-            <Eyebrow className="mb-2">Các lớp dòng tiền</Eyebrow>
-            <div className="flex flex-col gap-1">
-              {CHANNELS.map((ch) => (
-                <div key={ch} className="flex items-center gap-2.5 rounded-control px-2 py-1.5 text-body">
-                  <span className="h-[9px] w-[9px] flex-none rounded-sm" style={{ background: CHANNEL[ch] }} aria-hidden />
-                  <span className="flex-1 text-left text-ink-mid">{CHANNEL_LABEL[ch]}</span>
-                  {/* Công tắc mang màu của chính lớp đó, không phải màu accent
-                      chung: sáu công tắc cùng một sắc teal thì chỉ nói được
-                      "đang bật", còn ở đây chúng nói luôn "đang bật cái gì". */}
-                  <Switch
-                    size="sm"
-                    checked={layers[ch]}
-                    color={CHANNEL[ch]}
-                    label={`Lớp ${CHANNEL_LABEL[ch]}`}
-                    onChange={(next) => setLayers((current) => ({ ...current, [ch]: next }))}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
 
           <div>
             <Eyebrow className="mb-2">Mức độ</Eyebrow>
