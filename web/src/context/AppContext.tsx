@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { api, AUTH_EXPIRED_EVENT, SESSION_TOKEN_KEY } from "../api/client";
+import { clearApiCache } from "../api/swrCache";
 import type { User } from "../types";
 
 export interface ToastItem {
@@ -75,6 +76,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearLocalSession = useCallback(() => {
     window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
     window.sessionStorage.removeItem(SESSION_USER_KEY);
+    // Cache SWR bám theo phiên: xoá cùng token để người đăng nhập sau không
+    // thấy thoáng qua số liệu của người trước.
+    clearApiCache();
     syncGrafanaSession(null);
     setCurrentUser(null);
   }, []);
@@ -94,6 +98,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const result = await api.login(email, password);
+    // Dọn cache của phiên trước trước khi nạp dữ liệu người mới.
+    clearApiCache();
     window.sessionStorage.setItem(SESSION_TOKEN_KEY, result.token);
     window.sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(result.user));
     syncGrafanaSession(result.token);

@@ -627,6 +627,15 @@ export interface FcAgentRunDetail extends FcAgentRun {
   steps: FcAgentStep[];
 }
 
+/** Danh sách lượt chạy (giới hạn hiển thị) kèm TỔNG THẬT của toàn bảng. */
+export interface FcAgentRunList {
+  rows: FcAgentRun[];
+  total: number;
+  critic_count: number;
+  failed_count: number;
+  total_tokens: number;
+}
+
 export interface FcBenchmark {
   id: string;
   task_id: string;
@@ -1097,7 +1106,7 @@ export const api = {
 
   projects: () => request<FcProject[]>("/fc/projects"),
 
-  agentRuns: () => request<FcAgentRun[]>("/fc/agent-runs"),
+  agentRuns: () => request<FcAgentRunList>("/fc/agent-runs"),
 
   agentRun: (runId: string) => request<FcAgentRunDetail>(`/fc/agent-runs/${encodeURIComponent(runId)}`),
 

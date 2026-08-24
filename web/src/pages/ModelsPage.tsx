@@ -26,8 +26,8 @@ function fmtMetric(m: { value: number; kind: string }): string {
 }
 
 export function ModelsPage() {
-  const branches = useApi(() => api.modelBranches(), []);
-  const release = useApi(() => api.edgeModelRelease(), []);
+  const branches = useApi(() => api.modelBranches(), [], "model-branches");
+  const release = useApi(() => api.edgeModelRelease(), [], "edge-model-release");
   // Bỏ nhánh luật địa lý (geo_rule_ranker) khỏi trang này: nó là BỘ LUẬT tất định,
   // không phải model ML để giám sát ở đây (vẫn có ở Đánh giá chuẩn và bản đồ địa
   // lý). Còn lại đúng ba nhánh model — IBM, Bitcoin, SAML-D (đồ thị) — mỗi bộ một thẻ.

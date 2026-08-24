@@ -251,7 +251,7 @@ export function DashboardPage() {
               subtitle="Chỉ gồm nhóm cảnh báo ưu tiên, không phải phân phối của toàn bộ giao dịch"
               spec={trendSpec}
               state={dashboard.loading ? "loading" : trendSpec ? "ok" : "empty"}
-              note="Nguồn: bảng cảnh báo · điểm hiện tại là điểm bất thường của ML hành vi, không phải xác suất rửa tiền."
+              note="Chỉ dựng từ 5 cảnh báo ưu tiên nên không phản ánh xu hướng/khối lượng toàn hệ thống, không dùng để nhận định spike. Điểm là điểm bất thường của ML hành vi, không phải xác suất rửa tiền."
             />
             <ChartCard
               title="Hành lang địa lý"

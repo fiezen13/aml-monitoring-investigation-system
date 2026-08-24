@@ -3,8 +3,9 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api, num } from "../api/client";
-import { caseStateLabel, datasetLabel, formatDateTime, priorityLabel } from "../api/format";
+import { caseDisplayTitle, caseStateLabel, datasetLabel, formatDateTime, formatRelative, priorityLabel } from "../api/format";
 import { useApi } from "../api/useApi";
+import { useApp } from "../context/AppContext";
 import { useConsole } from "../context/ConsoleContext";
 import { PageShell } from "../components/ui";
 import { RiskBadge, StatusBadge } from "../components/common/Badges";
@@ -45,26 +46,44 @@ const stateTone = (state: string): "ok" | "warn" | "info" | "muted" =>
 export function CasesPage() {
   const navigate = useNavigate();
   const { dataset } = useConsole();
+  const { currentUser } = useApp();
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState("");
+  // Bộ lọc phụ trách: hàng nghìn vụ thì analyst cần "của tôi" và "chưa giao"
+  // ngay, không phải cuộn cả bảng để tìm việc của mình.
+  const [assignFilter, setAssignFilter] = useState<"" | "mine" | "unassigned">("");
 
   const cases = useApi(
     () => api.cases({ state: stateFilter || undefined, dataset, limit: 200 }),
     [stateFilter, dataset],
+    `cases:${dataset}:${stateFilter}`,
   );
   const rows = cases.data ?? [];
 
+  // Khớp "của tôi" theo tên/email/id vì `assigned_to` có thể lưu ở dạng bất kỳ.
+  const isMine = (assigned: string | null): boolean => {
+    if (!assigned || !currentUser) return false;
+    const a = assigned.trim().toLowerCase();
+    return [currentUser.name, currentUser.email, currentUser.id]
+      .filter(Boolean)
+      .some((v) => v!.toLowerCase() === a);
+  };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (c) =>
+    return rows.filter((c) => {
+      if (assignFilter === "unassigned" && c.assigned_to) return false;
+      if (assignFilter === "mine" && !isMine(c.assigned_to)) return false;
+      if (!q) return true;
+      return (
         c.case_id.toLowerCase().includes(q) ||
         c.title.toLowerCase().includes(q) ||
         c.subject_account_key.toLowerCase().includes(q) ||
-        (c.assigned_to ?? "").toLowerCase().includes(q),
-    );
-  }, [rows, search]);
+        (c.assigned_to ?? "").toLowerCase().includes(q)
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, search, assignFilter, currentUser]);
 
   const columns: Column<ApiCase>[] = [
     {
@@ -72,7 +91,17 @@ export function CasesPage() {
       header: "Mã vụ việc",
       render: (c) => <span className="tabular font-medium text-info">{c.case_id}</span>,
     },
-    { key: "title", header: "Tiêu đề", render: (c) => <span className="text-ink-hi">{c.title}</span> },
+    {
+      key: "title",
+      header: "Tiêu đề",
+      // Tên nghiệp vụ theo chủ thể thay cho "Explainable investigation for
+      // ALERT-…"; giữ tiêu đề gốc trong tooltip cho ai cần.
+      render: (c) => (
+        <span className="text-ink-hi" title={c.title}>
+          {caseDisplayTitle(c.title, c.subject_account_key)}
+        </span>
+      ),
+    },
     {
       key: "account",
       header: "Tài khoản chủ thể",
@@ -101,8 +130,14 @@ export function CasesPage() {
     },
     {
       key: "created",
-      header: "Mở lúc",
-      render: (c) => <span className="tabular text-ink-mid">{formatDateTime(c.created_at)}</span>,
+      header: "Tuổi hồ sơ",
+      // Tuổi vụ (thời gian tương đối) giúp ưu tiên nhanh hơn dấu thời gian tuyệt
+      // đối; ngày giờ đầy đủ vẫn xem được ở tooltip.
+      render: (c) => (
+        <span className="tabular text-ink-mid" title={`Mở lúc ${formatDateTime(c.created_at)}`}>
+          {formatRelative(c.created_at)}
+        </span>
+      ),
     },
   ];
 
@@ -145,6 +180,28 @@ export function CasesPage() {
                 </option>
               ))}
             </select>
+            <div className="inline-flex overflow-hidden rounded-control border border-line text-2xs">
+              {(
+                [
+                  ["", "Tất cả"],
+                  ["mine", "Của tôi"],
+                  ["unassigned", "Chưa giao"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value || "all"}
+                  type="button"
+                  onClick={() => setAssignFilter(value)}
+                  className={`px-2.5 py-1.5 font-medium transition-colors ${
+                    assignFilter === value
+                      ? "bg-primary text-app"
+                      : "bg-elev text-ink-mid hover:text-ink-hi"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         }
         action={<span className="tabular text-2xs text-ink-low">{filtered.length} vụ việc</span>}
@@ -164,6 +221,13 @@ export function CasesPage() {
             />
           ))}
       </Panel>
+
+      <p className="text-meta leading-relaxed text-ink-low">
+        <b className="text-ink-mid">Rủi ro</b> phản ánh mức đáng ngờ của chủ thể/hành vi; <b className="text-ink-mid">Ưu tiên</b>{" "}
+        phản ánh mức cần xử lý trước, tính từ rủi ro cùng với SLA, mức phơi nhiễm và bối cảnh pháp lý — nên hai cột có thể
+        khác nhau. <b className="text-ink-mid">Cảnh báo</b> là số tín hiệu đã gom vào vụ; một vụ nên gom mọi cảnh báo liên
+        quan của cùng chủ thể/bối cảnh điều tra.
+      </p>
     </PageShell>
   );
 }

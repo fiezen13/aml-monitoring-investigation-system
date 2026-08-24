@@ -8,9 +8,9 @@
 export function LoginFooter() {
   return (
     <footer className="fc-shell-auth flex flex-none flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-faint py-4 text-3xs text-ink-dim">
-      <span>Số liệu minh hoạ từ môi trường mô phỏng</span>
+      <span>Trung tâm điều hành AML</span>
       <span className="h-2.5 w-px bg-line-strong" aria-hidden />
-      <span>Môi trường: POC</span>
+      <span>Môi trường: Production</span>
       <span className="ml-auto">© 2026 Velrix Financial Tech</span>
     </footer>
   );

@@ -91,26 +91,27 @@ const LIST_COLS = "170px 200px 130px 150px 90px 100px 90px";
 
 export function AgentsPage() {
   const navigate = useNavigate();
-  const runs = useApi(() => api.agentRuns(), []);
-  const rows = runs.data ?? [];
-
-  // Đếm theo tác tử phản biện chứ không theo một trạng thái "chờ người duyệt"
-  // riêng: quy trình không có trạng thái đó. Việc chuyển cho người quyết định
-  // nằm ở kết quả phản biện, và đó mới là con số đáng theo dõi.
-  const criticRuns = rows.filter((r) => r.tier === "evidence_critic").length;
-  const failedTotal = rows.filter((r) => r.status === "failed" || r.status === "timeout").length;
+  const runs = useApi(() => api.agentRuns(), [], "agent-runs");
+  // `rows` chỉ là danh sách gần nhất (giới hạn để hiển thị bảng). Các con số
+  // TỔNG lấy từ aggregate toàn bảng do API trả về — KHÔNG đếm rows.length, nếu
+  // không thẻ "Tổng lần chạy" sẽ kẹt ở đúng giới hạn (trước đây luôn = 200).
+  const rows = runs.data?.rows ?? [];
+  const totalRuns = runs.data?.total ?? 0;
+  const criticRuns = runs.data?.critic_count ?? 0;
+  const failedTotal = runs.data?.failed_count ?? 0;
+  const totalTokens = runs.data?.total_tokens ?? 0;
 
   return (
     <PageShell variant="dense">
       <ScreenTitle title="Các lượt chạy tác tử AI" meta="Mọi kết luận của tác tử đều phải qua người có thẩm quyền" />
 
       <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
-        <KpiCard label="Tổng lần chạy" value={rows.length} delta="trong hệ thống" />
+        <KpiCard label="Tổng lần chạy" value={totalRuns} delta="trong hệ thống" />
         <KpiCard label="Lượt phản biện" value={criticRuns} valueColor={C.warn} delta="mỗi phiên đều bị soát lại" />
         <KpiCard label="Thất bại" value={failedTotal} valueColor={C.risk} delta="cần xem lại" />
         <KpiCard
           label="Tổng đơn vị từ"
-          value={int(rows.reduce((s, r) => s + r.token_cost, 0))}
+          value={int(totalTokens)}
           valueColor={C.agent}
           delta="chi phí suy luận"
         />

@@ -67,8 +67,8 @@ function aggregate(values: number[]): Omit<Aggregate, "metric" | "values"> {
 }
 
 export function BenchmarksPage() {
-  const data = useApi(() => api.benchmarks(), []);
-  const branchData = useApi(() => api.modelBranches(), []);
+  const data = useApi(() => api.benchmarks(), [], "benchmarks");
+  const branchData = useApi(() => api.modelBranches(), [], "model-branches");
   const rows = data.data ?? [];
   const branches = branchData.data ?? [];
 

@@ -44,7 +44,7 @@ export function AppLayout() {
   const [paletteQuery, setPaletteQuery] = useState("");
   const [navOpen, setNavOpen] = useState(false);
 
-  const counts = useApi(() => api.navCounts(), []);
+  const counts = useApi(() => api.navCounts(), [], "nav-counts");
   // Ô lệnh tra ra cảnh báo, vụ việc và tài khoản. Vai trò không được vào hồ sơ
   // điều tra thì cũng không được tra cứu chúng ở đây — API sẽ trả 403, và gọi
   // để nhận về 403 sau mỗi ký tự chỉ tạo tiếng ồn.

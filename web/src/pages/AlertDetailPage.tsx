@@ -191,9 +191,13 @@ export function AlertDetailPage() {
             <Panel title="Yếu tố đóng góp vào điểm rủi ro">
               <div className="mb-3 flex items-center gap-3 rounded-control border border-line bg-elev px-3 py-2">
                 <RiskBadge score={score} />
+                {/* Không đặt "tổng đóng góp" (vd 92,7) cạnh điểm rủi ro (vd 100)
+                    như hai điểm ngang hàng — người đọc tưởng hệ thống tự mâu
+                    thuẫn. Điểm là kết quả đã hiệu chỉnh của bộ phát hiện; các yếu
+                    tố bên dưới chỉ giải thích theo mức đóng góp TƯƠNG ĐỐI. */}
                 <span className="text-2xs text-ink-mid">
-                  Tổng đóng góp của {a.reasons.length} yếu tố:{" "}
-                  <span className="tabular font-semibold text-ink-hi">{totalContribution.toFixed(2)}</span>
+                  Điểm rủi ro do bộ phát hiện chấm (đã hiệu chỉnh). {a.reasons.length} yếu tố dưới đây giải thích
+                  điểm theo mức đóng góp tương đối, không nhất thiết cộng đúng bằng điểm.
                 </span>
               </div>
               {a.reasons.length === 0 ? (
@@ -206,7 +210,12 @@ export function AlertDetailPage() {
                     return (
                       <div key={r.factor_code}>
                         <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-2xs">
-                          <span className="text-ink-hi">{r.factor_label}</span>
+                          {/* Tên nghiệp vụ hiển thị; mã kỹ thuật (txn_count,
+                              total_outflow_log1p…) chuyển vào tooltip, không bày
+                              ra view chính vì analyst không cần đọc. */}
+                          <span className="text-ink-hi" title={`Mã kỹ thuật: ${r.factor_code}`}>
+                            {r.factor_label}
+                          </span>
                           <span className="tabular text-ink-mid">
                             đóng góp{" "}
                             <span className="font-semibold text-ink-hi">{contribution.toFixed(2)}</span>
@@ -216,7 +225,6 @@ export function AlertDetailPage() {
                         <div className="h-1.5 overflow-hidden rounded bg-elev">
                           <div className="h-full rounded bg-primary" style={{ width: `${pct}%` }} />
                         </div>
-                        <div className="tabular mt-0.5 text-2xs text-ink-low">{r.factor_code}</div>
                       </div>
                     );
                   })}
@@ -299,7 +307,19 @@ export function AlertDetailPage() {
           {a.transactions.length === 0 ? (
             <EmptyState detail="Tài khoản này chưa có giao dịch nào." />
           ) : (
-            <DataTable columns={txColumns} rows={a.transactions} rowKey={(t) => String(t.transaction_id)} />
+            <>
+              {/* Nói rõ đây là MẪU gần nhất, không phải toàn bộ bằng chứng —
+                  tránh để analyst tưởng 20 dòng này là tất cả giao dịch của vụ. */}
+              <div className="flex items-start gap-1.5 border-b border-line px-3 py-2 text-2xs text-ink-low">
+                <Info size={12} className="mt-0.5 shrink-0" aria-hidden />
+                <p>
+                  Đây là <b className="text-ink-mid">20 giao dịch mới nhất</b> của tài khoản để lấy ngữ cảnh, không
+                  phải toàn bộ bằng chứng của cảnh báo. Bằng chứng đầy đủ (theo cửa sổ phát hiện) nằm ở tab
+                  “Điều tra bằng AI” và trong hồ sơ vụ việc.
+                </p>
+              </div>
+              <DataTable columns={txColumns} rows={a.transactions} rowKey={(t) => String(t.transaction_id)} />
+            </>
           )}
         </Panel>
       )}

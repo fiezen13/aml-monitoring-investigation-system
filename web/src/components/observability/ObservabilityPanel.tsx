@@ -106,7 +106,7 @@ function LogsView() {
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
 
-  const all = runs.data ?? [];
+  const all = runs.data?.rows ?? [];
   const failed = all.filter((r) => r.status === "failed" || r.status === "timeout").length;
   const running = all.filter((r) => r.status === "running").length;
   const list = errorsOnly ? all.filter((r) => r.status === "failed" || r.status === "timeout") : all;
@@ -209,7 +209,7 @@ function TracesView() {
   const runs = useApi(() => api.agentRuns(), []);
   const [sel, setSel] = useState<string | null>(null);
 
-  const all = runs.data ?? [];
+  const all = runs.data?.rows ?? [];
   const active = sel ?? all[0]?.id ?? null;
 
   if (runs.loading) return <Skeleton rows={6} />;

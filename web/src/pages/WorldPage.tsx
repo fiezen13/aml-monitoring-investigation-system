@@ -55,7 +55,7 @@ function nativeAmount(value: number, currency: string): string {
 }
 
 export function WorldPage() {
-  const world = useApi(() => api.world(), []);
+  const world = useApi(() => api.world(), [], "world");
 
   const [mode, setMode] = useState<"map" | "globe">("map");
   const [layers, setLayers] = useState<Record<string, boolean>>(
@@ -398,6 +398,14 @@ export function WorldPage() {
             Kéo để xoay · cuộn để phóng · rê chuột lên cung để xem chi tiết · nhấp vào cung hoặc trung tâm để mở
             bảng thanh tra · nháy đúp nền để đặt lại. Đây là rollup từ giao dịch{" "}
             {world.data?.source_name ?? "đã nạp"} đã được model chấm.
+          </p>
+          <p className="text-2xs leading-relaxed text-ink-low">
+            <b className="text-ink-mid">Cách đọc:</b> độ dày cung và “Top N” xếp theo{" "}
+            <b className="text-ink-mid">số giao dịch</b>; bộ lọc “Mức độ” lọc theo{" "}
+            <b className="text-ink-mid">điểm rủi ro hành lang</b>. Điểm rủi ro là của{" "}
+            <b className="text-ink-mid">hành lang</b> (cặp nguồn→đích), khác với{" "}
+            <b className="text-ink-mid">rủi ro pháp lý của quốc gia</b> — một hành lang bất thường không có nghĩa
+            quốc gia đó là vùng rủi ro cao. Lưu lượng lớn chưa chắc đáng ngờ; luôn đối chiếu bằng chứng trước khi kết luận.
           </p>
         </aside>
 

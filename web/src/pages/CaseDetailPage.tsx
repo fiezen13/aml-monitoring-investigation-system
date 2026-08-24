@@ -4,11 +4,14 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, num } from "../api/client";
 import {
+  caseDisplayTitle,
   caseStateLabel,
+  caseStepLabel,
   countryLabel,
   formatAmount,
   formatDate,
   formatDateTime,
+  formatRelative,
   initials,
   priorityLabel,
   profileValueLabel,
@@ -193,6 +196,19 @@ export function CaseDetailPage() {
   const c = k.customer;
   const awaitingApproval = k.timeline.every((s) => s.status !== "pending");
 
+  // Nhóm hành vi chính của vụ = typology xuất hiện nhiều nhất trong các yếu tố.
+  // Giúp tóm tắt trả lời "vụ này về hành vi gì" thay vì chỉ số cảnh báo/bằng chứng.
+  const primaryTypology = (() => {
+    const counts = new Map<string, number>();
+    for (const r of k.reasons) {
+      if (r.typology_code) counts.set(r.typology_code, (counts.get(r.typology_code) ?? 0) + 1);
+    }
+    let best: string | null = null;
+    let bestN = 0;
+    for (const [code, n] of counts) if (n > bestN) [best, bestN] = [code, n];
+    return best;
+  })();
+
   return (
     <PageShell>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -206,7 +222,9 @@ export function CaseDetailPage() {
             Hàng đợi cảnh báo
           </button>
           <h1 className="tabular text-h2 font-bold text-ink-hi">{k.case_id}</h1>
-          <p className="mt-0.5 text-body text-ink-mid">{k.title}</p>
+          <p className="mt-0.5 text-body text-ink-mid" title={k.title}>
+            {caseDisplayTitle(k.title, k.subject_account_key)}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge tone="primary" label={caseStateLabel(k.state)} />
@@ -241,12 +259,12 @@ export function CaseDetailPage() {
                   {running ? (
                     <>
                       <Loader2 size={12} className="animate-spin" aria-hidden />
-                      Worker đang chạy…
+                      Đang chạy…
                     </>
                   ) : (
                     <>
                       <PlayCircle size={12} aria-hidden />
-                      Chạy toàn bộ điều tra
+                      Chạy các bước tự động
                     </>
                   )}
                 </button>
@@ -280,7 +298,10 @@ export function CaseDetailPage() {
                         step.status === "pending" ? "text-ink-low" : "font-semibold text-ink-hi"
                       }`}
                     >
-                      {step.label}
+                      {/* Nhãn nghiệp vụ (caseStepLabel) thay cho nhãn kỹ thuật
+                          của backend: "Tính toán bằng công cụ" → "Phân tích định
+                          lượng chỉ số", v.v. */}
+                      {caseStepLabel(step.state)}
                     </span>
                     {step.status === "active" && <StatusBadge tone="primary" label="Hiện tại" />}
                   </div>
@@ -299,9 +320,11 @@ export function CaseDetailPage() {
             <div className="mt-4 flex items-start gap-1.5 border-t border-line pt-3 text-2xs text-ink-low">
               <ShieldAlert size={12} className="mt-0.5 shrink-0" aria-hidden />
               <p>
-                Một lần bấm sẽ chạy tuần tự HẾT các bước: mỗi bước là một tác vụ Redis riêng và một dòng
-                nhật ký kiểm toán riêng, worker nền xử lý lần lượt. Chuỗi tự dừng ở <em>Chờ người phê duyệt</em>{" "}
-                — lối vào <em>Xuất hồ sơ</em> phải là quyết định có người ký tên (NT3), không phải một lượt chạy tự động.
+                Nút này chạy các bước điều tra <b className="text-ink-mid">được đề xuất</b> cho vụ này theo thứ tự — mỗi
+                bước là một tác vụ riêng và một dòng nhật ký kiểm toán riêng; không phải vụ nào cũng đi hết chuỗi. Chuỗi
+                tự dừng ở <em>Chờ người phê duyệt</em>: bước <em>Lập báo cáo SAR/STR</em> phải là quyết định có người ký
+                tên (NT3), tách khỏi bước soạn tóm tắt điều tra. Bước đối chiếu trừng phạt/PEP hiện chạy trên dữ liệu
+                tổng hợp minh hoạ, chưa nối nguồn danh sách thật.
               </p>
             </div>
           </Panel>
@@ -342,9 +365,17 @@ export function CaseDetailPage() {
           <Panel title="Tóm tắt hồ sơ">
             <dl className="space-y-2 text-2xs">
               <Field label="Tài khoản chủ thể" value={k.subject_account_key} mono />
+              <Field label="Nhóm hành vi chính" value={primaryTypology ?? "Chưa xác định"} />
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-ink-mid">Ưu tiên</dt>
+                <dd>
+                  <StatusBadge tone={PRIORITY_TONE[k.priority] ?? "muted"} label={priorityLabel(k.priority)} />
+                </dd>
+              </div>
               <Field label="Số cảnh báo" value={String(k.alert_count)} mono />
               <Field label="Số bằng chứng" value={String(k.evidence_count)} mono />
               <Field label="Phụ trách" value={k.assigned_to ?? "Chưa giao"} />
+              <Field label="Tuổi hồ sơ" value={formatRelative(k.created_at)} />
               <Field label="Mở lúc" value={formatDateTime(k.created_at)} />
             </dl>
           </Panel>

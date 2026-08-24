@@ -167,6 +167,43 @@ export function caseStateLabel(state: string): string {
   return CASE_STATE_LABELS[state] ?? state;
 }
 
+/**
+ * Nhãn BƯỚC điều tra bằng ngôn ngữ nghiệp vụ — dùng cho dòng thời gian ở Chi
+ * tiết vụ việc. Khác `caseStateLabel` (badge trạng thái, khớp domain.py): bản
+ * này mô tả VIỆC mà chuyên viên hiểu, không phản ánh tên hàm/triển khai. Ví dụ
+ * "Tính toán bằng công cụ" → "Phân tích định lượng chỉ số"; "Soạn hồ sơ nghi
+ * vấn" tách khỏi SAR/STR (SAR/STR chỉ ở bước Xuất hồ sơ, sau phê duyệt).
+ */
+const CASE_STEP_LABELS: Record<string, string> = {
+  TiepNhanCanhBao: "Tiếp nhận cảnh báo",
+  TruyHoiBangChung: "Thu thập bằng chứng",
+  PhanTichDoThi: "Phân tích mạng lưới giao dịch",
+  DoiChieuTrungPhatPEP: "Đối chiếu danh sách trừng phạt / PEP",
+  TinhToanBangCongCu: "Phân tích định lượng chỉ số",
+  LapLuanGanTypology: "Đối chiếu nhóm hành vi",
+  SoanHoSoNghiVan: "Soạn tóm tắt điều tra",
+  KiemChungBangChung: "Kiểm chứng bằng chứng",
+  ChoNguoiPheDuyet: "Chờ người phê duyệt",
+  DieuTraBoSung: "Điều tra bổ sung",
+  XuatHoSo: "Lập báo cáo SAR/STR",
+  DongKhongBaoCao: "Đóng, không báo cáo",
+};
+
+export function caseStepLabel(state: string): string {
+  return CASE_STEP_LABELS[state] ?? state;
+}
+
+/**
+ * Tiêu đề vụ việc hướng nghiệp vụ. `aml_case.title` sinh tự động thường là
+ * "Explainable investigation for ALERT-..." — tên kỹ thuật, không giúp phân
+ * biệt vụ theo chủ thể. Gặp mẫu đó thì thay bằng nhãn theo tài khoản chủ thể.
+ */
+export function caseDisplayTitle(title: string, subjectAccountKey: string): string {
+  const technical = /explainable investigation|investigation for|^case for|alert-/i.test(title ?? "");
+  if (!title || technical) return `Hồ sơ chủ thể ${subjectAccountKey}`;
+  return title;
+}
+
 const PRIORITY_LABELS: Record<string, string> = {
   low: "Thấp",
   medium: "Trung bình",

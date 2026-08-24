@@ -114,12 +114,6 @@ export function Header({ crumb, criticalCount = 0, onOpenNav, dataPeriod }: Prop
         </Badge>
       )}
 
-      {/* Nhãn này không phải trang trí: toàn bộ dữ liệu trong console là tổng
-          hợp, và người xem phải biết điều đó ở mọi màn hình. */}
-      <Badge tone="warn" icon={false} className="font-mono tracking-[0.08em]" title="Bản trình diễn khái niệm">
-        POC
-      </Badge>
-
       <div
         title="Trạng thái luồng dữ liệu"
         className="hidden items-center gap-1.5 whitespace-nowrap text-meta text-ink-soft lg:flex"

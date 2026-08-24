@@ -92,9 +92,9 @@ const DQ_COLS = "1fr 200px 110px 110px 130px 100px";
 const OBS_COLS = "110px 140px 150px 150px 90px 1fr";
 
 export function DataQualityPage() {
-  const checks = useApi(() => api.dataQuality(), []);
-  const observations = useApi(() => api.observations(), []);
-  const sources = useApi(() => api.sources(), []);
+  const checks = useApi(() => api.dataQuality(), [], "data-quality");
+  const observations = useApi(() => api.observations(), [], "observations");
+  const sources = useApi(() => api.sources(), [], "sources");
   const [tab, setTab] = useState<"checks" | "observations" | "sources">("checks");
 
   const rows = checks.data ?? [];

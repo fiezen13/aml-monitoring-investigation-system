@@ -456,7 +456,11 @@ export function CryptoPage() {
   const [view, setView] = useState<string>("flagged");
   const [page, setPage] = useState(1);
   const pageSize = 50;
-  const data = useApi(() => api.bitcoin({ view, page, page_size: pageSize }), [view, page]);
+  const data = useApi(
+    () => api.bitcoin({ view, page, page_size: pageSize }),
+    [view, page],
+    `bitcoin:${view}:${page}`,
+  );
 
   const summary = data.data?.summary;
   const rows = data.data?.rows ?? [];

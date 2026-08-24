@@ -48,6 +48,7 @@ export function TransactionsPage() {
         page_size: PAGE_SIZE,
       }),
     [q, channel, minAmount, minScore, decision, dataset, page],
+    `tx:${dataset}:${q}:${channel}:${minAmount}:${minScore}:${decision}:${page}`,
   );
 
   const total = data.data?.total ?? 0;

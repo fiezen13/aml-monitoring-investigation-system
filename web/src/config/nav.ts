@@ -181,7 +181,7 @@ export const ROUTE_TITLES: [string, string][] = [
   ["/alerts", "Trung tâm cảnh báo"],
   ["/cases/", "Không gian vụ việc"],
   ["/cases", "Điều tra vụ việc"],
-  ["/network", "Đồ thị mạng lưới · mô phỏng ABM"],
+  ["/network", "Đồ thị mạng lưới"],
   ["/transactions", "Tra cứu giao dịch"],
   ["/crypto", "Truy vết tài sản mã hoá · mô phỏng ABM"],
   ["/projects", "Rủi ro dự án · mô phỏng ABM"],

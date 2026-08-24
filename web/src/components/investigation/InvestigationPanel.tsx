@@ -40,6 +40,10 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
   const { pushToast } = useApp();
   const [starting, setStarting] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  // Mặc định chỉ hiện ~6 bằng chứng chính; phần còn lại mở theo yêu cầu để view
+  // không bị hàng chục evidence ID đẩy phần kết luận xuống dưới.
+  const [showAllEvidence, setShowAllEvidence] = useState(false);
+  const EVIDENCE_PREVIEW = 6;
   const [decision, setDecision] = useState<(typeof REVIEW_ACTIONS)[number][0]>("ESCALATE_TO_L2");
   const [reason, setReason] = useState("");
   const latest = useApi(() => api.latestInvestigation(alertId), [alertId]);
@@ -182,16 +186,29 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
           </div>
           <div className="space-y-2">
             {Object.entries(risk.components).map(([name, component]) => (
-              <div key={name} className={component.available ? "" : "opacity-40"}>
-                <div className="mb-1 flex justify-between text-2xs">
+              // "Không có dữ liệu" KHÁC "điểm 0". Detector không chạy/không đủ dữ
+              // liệu thì không hiện "điểm 0.000" (dễ đọc thành điểm rủi ro bằng 0)
+              // — hiện thẳng "không có dữ liệu" và thanh gạch đứt, không thanh đặc.
+              <div key={name}>
+                <div className="mb-1 flex items-center justify-between gap-2 text-2xs">
                   <span className="capitalize text-ink-hi">{riskComponentLabel(name)}</span>
-                  <span className="tabular text-ink-mid">
-                    điểm {component.score.toFixed(3)} · trọng số {component.weight.toFixed(2)} · mức đóng góp {component.contribution.toFixed(3)}
-                  </span>
+                  {component.available ? (
+                    <span className="tabular text-ink-mid">
+                      điểm {component.score.toFixed(3)} · trọng số {component.weight.toFixed(2)} · mức đóng góp {component.contribution.toFixed(3)}
+                    </span>
+                  ) : (
+                    <span className="rounded bg-elev px-1.5 py-0.5 text-micro font-medium text-ink-low">
+                      không có dữ liệu — không phải điểm 0
+                    </span>
+                  )}
                 </div>
-                <div className="h-1.5 rounded bg-elev">
-                  <div className="h-full rounded bg-primary" style={{ width: `${component.score * 100}%` }} />
-                </div>
+                {component.available ? (
+                  <div className="h-1.5 rounded bg-elev">
+                    <div className="h-full rounded bg-primary" style={{ width: `${component.score * 100}%` }} />
+                  </div>
+                ) : (
+                  <div className="h-1.5 rounded border border-dashed border-line/70" aria-hidden />
+                )}
               </div>
             ))}
           </div>
@@ -241,7 +258,7 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
             <LoadingSkeleton rows={3} />
           ) : (
             <div className="space-y-2">
-              {(evidence.data ?? []).map((item) => (
+              {(showAllEvidence ? (evidence.data ?? []) : (evidence.data ?? []).slice(0, EVIDENCE_PREVIEW)).map((item) => (
                 <details key={item.evidence_id} className="rounded-control border border-line bg-elev p-2.5">
                   <summary className="flex cursor-pointer list-none items-center gap-2 text-2xs text-ink-hi">
                     <ChevronRight size={12} />
@@ -257,12 +274,30 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
                   </div>
                 </details>
               ))}
+              {(evidence.data?.length ?? 0) > EVIDENCE_PREVIEW && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllEvidence((v) => !v)}
+                  className="w-full rounded-control border border-line py-1.5 text-2xs font-medium text-ink-mid hover:border-line-emphasis hover:text-ink-hi"
+                >
+                  {showAllEvidence
+                    ? "Thu gọn"
+                    : `Xem tất cả ${evidence.data?.length} bằng chứng`}
+                </button>
+              )}
             </div>
           )}
         </Panel>
 
         <Panel title="Dòng thời gian tác tử">
-          <ol className="space-y-3">
+          {/* Mặc định thu gọn: chuỗi điều phối/gọi công cụ/phản biện là chi tiết
+              kỹ thuật để kiểm toán, không phải thứ chuyên viên đọc ở lượt đầu. */}
+          <details>
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-2xs font-medium text-ink-mid hover:text-ink-hi">
+              <ChevronRight size={12} />
+              Xem {(trace.data ?? []).length} bước kỹ thuật (điều phối · gọi công cụ · phản biện)
+            </summary>
+            <ol className="mt-3 space-y-3">
             {(trace.data ?? []).map((event) => (
               <li key={event.trace_id} className="flex gap-2 text-2xs">
                 {event.event_type === "VALIDATION_PASS" ? (
@@ -287,17 +322,29 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
                 </div>
               </li>
             ))}
-          </ol>
+            </ol>
+          </details>
         </Panel>
       </div>
 
       {inv.validation && (
         <Panel title="Tác tử phản biện bằng chứng">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {inv.validation.status === "PASS" ? <CheckCircle2 className="text-ok" size={18} /> : <ShieldAlert className="text-risk" size={18} />}
             <span className="font-semibold text-ink-hi">{validationStatusLabel(inv.validation.status)}</span>
-            <span className="tabular text-2xs text-ink-mid">độ tin cậy {inv.validation.confidence.toFixed(2)}</span>
+            {/* "confidence" của bộ phản biện là mức TỰ ĐÁNH GIÁ về phần chữ nó
+                kiểm, KHÔNG phải xác suất rửa tiền hay độ chính xác khách quan.
+                Ghi rõ để chuyên viên không đọc 0,98 thành "98% đúng". */}
+            <span
+              className="tabular text-2xs text-ink-mid"
+              title="Mức tự đánh giá của bộ phản biện về phần diễn giải bằng chữ — không phải xác suất rửa tiền hay độ chính xác khách quan."
+            >
+              tự đánh giá {inv.validation.confidence.toFixed(2)}
+            </span>
           </div>
+          <p className="mt-1.5 text-micro text-ink-low">
+            Điều cần đối chiếu là mỗi câu đã dẫn được bằng chứng hay chưa (mục Bằng chứng), không phải con số tự đánh giá này.
+          </p>
           {inv.validation.issues.map((issue, index) => (
             <div key={`${issue.type}-${index}`} className="mt-2 rounded-control border border-risk/30 bg-risk-soft p-2 text-2xs text-ink-hi">
               <strong>{validationIssueLabel(issue.type)}</strong> — {investigationTextVi(issue.detail)}

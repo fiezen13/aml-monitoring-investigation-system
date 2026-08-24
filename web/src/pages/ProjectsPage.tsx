@@ -33,7 +33,7 @@ const STATUS_LABEL: Record<string, string> = {
 const DANGEROUS_FUNCTIONS = new Set(["mint", "pause", "blacklist", "setFee", "setTax", "upgradeTo"]);
 
 export function ProjectsPage() {
-  const data = useApi(() => api.projects(), []);
+  const data = useApi(() => api.projects(), [], "projects");
   const projects = data.data ?? [];
 
   return (
