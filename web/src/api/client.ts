@@ -497,6 +497,22 @@ export interface FcBitcoinRow {
   graph_evidence: FcGraphEvidence;
   evidence_reasons: FcEvidenceReason[]; // lý do tất định, có badge nguồn
   recommended_steps: string[];
+  risk_reasons: FcRiskReason[]; // RiskReason hợp nhất: SHAP + percentile + temporal + side
+}
+
+export interface FcRiskReason {
+  id: string;
+  category: string;
+  title: string;
+  side: string; // local | upstream | downstream | upstream_tx | downstream_tx
+  feature_ids: number[];
+  reference: { population: string; percentile: number | null } | null;
+  shap_direction: string; // increase_risk | decrease_risk
+  contribution: string; // very_high | high | medium | low
+  contribution_label: string; // RẤT MẠNH | MẠNH | VỪA | THẤP
+  temporal_availability: string;
+  after_transaction: boolean;
+  investigator_text: string;
 }
 
 /** Giải thích ngôn ngữ tự nhiên do agent Gemini sinh từ structured evidence. */

@@ -76,12 +76,15 @@ const NODE_STYLE: Record<string, { color: string; label: string }> = {
  * với MODEL DỰ ĐOÁN (cam) — hai trạng thái không được nhìn giống nhau. Đây là
  * NGỮ CẢNH điều tra, không phải thứ Random Forest dùng để chấm.
  */
-function NetworkGraph({ row }: { row: FcBitcoinRow }) {
+function NetworkGraph({ row, highlight }: { row: FcBitcoinRow; highlight?: string | null }) {
   const W = 300;
   const H = 176;
   const cx = W / 2;
   const cy = H / 2;
   const centerColor = LEVEL_META[row.risk_level]?.color ?? C.risk;
+  // Traceability §20: khi reason chỉ một chiều, làm mờ chiều còn lại.
+  const leftDim = highlight ? (highlight.startsWith("upstream") ? 1 : 0.18) : 1;
+  const rightDim = highlight ? (highlight.startsWith("downstream") ? 1 : 0.18) : 1;
 
   const ins = row.graph_neighbours.filter((n) => n.dir === "in" || n.dir === "both").slice(0, 6);
   const outs = row.graph_neighbours.filter((n) => n.dir === "out").slice(0, 6);
@@ -94,16 +97,16 @@ function NetworkGraph({ row }: { row: FcBitcoinRow }) {
 
   return (
     <div>
-      <div className="flex justify-between px-1 text-3xs uppercase tracking-wide text-ink-low">
-        <span>Tiền đến từ ({int(row.graph_in_degree ?? 0)})</span>
-        <span>Tiền chuyển tới ({int(row.graph_out_degree ?? 0)})</span>
+      <div className="flex justify-between px-1 text-3xs uppercase tracking-wide">
+        <span style={{ color: C.inkLow, opacity: leftDim }}>Tiền đến từ ({int(row.graph_in_degree ?? 0)})</span>
+        <span style={{ color: C.inkLow, opacity: rightDim }}>Tiền chuyển tới ({int(row.graph_out_degree ?? 0)})</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Đồ thị lân cận giao dịch">
         {left.map(({ x, y }, i) => (
-          <line key={`li${i}`} x1={x} y1={y} x2={cx - 12} y2={cy} stroke={C.line} strokeWidth={1} markerEnd="url(#arr)" />
+          <line key={`li${i}`} x1={x} y1={y} x2={cx - 12} y2={cy} stroke={C.line} strokeWidth={1} markerEnd="url(#arr)" opacity={leftDim} />
         ))}
         {right.map(({ x, y }, i) => (
-          <line key={`lo${i}`} x1={cx + 12} y1={cy} x2={x} y2={y} stroke={C.line} strokeWidth={1} markerEnd="url(#arr)" />
+          <line key={`lo${i}`} x1={cx + 12} y1={cy} x2={x} y2={y} stroke={C.line} strokeWidth={1} markerEnd="url(#arr)" opacity={rightDim} />
         ))}
         <defs>
           <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
@@ -112,6 +115,7 @@ function NetworkGraph({ row }: { row: FcBitcoinRow }) {
         </defs>
         {[...left, ...right].map(({ n, x, y }, i) => {
           const kind = neighbourKind(n);
+          const sideDim = i < left.length ? leftDim : rightDim;
           return (
             <circle
               key={`n${i}`}
@@ -119,7 +123,7 @@ function NetworkGraph({ row }: { row: FcBitcoinRow }) {
               cy={y}
               r={kind === "known" ? 7 : 6}
               fill={NODE_STYLE[kind].color}
-              opacity={kind === "unknown" ? 0.5 : 1}
+              opacity={(kind === "unknown" ? 0.5 : 1) * sideDim}
               stroke={kind === "known" ? C.risk : "none"}
               strokeWidth={kind === "known" ? 3 : 0}
               strokeOpacity={0.35}
@@ -324,13 +328,19 @@ function TxDetail({ row }: { row: FcBitcoinRow }) {
   const inCount = row.graph_in_degree ?? 0;
   const outCount = row.graph_out_degree ?? 0;
   const flaggedRelated = row.graph_flagged_neighbours ?? 0; // model gắn cờ (KHÔNG dùng nhãn dataset)
-  // Chặn tín hiệu giao dịch trước/sau khi đồ thị không có chiều đó (§7).
-  const reasons = businessReasons(row.drivers, { upstreamCount: inCount, downstreamCount: outCount });
+  // Lớp DETERMINISTIC hợp nhất từ backend (SHAP+percentile+temporal+side). Fallback
+  // businessReasons chỉ khi dữ liệu cũ chưa enrich risk_reasons.
+  const riskReasons = row.risk_reasons ?? [];
+  const fallback = businessReasons(row.drivers, { upstreamCount: inCount, downstreamCount: outCount });
+  // Traceability §20: bấm reason → highlight chiều đồ thị liên quan.
+  const [highlightSide, setHighlightSide] = useState<string | null>(null);
+  const BAND_COLOR: Record<string, string> = { "RẤT MẠNH": C.risk, MẠNH: C.risk, VỪA: C.warn, THẤP: C.info };
   const IMPACT_COLOR: Record<string, string> = { CAO: C.risk, "TRUNG BÌNH": C.warn, THẤP: C.info };
+  const traceable = (side: string) => side !== "local";
 
   // TÍN HIỆU MÔ HÌNH (từ hành vi giao dịch) — chỉ hiện khi thực sự có.
   const modelSignals: string[] = [];
-  if (reasons.length > 0) modelSignals.push("Có yếu tố từ hành vi giao dịch làm hệ thống tăng mức ưu tiên rà soát");
+  if (riskReasons.length > 0 || fallback.length > 0) modelSignals.push("Có yếu tố từ hành vi giao dịch làm hệ thống tăng mức ưu tiên rà soát");
   if (flaggedRelated > 0) modelSignals.push(`Có ${flaggedRelated} giao dịch liên quan cũng đang được hệ thống cảnh báo`);
   // THÔNG TIN ĐỐI CHIẾU NGOÀI — hiện chưa tích hợp nguồn nào, nói thẳng là chưa có.
   const external: string[] = [
@@ -374,27 +384,55 @@ function TxDetail({ row }: { row: FcBitcoinRow }) {
       <div>
         <SectionLabel>Dấu hiệu đáng chú ý</SectionLabel>
         <div className="mt-1 flex flex-col gap-1.5">
-          {reasons.length === 0 ? (
-            <p className="text-2xs text-ink-soft">Chưa trích được dấu hiệu diễn giải rõ; xem phần kỹ thuật bên dưới.</p>
-          ) : (
-            reasons.map((r, i) => (
-              <div key={i} className="rounded-panel border border-line-faint bg-sunken/40 p-2.5">
+          {riskReasons.length > 0 ? (
+            riskReasons.map((r, i) => (
+              <div key={r.id} className="rounded-panel border border-line-faint bg-sunken/40 p-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-1.5">
                     <span className="grid h-4 w-4 flex-none place-items-center rounded-full bg-elev text-3xs font-semibold text-ink-mid">{i + 1}</span>
                     <span className="text-xs font-medium text-ink-hi">{r.title}</span>
                   </div>
                   <span className="flex-none rounded-control px-1.5 py-0.5 text-3xs font-semibold uppercase"
+                    style={{ color: BAND_COLOR[r.contribution_label] ?? C.info, background: `${BAND_COLOR[r.contribution_label] ?? C.info}1a` }}>
+                    Tác động: {r.contribution_label} ↑
+                  </span>
+                </div>
+                <p className="mt-1 text-2xs leading-relaxed text-ink-soft">{r.investigator_text}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {r.reference?.percentile != null && (
+                    <span className="rounded-control bg-elev px-1.5 py-0.5 text-3xs font-medium text-ink-mid">
+                      cao hơn {r.reference.percentile}% tập tham chiếu
+                    </span>
+                  )}
+                  {r.after_transaction && (
+                    <span className="text-3xs italic text-ink-low">○ quan sát được SAU giao dịch</span>
+                  )}
+                  {traceable(r.side) && (
+                    <button
+                      type="button"
+                      onClick={() => setHighlightSide((s) => (s === r.side ? null : r.side))}
+                      className="ml-auto text-3xs text-primary hover:underline"
+                    >
+                      {highlightSide === r.side ? "Bỏ đánh dấu" : "Xem trên đồ thị →"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : fallback.length === 0 ? (
+            <p className="text-2xs text-ink-soft">Chưa trích được dấu hiệu diễn giải rõ; xem phần kỹ thuật bên dưới.</p>
+          ) : (
+            fallback.map((r, i) => (
+              <div key={i} className="rounded-panel border border-line-faint bg-sunken/40 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-ink-hi">{r.title}</span>
+                  <span className="flex-none rounded-control px-1.5 py-0.5 text-3xs font-semibold uppercase"
                     style={{ color: IMPACT_COLOR[r.impact], background: `${IMPACT_COLOR[r.impact]}1a` }}>
                     Tác động: {r.impact} ↑
                   </span>
                 </div>
                 <p className="mt-1 text-2xs leading-relaxed text-ink-soft">{r.description}</p>
-                {r.afterTransaction && (
-                  <p className="mt-0.5 text-3xs italic text-ink-low">
-                    ○ Tín hiệu quan sát được SAU giao dịch (không có tại thời điểm giao dịch xảy ra).
-                  </p>
-                )}
+                {r.afterTransaction && <p className="mt-0.5 text-3xs italic text-ink-low">○ quan sát được SAU giao dịch</p>}
               </div>
             ))
           )}
@@ -412,8 +450,13 @@ function TxDetail({ row }: { row: FcBitcoinRow }) {
           <span><b className="text-ink-hi">{int(outCount)}</b> giao dịch tiếp theo (nơi tiền được chuyển tới)</span>
         </div>
         <div className="mt-2 flex justify-center">
-          <div className="w-full max-w-[320px]"><NetworkGraph row={row} /></div>
+          <div className="w-full max-w-[320px]"><NetworkGraph row={row} highlight={highlightSide} /></div>
         </div>
+        {highlightSide && (
+          <p className="mt-1 text-center text-3xs text-ink-low">
+            Đang đánh dấu chiều: {highlightSide.startsWith("upstream") ? "tiền đến từ (thượng nguồn)" : "tiền chuyển tới (hạ nguồn)"}
+          </p>
+        )}
       </div>
 
       {/* THÔNG TIN ĐỐI CHIẾU — TÁCH tín hiệu mô hình khỏi bằng chứng ngoài (§11). */}

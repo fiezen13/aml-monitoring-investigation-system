@@ -254,6 +254,21 @@ class AgentRunDetailOut(AgentRunOut):
     steps: list[AgentStepOut]
 
 
+class AgentRunListOut(BaseModel):
+    """Danh sách lượt chạy (giới hạn để hiển thị) KÈM tổng thật từ toàn bảng.
+
+    Trước đây endpoint trả list rỗng có LIMIT 200, và giao diện đếm ``rows.length``
+    → khi có >200 lượt thì thẻ "Tổng lần chạy" LUÔN kẹt ở 200. Các số tổng phải
+    tính bằng aggregate trên toàn bảng, không phải đếm số dòng lấy về.
+    """
+
+    rows: list[AgentRunOut]
+    total: int
+    critic_count: int
+    failed_count: int
+    total_tokens: int
+
+
 # ---------------------------------------------------------------------
 # Kiểm định, giám sát, chất lượng dữ liệu
 # ---------------------------------------------------------------------
@@ -504,6 +519,26 @@ class EvidenceReasonOut(BaseModel):
     text: str
 
 
+class RiskReasonReference(BaseModel):
+    population: str  # training_reference
+    percentile: int | None = None
+
+
+class RiskReasonOut(BaseModel):
+    id: str
+    category: str
+    title: str
+    side: str  # local | upstream | downstream | upstream_tx | downstream_tx
+    feature_ids: list[int] = Field(default_factory=list)
+    reference: RiskReasonReference | None = None
+    shap_direction: str  # increase_risk | decrease_risk
+    contribution: str  # very_high | high | medium | low
+    contribution_label: str  # RẤT MẠNH | MẠNH | VỪA | THẤP
+    temporal_availability: str  # available_at_transaction_time | after_transaction
+    after_transaction: bool = False
+    investigator_text: str
+
+
 class BitcoinScoredRowOut(BaseModel):
     tx_id: str
     timestep: int | None = None
@@ -544,6 +579,8 @@ class BitcoinScoredRowOut(BaseModel):
     evidence_reasons: list[EvidenceReasonOut] = Field(default_factory=list)
     #: Gợi ý điều tra sinh từ bằng chứng thật.
     recommended_steps: list[str] = Field(default_factory=list)
+    #: RiskReason hợp nhất (deterministic): SHAP + ngữ nghĩa + percentile + temporal + side.
+    risk_reasons: list[RiskReasonOut] = Field(default_factory=list)
 
 
 class BitcoinSummaryOut(BaseModel):

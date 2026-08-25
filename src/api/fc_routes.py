@@ -12,14 +12,18 @@ ngoại tuyến rồi ghi vào `fc.benchmark_result`, nên endpoint benchmark c�
 phải trả về khoảng thời gian đã tính sẵn chứ không phải các mốc thời gian gốc.
 """
 
+import json
 from collections.abc import Mapping
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from src.bitcoin_aml.risk_reasons import build_risk_reasons
 from src.db.session import get_session
 from src.investigation.graph_narrative import narrate, read_neighbourhood
 from src.models.fc_schemas import (
@@ -40,6 +44,8 @@ from src.models.fc_schemas import (
     EdgeModelReleaseOut,
     EvidenceReasonOut,
     ExposureOut,
+    RiskReasonOut,
+    RiskReasonReference,
     FlowOut,
     GraphEdgeOut,
     GraphNarrativeOut,
@@ -1253,6 +1259,19 @@ def crypto(limit: int = Query(default=200, le=1000)) -> CryptoOut:
     )
 
 
+@lru_cache(maxsize=1)
+def _bitcoin_distribution() -> dict[str, Any]:
+    """Phân phối train của các đặc trưng (percentile) — nạp một lần cho risk_reasons.
+
+    Thiếu file thì trả rỗng: risk_reasons vẫn dựng được (chỉ không có percentile).
+    """
+    path = Path("data/models/bitcoin_elliptic/feature_distribution.json")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — không có phân phối thì bỏ percentile
+        return {}
+
+
 @router.get("/fc/bitcoin", response_model=BitcoinPageOut)
 def bitcoin_queue(
     view: str = Query(default="flagged", description="flagged | review | all"),
@@ -1425,6 +1444,30 @@ def bitcoin_queue(
                     for er in (r["evidence_reasons"] or [])
                 ],
                 recommended_steps=list(r["recommended_steps"] or []),
+                risk_reasons=[
+                    RiskReasonOut(
+                        id=rr["id"],
+                        category=rr["category"],
+                        title=rr["title"],
+                        side=rr["side"],
+                        feature_ids=rr["feature_ids"],
+                        reference=(
+                            RiskReasonReference(**rr["reference"]) if rr.get("reference") else None
+                        ),
+                        shap_direction=rr["shap_direction"],
+                        contribution=rr["contribution"],
+                        contribution_label=rr["contribution_label"],
+                        temporal_availability=rr["temporal_availability"],
+                        after_transaction=rr["after_transaction"],
+                        investigator_text=rr["investigator_text"],
+                    )
+                    for rr in build_risk_reasons(
+                        list(r["drivers"] or []),
+                        int(r["graph_in_degree"] or 0),
+                        int(r["graph_out_degree"] or 0),
+                        _bitcoin_distribution(),
+                    )
+                ],
             )
             for r in rows
         ],
