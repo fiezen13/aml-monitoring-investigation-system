@@ -7,7 +7,7 @@ import { useApi } from "../api/useApi";
 import { ErrorState, PageShell } from "../components/ui";
 import { Chip, Empty, KpiCard, Panel, ProgressBar, ScreenTitle, Skeleton } from "../components/fc/primitives";
 import { C } from "../design/palette";
-import { businessReasons, reviewSuggestions } from "./crypto/businessLanguage";
+import { businessReasons } from "./crypto/businessLanguage";
 import { useRbac } from "../rbac/useRbac";
 import { PERMISSIONS } from "../rbac/permissions";
 
@@ -321,17 +321,28 @@ function TechnicalPanel({ row }: { row: FcBitcoinRow }) {
 /** Hồ sơ giao dịch — GÓC NHÌN CHUYÊN VIÊN AML (không thuật ngữ ML ở mặc định). */
 function TxDetail({ row }: { row: FcBitcoinRow }) {
   const level = LEVEL_META[row.risk_level] ?? LEVEL_META.LOW;
-  const reasons = businessReasons(row.drivers);
   const inCount = row.graph_in_degree ?? 0;
   const outCount = row.graph_out_degree ?? 0;
   const flaggedRelated = row.graph_flagged_neighbours ?? 0; // model gắn cờ (KHÔNG dùng nhãn dataset)
+  // Chặn tín hiệu giao dịch trước/sau khi đồ thị không có chiều đó (§7).
+  const reasons = businessReasons(row.drivers, { upstreamCount: inCount, downstreamCount: outCount });
   const IMPACT_COLOR: Record<string, string> = { CAO: C.risk, "TRUNG BÌNH": C.warn, THẤP: C.info };
-  const support: Array<[boolean, string]> = [
-    [reasons.length > 0, "Có nhiều dấu hiệu bất thường từ hành vi giao dịch"],
-    [flaggedRelated > 0, "Có giao dịch liên quan cũng đang được hệ thống cảnh báo"],
-    [false, "Chưa có thông tin định danh chủ thể"],
-    [false, "Chưa có dữ liệu đối chiếu danh sách cấm / vùng rủi ro"],
-    [false, "Chưa có thông tin từ nguồn tình báo blockchain bên ngoài"],
+
+  // TÍN HIỆU MÔ HÌNH (từ hành vi giao dịch) — chỉ hiện khi thực sự có.
+  const modelSignals: string[] = [];
+  if (reasons.length > 0) modelSignals.push("Có yếu tố từ hành vi giao dịch làm hệ thống tăng mức ưu tiên rà soát");
+  if (flaggedRelated > 0) modelSignals.push(`Có ${flaggedRelated} giao dịch liên quan cũng đang được hệ thống cảnh báo`);
+  // THÔNG TIN ĐỐI CHIẾU NGOÀI — hiện chưa tích hợp nguồn nào, nói thẳng là chưa có.
+  const external: string[] = [
+    "Chưa xác định danh tính/chủ sở hữu địa chỉ",
+    "Chưa có kết quả đối chiếu danh sách cấm / vùng rủi ro (sanctions/watchlist)",
+    "Chưa có dữ liệu từ nguồn tình báo blockchain bên ngoài",
+    "Chưa xác định địa chỉ thuộc sàn/dịch vụ trộn (mixer)/dịch vụ nào",
+  ];
+  // Đề xuất rà soát: lấy TỪ BACKEND (sinh từ bằng chứng thật), không tự suy ở frontend.
+  const steps = row.recommended_steps?.length ? row.recommended_steps : [
+    "Kiểm tra lịch sử các địa chỉ gửi/nhận tiền liên quan tới giao dịch.",
+    "Đối chiếu các địa chỉ liên quan với nguồn blockchain intelligence / danh sách theo dõi nếu có.",
   ];
 
   return (
@@ -342,8 +353,16 @@ function TxDetail({ row }: { row: FcBitcoinRow }) {
           <SectionLabel>Mức độ ưu tiên rà soát</SectionLabel>
           <div className="mt-0.5 flex items-baseline gap-2">
             <span className="text-xl font-semibold" style={{ color: level.color }}>{level.label}</span>
-            <span className="tabular font-mono text-sm text-ink-soft">{Math.round(row.illicit_prob * 100)}/100</span>
+            <span
+              className="tabular font-mono text-sm text-ink-soft"
+              title="Điểm dùng để XẾP HẠNG ưu tiên rà soát dựa trên kết quả mô hình và tín hiệu liên quan. ĐÂY KHÔNG PHẢI xác suất giao dịch là rửa tiền."
+            >
+              {Math.round(row.illicit_prob * 100)}/100
+            </span>
           </div>
+          <p className="mt-0.5 text-3xs leading-relaxed text-ink-low">
+            Điểm để xếp ưu tiên rà soát — không phải xác suất rửa tiền.
+          </p>
         </div>
         <div className="sm:border-l sm:border-line-faint sm:pl-3">
           <SectionLabel>Trạng thái</SectionLabel>
@@ -367,10 +386,15 @@ function TxDetail({ row }: { row: FcBitcoinRow }) {
                   </div>
                   <span className="flex-none rounded-control px-1.5 py-0.5 text-3xs font-semibold uppercase"
                     style={{ color: IMPACT_COLOR[r.impact], background: `${IMPACT_COLOR[r.impact]}1a` }}>
-                    Ảnh hưởng: {r.impact}
+                    Tác động: {r.impact} ↑
                   </span>
                 </div>
                 <p className="mt-1 text-2xs leading-relaxed text-ink-soft">{r.description}</p>
+                {r.afterTransaction && (
+                  <p className="mt-0.5 text-3xs italic text-ink-low">
+                    ○ Tín hiệu quan sát được SAU giao dịch (không có tại thời điểm giao dịch xảy ra).
+                  </p>
+                )}
               </div>
             ))
           )}
@@ -392,23 +416,35 @@ function TxDetail({ row }: { row: FcBitcoinRow }) {
         </div>
       </div>
 
-      {/* THÔNG TIN HỖ TRỢ RÀ SOÁT — chỉ hiện cái backend thực sự biết. */}
-      <div className="rounded-panel border border-line-faint bg-sunken/40 p-2.5">
-        <SectionLabel>Thông tin hỗ trợ rà soát</SectionLabel>
-        <ul className="mt-1 flex flex-col gap-0.5 text-2xs leading-relaxed">
-          {support.map(([ok, txt], i) => (
-            <li key={i} style={{ color: ok ? C.inkSoft : C.inkLow }}>
-              <span style={{ color: ok ? C.ok : C.inkDim }}>{ok ? "✓" : "○"}</span> {txt}
-            </li>
-          ))}
-        </ul>
+      {/* THÔNG TIN ĐỐI CHIẾU — TÁCH tín hiệu mô hình khỏi bằng chứng ngoài (§11). */}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="rounded-panel border border-line-faint bg-sunken/40 p-2.5">
+          <SectionLabel>Tín hiệu mô hình</SectionLabel>
+          <ul className="mt-1 flex flex-col gap-0.5 text-2xs leading-relaxed">
+            {modelSignals.length === 0 ? (
+              <li className="text-ink-low">Chưa trích được tín hiệu diễn giải rõ.</li>
+            ) : (
+              modelSignals.map((txt, i) => (
+                <li key={i} className="text-ink-soft"><span style={{ color: C.ok }}>✓</span> {txt}</li>
+              ))
+            )}
+          </ul>
+        </div>
+        <div className="rounded-panel border border-line-faint bg-sunken/40 p-2.5">
+          <SectionLabel>Thông tin hệ thống chưa có</SectionLabel>
+          <ul className="mt-1 flex flex-col gap-0.5 text-2xs leading-relaxed">
+            {external.map((txt, i) => (
+              <li key={i} className="text-ink-low"><span style={{ color: C.inkDim }}>○</span> {txt}</li>
+            ))}
+          </ul>
+        </div>
       </div>
 
-      {/* ĐỀ XUẤT RÀ SOÁT — sinh từ bằng chứng thật, ngôn ngữ nghiệp vụ. */}
+      {/* ĐỀ XUẤT RÀ SOÁT — LẤY TỪ BACKEND (sinh từ bằng chứng thật). */}
       <div className="rounded-panel border border-line-faint bg-sunken/40 p-2.5">
         <SectionLabel>Đề xuất rà soát</SectionLabel>
         <ol className="mt-1 flex flex-col gap-0.5 text-2xs leading-relaxed text-ink-soft">
-          {reviewSuggestions(inCount, outCount, flaggedRelated).map((s, i) => (
+          {steps.map((s, i) => (
             <li key={i}>{i + 1}. {s}</li>
           ))}
         </ol>
@@ -444,7 +480,7 @@ function QueueRow({ row }: { row: FcBitcoinRow }) {
 
       {!open && (
         <p className="mt-1.5 text-sm leading-relaxed text-ink-hi">
-          Giao dịch được xếp mức ưu tiên rà soát <b style={{ color: level.color }}>{level.label.toLowerCase()}</b> do nhiều dấu hiệu bất thường từ hành vi giao dịch.
+          Giao dịch được xếp mức ưu tiên rà soát <b style={{ color: level.color }}>{level.label.toLowerCase()}</b> dựa trên các yếu tố hành vi giao dịch mà mô hình đánh giá — tín hiệu để ưu tiên rà soát, không phải kết luận.
         </p>
       )}
       {open && <TxDetail row={row} />}

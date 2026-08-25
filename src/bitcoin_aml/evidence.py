@@ -372,14 +372,17 @@ def evidence_reasons(ev: dict[str, Any], model_prob: float, explain_quality: str
         )
 
     # Luôn có: tín hiệu model, nhưng ĐỨNG SAU bằng chứng đồ thị nếu có.
+    # Diễn đạt nghiệp vụ (§19): KHÔNG dùng 'Random Forest'/'SHAP'/'Elliptic' — đây là
+    # text có thể surface lên màn hình chuyên viên AML.
+    _quality_vi = {"HIGH": "rõ", "MEDIUM": "trung bình", "LOW": "hạn chế"}.get(str(explain_quality).upper(), "hạn chế")
     out.append(
         {
             "priority": 6,
             "badges": ["MODEL"],
-            "title": "Tín hiệu nội bộ của mô hình",
+            "title": "Tín hiệu từ hành vi giao dịch",
             "text": (
-                f"Random Forest chấm {round(model_prob * 100)}% khả năng bất hợp pháp; phần lớn đóng góp SHAP đến "
-                f"từ đặc trưng Elliptic ẩn danh (chất lượng giải thích: {explain_quality})."
+                f"Hệ thống xếp giao dịch ở mức ưu tiên rà soát cao dựa trên các yếu tố hành vi của chính giao dịch "
+                f"(mức độ diễn giải được của các yếu tố: {_quality_vi}). Đây là tín hiệu để ưu tiên, không phải kết luận."
             ),
         }
     )

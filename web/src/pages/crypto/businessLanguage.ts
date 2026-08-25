@@ -2,18 +2,30 @@
  * Lớp dịch KỸ THUẬT → NGHIỆP VỤ cho chuyên viên AML (không cần biết ML).
  *
  * Nguồn sự thật: tên đặc trưng ĐÃ PHỤC HỒI (DFRWS 2026) nằm ở `driver.label`.
- * Ở đây CHỈ dịch sang khái niệm nghiệp vụ + câu chữ trung tính, KHÔNG suy diễn
- * hành vi (rửa tiền/structuring…), KHÔNG dùng SHAP/percentile/feature/model.
+ * Ở đây CHỈ dịch sang khái niệm nghiệp vụ, KHÔNG suy diễn hành vi (rửa
+ * tiền/structuring…), KHÔNG dùng SHAP/percentile/feature/model.
  *
- * §9: đóng góp SHAP dương KHÔNG có nghĩa "giá trị cao" — nên mô tả luôn TRUNG
- * TÍNH ("khác đáng kể so với giao dịch thông thường"), không gọi cao/thấp.
+ * RÀO CHẮN §4/§24 (đã sửa): SHAP dương KHÔNG có nghĩa "giá trị cao/bất thường".
+ * Khi CHƯA có mốc so sánh (percentile/reference), TUYỆT ĐỐI không nói "bất
+ * thường / khác đáng kể / cao hơn thông thường". Chỉ được nói yếu tố đó là "một
+ * trong những điểm khiến hệ thống tăng mức ưu tiên rà soát".
+ *
+ * RÀO CHẮN §7/§8 (thêm mới): nhóm dựa trên GIAO DỊCH TRƯỚC (predecessor) chỉ hiện
+ * khi có giao dịch thượng nguồn; nhóm dựa trên GIAO DỊCH SAU (successor) chỉ hiện
+ * khi có giao dịch hạ nguồn — không thì mâu thuẫn với đồ thị ("0 giao dịch sau").
  */
 import type { FcBitcoinDriver } from "../../api/client";
+
+/** side: nhóm phụ thuộc chiều nào của đồ thị (để chặn khi count=0). */
+type Side = "upstream_tx" | "downstream_tx" | "local";
 
 interface Category {
   key: string;
   title: string;
   description: string;
+  side: Side;
+  /** Đánh dấu tín hiệu quan sát SAU giao dịch (temporal — không phải real-time). */
+  afterTransaction?: boolean;
 }
 
 /** Ánh xạ tên đặc trưng phục hồi → nhóm nghiệp vụ. Thứ tự kiểm tra quan trọng. */
@@ -21,25 +33,25 @@ function categoryOf(name: string): Category | null {
   const n = name.toLowerCase();
   // Giao dịch trước/sau (predecessor/successor) — kiểm trước "addresses".
   if (n.includes("of input txs"))
-    return { key: "PRED_TX", title: "Đặc điểm của các giao dịch trước đó", description: "Các giao dịch đưa tiền tới giao dịch này có đặc điểm khác đáng kể so với phần lớn giao dịch thông thường mà hệ thống đã phân tích." };
+    return { key: "PRED_TX", side: "upstream_tx", title: "Đặc điểm của các giao dịch nguồn", description: "Các giao dịch đưa tiền tới giao dịch này là một trong những nhóm yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   if (n.includes("of output txs"))
-    return { key: "SUCC_TX", title: "Đặc điểm của các giao dịch tiếp theo", description: "Các giao dịch nhận tiền từ giao dịch này có đặc điểm khác đáng kể so với phần lớn giao dịch thông thường." };
+    return { key: "SUCC_TX", side: "downstream_tx", afterTransaction: true, title: "Đặc điểm của các giao dịch tiếp theo", description: "Các giao dịch nhận tiền từ giao dịch này là một trong những nhóm yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   if (n.includes("of input addresses"))
-    return { key: "IN_ADDR", title: "Hoạt động của các địa chỉ gửi tiền", description: "Lịch sử giao dịch của các địa chỉ đưa tiền vào giao dịch này có đặc điểm khác đáng kể so với phần lớn giao dịch thông thường." };
+    return { key: "IN_ADDR", side: "local", title: "Hoạt động của các địa chỉ gửi tiền", description: "Lịch sử hoạt động của các địa chỉ đưa tiền vào giao dịch là một trong những yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   if (n.includes("of output addresses"))
-    return { key: "OUT_ADDR", title: "Hoạt động của các địa chỉ nhận tiền", description: "Lịch sử giao dịch của các địa chỉ nhận tiền từ giao dịch này có đặc điểm khác đáng kể so với phần lớn giao dịch thông thường." };
+    return { key: "OUT_ADDR", side: "local", title: "Hoạt động của các địa chỉ nhận tiền", description: "Lịch sử hoạt động của các địa chỉ nhận tiền từ giao dịch là một trong những yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   if (n.includes("output values") || (n.includes("output") && n.includes("value")))
-    return { key: "OUT_VAL", title: "Cách phân bổ giá trị ở các đầu nhận", description: "Cách chia giá trị giữa các đầu nhận của giao dịch khác đáng kể so với nhiều giao dịch thông thường." };
+    return { key: "OUT_VAL", side: "local", title: "Cách phân bổ giá trị ở các đầu nhận", description: "Cách chia giá trị giữa các đầu nhận của giao dịch là một trong những yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   if (n.includes("input values") || (n.includes("input") && n.includes("value")))
-    return { key: "IN_VAL", title: "Cách hình thành nguồn tiền đầu vào", description: "Cách các nguồn tiền đầu vào hợp thành giao dịch có đặc điểm khác đáng kể so với giao dịch thông thường." };
+    return { key: "IN_VAL", side: "local", title: "Cách hình thành nguồn tiền đầu vào", description: "Cách các nguồn tiền đầu vào hợp thành giao dịch là một trong những yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   if (n.includes("output"))
-    return { key: "OUT_STRUCT", title: "Cấu trúc các địa chỉ nhận tiền", description: "Cấu trúc các đầu nhận của giao dịch là một trong những yếu tố khiến hệ thống tăng mức cảnh báo." };
+    return { key: "OUT_STRUCT", side: "local", title: "Cấu trúc các địa chỉ nhận tiền", description: "Cấu trúc các đầu nhận của giao dịch là một trong những yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   if (n.includes("input"))
-    return { key: "IN_STRUCT", title: "Cấu trúc các nguồn tiền vào", description: "Cấu trúc các nguồn tiền vào của giao dịch là một trong những yếu tố khiến hệ thống tăng mức cảnh báo." };
+    return { key: "IN_STRUCT", side: "local", title: "Cấu trúc các nguồn tiền vào", description: "Cấu trúc các nguồn tiền vào của giao dịch là một trong những yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   if (n.includes("volume"))
-    return { key: "VOLUME", title: "Quy mô giá trị giao dịch", description: "Quy mô giá trị của giao dịch khác đáng kể so với nhiều giao dịch thông thường." };
+    return { key: "VOLUME", side: "local", title: "Quy mô giá trị giao dịch", description: "Quy mô giá trị của giao dịch là một trong những yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   if (n.includes("fee"))
-    return { key: "FEES", title: "Mức phí giao dịch", description: "Mức phí của giao dịch có đặc điểm khác đáng kể so với nhiều giao dịch thông thường." };
+    return { key: "FEES", side: "local", title: "Mức phí giao dịch", description: "Mức phí của giao dịch là một trong những yếu tố khiến hệ thống tăng mức ưu tiên rà soát." };
   return null; // time step / không xếp nhóm → bỏ khỏi lý do nghiệp vụ
 }
 
@@ -47,19 +59,32 @@ export interface BusinessReason {
   title: string;
   description: string;
   impact: "CAO" | "TRUNG BÌNH" | "THẤP";
+  afterTransaction?: boolean;
+}
+
+export interface GraphCounts {
+  upstreamCount: number;
+  downstreamCount: number;
 }
 
 /**
  * 2–4 dấu hiệu nghiệp vụ, gộp theo nhóm, xếp theo tổng độ ảnh hưởng. Chỉ dùng
  * đặc trưng ĐÃ PHỤC HỒI (không bịa); đặc trưng chưa giải nghĩa bị bỏ qua.
+ *
+ * `counts` để chặn nhóm giao dịch-trước/sau khi đồ thị không có chiều đó (§7).
  */
-export function businessReasons(drivers: FcBitcoinDriver[]): BusinessReason[] {
+export function businessReasons(drivers: FcBitcoinDriver[], counts?: GraphCounts): BusinessReason[] {
   const agg = new Map<string, { cat: Category; weight: number }>();
   for (const d of drivers) {
     if (!d.meaningful || !d.label) continue;
-    if (d.contribution <= 0) continue; // chỉ yếu tố LÀM TĂNG cảnh báo
+    if (d.contribution <= 0) continue; // chỉ yếu tố LÀM TĂNG mức ưu tiên
     const cat = categoryOf(d.label);
     if (!cat) continue;
+    // Chặn tín hiệu về giao dịch trước/sau khi đồ thị không có chiều tương ứng.
+    if (counts) {
+      if (cat.side === "upstream_tx" && counts.upstreamCount <= 0) continue;
+      if (cat.side === "downstream_tx" && counts.downstreamCount <= 0) continue;
+    }
     const cur = agg.get(cat.key);
     if (cur) cur.weight += Math.abs(d.contribution);
     else agg.set(cat.key, { cat, weight: Math.abs(d.contribution) });
@@ -69,15 +94,6 @@ export function businessReasons(drivers: FcBitcoinDriver[]): BusinessReason[] {
     title: r.cat.title,
     description: r.cat.description,
     impact: i <= 1 ? "CAO" : i === 2 ? "TRUNG BÌNH" : "THẤP",
+    afterTransaction: r.cat.afterTransaction,
   }));
-}
-
-/** Đề xuất rà soát nghiệp vụ (không nhắc dataset/nhãn tham chiếu). */
-export function reviewSuggestions(inCount: number, outCount: number, flaggedRelated: number): string[] {
-  const s: string[] = ["Kiểm tra lịch sử các địa chỉ gửi/nhận tiền liên quan tới giao dịch."];
-  if (inCount > 0 || outCount > 0) s.push("Mở rộng dòng tiền trước và sau giao dịch để xem luồng tiền đi đâu.");
-  if (flaggedRelated > 0) s.push(`Kiểm tra ${flaggedRelated} giao dịch liên quan đang có mức cảnh báo cao.`);
-  s.push("Đối chiếu thông tin chủ thể/ví nếu có nguồn dữ liệu bổ sung.");
-  s.push("Xác định có đủ căn cứ để mở vụ việc điều tra hay không.");
-  return s;
 }

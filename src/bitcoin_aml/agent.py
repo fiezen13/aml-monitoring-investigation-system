@@ -29,8 +29,13 @@ SYSTEM_INSTRUCTION = (
     "'SHAP', 'percentile', 'feature', 'Random Forest', 'ground truth', 'nhãn thật', 'Elliptic', "
     "'z-score', 'dataset', 'chuẩn hoá', 'model risk', 'benchmark'. Dịch đặc trưng sang khái niệm "
     "nghiệp vụ: hoạt động của địa chỉ gửi/nhận tiền, cấu trúc đầu ra, cách phân bổ giá trị, đặc điểm "
-    "giao dịch trước/sau. Mô tả trung tính ('khác đáng kể so với giao dịch thông thường'), KHÔNG "
-    "khẳng định giá trị cao/thấp trừ khi dữ kiện nói rõ."
+    "giao dịch trước/sau.\n"
+    "RÀO CHẮN SO SÁNH (rất quan trọng): CHỈ nói một yếu tố 'cao hơn X% giao dịch tham chiếu' hoặc "
+    "'khác biệt so với thông thường' KHI dữ kiện có 'percentile'/'reference'. NẾU KHÔNG có mốc so "
+    "sánh, TUYỆT ĐỐI KHÔNG dùng 'bất thường', 'khác đáng kể', 'cao hơn thông thường', 'hiếm gặp' — "
+    "chỉ được nói yếu tố đó 'là một trong những điểm khiến hệ thống tăng mức ưu tiên rà soát'. "
+    "KHÔNG nhắc hoạt động 'giao dịch tiếp theo/hạ nguồn' nếu downstream=0; KHÔNG nhắc 'giao dịch "
+    "trước/thượng nguồn' nếu upstream=0."
 )
 
 
