@@ -46,6 +46,29 @@ export function ApprovalsPage() {
   const [page, setPage] = useState(1);
   const sars = useApi(() => api.sars(), []);
 
+  // Trợ lý AI thật (Gemini) hỏi–đáp về hàng đợi SAR — chỉ tư vấn, không tự quyết.
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMsgs, setChatMsgs] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+
+  async function sendChat() {
+    const q = chatInput.trim();
+    if (!q || chatSending) return;
+    const history = chatMsgs.slice(-6);
+    setChatMsgs((m) => [...m, { role: "user", text: q }]);
+    setChatInput("");
+    setChatSending(true);
+    try {
+      const res = await api.sarAiChat(q, history);
+      setChatMsgs((m) => [...m, { role: "assistant", text: res.answer }]);
+    } catch {
+      setChatMsgs((m) => [...m, { role: "assistant", text: "Không gọi được trợ lý AI. Thử lại sau." }]);
+    } finally {
+      setChatSending(false);
+    }
+  }
+
   const rows = useMemo(() => {
     const base: Approval[] = (sars.data ?? []).map((sar) => {
       const status = sar.status === "PENDING_REVIEW" ? "pending" : sar.status === "NEEDS_INFO" ? "needs_info" : sar.status === "APPROVED" ? "approved" : sar.status === "REJECTED" ? "rejected" : "needs_info";
@@ -348,13 +371,87 @@ export function ApprovalsPage() {
           </div>
           <button
             type="button"
-            onClick={() => pushToast({ tone: "info", title: "AI Chat chưa bật vì môi trường chưa cấu hình model" })}
-            className="mt-3 w-full rounded-control border border-line py-2 text-body font-medium text-ink-hi hover:border-line-emphasis"
+            onClick={() => setChatOpen(true)}
+            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-control bg-primary py-2 text-body font-semibold text-app hover:bg-primary-hover"
           >
-            Mở AI Chat chi tiết
+            <Sparkles size={13} aria-hidden />
+            Hỏi trợ lý AI về hàng đợi
           </button>
         </Panel>
       </div>
+
+      {chatOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setChatOpen(false)}
+        >
+          <div
+            className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-panel border border-line bg-panel shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+              <Sparkles size={15} className="text-primary" aria-hidden />
+              <span className="text-body-lg font-semibold text-ink-hi">Trợ lý AI · Hàng đợi SAR</span>
+              <button
+                type="button"
+                onClick={() => setChatOpen(false)}
+                className="ml-auto text-ink-mid hover:text-ink-hi"
+                aria-label="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3 text-2xs">
+              {chatMsgs.length === 0 && (
+                <div className="rounded-control border border-line bg-elev p-3 text-ink-mid">
+                  Hỏi về hàng đợi phê duyệt SAR — ví dụ: “hồ sơ nào rủi ro cao nhất và vì sao”, “còn bao nhiêu vụ chờ
+                  quyết định”, “hồ sơ nào còn câu chưa dẫn bằng chứng”. Trợ lý dựa trên dữ liệu thật, chỉ tư vấn — quyết
+                  định duyệt/từ chối vẫn là của bạn.
+                </div>
+              )}
+              {chatMsgs.map((m, i) => (
+                <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+                  <div
+                    className={`max-w-[85%] whitespace-pre-wrap rounded-control px-3 py-2 leading-relaxed ${
+                      m.role === "user" ? "bg-primary text-app" : "border border-line bg-elev text-ink-hi"
+                    }`}
+                  >
+                    {m.text}
+                  </div>
+                </div>
+              ))}
+              {chatSending && <div className="text-ink-low">Trợ lý đang trả lời…</div>}
+            </div>
+
+            <div className="flex items-end gap-2 border-t border-line px-3 py-3">
+              <textarea
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendChat();
+                  }
+                }}
+                rows={2}
+                placeholder="Nhập câu hỏi… (Enter để gửi)"
+                className="min-h-[40px] flex-1 resize-none rounded-control border border-line bg-elev px-3 py-2 text-2xs text-ink-hi focus:border-line-emphasis focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => void sendChat()}
+                disabled={chatSending || !chatInput.trim()}
+                className="rounded-control bg-primary px-4 py-2 text-2xs font-semibold text-app hover:bg-primary-hover disabled:opacity-50"
+              >
+                Gửi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 }

@@ -115,6 +115,8 @@ POLICY: dict[str, frozenset[str]] = {
     "/feedback/labels": AUDIT,
     # --- Hồ sơ SAR và phê duyệt ---
     "/sars": SAR,
+    # Trợ lý AI hỏi–đáp về hàng đợi SAR — chỉ đọc/tư vấn, cùng quyền xem SAR.
+    "/sars/ai-chat": SAR,
     "/sars/{sar_id}": SAR,
     "/sars/{sar_id}/validate": SAR,
     "/sars/{sar_id}/submit": SAR,

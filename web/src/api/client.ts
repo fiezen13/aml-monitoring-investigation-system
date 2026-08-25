@@ -1005,6 +1005,12 @@ export const api = {
 
   sars: () => request<ApiSar[]>("/sars"),
 
+  sarAiChat: (question: string, history: { role: "user" | "assistant"; text: string }[] = []) =>
+    request<{ answer: string; grounded_on: Record<string, number> }>("/sars/ai-chat", {
+      method: "POST",
+      body: JSON.stringify({ question, history }),
+    }),
+
   sar: (sarId: string) => request<ApiSar>(`/sars/${encodeURIComponent(sarId)}`),
 
   validateSar: (sarId: string) =>

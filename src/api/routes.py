@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import secrets
@@ -9,7 +10,7 @@ from fastapi.responses import Response
 from opentelemetry import trace
 from sqlalchemy import text
 
-from src.api import authz
+from src.api import ai_assistant, authz
 from src.api.permissions import data_scope_for, permission_codes, scope_own_records
 from src.api.sar_pdf import build_sar_pdf
 from src.config import get_settings
@@ -54,6 +55,7 @@ from src.models.schemas import (
     LoginRequest,
     QueueStatsOut,
     SarActionRequest,
+    SarChatRequest,
     SettingUpdateRequest,
     TransactionOut,
     TypologyShareOut,
@@ -120,7 +122,7 @@ def _enforce_case_scope(authorization: str | None, assigned_to: str | None) -> N
 
 
 @router.get("/auth/users", response_model=list[UserOut])
-async def login_users() -> list[UserOut]:
+def login_users() -> list[UserOut]:
     """Danh sách tài khoản demo lấy từ DB; không trả bất kỳ dữ liệu mật khẩu nào."""
     with get_session() as session:
         rows = (
@@ -135,23 +137,42 @@ async def login_users() -> list[UserOut]:
     return [_user_out(dict(row)) for row in rows]
 
 
+def _pbkdf2(password: str, salt_hex: str) -> str:
+    """Băm mật khẩu (PBKDF2, 200k vòng). Tách hàm để chạy được trong thread."""
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt_hex), 200_000).hex()
+
+
 @router.post("/auth/login", response_model=LoginOut)
 async def login(request: LoginRequest) -> LoginOut:
+    # PBKDF2 200k vòng tốn ~50–100ms CPU. Handler này là `async`, chạy trên một
+    # event loop DUY NHẤT (uvicorn 1 worker), nên nếu băm ngay tại đây thì mỗi
+    # lượt đăng nhập KHOÁ cả loop suốt thời gian băm — nhiều người vào cùng lúc
+    # (một lớp học, một buổi demo) sẽ xếp hàng tuyến tính rồi chạm timeout, trông
+    # như "server chặn". Vì vậy: (1) đọc user rồi TRẢ kết nối DB ngay, (2) băm
+    # trong thread bằng asyncio.to_thread — pbkdf2 nhả GIL nên các lượt băm chạy
+    # song song thật và loop vẫn rảnh phục vụ request khác, (3) mới mở kết nối
+    # thứ hai để ghi phiên. Không giữ kết nối pool trong lúc băm.
     with get_session() as session:
         row = (
             session.execute(text("SELECT * FROM app_user WHERE lower(email) = lower(:email)"), {"email": request.email})
             .mappings()
             .first()
         )
-        if row is None or not row["active"]:
-            raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
-        actual = hashlib.pbkdf2_hmac(
-            "sha256", request.password.encode(), bytes.fromhex(row["password_salt"]), 200_000
-        ).hex()
-        if not secrets.compare_digest(actual, row["password_hash"]):
-            raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
+    user_row = dict(row) if row is not None else None
 
-        raw_token = secrets.token_urlsafe(32)
+    actual = None
+    if user_row is not None and user_row["active"]:
+        actual = await asyncio.to_thread(_pbkdf2, request.password, user_row["password_salt"])
+    if (
+        user_row is None
+        or not user_row["active"]
+        or actual is None
+        or not secrets.compare_digest(actual, user_row["password_hash"])
+    ):
+        raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
+
+    raw_token = secrets.token_urlsafe(32)
+    with get_session() as session:
         session.execute(text("DELETE FROM app_session WHERE expires_at <= now()"))
         session.execute(
             text(
@@ -160,34 +181,33 @@ async def login(request: LoginRequest) -> LoginOut:
             ),
             {
                 "token_hash": hashlib.sha256(raw_token.encode()).hexdigest(),
-                "user_id": row["user_id"],
+                "user_id": user_row["user_id"],
                 "expires_at": datetime.now(UTC) + timedelta(hours=8),
             },
         )
-        session.execute(text("UPDATE app_user SET last_login = now() WHERE user_id = :id"), {"id": row["user_id"]})
+        session.execute(text("UPDATE app_user SET last_login = now() WHERE user_id = :id"), {"id": user_row["user_id"]})
         session.execute(
             text(
                 """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
                    VALUES (NULL, 'user_login', :actor, :role, CAST(:payload AS jsonb))"""
             ),
             {
-                "actor": row["user_id"],
-                "role": _audit_role(row["role"]),
-                "payload": json.dumps({"email": row["email"]}),
+                "actor": user_row["user_id"],
+                "role": _audit_role(user_row["role"]),
+                "payload": json.dumps({"email": user_row["email"]}),
             },
         )
-        user = dict(row)
-        user["last_login"] = datetime.now(UTC)
-    return LoginOut(token=raw_token, user=_user_out(user))
+    user_row["last_login"] = datetime.now(UTC)
+    return LoginOut(token=raw_token, user=_user_out(user_row))
 
 
 @router.get("/auth/me", response_model=UserOut)
-async def me(authorization: str | None = Header(default=None)) -> UserOut:
+def me(authorization: str | None = Header(default=None)) -> UserOut:
     return _user_out(_require_user(authorization))
 
 
 @router.post("/auth/logout")
-async def logout(authorization: str | None = Header(default=None)) -> dict[str, bool]:
+def logout(authorization: str | None = Header(default=None)) -> dict[str, bool]:
     if authorization and authorization.startswith("Bearer "):
         with get_session() as session:
             session.execute(
@@ -210,7 +230,7 @@ _CUSTOMER_SELECT = """
 
 
 @router.get("/cases", response_model=list[CaseOut])
-async def list_cases(
+def list_cases(
     state: str | None = Query(default=None, description="Lọc theo trạng thái máy trạng thái"),
     dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
     limit: int = Query(default=50, ge=1, le=200),
@@ -257,7 +277,7 @@ async def list_cases(
 
 
 @router.get("/cases/{case_id}", response_model=CaseDetailOut)
-async def get_case(case_id: str, authorization: str | None = Header(default=None)) -> CaseDetailOut:
+def get_case(case_id: str, authorization: str | None = Header(default=None)) -> CaseDetailOut:
     """Chi tiết một vụ việc kèm các yếu tố đóng góp.
 
     Mọi cảnh báo trả về ở đây phải có tối thiểu ba yếu tố có giá trị số (NT7).
@@ -381,7 +401,7 @@ def _build_timeline(current: str, reached_at: dict[str, object]) -> list[CaseTim
 
 
 @router.post("/cases/{case_id}/investigate", response_model=InvestigateOut)
-async def investigate(case_id: str) -> InvestigateOut:
+def investigate(case_id: str) -> InvestigateOut:
     """Giao tác vụ điều tra cho worker.
 
     Trả về ngay: một lượt điều tra chạy hàng phút, không nằm vừa trong vòng
@@ -428,12 +448,47 @@ _ALERT_SELECT = """
 """
 
 
+# Giao dịch gần nhất của MỘT tài khoản (cả chiều gửi lẫn nhận).
+#
+# TRÁNH `WHERE from_account_key = :a OR to_account_key = :a ORDER BY occurred_at
+# DESC LIMIT n`: với OR trên hai cột + ORDER BY thời gian + LIMIT, planner bỏ cả
+# hai index (from_time_idx / to_time_idx) và đi index thời gian rồi lọc — nếu tài
+# khoản ít giao dịch, nó quét gần hết bảng 15,6 triệu dòng → treo hàng trăm giây
+# trên Cloud SQL nhỏ, và các lượt gọi chồng nhau làm nghẽn cả API.
+#
+# UNION ALL hai nhánh: mỗi nhánh khớp ĐÚNG một index tổ hợp (account, occurred_at
+# DESC) nên chỉ lấy n dòng đầu tức thì; gộp 2n dòng rồi sắp lấy n. Không trùng vì
+# transaction cấm cạnh tự trỏ (from <> to).
+_ACCOUNT_TX_SQL = text(
+    """
+    SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount, currency, channel,
+           CASE WHEN to_account_key = :account THEN 'in' ELSE 'out' END AS direction
+      FROM (
+            (SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount, currency, channel
+               FROM transaction WHERE from_account_key = :account
+              ORDER BY occurred_at DESC LIMIT :lim)
+            UNION ALL
+            (SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount, currency, channel
+               FROM transaction WHERE to_account_key = :account
+              ORDER BY occurred_at DESC LIMIT :lim)
+           ) u
+     ORDER BY occurred_at DESC
+     LIMIT :lim
+    """
+)
+
+
+def _recent_account_transactions(session: Any, account_key: str, limit: int) -> list[Any]:
+    """Giao dịch gần nhất của một tài khoản, dùng index — xem ``_ACCOUNT_TX_SQL``."""
+    return session.execute(_ACCOUNT_TX_SQL, {"account": account_key, "lim": limit}).mappings().all()
+
+
 def _alert_out(row: dict) -> AlertOut:
     return AlertOut(**row, typology_label=typology_label(row["typology_code"]))
 
 
 @router.get("/alerts", response_model=list[AlertOut])
-async def list_alerts(
+def list_alerts(
     status: str | None = Query(default=None, description="open | grouped | closed"),
     typology_code: str | None = Query(default=None, description="Mã typology T01–T10"),
     min_risk: float = Query(default=0, ge=0, le=100, description="Ngưỡng điểm rủi ro tối thiểu"),
@@ -469,7 +524,7 @@ async def list_alerts(
 
 
 @router.get("/alerts/page", response_model=AlertPageOut)
-async def list_alerts_page(
+def list_alerts_page(
     status: str | None = Query(default=None, description="open | grouped | closed"),
     typology_code: str | None = Query(default=None, description="Mã typology T01–T10"),
     min_risk: float = Query(default=0, ge=0, le=100),
@@ -510,33 +565,62 @@ async def list_alerts_page(
         "limit": page_size,
         "offset": (page - 1) * page_size,
     }
-    with get_session() as session:
-        total = session.execute(
-            text(
-                """SELECT count(*)
-                     FROM alert al
-                     JOIN account ac ON ac.account_key = al.account_key
-                     JOIN customer c ON c.customer_id = ac.customer_id
-                """
-                + where
-            ),
-            params,
-        ).scalar_one()
-        rows = (
-            session.execute(
-                text(
-                    _ALERT_SELECT
-                    + where
-                    + """
-                     ORDER BY al.risk_score DESC, al.created_at DESC, al.alert_id
-                     LIMIT :limit OFFSET :offset
-                    """
-                ),
-                params,
-            )
-            .mappings()
-            .all()
+    # ĐẾM KHÔNG JOIN khi không tìm kiếm: account/customer chỉ cần cho bộ lọc `q`
+    # (khớp account_key/customer_id/occupation). Không có `q` thì JOIN account
+    # (596k dòng) + customer chỉ để đếm là vô ích — planner hash-join quét cả
+    # account → ~9s. Đếm thẳng trên `alert` (26k, có index dataset) → ~ms.
+    if clean_q is None:
+        count_sql = """SELECT count(*) FROM alert al
+                 WHERE (CAST(:status AS text) IS NULL OR al.status = CAST(:status AS text))
+                   AND (CAST(:typology_code AS text) IS NULL OR al.typology_code = CAST(:typology_code AS text))
+                   AND (CAST(:dataset AS text) IS NULL OR al.dataset = CAST(:dataset AS text))
+                   AND al.risk_score >= :min_risk"""
+    else:
+        count_sql = (
+            """SELECT count(*)
+                 FROM alert al
+                 JOIN account ac ON ac.account_key = al.account_key
+                 JOIN customer c ON c.customer_id = ac.customer_id
+            """
+            + where
         )
+    with get_session() as session:
+        total = session.execute(text(count_sql), params).scalar_one()
+        if clean_q is None:
+            # Không tìm kiếm: SẮP XẾP + PHÂN TRANG trên `alert` (26k, index) TRƯỚC,
+            # rồi mới JOIN account/customer cho đúng 50 dòng của trang. Nếu để
+            # _ALERT_SELECT join trước rồi sort, planner hash-join quét cả account
+            # (596k) mỗi lần mở trang → ~4s. Đẩy limit vào trong → ~0,x s.
+            rows_sql = """
+                SELECT sub.alert_id, sub.account_key, ac.customer_id, c.occupation, c.risk_rating,
+                       sub.typology_code, sub.detector, sub.risk_score, sub.status, sub.case_id,
+                       sub.created_at, sub.dataset,
+                       (SELECT count(*) FROM alert_reason r WHERE r.alert_id = sub.alert_id) AS factor_count
+                  FROM (
+                        SELECT al.alert_id, al.account_key, al.typology_code, al.detector,
+                               al.risk_score, al.status, al.case_id, al.created_at, al.dataset
+                          FROM alert al
+                         WHERE (CAST(:status AS text) IS NULL OR al.status = CAST(:status AS text))
+                           AND (CAST(:typology_code AS text) IS NULL OR al.typology_code = CAST(:typology_code AS text))
+                           AND (CAST(:dataset AS text) IS NULL OR al.dataset = CAST(:dataset AS text))
+                           AND al.risk_score >= :min_risk
+                         ORDER BY al.risk_score DESC, al.created_at DESC, al.alert_id
+                         LIMIT :limit OFFSET :offset
+                       ) sub
+                  JOIN account ac ON ac.account_key = sub.account_key
+                  JOIN customer c ON c.customer_id = ac.customer_id
+                 ORDER BY sub.risk_score DESC, sub.created_at DESC, sub.alert_id
+            """
+        else:
+            rows_sql = (
+                _ALERT_SELECT
+                + where
+                + """
+                 ORDER BY al.risk_score DESC, al.created_at DESC, al.alert_id
+                 LIMIT :limit OFFSET :offset
+                """
+            )
+        rows = session.execute(text(rows_sql), params).mappings().all()
     return AlertPageOut(
         rows=[_alert_out(dict(row)) for row in rows],
         total=total,
@@ -546,7 +630,7 @@ async def list_alerts_page(
 
 
 @router.get("/alerts/{alert_id}", response_model=AlertDetailOut)
-async def get_alert(alert_id: str) -> AlertDetailOut:
+def get_alert(alert_id: str) -> AlertDetailOut:
     """Chi tiết cảnh báo kèm yếu tố đóng góp, hồ sơ chủ thể và giao dịch liên quan."""
     with get_session() as session:
         alert = (
@@ -579,22 +663,7 @@ async def get_alert(alert_id: str) -> AlertDetailOut:
 
         # Giao dịch gần nhất chạm tài khoản chủ thể, cả hai chiều. Đây là thứ
         # người phân tích nhìn đầu tiên khi mở một cảnh báo.
-        transactions = (
-            session.execute(
-                text(
-                    """SELECT transaction_id, occurred_at, from_account_key, to_account_key,
-                              amount, currency, channel,
-                              CASE WHEN to_account_key = :account_key THEN 'in' ELSE 'out' END AS direction
-                         FROM transaction
-                        WHERE from_account_key = :account_key OR to_account_key = :account_key
-                        ORDER BY occurred_at DESC
-                        LIMIT 20"""
-                ),
-                {"account_key": alert["account_key"]},
-            )
-            .mappings()
-            .all()
-        )
+        transactions = _recent_account_transactions(session, alert["account_key"], 20)
 
         case_state = None
         if alert["case_id"]:
@@ -657,7 +726,7 @@ def create_internal_ml_alert(body: InternalAlertCreate) -> InternalAlertCreateOu
 
 
 @router.get("/audit", response_model=list[AuditEventOut])
-async def list_audit(
+def list_audit(
     case_id: str | None = Query(default=None, description="Lọc theo vụ việc"),
     event_type: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
@@ -679,7 +748,7 @@ async def list_audit(
 
 
 @router.get("/dashboard", response_model=DashboardOut)
-async def dashboard(
+def dashboard(
     dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
 ) -> DashboardOut:
     """Số liệu Trung tâm Điều hành — đếm thật, không cứng hoá con số nào.
@@ -783,10 +852,27 @@ async def dashboard(
             session.execute(
                 # Top 5 cũng phải theo đúng bộ dữ liệu đang xem, nếu không thẻ
                 # "cảnh báo nổi bật" lại kéo cảnh báo IBM vào lúc đang xem SAML-D.
+                #
+                # SẮP XẾP + LIMIT trên `alert` (26k) TRƯỚC rồi mới JOIN account
+                # (1,43 triệu) cho đúng 5 dòng — nếu để _ALERT_SELECT join trước,
+                # planner hash-join quét cả account, trên Cloud SQL nhỏ (cache lạnh)
+                # mất 10–18s mỗi lần mở Tổng quan.
                 text(
-                    _ALERT_SELECT
-                    + """ WHERE (CAST(:dataset AS text) IS NULL OR al.dataset = CAST(:dataset AS text))
-                          ORDER BY al.risk_score DESC, al.created_at DESC LIMIT 5"""
+                    """SELECT sub.alert_id, sub.account_key, ac.customer_id, c.occupation, c.risk_rating,
+                              sub.typology_code, sub.detector, sub.risk_score, sub.status, sub.case_id,
+                              sub.created_at, sub.dataset,
+                              (SELECT count(*) FROM alert_reason r WHERE r.alert_id = sub.alert_id) AS factor_count
+                         FROM (
+                               SELECT al.alert_id, al.account_key, al.typology_code, al.detector,
+                                      al.risk_score, al.status, al.case_id, al.created_at, al.dataset
+                                 FROM alert al
+                                WHERE (CAST(:dataset AS text) IS NULL OR al.dataset = CAST(:dataset AS text))
+                                ORDER BY al.risk_score DESC, al.created_at DESC, al.alert_id
+                                LIMIT 5
+                              ) sub
+                         JOIN account ac ON ac.account_key = sub.account_key
+                         JOIN customer c ON c.customer_id = ac.customer_id
+                        ORDER BY sub.risk_score DESC, sub.created_at DESC, sub.alert_id"""
                 ),
                 {"dataset": dataset},
             )
@@ -824,12 +910,12 @@ async def dashboard(
 
 
 @router.get("/queue", response_model=QueueStatsOut)
-async def queue_stats() -> QueueStatsOut:
+def queue_stats() -> QueueStatsOut:
     return QueueStatsOut(depth=queue.queue_depth(), worker_alive=queue.worker_alive())
 
 
 @router.get("/status")
-async def agent_status() -> dict[str, Any]:
+def agent_status() -> dict[str, Any]:
     """Trạng thái của tầng tác tử điều tra.
 
     Trước đây endpoint này trả về hằng số ``"LangGraph Agent v1.0"`` — tên của
@@ -854,7 +940,7 @@ async def agent_status() -> dict[str, Any]:
 
 
 @router.post("/alerts/{alert_id}/investigate", response_model=InvestigationStartOut)
-async def investigate_alert(alert_id: str, authorization: str | None = Header(default=None)) -> InvestigationStartOut:
+def investigate_alert(alert_id: str, authorization: str | None = Header(default=None)) -> InvestigationStartOut:
     """Create a persistent investigation and enqueue the bounded workflow."""
     triggered_by = "system"
     if authorization:
@@ -892,7 +978,7 @@ async def investigate_alert(alert_id: str, authorization: str | None = Header(de
 
 
 @router.get("/alerts/{alert_id}/investigation", response_model=InvestigationOut | None)
-async def latest_alert_investigation(alert_id: str) -> InvestigationOut | None:
+def latest_alert_investigation(alert_id: str) -> InvestigationOut | None:
     with get_session() as session:
         row = session.execute(
             text("SELECT investigation_id FROM investigation WHERE alert_id = :id ORDER BY created_at DESC LIMIT 1"),
@@ -902,7 +988,7 @@ async def latest_alert_investigation(alert_id: str) -> InvestigationOut | None:
 
 
 @router.get("/feedback/labels", response_model=ReviewFeedbackPage)
-async def list_review_feedback(
+def list_review_feedback(
     label: Literal["SUSPICIOUS", "NOT_SUSPICIOUS", "INCONCLUSIVE"] | None = None,
     since: datetime | None = None,
     limit: int = Query(default=500, ge=1, le=5000),
@@ -953,7 +1039,7 @@ async def list_review_feedback(
 
 
 @router.get("/investigations/{investigation_id}", response_model=InvestigationOut)
-async def get_investigation(investigation_id: str) -> InvestigationOut:
+def get_investigation(investigation_id: str) -> InvestigationOut:
     try:
         with get_session() as session:
             return InvestigationRepository(session).get(investigation_id)
@@ -962,7 +1048,7 @@ async def get_investigation(investigation_id: str) -> InvestigationOut:
 
 
 @router.get("/investigations/{investigation_id}/evidence", response_model=list[EvidenceEnvelope])
-async def get_investigation_evidence(investigation_id: str) -> list[EvidenceEnvelope]:
+def get_investigation_evidence(investigation_id: str) -> list[EvidenceEnvelope]:
     with get_session() as session:
         repository = InvestigationRepository(session)
         try:
@@ -973,7 +1059,7 @@ async def get_investigation_evidence(investigation_id: str) -> list[EvidenceEnve
 
 
 @router.get("/investigations/{investigation_id}/trace", response_model=list[TraceEvent])
-async def get_investigation_trace(investigation_id: str) -> list[TraceEvent]:
+def get_investigation_trace(investigation_id: str) -> list[TraceEvent]:
     with get_session() as session:
         repository = InvestigationRepository(session)
         try:
@@ -984,7 +1070,7 @@ async def get_investigation_trace(investigation_id: str) -> list[TraceEvent]:
 
 
 @router.get("/investigations/{investigation_id}/explanation", response_model=Explanation)
-async def get_investigation_explanation(investigation_id: str) -> Explanation:
+def get_investigation_explanation(investigation_id: str) -> Explanation:
     with get_session() as session:
         repository = InvestigationRepository(session)
         try:
@@ -1004,7 +1090,7 @@ async def get_investigation_explanation(investigation_id: str) -> Explanation:
 
 
 @router.get("/investigations/{investigation_id}/package", response_model=InvestigationPackage)
-async def get_investigation_package(investigation_id: str) -> InvestigationPackage:
+def get_investigation_package(investigation_id: str) -> InvestigationPackage:
     with get_session() as session:
         repository = InvestigationRepository(session)
         try:
@@ -1024,7 +1110,7 @@ async def get_investigation_package(investigation_id: str) -> InvestigationPacka
 
 
 @router.post("/investigations/{investigation_id}/review", response_model=InvestigationOut)
-async def review_investigation(
+def review_investigation(
     investigation_id: str,
     request: ReviewRequest,
     authorization: str | None = Header(default=None),
@@ -1122,21 +1208,7 @@ def _sar_payload(sar_id: str) -> dict[str, Any]:
             .mappings()
             .all()
         )
-        transactions = (
-            session.execute(
-                text(
-                    """SELECT transaction_id, occurred_at, from_account_key, to_account_key,
-                          amount, currency, channel,
-                          CASE WHEN to_account_key = :account THEN 'in' ELSE 'out' END AS direction
-                     FROM transaction
-                    WHERE from_account_key = :account OR to_account_key = :account
-                    ORDER BY occurred_at DESC LIMIT 20"""
-                ),
-                {"account": draft["subject_account_key"]},
-            )
-            .mappings()
-            .all()
-        )
+        transactions = _recent_account_transactions(session, draft["subject_account_key"], 20)
         history = (
             session.execute(
                 text(
@@ -1250,19 +1322,19 @@ def _sar_payload(sar_id: str) -> dict[str, Any]:
 
 
 @router.get("/sars")
-async def list_sars() -> list[dict[str, Any]]:
+def list_sars() -> list[dict[str, Any]]:
     with get_session() as session:
         ids = session.execute(text("SELECT sar_draft_id FROM sar_draft ORDER BY created_at DESC")).scalars().all()
     return [_sar_payload(sar_id) for sar_id in ids]
 
 
 @router.get("/sars/{sar_id}")
-async def get_sar(sar_id: str) -> dict[str, Any]:
+def get_sar(sar_id: str) -> dict[str, Any]:
     return _sar_payload(sar_id)
 
 
 @router.post("/cases/{case_id}/sar")
-async def create_sar(case_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+def create_sar(case_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     user = _require_user(authorization)
     if user["role"] not in {"analyst", "manager"}:
         raise HTTPException(status_code=403, detail="Vai trò hiện tại không được tạo SAR")
@@ -1286,18 +1358,7 @@ async def create_sar(case_id: str, authorization: str | None = Header(default=No
             raise HTTPException(status_code=404, detail=f"Không tìm thấy vụ việc {case_id}")
         if case["state"] in {"XuatHoSo", "DongKhongBaoCao"}:
             raise HTTPException(status_code=409, detail="Vụ việc đã kết thúc")
-        txs = (
-            session.execute(
-                text(
-                    """SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount, currency, channel
-                     FROM transaction WHERE from_account_key = :a OR to_account_key = :a
-                     ORDER BY occurred_at DESC LIMIT 3"""
-                ),
-                {"a": case["subject_account_key"]},
-            )
-            .mappings()
-            .all()
-        )
+        txs = _recent_account_transactions(session, case["subject_account_key"], 3)
         if not txs:
             raise HTTPException(status_code=409, detail="Vụ việc chưa có giao dịch để làm bằng chứng")
         session.execute(
@@ -1359,7 +1420,7 @@ async def create_sar(case_id: str, authorization: str | None = Header(default=No
 
 
 @router.post("/sars/{sar_id}/validate")
-async def validate_sar(sar_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+def validate_sar(sar_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     user = _require_user(authorization)
     with get_session() as session:
         draft = (
@@ -1396,7 +1457,7 @@ async def validate_sar(sar_id: str, authorization: str | None = Header(default=N
 
 
 @router.post("/sars/{sar_id}/submit")
-async def submit_sar(
+def submit_sar(
     sar_id: str, request: SarActionRequest, authorization: str | None = Header(default=None)
 ) -> dict[str, Any]:
     user = _require_user(authorization)
@@ -1441,7 +1502,7 @@ async def submit_sar(
 
 
 @router.post("/approvals/{approval_id}/decision")
-async def decide_approval(
+def decide_approval(
     approval_id: str, request: ApprovalDecisionRequest, authorization: str | None = Header(default=None)
 ) -> dict[str, Any]:
     user = _require_user(authorization)
@@ -1508,11 +1569,89 @@ async def decide_approval(
     return _sar_payload(sar_id)
 
 
+def _sar_queue_context(session: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Dựng NGỮ CẢNH THẬT cho trợ lý từ bảng sar_draft/approval/aml_case.
+
+    Trả (trusted, untrusted): trusted là số liệu/định danh do hệ tính; untrusted là
+    văn bản tự do (tiêu đề vụ) — đánh dấu để mô hình không làm theo chỉ thị trong đó.
+    """
+    rows = (
+        session.execute(
+            text(
+                """SELECT d.sar_draft_id, d.case_id, d.status AS sar_status,
+                          c.risk_score, c.priority, c.state, c.subject_account_key, c.title,
+                          (a.decision = 'pending') AS awaiting_decision,
+                          (SELECT count(*) FROM uncited_statement u WHERE u.sar_draft_id = d.sar_draft_id) AS uncited
+                     FROM sar_draft d
+                     JOIN aml_case c USING (case_id)
+                     LEFT JOIN approval a ON a.sar_draft_id = d.sar_draft_id AND a.decision = 'pending'
+                    ORDER BY (a.decision = 'pending') DESC NULLS LAST, c.risk_score DESC
+                    LIMIT 25"""
+            )
+        )
+        .mappings()
+        .all()
+    )
+    trusted_items: list[dict[str, Any]] = []
+    untrusted: list[dict[str, Any]] = []
+    pending = 0
+    high_risk = 0
+    for r in rows:
+        risk = round(float(r["risk_score"] or 0), 1)
+        if r["awaiting_decision"]:
+            pending += 1
+        if risk >= 80:
+            high_risk += 1
+        trusted_items.append(
+            {
+                "sar_id": r["sar_draft_id"],
+                "case_id": r["case_id"],
+                "sar_status": r["sar_status"],
+                "awaiting_decision": bool(r["awaiting_decision"]),
+                "risk_score": risk,
+                "priority": r["priority"],
+                "case_state": r["state"],
+                "subject_account": r["subject_account_key"],
+                "uncited_statements": int(r["uncited"] or 0),
+            }
+        )
+        if r["title"]:
+            untrusted.append({"sar_id": r["sar_draft_id"], "case_title_raw": r["title"]})
+    trusted = {
+        "queue_name": "Hàng đợi phê duyệt SAR",
+        "summary": {
+            "total_drafts_shown": len(trusted_items),
+            "awaiting_decision": pending,
+            "high_risk_ge_80": high_risk,
+        },
+        "drafts": trusted_items,
+        "notes": "Số liệu tổng hợp trực tiếp từ bảng sar_draft/approval/aml_case tại thời điểm hỏi.",
+    }
+    return trusted, untrusted
+
+
+@router.post("/sars/ai-chat")
+def sar_ai_chat(request: SarChatRequest, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    """Trợ lý AI (Gemini) hỏi–đáp về hàng đợi SAR, có nền dữ liệu thật, chỉ tư vấn.
+
+    Không tự quyết định duyệt/từ chối (NT3). Trả lời dựa trên ngữ cảnh hàng đợi
+    được dựng server-side; văn bản tự do được cách ly (RK2).
+    """
+    user = _require_user(authorization)
+    if user["role"] not in {"analyst", "manager", "admin"}:
+        raise HTTPException(status_code=403, detail="Vai trò hiện tại không dùng được trợ lý")
+    with get_session() as session:
+        trusted, untrusted = _sar_queue_context(session)
+    history = [{"role": m.role, "text": m.text} for m in request.history]
+    answer = ai_assistant.ask(request.question, trusted, untrusted, history)
+    return {"answer": answer, "grounded_on": trusted["summary"]}
+
+
 @router.post(
     "/sars/{sar_id}/export",
     responses={200: {"content": {"application/pdf": {}}, "description": "Hồ sơ SAR dạng PDF tải về"}},
 )
-async def export_sar(sar_id: str, authorization: str | None = Header(default=None)) -> Response:
+def export_sar(sar_id: str, authorization: str | None = Header(default=None)) -> Response:
     """Xuất hồ sơ SAR đã phê duyệt thành PDF tải về được.
 
     Trả về CHÍNH file PDF (không phải JSON): dựng từ ``_sar_payload`` — cùng dữ
@@ -1561,7 +1700,7 @@ async def export_sar(sar_id: str, authorization: str | None = Header(default=Non
 
 
 @router.get("/cases/{case_id}/network")
-async def case_network(case_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+def case_network(case_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     with get_session() as session:
         case = (
             session.execute(
@@ -1580,18 +1719,7 @@ async def case_network(case_id: str, authorization: str | None = Header(default=
         # Cùng phạm vi cấp-bản-ghi với chi tiết vụ việc: chặn đọc đồ thị của vụ
         # việc không được giao (IDOR).
         _enforce_case_scope(authorization, case["assigned_to"])
-        txs = (
-            session.execute(
-                text(
-                    """SELECT transaction_id, occurred_at, from_account_key, to_account_key, amount, currency, channel
-                     FROM transaction WHERE from_account_key = :a OR to_account_key = :a
-                     ORDER BY occurred_at DESC LIMIT 30"""
-                ),
-                {"a": case["subject_account_key"]},
-            )
-            .mappings()
-            .all()
-        )
+        txs = _recent_account_transactions(session, case["subject_account_key"], 30)
         accounts = {case["subject_account_key"]}
         for tx in txs:
             accounts.update((tx["from_account_key"], tx["to_account_key"]))
@@ -1646,7 +1774,7 @@ async def case_network(case_id: str, authorization: str | None = Header(default=
 
 
 @router.get("/users", response_model=list[UserOut])
-async def list_users(authorization: str | None = Header(default=None)) -> list[UserOut]:
+def list_users(authorization: str | None = Header(default=None)) -> list[UserOut]:
     _require_user(authorization)
     with get_session() as session:
         rows = (
@@ -1660,7 +1788,7 @@ async def list_users(authorization: str | None = Header(default=None)) -> list[U
 
 
 @router.get("/settings")
-async def list_settings(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+def list_settings(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     _require_user(authorization)
     with get_session() as session:
         settings = (
@@ -1685,9 +1813,7 @@ async def list_settings(authorization: str | None = Header(default=None)) -> dic
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
-async def update_user(
-    user_id: str, request: UserUpdateRequest, authorization: str | None = Header(default=None)
-) -> UserOut:
+def update_user(user_id: str, request: UserUpdateRequest, authorization: str | None = Header(default=None)) -> UserOut:
     user = _require_user(authorization)
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Chỉ Quản trị viên được thay đổi trạng thái tài khoản")
@@ -1729,7 +1855,7 @@ async def update_user(
 
 
 @router.put("/settings/{code}")
-async def update_setting(
+def update_setting(
     code: str, request: SettingUpdateRequest, authorization: str | None = Header(default=None)
 ) -> dict[str, Any]:
     user = _require_user(authorization)

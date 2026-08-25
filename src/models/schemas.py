@@ -222,6 +222,16 @@ class ApprovalDecisionRequest(BaseModel):
     reason: str = Field(..., min_length=10, max_length=2000)
 
 
+class SarChatMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    text: str = Field(default="", max_length=4000)
+
+
+class SarChatRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    history: list[SarChatMessage] = Field(default_factory=list, max_length=12)
+
+
 class SettingUpdateRequest(BaseModel):
     value: str = Field(..., min_length=1, max_length=500)
     reason: str = Field(..., min_length=10, max_length=2000)
