@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, Circle, Loader2, PlayCircle, RefreshCw, ShieldAlert } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, FileText, Loader2, PlayCircle, RefreshCw, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -24,6 +24,8 @@ import { RiskBadge, StatusBadge } from "../components/common/Badges";
 import { AuditFeed } from "../components/common/AuditFeed";
 import { Panel } from "../components/common/Panel";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
+import { ReasonModal } from "../components/common/ReasonModal";
+import { PERMISSIONS } from "../rbac/permissions";
 import { useApp } from "../context/AppContext";
 
 const PRIORITY_TONE: Record<string, "risk" | "warn" | "ok" | "muted"> = {
@@ -61,11 +63,15 @@ const AUTO_STOP_STATES = new Set([
 export function CaseDetailPage() {
   const { caseId } = useParams();
   const navigate = useNavigate();
-  const { pushToast } = useApp();
+  const { pushToast, currentUser } = useApp();
 
   const detail = useApi(() => api.case(caseId ?? ""), [caseId]);
   const audit = useApi(() => api.audit({ case_id: caseId, limit: 50 }), [caseId]);
   const [running, setRunning] = useState(false);
+  // Nút soạn SAR ngay trên Chi tiết vụ việc — trước đây chỉ có ở trang Đồ thị
+  // mạng lưới nên analyst khó tìm, hàng đợi phê duyệt của quản lý luôn rỗng.
+  const [sarModal, setSarModal] = useState(false);
+  const canPrepareSar = currentUser?.permissions?.includes(PERMISSIONS.PREPARE_SAR) ?? false;
 
   // Dọn timer khi rời trang giữa lúc còn đang hỏi vòng.
   const timers = useRef<number[]>([]);
@@ -238,6 +244,16 @@ export function CaseDetailPage() {
             <RefreshCw size={12} aria-hidden />
             Làm mới
           </button>
+          {canPrepareSar && k.state !== "XuatHoSo" && k.state !== "DongKhongBaoCao" && (
+            <button
+              type="button"
+              onClick={() => setSarModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-control bg-primary px-3 py-1.5 text-2xs font-semibold text-app hover:bg-primary-hover"
+            >
+              <FileText size={12} aria-hidden />
+              Soạn hồ sơ SAR
+            </button>
+          )}
         </div>
       </div>
 
@@ -429,6 +445,24 @@ export function CaseDetailPage() {
           )}
         </div>
       </div>
+
+      <ReasonModal
+        open={sarModal}
+        title="Soạn hồ sơ nghi vấn (SAR)"
+        description="Tạo bản nháp SAR cho vụ việc này rồi mở trang soạn để kiểm chứng bằng chứng và nộp cho người phê duyệt (NT3). Nhập lý do để ghi vào nhật ký kiểm toán."
+        confirmLabel="Tạo & mở bản nháp SAR"
+        onClose={() => setSarModal(false)}
+        onConfirm={async () => {
+          try {
+            const sar = await api.createSar(k.case_id);
+            setSarModal(false);
+            pushToast({ tone: "success", title: `Đã mở ${sar.sar_id}`, detail: "Bản nháp + bằng chứng + nhật ký đã ghi vào DB." });
+            navigate(`/sar/${sar.sar_id}/edit`);
+          } catch (cause) {
+            pushToast({ tone: "error", title: "Không tạo được SAR", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
+          }
+        }}
+      />
     </PageShell>
   );
 }
