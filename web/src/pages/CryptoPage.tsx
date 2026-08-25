@@ -400,8 +400,8 @@ function TxDetail({ row }: { row: FcBitcoinRow }) {
                 <p className="mt-1 text-2xs leading-relaxed text-ink-soft">{r.investigator_text}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   {r.reference?.percentile != null && (
-                    <span className="rounded-control bg-elev px-1.5 py-0.5 text-3xs font-medium text-ink-mid">
-                      cao hơn {r.reference.percentile}% tập tham chiếu
+                    <span className="rounded-control bg-elev px-1.5 py-0.5 text-3xs font-medium text-ink-mid" title="So với phân phối trên tập huấn luyện tham chiếu">
+                      có số liệu đối chiếu
                     </span>
                   )}
                   {r.after_transaction && (

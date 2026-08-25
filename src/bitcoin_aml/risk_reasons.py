@@ -37,16 +37,34 @@ def _registry() -> dict[int, Any]:
     return registry_by_model_index()
 
 
-def _model_index_of(name: str) -> int | None:
-    """'timestep' → 0; 'feature_N' → N (khớp thứ tự cột model = registry model_index)."""
+@lru_cache(maxsize=1)
+def _name_to_index() -> dict[str, int]:
+    """Tên HIỂN THỊ (display_name) → model_index. Vì driver có thể lưu `name`/`label`
+    dạng tên hiển thị (script build_elliptic_scored) thay vì 'feature_N' (stream)."""
+    return {m.display_name: m.model_index for m in _registry().values() if m.display_name}
+
+
+def _resolve_index(driver: dict[str, Any]) -> int | None:
+    """Suy model_index từ driver, chấp nhận cả 'feature_N'/'timestep' lẫn tên hiển thị."""
+    name = str(driver.get("name", ""))
     if name == "timestep":
         return 0
     if name.startswith("feature_"):
         try:
             return int(name.split("_", 1)[1])
         except ValueError:
-            return None
+            pass
+    # fallback: khớp theo tên hiển thị (name hoặc label).
+    n2i = _name_to_index()
+    for key in (driver.get("label"), name):
+        if key and key in n2i:
+            return n2i[key]
     return None
+
+
+def _dist_col(model_index: int) -> str:
+    """Cột trong feature_distribution.json ứng với model_index (timestep=0)."""
+    return "timestep" if model_index == 0 else f"feature_{model_index}"
 
 
 def _percentile(value: float, pct_map: dict[str, float]) -> float | None:
@@ -92,7 +110,7 @@ def build_risk_reasons(
         contribution = float(d.get("contribution", 0.0))
         if contribution <= 0:  # chỉ yếu tố LÀM TĂNG
             continue
-        idx = _model_index_of(str(d.get("name", "")))
+        idx = _resolve_index(d)
         if idx is None or idx not in reg:
             continue
         meta = reg[idx]
@@ -119,17 +137,22 @@ def build_risk_reasons(
         band = _contribution_band(rank)
         # Percentile CHỈ khi có phân phối cho cột đó.
         pct: int | None = None
-        if distribution is not None:
-            col = str(top.get("name", ""))
-            entry = distribution.get(col) or {}
+        if distribution is not None and top.get("model_index") is not None:
+            entry = distribution.get(_dist_col(int(top["model_index"]))) or {}
             p = _percentile(float(top.get("value", 0.0)), entry.get("percentiles") or {})
             if p is not None:
                 pct = round(p * 100)
-        # investigatorText: percentile-grounded nếu có, else direction-only (KHÔNG bịa 'bất thường').
-        if pct is not None:
+        # §9: SHAP dương KHÔNG có nghĩa 'giá trị cao'. Chỉ so sánh khi giá trị nằm ở
+        # ĐUÔI RÕ của phân phối tham chiếu (≥90 → cao hơn; ≤10 → thấp hơn). Ở giữa
+        # thì KHÔNG khẳng định 'cao/thấp/bất thường' — chỉ direction.
+        reference: dict[str, Any] | None = None
+        grounded = ""
+        if pct is not None and pct >= 90:
             grounded = f" (cao hơn {pct}% giao dịch trong tập tham chiếu)"
-        else:
-            grounded = ""
+            reference = {"population": "training_reference", "percentile": pct}
+        elif pct is not None and pct <= 10:
+            grounded = f" (thấp hơn {100 - pct}% giao dịch trong tập tham chiếu)"
+            reference = {"population": "training_reference", "percentile": pct}
         text = f"{cmeta['title']}{grounded} là một trong những yếu tố khiến hệ thống tăng mức ưu tiên rà soát cho giao dịch này."
         out.append(
             {
@@ -138,7 +161,7 @@ def build_risk_reasons(
                 "title": cmeta["title"],
                 "side": cmeta["side"],
                 "feature_ids": sorted(set(g["feature_ids"])),
-                "reference": {"population": "training_reference", "percentile": pct} if pct is not None else None,
+                "reference": reference,
                 "shap_direction": "increase_risk",
                 "contribution": band,
                 "contribution_label": _BAND_VI[band],
