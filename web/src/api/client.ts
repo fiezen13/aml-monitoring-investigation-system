@@ -175,6 +175,22 @@ export interface ApiAuditEvent {
   occurred_at: string;
 }
 
+export interface ApiAuditMilestone {
+  key: string;
+  label: string;
+  status: "done" | "current" | "pending";
+  reached_at: string | null;
+}
+
+export interface ApiAuditCaseEvent {
+  event_type: string;
+  actor: string;
+  actor_name: string;
+  actor_role: string;
+  occurred_at: string;
+  payload: Record<string, unknown> | null;
+}
+
 export interface ApiAuditCase {
   case_id: string;
   subject: string;
@@ -183,9 +199,13 @@ export interface ApiAuditCase {
   priority: string;
   risk_score: number;
   assigned_to: string | null;
+  assigned_name: string | null;
   event_count: number;
+  opened_at: string | null;
   last_at: string;
-  events: { event_type: string; actor: string; actor_role: string; occurred_at: string }[];
+  closed: boolean;
+  milestones: ApiAuditMilestone[];
+  events: ApiAuditCaseEvent[];
 }
 
 export interface ApiTypologyShare {
@@ -608,24 +628,6 @@ export interface FcBitcoinPage {
   total: number;
   page: number;
   page_size: number;
-}
-
-export interface FcProject {
-  id: string;
-  name: string;
-  symbol: string;
-  chain: string;
-  contract_address: string;
-  deployer_address: string;
-  launched_at: string;
-  holder_gini: number | null;
-  liquidity_usd: number;
-  liquidity_removed_pct: number | null;
-  privileged_functions: string[];
-  kol_channels: number;
-  domain_age_days: number | null;
-  risk_score: number;
-  status: string;
 }
 
 export interface FcAgentStep {
@@ -1152,8 +1154,6 @@ export const api = {
   /** Giải thích Gemini on-demand cho một giao dịch Bitcoin (diễn đạt structured evidence). */
   explainBitcoin: (txId: string) =>
     request<FcBitcoinExplanation>(`/fc/bitcoin/${encodeURIComponent(txId)}/explain`, { method: "POST" }),
-
-  projects: () => request<FcProject[]>("/fc/projects"),
 
   agentRuns: () => request<FcAgentRunList>("/fc/agent-runs"),
 

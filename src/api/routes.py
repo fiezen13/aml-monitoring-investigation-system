@@ -752,25 +752,74 @@ def list_audit(
     return [AuditEventOut(**row) for row in rows]
 
 
+# Gộp 9 bước máy của INVESTIGATION_CHAIN thành các GIAI ĐOẠN mà con người đọc
+# được trong nhật ký kiểm toán. Mỗi giai đoạn = một cột mốc: đã đạt lúc nào, ai
+# làm. Thứ tự phải khớp chuỗi điều tra + hai trạng thái kết thúc.
+_AUDIT_MILESTONES: tuple[tuple[str, str, frozenset[str]], ...] = (
+    ("tiep_nhan", "Tiếp nhận cảnh báo", frozenset({"TiepNhanCanhBao"})),
+    (
+        "dieu_tra",
+        "Điều tra & phân tích",
+        frozenset(
+            {
+                "TruyHoiBangChung",
+                "PhanTichDoThi",
+                "DoiChieuTrungPhatPEP",
+                "TinhToanBangCongCu",
+                "LapLuanGanTypology",
+                "DieuTraBoSung",
+            }
+        ),
+    ),
+    ("soan_ho_so", "Soạn hồ sơ nghi vấn", frozenset({"SoanHoSoNghiVan"})),
+    ("kiem_chung", "Kiểm chứng bằng chứng", frozenset({"KiemChungBangChung"})),
+    ("phe_duyet", "Trình phê duyệt", frozenset({"ChoNguoiPheDuyet"})),
+    ("ket_thuc", "Kết thúc hồ sơ", frozenset({"XuatHoSo", "DongKhongBaoCao"})),
+)
+_STATE_TO_MILESTONE: dict[str, int] = {
+    st: idx for idx, (_, _, states) in enumerate(_AUDIT_MILESTONES) for st in states
+}
+_TERMINAL_STATES = frozenset({"XuatHoSo", "DongKhongBaoCao"})
+
+
+def _actor_display(actor: str | None, actor_role: str | None, names: dict[str, str]) -> str:
+    """Tên người/tác tử để hiển thị trong nhật ký.
+
+    Người thật (``U-xxx``) tra ra họ tên; tác tử AI và mọi actor kỹ thuật
+    (worker, api, seed test…) gom về nhãn chung — kiểm toán viên quan tâm "ai
+    chịu trách nhiệm", không phải tên tiến trình.
+    """
+    if actor and actor in names:
+        return names[actor]
+    if actor_role == "agent":
+        return "Tác tử điều tra (AI)"
+    return "Hệ thống"
+
+
 @router.get("/audit/by-case")
 def audit_by_case(limit: int = Query(default=40, ge=1, le=100)) -> list[dict[str, Any]]:
-    """Nhật ký kiểm toán GỘP THEO VỤ VIỆC (không phải dòng sự kiện phẳng).
+    """Nhật ký kiểm toán GỘP THEO VỤ VIỆC — dựng lại được toàn bộ vòng đời hồ sơ.
 
-    Mỗi vụ: giai đoạn hiện tại + dòng thời gian các hành động NGHIỆP VỤ đã làm.
-    Bỏ sự kiện 'case_viewed' (chỉ là lượt xem, không phải hành động nghiệp vụ) và
-    các sự kiện không gắn vụ (đăng nhập…). Sắp theo hoạt động mới nhất.
+    Mỗi vụ trả về: (1) chuỗi cột mốc (``milestones``) cho biết vụ đã đi qua những
+    giai đoạn nào, đạt lúc nào, đang dừng ở đâu; (2) dòng thời gian ``events``
+    theo thứ tự thời gian THUẬN — ai làm gì, lúc nào, kèm ghi chú/lý do lấy từ
+    payload. Bỏ 'case_viewed' (chỉ là lượt xem). Sắp vụ theo hoạt động mới nhất.
     """
     with get_session() as session:
+        names = {
+            r["user_id"]: r["name"]
+            for r in session.execute(text("SELECT user_id, name FROM app_user")).mappings()
+        }
         cases = (
             session.execute(
                 text(
                     """SELECT c.case_id, c.subject_account_key, c.title, c.state, c.risk_score,
-                              c.priority, c.assigned_to,
+                              c.priority, c.assigned_to, c.created_at,
                               count(*) AS event_count, max(l.occurred_at) AS last_at
                          FROM audit_log l JOIN aml_case c ON c.case_id = l.case_id
                         WHERE l.case_id IS NOT NULL AND l.event_type <> 'case_viewed'
                         GROUP BY c.case_id, c.subject_account_key, c.title, c.state, c.risk_score,
-                                 c.priority, c.assigned_to
+                                 c.priority, c.assigned_to, c.created_at
                         ORDER BY max(l.occurred_at) DESC
                         LIMIT :lim"""
                 ),
@@ -784,16 +833,49 @@ def audit_by_case(limit: int = Query(default=40, ge=1, le=100)) -> list[dict[str
             events = (
                 session.execute(
                     text(
-                        """SELECT event_type, actor, actor_role, occurred_at
+                        """SELECT event_type, actor, actor_role, occurred_at, payload
                              FROM audit_log
                             WHERE case_id = :cid AND event_type <> 'case_viewed'
-                            ORDER BY occurred_at DESC, audit_id DESC LIMIT 25"""
+                            ORDER BY occurred_at ASC, audit_id ASC LIMIT 40"""
                     ),
                     {"cid": c["case_id"]},
                 )
                 .mappings()
                 .all()
             )
+
+            # Cột mốc đạt lúc nào: quét case_state_changed để lấy thời điểm SỚM
+            # NHẤT bước sang mỗi giai đoạn. Giai đoạn "Tiếp nhận" lấy created_at.
+            reached: dict[int, Any] = {}
+            if c["created_at"] is not None:
+                reached[0] = c["created_at"]
+            for e in events:
+                if e["event_type"] != "case_state_changed":
+                    continue
+                to_state = (e["payload"] or {}).get("to") if isinstance(e["payload"], dict) else None
+                mi = _STATE_TO_MILESTONE.get(to_state) if to_state else None
+                if mi is not None and mi not in reached:
+                    reached[mi] = e["occurred_at"]
+
+            cur_idx = _STATE_TO_MILESTONE.get(c["state"], 0)
+            closed = c["state"] in _TERMINAL_STATES
+            milestones = []
+            for idx, (key, label, _states) in enumerate(_AUDIT_MILESTONES):
+                if idx < cur_idx:
+                    status = "done"
+                elif idx == cur_idx:
+                    status = "done" if closed else "current"
+                else:
+                    status = "pending"
+                lbl = label
+                if key == "ket_thuc" and c["state"] == "DongKhongBaoCao":
+                    lbl = "Đóng — không báo cáo"
+                elif key == "ket_thuc" and c["state"] == "XuatHoSo":
+                    lbl = "Đã xuất hồ sơ SAR"
+                milestones.append(
+                    {"key": key, "label": lbl, "status": status, "reached_at": reached.get(idx)}
+                )
+
             out.append(
                 {
                     "case_id": c["case_id"],
@@ -803,14 +885,20 @@ def audit_by_case(limit: int = Query(default=40, ge=1, le=100)) -> list[dict[str
                     "priority": c["priority"],
                     "risk_score": float(c["risk_score"]) if c["risk_score"] is not None else 0.0,
                     "assigned_to": c["assigned_to"],
+                    "assigned_name": names.get(c["assigned_to"]) if c["assigned_to"] else None,
                     "event_count": c["event_count"],
+                    "opened_at": c["created_at"],
                     "last_at": c["last_at"],
+                    "closed": closed,
+                    "milestones": milestones,
                     "events": [
                         {
                             "event_type": e["event_type"],
                             "actor": e["actor"],
+                            "actor_name": _actor_display(e["actor"], e["actor_role"], names),
                             "actor_role": e["actor_role"],
                             "occurred_at": e["occurred_at"],
+                            "payload": e["payload"] if isinstance(e["payload"], dict) else None,
                         }
                         for e in events
                     ],
