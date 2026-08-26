@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, num } from "../api/client";
 import { int } from "../api/fcFormat";
 import { alertStatusLabel, datasetLabel, detectorLabel, formatRelative, sourceBrand } from "../api/format";
+import { TYPOLOGY_LABELS } from "../api/typologyLabels";
 import { useApi } from "../api/useApi";
 import { useConsole } from "../context/ConsoleContext";
 import { useApp } from "../context/AppContext";
@@ -198,6 +199,27 @@ export function DashboardPage() {
     };
   }, [world.data]);
 
+  // Hành lang NGUY HIỂM NHẤT: gộp các cạnh flow theo cặp quốc gia (một hành lang
+  // xuất hiện nhiều cạnh), lấy điểm rủi ro cao nhất + cộng cảnh báo + nhóm hành
+  // vi. Thay cho bảng "đếm lượt" cũ vốn chỉ là volume, không cho biết cái gì đáng
+  // lo. (Ở mức QUỐC GIA không có tín hiệu rủi ro: risk_score=0, pháp vực=unknown;
+  // nguy hiểm thật nằm ở hành lang.)
+  const dangerCorridors = useMemo(() => {
+    const flows = world.data?.flows;
+    if (!flows?.length) return [];
+    const byCorridor = new Map<string, { name: string; risk: number; alerts: number; typ: string | null }>();
+    for (const f of flows) {
+      const key = `${f.source_name}→${f.target_name}`;
+      const cur =
+        byCorridor.get(key) ?? { name: `${f.source_name} → ${f.target_name}`, risk: 0, alerts: 0, typ: f.typology_hint };
+      cur.risk = Math.max(cur.risk, f.risk_score);
+      cur.alerts += f.alert_count;
+      if (f.typology_hint) cur.typ = f.typology_hint;
+      byCorridor.set(key, cur);
+    }
+    return [...byCorridor.values()].sort((a, b) => b.risk - a.risk || b.alerts - a.alerts).slice(0, 6);
+  }, [world.data]);
+
   const queueColumns: Column<ApiAlert>[] = [
     {
       key: "alert_id",
@@ -360,27 +382,21 @@ export function DashboardPage() {
         </div>
 
         <div className="flex min-w-0 max-w-[420px] flex-[1_1_320px] flex-col gap-3.5">
-          <Panel title="Tình hình dòng tiền" subtitle="Tổng hợp từ Giám sát địa lý">
+          <Panel title="Hành lang rủi ro cao nhất" subtitle="Xếp theo điểm rủi ro — cái đáng lo trước">
             {world.loading && <div className="h-24 animate-pulse rounded-control bg-elev/60" aria-hidden />}
-            {world.data?.geography_available && (
+            {world.data?.geography_available && dangerCorridors.length > 0 && (
               <div className="flex flex-col gap-2">
-                {[...world.data.hubs]
-                  .sort((a, b) => b.inbound + b.outbound - (a.inbound + a.outbound))
-                  .slice(0, 6)
-                  .map((hub) => (
-                    <div key={hub.id} className="flex items-center gap-2 text-data">
-                      <span className="truncate-1 flex-1 text-ink-mid">{hub.name}</span>
-                      <span className="tabular flex-none font-mono text-meta text-ink-low">
-                        {hub.inbound}↓ {hub.outbound}↑
-                      </span>
-                      <b className="tabular w-24 flex-none text-right font-mono text-ink-hi">
-                        {/* Lượt chạm quốc gia, không phải số giao dịch: một giao dịch
-                            nội địa tính cả chiều đi lẫn chiều đến, nên tổng đúng bằng
-                            gấp đôi số giao dịch của bộ dữ liệu. */}
-                        {int(hub.inbound + hub.outbound)} lượt
-                      </b>
+                {dangerCorridors.map((c) => (
+                  <div key={c.name} className="flex items-center gap-2.5 text-data">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate-1 text-ink-hi">{c.name}</div>
+                      <div className="truncate-1 text-meta text-ink-low">
+                        {(c.typ && TYPOLOGY_LABELS[c.typ]?.name) || c.typ || "chưa rõ nhóm"} · {int(c.alerts)} cảnh báo
+                      </div>
                     </div>
-                  ))}
+                    <RiskIndicator score={c.risk} variant="badge" />
+                  </div>
+                ))}
                 <Link
                   to="/world"
                   className="mt-1 text-center text-data text-info-soft transition-colors hover:text-info"
@@ -388,6 +404,9 @@ export function DashboardPage() {
                   Mở Giám sát địa lý →
                 </Link>
               </div>
+            )}
+            {world.data?.geography_available && dangerCorridors.length === 0 && (
+              <div className="text-data text-ink-low">Chưa có hành lang nào vượt ngưỡng rủi ro.</div>
             )}
             {world.data && !world.data.geography_available && (
               <div className="rounded-control border border-warn/25 bg-warn/10 p-3">
