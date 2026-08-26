@@ -177,28 +177,6 @@ export function DashboardPage() {
     };
   }, [d]);
 
-  const corridorSpec = useMemo<ChartSpec | null>(() => {
-    const flows = world.data?.flows;
-    if (!flows?.length) return null;
-    // Vẽ SỐ CẢNH BÁO, không vẽ volume_usd.
-    //
-    // volume_usd luôn bằng 0 vì dự án cố ý không quy đổi giữa các loại tiền —
-    // biểu đồ vì thế hiện sáu cột 0 bên cạnh sáu tên hành lang. Xếp hạng cũng
-    // đổi sang số cảnh báo: xếp theo risk_score đẩy lên đầu những hành lang chỉ
-    // có ba bốn giao dịch, tỉ lệ 100% nhưng không nói lên điều gì.
-    const top = [...flows].sort((a, b) => b.alert_count - a.alert_count).slice(0, 6);
-    if (!top.some((flow) => flow.alert_count > 0)) return null;
-    return {
-      type: "hbars",
-      items: top.map((flow) => ({
-        label: `${flow.source_name} → ${flow.target_name}`,
-        value: flow.alert_count,
-        color: toneColor(flow.risk_score >= 80 ? "risk" : flow.risk_score >= 60 ? "warn" : "ok"),
-        sub: `${flow.channel} · ${int(flow.txn_count)} giao dịch · rủi ro ${flow.risk_score}`,
-      })),
-    };
-  }, [world.data]);
-
   // Hành lang NGUY HIỂM NHẤT: gộp các cạnh flow theo cặp quốc gia (một hành lang
   // xuất hiện nhiều cạnh), lấy điểm rủi ro cao nhất + cộng cảnh báo + nhóm hành
   // vi. Thay cho bảng "đếm lượt" cũ vốn chỉ là volume, không cho biết cái gì đáng
@@ -316,18 +294,10 @@ export function DashboardPage() {
               state={dashboard.loading ? "loading" : riskBandSpec ? "ok" : "empty"}
               note="Đếm thật từ vụ việc đang mở của đúng bộ dữ liệu này. Điểm rủi ro do bộ phát hiện chấm, cần người rà soát — không phải xác suất rửa tiền."
             />
-            <ChartCard
-              title="Hành lang địa lý"
-              subtitle="Chỉ hiển thị khi nguồn có quốc gia/toạ độ đã kiểm chứng"
-              spec={corridorSpec}
-              tools={["data", "dl", "full"]}
-              state={world.loading ? "loading" : corridorSpec ? "ok" : "empty"}
-            />
-          </div>
-
-          {/* Biểu đồ THỨ HAI đổi theo vai trò: quản lý xem phễu xử lý + nút thắt
-              phân công; chuyên viên xem tuổi hồ sơ để biết vụ nào cần xử trước. */}
-          <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
+            {/* Biểu đồ thứ hai đổi theo vai trò: quản lý xem phễu xử lý + nút
+                thắt phân công; chuyên viên xem tuổi hồ sơ để biết vụ nào cần xử
+                trước. (Hành lang địa lý đã gộp vào panel "Hành lang rủi ro cao
+                nhất" bên phải — không để đồ thị hành lang ở hai chỗ.) */}
             {showFunnel ? (
               <ChartCard
                 title="Phễu xử lý"
