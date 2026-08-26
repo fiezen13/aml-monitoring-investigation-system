@@ -177,6 +177,23 @@ export function DashboardPage() {
     };
   }, [d]);
 
+  // Xu hướng cảnh báo theo TUẦN trên cả cửa sổ dữ liệu — trend thật để bắt spike.
+  const trendSpec = useMemo<ChartSpec | null>(() => {
+    if (!d?.alert_trend?.length) return null;
+    const labels = d.alert_trend.map((p) => {
+      const [, m, day] = p.week.split("-");
+      return `${day}/${m}`;
+    });
+    return {
+      type: "bars",
+      labels,
+      series: [
+        { name: "Tổng cảnh báo", data: d.alert_trend.map((p) => p.total), color: toneColor("info") },
+        { name: "Rủi ro cao (≥80)", data: d.alert_trend.map((p) => p.high), color: toneColor("risk") },
+      ],
+    };
+  }, [d]);
+
   // Hành lang NGUY HIỂM NHẤT: gộp các cạnh flow theo cặp quốc gia (một hành lang
   // xuất hiện nhiều cạnh), lấy điểm rủi ro cao nhất + cộng cảnh báo + nhóm hành
   // vi. Thay cho bảng "đếm lượt" cũ vốn chỉ là volume, không cho biết cái gì đáng
@@ -324,6 +341,14 @@ export function DashboardPage() {
               />
             )}
           </div>
+
+          <ChartCard
+            title="Xu hướng cảnh báo theo tuần"
+            subtitle="Số cảnh báo mỗi tuần trên cả cửa sổ dữ liệu — bắt spike, không phải 5 cảnh báo lẻ"
+            spec={trendSpec}
+            state={dashboard.loading ? "loading" : trendSpec ? "ok" : "empty"}
+            tools={["data", "dl", "full"]}
+          />
 
           <Panel
             title="Hàng đợi ưu tiên — cần xử lý trước"

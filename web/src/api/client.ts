@@ -203,6 +203,7 @@ export interface ApiDashboard {
   case_age_buckets: { bucket: string; count: number }[];
   cases_unassigned: number;
   cases_total: number;
+  alert_trend: { week: string; total: number; high: number }[];
 }
 
 export interface ApiInvestigate {

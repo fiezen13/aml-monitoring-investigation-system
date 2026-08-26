@@ -155,6 +155,14 @@ class CaseAgeOut(BaseModel):
     count: int
 
 
+class AlertTrendPointOut(BaseModel):
+    """Số cảnh báo theo tuần (xu hướng thời gian)."""
+
+    week: str
+    total: int
+    high: int
+
+
 class DashboardOut(BaseModel):
     """Số liệu Trung tâm Điều hành — đếm thật từ PostgreSQL, không cứng hoá."""
 
@@ -179,6 +187,7 @@ class DashboardOut(BaseModel):
     case_age_buckets: list[CaseAgeOut] = Field(default_factory=list)
     cases_unassigned: int = 0
     cases_total: int = 0
+    alert_trend: list[AlertTrendPointOut] = Field(default_factory=list)
 
 
 class InvestigateOut(BaseModel):

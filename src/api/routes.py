@@ -41,6 +41,7 @@ from src.models.schemas import (
     AlertOut,
     AlertPageOut,
     AlertReasonOut,
+    AlertTrendPointOut,
     ApprovalDecisionRequest,
     AuditEventOut,
     CaseAgeOut,
@@ -937,6 +938,23 @@ def dashboard(
             .mappings()
             .one()
         )
+        # Xu hướng cảnh báo theo TUẦN trên cả cửa sổ dữ liệu — trend thật để bắt
+        # spike, không phải 5 cảnh báo lẻ. Lọc theo đúng bộ đang xem.
+        alert_trend = (
+            session.execute(
+                text(
+                    """SELECT to_char(date_trunc('week', created_at), 'YYYY-MM-DD') AS week,
+                              count(*) AS total,
+                              count(*) FILTER (WHERE risk_score >= 80) AS high
+                         FROM alert
+                        WHERE (CAST(:dataset AS text) IS NULL OR dataset = CAST(:dataset AS text))
+                        GROUP BY 1 ORDER BY 1"""
+                ),
+                {"dataset": dataset},
+            )
+            .mappings()
+            .all()
+        )
 
     _band_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     _age_order = {"lt1d": 0, "d1_7": 1, "d7_30": 2, "gt30d": 3}
@@ -976,6 +994,9 @@ def dashboard(
         ],
         cases_unassigned=case_totals["unassigned"],
         cases_total=case_totals["total"],
+        alert_trend=[
+            AlertTrendPointOut(week=r["week"], total=r["total"], high=r["high"]) for r in alert_trend
+        ],
     )
 
 
