@@ -1,12 +1,11 @@
-import { ArrowLeft, CheckCircle2, Circle, FileText, Loader2, PlayCircle, RefreshCw, ShieldAlert } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, FileText, RefreshCw } from "lucide-react";
+import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { ApiError, api, num } from "../api/client";
+import { api, num } from "../api/client";
 import {
   caseDisplayTitle,
   caseStateLabel,
-  caseStepLabel,
   countryLabel,
   formatAmount,
   formatDate,
@@ -25,6 +24,7 @@ import { AuditFeed } from "../components/common/AuditFeed";
 import { Panel } from "../components/common/Panel";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
 import { ReasonModal } from "../components/common/ReasonModal";
+import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
 import { PERMISSIONS } from "../rbac/permissions";
 import { useApp } from "../context/AppContext";
 
@@ -41,25 +41,6 @@ const RISK_RATING_TONE: Record<string, "risk" | "warn" | "ok"> = {
   low: "ok",
 };
 
-/** Sau khi giao tác vụ, hỏi lại máy chủ tới khi trạng thái đổi. Worker chạy
- *  nền nên thời điểm xong không đoán trước được từ phía trình duyệt. */
-const POLL_INTERVAL_MS = 1200;
-const POLL_ATTEMPTS = 15;
-
-/** Trần số bước tự chạy — chuỗi tự động dài 8 bước (Tiếp nhận → Chờ phê duyệt);
- *  đặt dư để chặn vòng lặp vô hạn nếu worker kẹt. */
-const MAX_AUTO_STEPS = 12;
-
-/** Trạng thái mà chuỗi tự động phải DỪNG: cổng phê duyệt của con người và mọi
- *  trạng thái kết thúc. Không có cung máy nào bước qua đây — vào Xuất hồ sơ đòi
- *  quyết định có người ký tên (NT3). Khớp src/domain.py (next_state → None). */
-const AUTO_STOP_STATES = new Set([
-  "ChoNguoiPheDuyet",
-  "XuatHoSo",
-  "DongKhongBaoCao",
-  "DieuTraBoSung",
-]);
-
 export function CaseDetailPage() {
   const { caseId } = useParams();
   const navigate = useNavigate();
@@ -67,116 +48,15 @@ export function CaseDetailPage() {
 
   const detail = useApi(() => api.case(caseId ?? ""), [caseId]);
   const audit = useApi(() => api.audit({ case_id: caseId, limit: 50 }), [caseId]);
-  const [running, setRunning] = useState(false);
   // Nút soạn SAR ngay trên Chi tiết vụ việc — trước đây chỉ có ở trang Đồ thị
   // mạng lưới nên analyst khó tìm, hàng đợi phê duyệt của quản lý luôn rỗng.
   const [sarModal, setSarModal] = useState(false);
   const canPrepareSar = currentUser?.permissions?.includes(PERMISSIONS.PREPARE_SAR) ?? false;
 
-  // Dọn timer khi rời trang giữa lúc còn đang hỏi vòng.
-  const timers = useRef<number[]>([]);
-  useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
-
   const reloadAll = useCallback(() => {
     detail.reload();
     audit.reload();
   }, [detail, audit]);
-
-  /** Ngủ `ms` mili-giây, có đăng ký timer để dọn khi rời trang giữa chừng. */
-  const sleep = useCallback(
-    (ms: number) =>
-      new Promise<void>((resolve) => {
-        const timer = window.setTimeout(resolve, ms);
-        timers.current.push(timer);
-      }),
-    [],
-  );
-
-  // Chạy TOÀN BỘ chuỗi điều tra bằng một lần bấm: lặp lại "đẩy một bước → chờ
-  // worker chuyển trạng thái" cho tới CỔNG phê duyệt của con người. Mỗi bước vẫn
-  // là một tác vụ Redis riêng và một dòng nhật ký kiểm toán riêng — chỉ tự động
-  // hoá thao tác bấm, không gộp bước, không bước qua NT3 (chuỗi tự dừng ở
-  // ChoNguoiPheDuyet vì backend trả 409 khi next_state là None).
-  const runInvestigation = useCallback(async () => {
-    if (!caseId || running) return;
-    setRunning(true);
-
-    let stepsRun = 0;
-    let lastState = detail.data?.state ?? "";
-    let hadError = false;
-
-    try {
-      for (let guard = 0; guard < MAX_AUTO_STEPS; guard++) {
-        // Đọc trạng thái mới nhất từ server, không tin bản cache trong lúc lặp.
-        let current: string;
-        try {
-          current = (await api.case(caseId)).state;
-        } catch {
-          break;
-        }
-        lastState = current;
-        // Tới cổng phê duyệt / trạng thái kết thúc thì dừng — không tự bước qua NT3.
-        if (AUTO_STOP_STATES.has(current)) break;
-
-        try {
-          await api.investigate(caseId);
-        } catch (cause) {
-          // 409 = worker đã ở cổng phê duyệt: dừng êm, không coi là lỗi.
-          if (cause instanceof ApiError && cause.status === 409) break;
-          hadError = true;
-          pushToast({
-            tone: "error",
-            title: "Không giao được tác vụ",
-            detail: cause instanceof ApiError ? cause.message : "Lỗi không xác định",
-          });
-          break;
-        }
-
-        // Chờ worker nhích sang trạng thái mới; reload timeline để thấy tiến độ
-        // ngay khi từng bước xong, thay vì đợi tới cuối.
-        let advanced = false;
-        for (let attempt = 1; attempt <= POLL_ATTEMPTS; attempt++) {
-          await sleep(POLL_INTERVAL_MS);
-          try {
-            const fresh = await api.case(caseId);
-            if (fresh.state !== current) {
-              advanced = true;
-              stepsRun += 1;
-              lastState = fresh.state;
-              detail.reload();
-              audit.reload();
-              break;
-            }
-          } catch {
-            /* thử lại ở lượt sau */
-          }
-        }
-        if (!advanced) break; // worker chưa xong sau nhiều lượt → dừng để không kẹt vòng
-      }
-    } finally {
-      setRunning(false);
-      reloadAll();
-    }
-
-    if (!hadError) {
-      pushToast(
-        stepsRun === 0
-          ? {
-              tone: "info",
-              title: "Không có bước nào để chạy",
-              detail: "Vụ việc đã ở cổng phê duyệt hoặc đã kết thúc.",
-            }
-          : {
-              tone: "success",
-              title: `Đã chạy xong ${stepsRun} bước điều tra`,
-              detail:
-                lastState === "ChoNguoiPheDuyet"
-                  ? "Dừng ở Chờ người phê duyệt — cần người ký duyệt (NT3)."
-                  : `Dừng ở ${caseStateLabel(lastState)}.`,
-            },
-      );
-    }
-  }, [caseId, running, detail, audit, pushToast, reloadAll, sleep]);
 
   if (detail.loading) {
     return (
@@ -200,7 +80,9 @@ export function CaseDetailPage() {
 
   const k = detail.data;
   const c = k.customer;
-  const awaitingApproval = k.timeline.every((s) => s.status !== "pending");
+  // Trang Vụ việc là NƠI DUY NHẤT xem chi tiết (hàng đợi cảnh báo chỉ để sàng).
+  // Điều tra AI chạy trên cảnh báo chính của vụ — 1 vụ ~ 1 cảnh báo trong hệ hiện tại.
+  const primaryAlertId = k.alert_ids[0] ?? null;
 
   // Nhóm hành vi chính của vụ = typology xuất hiện nhiều nhất trong các yếu tố.
   // Giúp tóm tắt trả lời "vụ này về hành vi gì" thay vì chỉ số cảnh báo/bằng chứng.
@@ -259,91 +141,20 @@ export function CaseDetailPage() {
 
       <div className="grid gap-3 lg:grid-cols-[1fr_320px]">
         <div className="space-y-3">
-          {/* Máy trạng thái + nút chạy một bước điều tra */}
-          <Panel
-            title="Tiến trình điều tra"
-            action={
-              awaitingApproval ? (
-                <StatusBadge tone="warn" label="Chờ người phê duyệt" />
-              ) : (
-                <button
-                  type="button"
-                  onClick={runInvestigation}
-                  disabled={running}
-                  className="inline-flex items-center gap-1.5 rounded-control bg-primary px-3 py-1.5 text-2xs font-semibold text-app hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {running ? (
-                    <>
-                      <Loader2 size={12} className="animate-spin" aria-hidden />
-                      Đang chạy…
-                    </>
-                  ) : (
-                    <>
-                      <PlayCircle size={12} aria-hidden />
-                      Chạy các bước tự động
-                    </>
-                  )}
-                </button>
-              )
-            }
-          >
-            <ol className="relative ml-2 space-y-3 border-l border-line pl-5">
-              {k.timeline.map((step) => (
-                <li key={step.state} className="relative">
-                  <span
-                    aria-hidden
-                    className={`absolute -left-[27px] top-0.5 ${
-                      step.status === "done"
-                        ? "text-ok"
-                        : step.status === "active"
-                          ? "text-primary"
-                          : "text-ink-low"
-                    }`}
-                  >
-                    {step.status === "done" ? (
-                      <CheckCircle2 size={14} />
-                    ) : step.status === "active" ? (
-                      <Loader2 size={14} className={running ? "animate-spin" : ""} />
-                    ) : (
-                      <Circle size={14} />
-                    )}
-                  </span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`text-body ${
-                        step.status === "pending" ? "text-ink-low" : "font-semibold text-ink-hi"
-                      }`}
-                    >
-                      {/* Nhãn nghiệp vụ (caseStepLabel) thay cho nhãn kỹ thuật
-                          của backend: "Tính toán bằng công cụ" → "Phân tích định
-                          lượng chỉ số", v.v. */}
-                      {caseStepLabel(step.state)}
-                    </span>
-                    {step.status === "active" && <StatusBadge tone="primary" label="Hiện tại" />}
-                  </div>
-                  {step.occurred_at && (
-                    <div className="tabular mt-0.5 text-2xs text-ink-low">
-                      {formatDateTime(step.occurred_at)}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ol>
-
-            {/* Icon và đoạn văn là hai flex item; phần chữ phải nằm trong một
-                thẻ bọc, nếu không mỗi <em> bên trong lại thành một flex item
-                riêng và câu vỡ thành từng cột. */}
-            <div className="mt-4 flex items-start gap-1.5 border-t border-line pt-3 text-2xs text-ink-low">
-              <ShieldAlert size={12} className="mt-0.5 shrink-0" aria-hidden />
-              <p>
-                Nút này chạy các bước điều tra <b className="text-ink-mid">được đề xuất</b> cho vụ này theo thứ tự — mỗi
-                bước là một tác vụ riêng và một dòng nhật ký kiểm toán riêng; không phải vụ nào cũng đi hết chuỗi. Chuỗi
-                tự dừng ở <em>Chờ người phê duyệt</em>: bước <em>Lập báo cáo SAR/STR</em> phải là quyết định có người ký
-                tên (NT3), tách khỏi bước soạn tóm tắt điều tra. Bước đối chiếu trừng phạt/PEP hiện chạy trên dữ liệu
-                tổng hợp minh hoạ, chưa nối nguồn danh sách thật.
-              </p>
-            </div>
-          </Panel>
+          {/* Điều tra bằng AI thật (đa tác tử) — thay cho dải "chạy các bước"
+              cũ vốn chỉ nhích trạng thái mà không phân tích gì. Đây là nơi
+              chuyên viên đọc bản tóm tắt, dữ kiện/suy luận, bằng chứng và ra
+              quyết định. Chạy trên cảnh báo chính của vụ. */}
+          {primaryAlertId ? (
+            <InvestigationPanel alertId={primaryAlertId} />
+          ) : (
+            <Panel title="Điều tra bằng AI">
+              <EmptyState
+                title="Vụ việc chưa gắn cảnh báo"
+                detail="Chưa có cảnh báo nào trong vụ để chạy điều tra bằng AI."
+              />
+            </Panel>
+          )}
 
           <Panel title="Yếu tố đóng góp vào điểm rủi ro">
             {k.reasons.length === 0 ? (
@@ -398,16 +209,15 @@ export function CaseDetailPage() {
 
           {k.alert_ids.length > 0 && (
             <Panel title="Cảnh báo trong vụ việc">
+              {/* Chỉ để hiển thị — chi tiết đã ở ngay trang này, không dẫn đi
+                  đâu nữa (tránh vòng lặp trở lại chính vụ việc). */}
               <ul className="space-y-1.5">
                 {k.alert_ids.map((id) => (
-                  <li key={id}>
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/alerts/${id}`)}
-                      className="tabular w-full rounded-control border border-line bg-elev px-2.5 py-1.5 text-left text-2xs text-info hover:border-line-emphasis"
-                    >
-                      {id}
-                    </button>
+                  <li
+                    key={id}
+                    className="tabular w-full rounded-control border border-line bg-elev px-2.5 py-1.5 text-2xs text-ink-mid"
+                  >
+                    {id}
                   </li>
                 ))}
               </ul>

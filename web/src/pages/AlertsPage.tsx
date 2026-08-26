@@ -266,7 +266,12 @@ export function AlertsPage() {
           columns={columns}
           rows={rows}
           rowKey={(alert) => alert.alert_id}
-          onRowClick={(alert) => navigate(`/alerts/${alert.alert_id}`)}
+          // Hàng đợi chỉ để sàng: bấm một dòng mở thẳng VỤ VIỆC của nó (nơi
+          // duy nhất xem chi tiết + điều tra AI). Cảnh báo mồ côi chưa gom vào
+          // vụ thì mới rơi về trang cảnh báo tối giản.
+          onRowClick={(alert) =>
+            navigate(alert.case_id ? `/cases/${alert.case_id}` : `/alerts/${alert.alert_id}`)
+          }
           loading={alerts.loading}
           error={alerts.error}
           onRetry={alerts.reload}

@@ -7,7 +7,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { api, num } from "../api/client";
 import {
@@ -89,6 +89,14 @@ export function AlertDetailPage() {
   }
 
   const a = alert.data;
+
+  // Hợp nhất giao diện: cảnh báo ĐÃ gom vào vụ việc thì chi tiết sống ở trang
+  // Vụ việc (nơi duy nhất). Không dựng lại một trang song sinh — chuyển thẳng
+  // sang vụ. Chỉ cảnh báo mồ côi (chưa có vụ) mới hiển thị trang tối giản dưới đây.
+  if (a.case_id) {
+    return <Navigate to={`/cases/${a.case_id}`} replace />;
+  }
+
   const c = a.customer;
   const score = Math.round(num(a.risk_score));
   const totalContribution = a.reasons.reduce((sum, r) => sum + num(r.contribution), 0);
