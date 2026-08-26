@@ -952,6 +952,26 @@ export interface ApiTraceEvent {
   occurred_at: string;
 }
 
+// Rủi ro dự án token (màn "Rủi ro dự án"). Khớp ProjectOut ở backend
+// (GET /fc/projects). Chỉ đặc trưng quan sát công khai — không kết luận.
+export interface ApiProject {
+  id: string;
+  name: string;
+  symbol: string;
+  chain: string;
+  contract_address: string;
+  deployer_address: string;
+  launched_at: string;
+  holder_gini: number | null;
+  liquidity_usd: number;
+  liquidity_removed_pct: number | null;
+  privileged_functions: string[];
+  kol_channels: number;
+  domain_age_days: number | null;
+  risk_score: number;
+  status: string;
+}
+
 // ---------------------------------------------------------------------
 // Điểm gọi
 // ---------------------------------------------------------------------
@@ -1126,6 +1146,7 @@ export const api = {
     request<ApiAuditEvent[]>(`/audit${query(params)}`),
 
   auditByCase: (limit = 40) => request<ApiAuditCase[]>(`/audit/by-case${query({ limit })}`),
+  projects: () => request<ApiProject[]>("/fc/projects"),
 
   // -------------------------------------------------------------------
   // API phân tích mở rộng. Khi không có simulation, World/Graph/Crypto đọc
