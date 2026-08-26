@@ -1034,6 +1034,12 @@ export const api = {
 
   sar: (sarId: string) => request<ApiSar>(`/sars/${encodeURIComponent(sarId)}`),
 
+  updateSarNarrative: (sarId: string, summary: string, findings: { id: string; text: string }[]) =>
+    request<ApiSar>(`/sars/${encodeURIComponent(sarId)}/narrative`, {
+      method: "PUT",
+      body: JSON.stringify({ summary, findings }),
+    }),
+
   validateSar: (sarId: string) =>
     request<ApiSar>(`/sars/${encodeURIComponent(sarId)}/validate`, { method: "POST" }),
 

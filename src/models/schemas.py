@@ -245,6 +245,18 @@ class SarActionRequest(BaseModel):
     reason: str = Field(default="", max_length=2000)
 
 
+class SarNarrativeFinding(BaseModel):
+    id: str = Field(..., min_length=1, max_length=128)
+    text: str = Field(..., min_length=1, max_length=4000)
+
+
+class SarNarrativeRequest(BaseModel):
+    """Chuyên viên sửa bản nháp SAR: tóm tắt + nội dung các nhận định."""
+
+    summary: str = Field(..., min_length=1, max_length=8000)
+    findings: list[SarNarrativeFinding] = Field(default_factory=list, max_length=60)
+
+
 class ApprovalDecisionRequest(BaseModel):
     decision: str = Field(pattern="^(approved|rejected|more_info)$")
     reason: str = Field(..., min_length=10, max_length=2000)

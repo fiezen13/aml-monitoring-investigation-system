@@ -60,6 +60,7 @@ from src.models.schemas import (
     QueueStatsOut,
     SarActionRequest,
     SarChatRequest,
+    SarNarrativeRequest,
     SettingUpdateRequest,
     TransactionOut,
     TypologyShareOut,
@@ -1592,6 +1593,59 @@ def create_sar(case_id: str, authorization: str | None = Header(default=None)) -
                 "actor": user["user_id"],
                 "role": _audit_role(user["role"]),
                 "payload": json.dumps({"sar_draft_id": sar_id, "action": "created"}),
+            },
+        )
+    return _sar_payload(sar_id)
+
+
+@router.put("/sars/{sar_id}/narrative")
+def update_sar_narrative(
+    sar_id: str, request: SarNarrativeRequest, authorization: str | None = Header(default=None)
+) -> dict[str, Any]:
+    """Chuyên viên SỬA bản nháp SAR (tóm tắt + nội dung nhận định).
+
+    Chỉ sửa được khi CHƯA gửi phê duyệt; sau khi sửa, hồ sơ quay về trạng thái
+    ``drafting`` để buộc kiểm chứng lại trước khi gửi. Chỉ đổi PHẦN CHỮ; liên kết
+    bằng chứng của mỗi nhận định giữ nguyên.
+    """
+    user = _require_user(authorization)
+    if user["role"] not in {"analyst", "manager"}:
+        raise HTTPException(status_code=403, detail="Vai trò hiện tại không được sửa SAR")
+    with get_session() as session:
+        draft = (
+            session.execute(text("SELECT case_id, status FROM sar_draft WHERE sar_draft_id = :id"), {"id": sar_id})
+            .mappings()
+            .first()
+        )
+        if draft is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy SAR {sar_id}")
+        if draft["status"] in {"submitted_for_approval", "approved"}:
+            raise HTTPException(status_code=409, detail="Hồ sơ đã gửi phê duyệt, không sửa được nữa")
+        # Tóm tắt (câu "-SUM").
+        session.execute(
+            text("UPDATE sar_statement SET body = :b WHERE sar_draft_id = :s AND statement_id = :sid"),
+            {"b": request.summary.strip(), "s": sar_id, "sid": f"ST-{draft['case_id']}-SUM"},
+        )
+        # Nội dung từng nhận định theo id (không đụng liên kết bằng chứng).
+        for f in request.findings:
+            session.execute(
+                text("UPDATE sar_statement SET body = :b WHERE sar_draft_id = :s AND statement_id = :id"),
+                {"b": f.text.strip(), "s": sar_id, "id": f.id},
+            )
+        # Sửa xong → về drafting để kiểm chứng lại trước khi gửi.
+        session.execute(
+            text("UPDATE sar_draft SET status = 'drafting' WHERE sar_draft_id = :id"), {"id": sar_id}
+        )
+        session.execute(
+            text(
+                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                   VALUES (:case_id, 'sar_updated', :actor, :role, CAST(:payload AS jsonb))"""
+            ),
+            {
+                "case_id": draft["case_id"],
+                "actor": user["user_id"],
+                "role": _audit_role(user["role"]),
+                "payload": json.dumps({"sar_draft_id": sar_id, "action": "edited"}),
             },
         )
     return _sar_payload(sar_id)

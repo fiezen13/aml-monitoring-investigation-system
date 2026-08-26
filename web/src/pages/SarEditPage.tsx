@@ -1,4 +1,4 @@
-import { FileDown, FileUp, Play, Send } from "lucide-react";
+import { FileDown, FileUp, Pencil, Play, Save, Send } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -32,6 +32,11 @@ export function SarEditPage() {
   const [tab, setTab] = useState("summary");
   const [drawerEvidence, setDrawerEvidence] = useState<string | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
+  // Chế độ SỬA bản nháp: chuyên viên chỉnh tóm tắt + nội dung từng nhận định.
+  const [editing, setEditing] = useState(false);
+  const [draftSummary, setDraftSummary] = useState("");
+  const [draftFindings, setDraftFindings] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
   if (!sarQuery.data) {
     return (
@@ -55,6 +60,39 @@ export function SarEditPage() {
   const canSubmit = sarStatus === "VALIDATION_PASSED";
   const submitted =
     sarStatus === "PENDING_REVIEW" || sarStatus === "APPROVED" || sarStatus === "REJECTED";
+  const canEdit = !submitted;
+
+  const startEdit = () => {
+    setDraftSummary(SAR_DRAFT.behaviourSummary);
+    setDraftFindings(Object.fromEntries(SAR_DRAFT.statements.map((s) => [s.id, s.text])));
+    setTab("summary");
+    setEditing(true);
+  };
+  const saveNarrative = async () => {
+    setSaving(true);
+    try {
+      await api.updateSarNarrative(
+        SAR_DRAFT.sar_id,
+        draftSummary,
+        SAR_DRAFT.statements.map((s) => ({ id: s.id, text: draftFindings[s.id] ?? s.text })),
+      );
+      await sarQuery.reload();
+      setEditing(false);
+      pushToast({
+        tone: "success",
+        title: "Đã lưu bản nháp",
+        detail: "Nhớ chạy kiểm chứng lại trước khi gửi phê duyệt.",
+      });
+    } catch (cause) {
+      pushToast({
+        tone: "error",
+        title: "Không lưu được",
+        detail: cause instanceof Error ? cause.message : "Lỗi không xác định",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <PageShell>
@@ -78,8 +116,42 @@ export function SarEditPage() {
         {sarStatus === "REJECTED" && <StatusBadge tone="risk" label="BỊ TỪ CHỐI" />}
 
         <div className="ml-auto flex items-center gap-2">
+          {editing ? (
+            <>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={saveNarrative}
+                className="inline-flex items-center gap-1.5 rounded-control bg-primary px-3 py-1.5 text-body font-semibold text-app hover:bg-primary-hover disabled:opacity-50"
+              >
+                <Save size={13} aria-hidden />
+                {saving ? "Đang lưu…" : "Lưu bản nháp"}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setEditing(false)}
+                className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-body font-medium text-ink-mid hover:text-ink-hi disabled:opacity-50"
+              >
+                Huỷ
+              </button>
+            </>
+          ) : (
+            canEdit && (
+              <button
+                type="button"
+                onClick={startEdit}
+                title="Sửa tóm tắt và nội dung các nhận định của bản nháp"
+                className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-body font-medium text-ink-hi hover:border-line-emphasis"
+              >
+                <Pencil size={13} aria-hidden />
+                Sửa nội dung
+              </button>
+            )
+          )}
           <button
             type="button"
+            disabled={editing}
             onClick={async () => {
               try {
                 await api.exportSar(SAR_DRAFT.sar_id);
@@ -144,26 +216,51 @@ export function SarEditPage() {
 
             {tab === "summary" && (
               <div className="space-y-4 p-4">
-                <div>
-                  <div className="mb-2 text-body-lg font-semibold text-ink-hi">
-                    Tóm tắt hành vi nghi vấn
+                {editing && (
+                  <div className="rounded-control border border-primary/30 bg-primary/[0.06] px-3 py-2 text-2xs text-ink-mid">
+                    Đang sửa bản nháp. Chỉnh phần chữ tuỳ ý; liên kết bằng chứng của mỗi nhận định giữ nguyên. Bấm
+                    <b className="text-ink-hi"> Lưu bản nháp</b> rồi <b className="text-ink-hi">Chạy kiểm chứng</b> trước khi gửi.
                   </div>
-                  <p className="text-body leading-relaxed text-ink-mid">
-                    {SAR_DRAFT.behaviourSummary}
-                  </p>
+                )}
+                <div>
+                  <div className="mb-2 text-body-lg font-semibold text-ink-hi">Tóm tắt hành vi nghi vấn</div>
+                  {editing ? (
+                    <textarea
+                      value={draftSummary}
+                      onChange={(e) => setDraftSummary(e.target.value)}
+                      rows={5}
+                      className="w-full rounded-control border border-line bg-elev p-2.5 text-body leading-relaxed text-ink-hi focus:border-primary-line focus:outline-none"
+                    />
+                  ) : (
+                    <p className="text-body leading-relaxed text-ink-mid">{SAR_DRAFT.behaviourSummary}</p>
+                  )}
                 </div>
                 <div>
                   <div className="mb-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">
                     Nhận định kèm bằng chứng (câu thiếu bằng chứng bị chặn khi gửi)
                   </div>
                   <div className="space-y-2">
-                    {SAR_DRAFT.statements.map((st) => (
-                      <SARStatement
-                        key={st.id}
-                        statement={st}
-                        onOpenEvidence={setDrawerEvidence}
-                      />
-                    ))}
+                    {SAR_DRAFT.statements.map((st) =>
+                      editing ? (
+                        <div key={st.id} className="rounded-control border border-line bg-elev p-2.5">
+                          <textarea
+                            value={draftFindings[st.id] ?? st.text}
+                            onChange={(e) => setDraftFindings((m) => ({ ...m, [st.id]: e.target.value }))}
+                            rows={2}
+                            className="w-full resize-y rounded-control border border-line bg-panel p-2 text-body text-ink-hi focus:border-primary-line focus:outline-none"
+                          />
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {st.evidenceIds.map((id) => (
+                              <span key={id} className="rounded-control border border-line px-1.5 py-0.5 text-3xs text-ink-low">
+                                bằng chứng đã gắn
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <SARStatement key={st.id} statement={st} onOpenEvidence={setDrawerEvidence} />
+                      ),
+                    )}
                   </div>
                 </div>
               </div>
