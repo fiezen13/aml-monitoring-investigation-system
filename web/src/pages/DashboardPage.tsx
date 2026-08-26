@@ -7,7 +7,6 @@ import { alertStatusLabel, datasetLabel, detectorLabel, formatRelative, sourceBr
 import { TYPOLOGY_LABELS } from "../api/typologyLabels";
 import { useApi } from "../api/useApi";
 import { useConsole } from "../context/ConsoleContext";
-import { useApp } from "../context/AppContext";
 import { type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
 import {
@@ -37,28 +36,18 @@ import type { ApiAlert } from "../api/client";
  * hàng đợi ưu tiên, thứ analyst thực sự phải làm gì đó với nó.
  */
 
-// Nhãn + tông màu cho phân bố rủi ro vụ việc và tuổi hồ sơ (dùng chung ở các
-// biểu đồ). Để ngoài component để không vào deps của useMemo.
+// Nhãn + tông màu cho phân bố rủi ro vụ việc. Để ngoài component để không vào
+// deps của useMemo.
 const BAND_META: Record<string, { label: string; tone: Tone }> = {
   critical: { label: "Nghiêm trọng", tone: "risk" },
   high: { label: "Cao", tone: "warn" },
   medium: { label: "Vừa", tone: "info" },
   low: { label: "Thấp", tone: "ok" },
 };
-const AGE_META: Record<string, { label: string; tone: Tone }> = {
-  lt1d: { label: "< 1 ngày", tone: "ok" },
-  d1_7: { label: "1–7 ngày", tone: "info" },
-  d7_30: { label: "7–30 ngày", tone: "warn" },
-  gt30d: { label: "> 30 ngày", tone: "risk" },
-};
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const { dataset } = useConsole();
-  const { currentUser } = useApp();
-  // Dashboard theo vai trò: chuyên viên cần biết vụ nào GIÀ để xử trước; quản lý
-  // cần thấy PHỄU xử lý và nút thắt (chưa phân công). Admin xem như quản lý.
-  const showFunnel = currentUser?.role !== "analyst";
   // `dataset` nằm trong deps: đổi bộ dữ liệu ở header thì Tổng quan hỏi lại
   // ngay, không còn cảnh thẻ số một bộ mà biểu đồ lại bộ khác.
   const dashboard = useApi(() => api.dashboard({ dataset }), [dataset], `dashboard:${dataset}`);
@@ -161,19 +150,6 @@ export function DashboardPage() {
           pctOfPrev: c ? `${((s / c) * 100).toFixed(1)}%` : undefined,
         },
       ],
-    };
-  }, [d]);
-
-  // Tuổi hồ sơ đang mở (chuyên viên): vụ nào đang GIÀ đi để ưu tiên xử trước.
-  const ageSpec = useMemo<ChartSpec | null>(() => {
-    if (!d?.case_age_buckets?.length) return null;
-    return {
-      type: "hbars",
-      items: d.case_age_buckets.map((b) => ({
-        label: AGE_META[b.bucket]?.label ?? b.bucket,
-        value: b.count,
-        color: toneColor(AGE_META[b.bucket]?.tone ?? "info"),
-      })),
     };
   }, [d]);
 
@@ -312,36 +288,21 @@ export function DashboardPage() {
             state={dashboard.loading ? "loading" : riskBandSpec ? "ok" : "empty"}
             note="Đếm thật từ vụ việc đang mở của đúng bộ dữ liệu này. Điểm rủi ro do bộ phát hiện chấm, cần người rà soát — không phải xác suất rửa tiền."
           />
-            {/* Biểu đồ thứ hai đổi theo vai trò: quản lý xem phễu xử lý + nút
-                thắt phân công; chuyên viên xem tuổi hồ sơ để biết vụ nào cần xử
-                trước. (Hành lang địa lý đã gộp vào panel "Hành lang rủi ro cao
-                nhất" bên phải — không để đồ thị hành lang ở hai chỗ.) */}
-            {showFunnel ? (
-              <ChartCard
-                title="Phễu xử lý"
-                subtitle="Cảnh báo → Vụ việc → Chờ duyệt SAR"
-                spec={funnelSpec}
-                state={dashboard.loading ? "loading" : funnelSpec ? "ok" : "empty"}
-                note={
-                  d && d.cases_unassigned > 0
-                    ? `${int(d.cases_unassigned)}/${int(d.cases_total)} vụ CHƯA phân công — nút thắt cần giao việc.`
-                    : "Toàn bộ vụ đã có người phụ trách."
-                }
-              />
-            ) : (
-              <ChartCard
-                title="Tuổi hồ sơ đang mở"
-                subtitle="Vụ nào đang già đi — ưu tiên xử trước"
-                spec={ageSpec}
-                height={Math.max(110, (d?.case_age_buckets?.length ?? 2) * 44)}
-                state={dashboard.loading ? "loading" : ageSpec ? "ok" : "empty"}
-                note={
-                  d && d.cases_unassigned > 0
-                    ? `${int(d.cases_unassigned)} vụ chưa có người nhận — có thể nhận thêm.`
-                    : undefined
-                }
-              />
-            )}
+            {/* Phễu xử lý: Cảnh báo → Vụ việc → Chờ duyệt SAR, kèm nút thắt
+                phân công. Hữu ích cho cả chuyên viên (còn việc để nhận) lẫn quản
+                lý (pipeline + tồn đọng). (Hành lang địa lý gộp vào panel bên
+                cạnh — không để đồ thị hành lang ở hai chỗ.) */}
+            <ChartCard
+              title="Phễu xử lý"
+              subtitle="Cảnh báo → Vụ việc → Chờ duyệt SAR"
+              spec={funnelSpec}
+              state={dashboard.loading ? "loading" : funnelSpec ? "ok" : "empty"}
+              note={
+                d && d.cases_unassigned > 0
+                  ? `${int(d.cases_unassigned)}/${int(d.cases_total)} vụ CHƯA phân công — có thể nhận thêm / cần giao việc.`
+                  : "Toàn bộ vụ đã có người phụ trách."
+              }
+            />
 
             <Panel title="Hành lang rủi ro cao nhất" subtitle="Xếp theo điểm rủi ro — cái đáng lo trước">
               {world.loading && <div className="h-24 animate-pulse rounded-control bg-elev/60" aria-hidden />}
