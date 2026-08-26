@@ -1,8 +1,10 @@
-import { ExternalLink, FileText, Plus, X, ZoomIn } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
+import { evidenceTypeLabel } from "../../api/format";
 import { useApp } from "../../context/AppContext";
 import type { Evidence } from "../../types";
 import { StatusBadge } from "../common/Badges";
+import { EvidenceBody } from "../investigation/EvidenceBody";
 
 interface EvidenceDrawerProps {
   evidenceId: string | null;
@@ -33,11 +35,12 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
       >
         <header className="flex items-start justify-between border-b border-line px-4 py-3">
           <div>
-            <h2 className="text-h3 font-bold text-ink-hi">Ngăn bằng chứng</h2>
-            <p className="text-2xs text-ink-mid">Bằng chứng kỹ thuật số</p>
+            <h2 className="text-h3 font-bold text-ink-hi">Chi tiết bằng chứng</h2>
+            <p className="text-2xs text-ink-mid">
+              {evidence.type ? evidenceTypeLabel(evidence.type) : evidence.title}
+            </p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="tabular text-2xs text-ink-low">ID: {evidence.id}</span>
             <button
               type="button"
               aria-label="Đóng ngăn bằng chứng"
@@ -52,60 +55,19 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           <StatusBadge tone="primary" label="ĐANG XEM" />
 
-          {/* Vùng xem trước tài liệu */}
-          <div className="relative overflow-hidden rounded-panel border border-line bg-elev">
-            <div className="flex h-44 flex-col items-center justify-center gap-2 text-ink-low">
-              <FileText size={34} aria-hidden />
-              <span className="text-2xs uppercase tracking-wide">
-                Xem trước {evidence.fileType}
-              </span>
-            </div>
-            <div className="absolute bottom-2 left-2 flex gap-1.5">
-              <button
-                type="button"
-                aria-label="Phóng to"
-                onClick={() => pushToast({ tone: "info", title: "Bằng chứng đã được xác minh" })}
-                className="rounded-full bg-primary p-2 text-app hover:bg-primary-hover"
-              >
-                <ZoomIn size={13} />
-              </button>
-              <button
-                type="button"
-                aria-label="Mở trong cửa sổ mới"
-                onClick={() => pushToast({ tone: "info", title: `Nguồn: ${evidence.source}` })}
-                className="rounded-full border border-line bg-panel p-2 text-ink-mid hover:text-ink-hi"
-              >
-                <ExternalLink size={13} />
-              </button>
-            </div>
+          {/* Nội dung bằng chứng — render DỄ ĐỌC theo loại (EvidenceBody), không
+              đổ JSON thô cho chuyên viên. */}
+          <div className="rounded-panel border border-line bg-elev p-3 text-2xs text-ink-mid">
+            {evidence.type ? (
+              <EvidenceBody type={evidence.type} payload={evidence.payload} />
+            ) : (
+              <p className="leading-relaxed text-ink-mid">{evidence.description}</p>
+            )}
           </div>
-
-          <div>
-            <h3 className="text-body-lg font-bold text-ink-hi">{evidence.title}</h3>
-            <p className="mt-1.5 text-body leading-relaxed text-ink-mid">
-              {evidence.description}
-            </p>
-            <p className="mt-2 text-2xs text-ink-low">
-              Nguồn: <span className="text-info">{evidence.source}</span> — đây là kết
-              quả công cụ, không phải số liệu do mô hình tự sinh.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-control border border-line bg-elev p-2.5">
-              <div className="text-2xs uppercase tracking-wide text-ink-low">Loại tệp</div>
-              <div className="mt-1 flex items-center gap-1.5 text-2xs font-semibold text-ink-hi">
-                <FileText size={12} className="text-risk" aria-hidden />
-                {evidence.fileType}
-              </div>
-            </div>
-            <div className="rounded-control border border-line bg-elev p-2.5">
-              <div className="text-2xs uppercase tracking-wide text-ink-low">Kích thước</div>
-              <div className="tabular mt-1 text-2xs font-semibold text-ink-hi">
-                {evidence.fileSize}
-              </div>
-            </div>
-          </div>
+          <p className="text-2xs text-ink-low">
+            Nguồn: <span className="text-info">{evidence.source}</span> — kết quả công cụ truy hồi, không phải số
+            liệu do mô hình tự sinh.
+          </p>
 
           <div>
             <div className="mb-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">
@@ -121,11 +83,9 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
                 >
                   <div className="min-w-0">
                     <div className="truncate text-body font-medium text-ink-hi">
-                      {other.title}
+                      {other.type ? evidenceTypeLabel(other.type) : other.title}
                     </div>
-                    <div className="tabular text-2xs text-ink-low">
-                      {other.id} · {other.fileSize}
-                    </div>
+                    <div className="truncate text-2xs text-ink-low">Nguồn: {other.source}</div>
                   </div>
                   <span className="text-ink-low">›</span>
                 </button>

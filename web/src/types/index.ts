@@ -121,6 +121,9 @@ export interface Evidence {
   fileSize: string;
   createdAt: string;
   tags: string[];
+  /** Loại bằng chứng + payload để render dễ đọc theo loại (thay JSON thô). */
+  type?: string;
+  payload?: unknown;
 }
 
 export interface CaseTimelineStep {

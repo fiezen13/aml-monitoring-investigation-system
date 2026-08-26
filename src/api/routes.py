@@ -1339,6 +1339,10 @@ def _sar_payload(sar_id: str) -> dict[str, Any]:
                 "kind": "statement" if item["source_table"] == "transaction" else "calculation",
                 "title": f"{item['source_table']} · {item['source_ref']}",
                 "description": json.dumps(payload, ensure_ascii=False, default=str),
+                # type + inner payload để giao diện render DỄ ĐỌC theo loại (không
+                # đổ JSON thô cho chuyên viên).
+                "type": payload.get("type", ""),
+                "payload": payload.get("payload", payload),
                 "source": item["source_table"],
                 "fileType": "JSON RECORD",
                 "fileSize": f"{len(json.dumps(payload, default=str))} B",
