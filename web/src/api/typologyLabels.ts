@@ -39,10 +39,8 @@ export const TYPOLOGY_LABELS: Record<string, { name: string; description: string
     name: "Lệch hồ sơ khách hàng",
     description: "Hành vi giao dịch khác hẳn hồ sơ và mức hoạt động đã khai báo.",
   },
-  T08: {
-    name: "Dùng chung thiết bị hoặc danh tính",
-    description: "Nhiều tài khoản dùng chung thiết bị, địa chỉ hoặc giấy tờ định danh.",
-  },
+  // T08 đã gỡ: luật VASP (R03_VASP_EXPOSURE) — nguồn duy nhất sinh T08 — dựa
+  // trên cờ is_vasp do dự án tự gán nên đã bỏ; không detector nào còn phát T08.
   T09: {
     name: "Lệch giá trị trong thương mại",
     description: "Giá trị khai trong chứng từ thương mại lệch so với dòng tiền thực tế.",

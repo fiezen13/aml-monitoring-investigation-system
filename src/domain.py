@@ -16,7 +16,9 @@ TYPOLOGY_LABELS: dict[str, str] = {
     "T05": "Luân chuyển tốc độ cao",
     "T06": "Giao dịch với vùng tài phán rủi ro cao",
     "T07": "Sử dụng tài khoản người khác đứng tên",
-    "T08": "Dòng tiền gắn tài sản ảo",
+    # T08 (Dòng tiền gắn tài sản ảo) đã gỡ: luật R03_VASP_EXPOSURE — nguồn duy
+    # nhất sinh T08 — đọc cờ is_vasp do dự án tự bịa nên đã bỏ; không detector
+    # nào còn phát T08. Giữ khoảng trống thay vì tái dùng mã cho nghĩa khác.
     "T09": "Thương mại quốc tế khai khống giá trị",
     "T10": "Dòng tiền không tương xứng hồ sơ khách hàng",
 }
