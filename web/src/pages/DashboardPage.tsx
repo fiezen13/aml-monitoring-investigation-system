@@ -18,7 +18,6 @@ import {
   MetricCard,
   Panel,
   PageShell,
-  PulseDot,
   RiskIndicator,
 } from "../components/ui";
 import { ALERT_STATUS_TONE, DETECTOR_TONE, type Tone } from "../design/semantic";
@@ -419,41 +418,6 @@ export function DashboardPage() {
             )}
           </Panel>
 
-          <Panel
-            title={
-              <span className="flex items-center gap-2">
-                <PulseDot tone="primary" size={6} />
-                Trạng thái hệ thống
-              </span>
-            }
-          >
-            <dl className="flex flex-col gap-2 text-data">
-              {[
-                ["Chế độ dữ liệu", world.data?.data_mode === "operational" ? "vận hành" : "mô phỏng"],
-                ["Nguồn giao dịch", world.data?.source_name ?? "—"],
-                ["Giao dịch đã chấm điểm", world.data ? int(world.data.transaction_count) : "—"],
-                ["Dữ liệu địa lý", world.data?.geography_available ? "có" : "chưa có"],
-              ].map(([key, value]) => (
-                <div key={key} className="flex items-center gap-2">
-                  <dt className="flex-1 text-ink-low">{key}</dt>
-                  <dd className="tabular font-mono text-ink-mid">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </Panel>
-
-          <Panel title="Giới hạn cần biết" subtitle="Công bố kèm mọi kết quả">
-            <p className="text-meta leading-relaxed text-ink-soft">
-              ML đang phục vụ nguồn {d?.latest_source_name ? sourceBrand(d.latest_source_name) : "chưa xác định"}. Bản đồ dùng bảng tham chiếu
-              bank-country của dự án;
-              một phần quốc gia được gán cho ngân hàng hư cấu và không phải dữ liệu pháp vực từ IBM. Không dùng bản đồ
-              để kết luận thẩm quyền pháp lý hoặc cộng giá trị giữa các currency.
-            </p>
-            <p className="mt-2 text-meta leading-relaxed text-ink-low">
-              Không có thiết kế dataset nào bảo đảm phát hiện đầy đủ giao dịch tiền mặt hoặc tài sản ẩn danh không đi
-              qua điểm chuyển đổi vào/ra tài sản quan sát được.
-            </p>
-          </Panel>
         </div>
       </div>
     </PageShell>
