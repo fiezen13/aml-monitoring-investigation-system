@@ -1,4 +1,4 @@
-import { FileUp, Play, Send } from "lucide-react";
+import { FileDown, FileUp, Play, Send } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -78,6 +78,26 @@ export function SarEditPage() {
         {sarStatus === "REJECTED" && <StatusBadge tone="risk" label="BỊ TỪ CHỐI" />}
 
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await api.exportSar(SAR_DRAFT.sar_id);
+                pushToast({ tone: "success", title: "Đã xuất PDF", detail: "Đọc lại báo cáo trước khi gửi phê duyệt." });
+              } catch (cause) {
+                pushToast({
+                  tone: "error",
+                  title: "Không xuất được PDF",
+                  detail: cause instanceof Error ? cause.message : "Lỗi không xác định",
+                });
+              }
+            }}
+            title="Xuất PDF bản nháp để đọc/soát trước khi gửi phê duyệt"
+            className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-body font-medium text-ink-hi hover:border-line-emphasis"
+          >
+            <FileDown size={13} aria-hidden />
+            Xuất PDF (đọc)
+          </button>
           <button
             type="button"
             disabled={submitted}

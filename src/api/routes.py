@@ -1386,15 +1386,15 @@ def _sar_payload(sar_id: str) -> dict[str, Any]:
         },
         "submittedBy": submitter or draft["assigned_to"] or "Chưa gửi",
         "submittedByRole": "Analyst",
-        # Câu ordinal 0 là TÓM TẮT hành vi nghi vấn (AI soạn); ordinal 1+ là các
-        # NHẬN ĐỊNH. Tách để PDF/UI hiện tóm tắt riêng, danh sách nhận định riêng.
+        # Câu "-SUM" là TÓM TẮT hành vi nghi vấn (AI soạn); còn lại là NHẬN ĐỊNH.
+        # Tách để PDF/UI hiện tóm tắt riêng, danh sách nhận định riêng.
         "statements": [
             {"id": s["statement_id"], "text": s["body"], "evidenceIds": list(s["evidence_ids"])}
             for s in statements
-            if s["ordinal"] != 0
+            if not str(s["statement_id"]).endswith("-SUM")
         ],
         "behaviourSummary": next(
-            (s["body"] for s in statements if s["ordinal"] == 0),
+            (s["body"] for s in statements if str(s["statement_id"]).endswith("-SUM")),
             " ".join(s["body"] for s in statements),
         ),
         "inflow": inflow,
@@ -1558,13 +1558,15 @@ def create_sar(case_id: str, authorization: str | None = Header(default=None)) -
                 ],
             ]
 
-        for ordinal, (body, evids) in enumerate(statements_to_write):
-            statement_id = f"ST-{case_id}-LIVE-{ordinal:03d}"
+        # ordinal >= 1 (ràng buộc CHECK). Câu tóm tắt (idx 0) mang id "-SUM" để
+        # _sar_payload tách ra làm behaviourSummary; nhận định là "-LIVE-*".
+        for idx, (body, evids) in enumerate(statements_to_write):
+            statement_id = f"ST-{case_id}-SUM" if idx == 0 else f"ST-{case_id}-LIVE-{idx:03d}"
             session.execute(
                 text(
                     "INSERT INTO sar_statement(statement_id, sar_draft_id, ordinal, body) VALUES (:id, :sar, :n, :body)"
                 ),
-                {"id": statement_id, "sar": sar_id, "n": ordinal, "body": body},
+                {"id": statement_id, "sar": sar_id, "n": idx + 1, "body": body},
             )
             for evid in evids:
                 session.execute(
@@ -1841,28 +1843,33 @@ def export_sar(sar_id: str, authorization: str | None = Header(default=None)) ->
         )
         if draft is None:
             raise HTTPException(status_code=404, detail=f"Không tìm thấy SAR {sar_id}")
-        if draft["status"] != "approved":
-            raise HTTPException(status_code=409, detail="Chỉ hồ sơ đã phê duyệt mới được xuất")
-        session.execute(
-            text("UPDATE aml_case SET state = 'XuatHoSo', updated_at = now() WHERE case_id = :id"),
-            {"id": draft["case_id"]},
-        )
-        session.execute(
-            text(
-                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
-                   VALUES (:case_id, 'file_exported', :actor, :role, CAST(:payload AS jsonb))"""
-            ),
-            {
-                "case_id": draft["case_id"],
-                "actor": user["user_id"],
-                "role": _audit_role(user["role"]),
-                "payload": json.dumps({"sar_draft_id": sar_id, "format": "pdf"}),
-            },
-        )
+        # Hồ sơ đã phê duyệt → xuất CHÍNH THỨC: chuyển vụ sang XuatHoSo + ghi audit.
+        # Chưa duyệt → xuất BẢN NHÁP để chuyên viên đọc/soát trước khi gửi duyệt:
+        # KHÔNG chuyển trạng thái, PDF đóng dấu "BẢN NHÁP — CHƯA PHÊ DUYỆT".
+        is_final = draft["status"] == "approved"
+        if is_final:
+            session.execute(
+                text("UPDATE aml_case SET state = 'XuatHoSo', updated_at = now() WHERE case_id = :id"),
+                {"id": draft["case_id"]},
+            )
+            session.execute(
+                text(
+                    """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                       VALUES (:case_id, 'file_exported', :actor, :role, CAST(:payload AS jsonb))"""
+                ),
+                {
+                    "case_id": draft["case_id"],
+                    "actor": user["user_id"],
+                    "role": _audit_role(user["role"]),
+                    "payload": json.dumps({"sar_draft_id": sar_id, "format": "pdf"}),
+                },
+            )
 
     # Dựng PDF SAU khi commit trạng thái/audit; nội dung là ảnh chụp dữ liệu hiện tại.
     payload = _sar_payload(sar_id)
-    pdf_bytes = build_sar_pdf(payload, exported_by=user.get("name") or user["user_id"], exported_at=exported_at)
+    pdf_bytes = build_sar_pdf(
+        payload, exported_by=user.get("name") or user["user_id"], exported_at=exported_at, draft=not is_final
+    )
     filename = f"{sar_id}.pdf"
     return Response(
         content=pdf_bytes,

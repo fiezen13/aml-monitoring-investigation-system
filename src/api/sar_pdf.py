@@ -143,8 +143,14 @@ class _SarPdf(FPDF):
         self.ln(1)
 
 
-def build_sar_pdf(payload: dict[str, Any], *, exported_by: str, exported_at: datetime) -> bytes:
-    """Dựng và trả về bytes PDF cho một SAR (payload từ ``_sar_payload``)."""
+def build_sar_pdf(
+    payload: dict[str, Any], *, exported_by: str, exported_at: datetime, draft: bool = False
+) -> bytes:
+    """Dựng và trả về bytes PDF cho một SAR (payload từ ``_sar_payload``).
+
+    ``draft=True`` (hồ sơ chưa phê duyệt) đóng dấu "BẢN NHÁP" để chuyên viên đọc
+    soát trước khi gửi duyệt — không phải bản chính thức.
+    """
     pdf = _SarPdf(payload.get("sar_id", "SAR"))
     pdf.alias_nb_pages()
     pdf.add_page()
@@ -158,6 +164,13 @@ def build_sar_pdf(payload: dict[str, Any], *, exported_by: str, exported_at: dat
     pdf.set_text_color(*_MUTED)
     pdf.cell(0, 5, "Suspicious Activity Report (SAR)")
     pdf.ln(8)
+
+    if draft:
+        pdf.set_fill_color(*_MUTED)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("DejaVu", "B", 9)
+        pdf.cell(0, 7, "  BẢN NHÁP — CHƯA PHÊ DUYỆT · Chỉ để chuyên viên đọc soát trước khi gửi duyệt", fill=True)
+        pdf.ln(11)
 
     # Dải mức rủi ro
     risk = _s(payload.get("riskLevel"))
