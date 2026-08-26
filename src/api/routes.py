@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from src.api import ai_assistant, authz
 from src.api.permissions import data_scope_for, permission_codes, scope_own_records
+from src.api.sar_drafter import draft_sar
 from src.api.sar_pdf import build_sar_pdf
 from src.config import get_settings
 from src.db.session import get_session
@@ -1349,6 +1350,19 @@ def _sar_payload(sar_id: str) -> dict[str, Any]:
     inflow = sum(float(t["amount"]) for t in transactions if t["direction"] == "in")
     outflow = sum(float(t["amount"]) for t in transactions if t["direction"] == "out")
     issues = [{"id": sid, "severity": "error", "title": "Nhận định thiếu bằng chứng", "detail": sid} for sid in uncited]
+    # Đồ thị mạng lưới của vụ cho PDF: chủ thể + đối tác, cạnh = giao dịch. Cạnh
+    # có số tiền ở nhóm cao (>= phân vị 75) được đánh dấu đáng ngờ (vẽ đỏ).
+    _amounts = sorted(float(t["amount"]) for t in transactions) or [0.0]
+    _thr = _amounts[int(len(_amounts) * 0.75)] if len(_amounts) > 1 else _amounts[0]
+    _net_nodes: set[str] = {draft["subject_account_key"]}
+    _net_edges: list[dict[str, Any]] = []
+    for t in transactions:
+        _net_nodes.add(t["from_account_key"])
+        _net_nodes.add(t["to_account_key"])
+        _net_edges.append(
+            {"from": t["from_account_key"], "to": t["to_account_key"], "suspicious": float(t["amount"]) >= _thr}
+        )
+    network = {"subject": draft["subject_account_key"], "nodes": sorted(_net_nodes), "edges": _net_edges}
     status = _SAR_STATUS[draft["status"]]
     if draft["decision"] == "more_info":
         status = "NEEDS_INFO"
@@ -1372,10 +1386,17 @@ def _sar_payload(sar_id: str) -> dict[str, Any]:
         },
         "submittedBy": submitter or draft["assigned_to"] or "Chưa gửi",
         "submittedByRole": "Analyst",
+        # Câu ordinal 0 là TÓM TẮT hành vi nghi vấn (AI soạn); ordinal 1+ là các
+        # NHẬN ĐỊNH. Tách để PDF/UI hiện tóm tắt riêng, danh sách nhận định riêng.
         "statements": [
-            {"id": s["statement_id"], "text": s["body"], "evidenceIds": list(s["evidence_ids"])} for s in statements
+            {"id": s["statement_id"], "text": s["body"], "evidenceIds": list(s["evidence_ids"])}
+            for s in statements
+            if s["ordinal"] != 0
         ],
-        "behaviourSummary": " ".join(s["body"] for s in statements),
+        "behaviourSummary": next(
+            (s["body"] for s in statements if s["ordinal"] == 0),
+            " ".join(s["body"] for s in statements),
+        ),
         "inflow": inflow,
         "outflow": outflow,
         "inflowNote": "Tiền vào tài khoản",
@@ -1394,6 +1415,7 @@ def _sar_payload(sar_id: str) -> dict[str, Any]:
             for t in transactions
         ],
         "evidence": evidence_out,
+        "network": network,
         "networkConfidence": round(min(99, 50 + len(transactions) * 2.5), 1),
         "history": [
             {"time": h["occurred_at"], "text": h["event_type"], "actor": h["actor"], "payload": h["payload"]}
@@ -1474,22 +1496,81 @@ def create_sar(case_id: str, authorization: str | None = Header(default=None)) -
                     "hash": hashlib.sha256(payload.encode()).hexdigest(),
                 },
             )
-        bodies = [
-            f"Tài khoản {case['subject_account_key']} có giao dịch {tx['transaction_id']} trị giá {tx['amount']} {tx['currency']}."
-            for tx in txs
-        ]
-        for index, body in enumerate(bodies, start=1):
-            statement_id = f"ST-{case_id}-LIVE-{index:03d}"
+        # --- AI soạn narrative: gom TẤT CẢ bằng chứng của vụ (bằng chứng điều tra
+        # đã lưu + evidence giao dịch vừa tạo) để AI trích dẫn được nguồn thật. ---
+        case_evidence = (
+            session.execute(
+                text(
+                    "SELECT evidence_id, source_table, source_ref, payload FROM evidence "
+                    "WHERE case_id = :c ORDER BY retrieved_at, evidence_id"
+                ),
+                {"c": case_id},
+            )
+            .mappings()
+            .all()
+        )
+        ai_context = {
+            "case_id": case_id,
+            "subject_account": case["subject_account_key"],
+            "transactions": [
+                {
+                    "transaction_id": str(tx["transaction_id"]),
+                    "amount": str(tx["amount"]),
+                    "currency": tx.get("currency"),
+                    "direction": tx.get("direction"),
+                }
+                for tx in txs
+            ],
+            "evidence": [
+                {
+                    "id": e["evidence_id"],
+                    "source": e["source_table"],
+                    "ref": e["source_ref"],
+                    "data": e["payload"] if isinstance(e["payload"], dict) else {},
+                }
+                for e in case_evidence
+            ],
+        }
+        draft = draft_sar(ai_context)
+
+        # ordinal 0 = TÓM TẮT hành vi nghi vấn; ordinal 1+ = các NHẬN ĐỊNH. Câu tóm
+        # tắt cũng gắn một bằng chứng để không bị đánh "thiếu bằng chứng" khi kiểm.
+        if draft:
+            all_ev = sorted({ev for f in draft["findings"] for ev in f["evidence_ids"]})
+            statements_to_write: list[tuple[str, list[str]]] = [
+                (draft["summary"], (all_ev[:1] or evidence_ids[:1])),
+                *[(f["text"], f["evidence_ids"]) for f in draft["findings"]],
+            ]
+        else:
+            fallback_summary = (
+                f"Tài khoản {case['subject_account_key']} phát sinh các giao dịch cần rà soát. "
+                "Xem các nhận định và bằng chứng bên dưới."
+            )
+            statements_to_write = [
+                (fallback_summary, evidence_ids[:1]),
+                *[
+                    (
+                        f"Tài khoản {case['subject_account_key']} có giao dịch {tx['transaction_id']} "
+                        f"trị giá {tx['amount']} {tx['currency']}.",
+                        [evidence_ids[i]],
+                    )
+                    for i, tx in enumerate(txs)
+                ],
+            ]
+
+        for ordinal, (body, evids) in enumerate(statements_to_write):
+            statement_id = f"ST-{case_id}-LIVE-{ordinal:03d}"
             session.execute(
                 text(
                     "INSERT INTO sar_statement(statement_id, sar_draft_id, ordinal, body) VALUES (:id, :sar, :n, :body)"
                 ),
-                {"id": statement_id, "sar": sar_id, "n": index, "body": body},
+                {"id": statement_id, "sar": sar_id, "n": ordinal, "body": body},
             )
-            session.execute(
-                text("INSERT INTO sar_statement_evidence(statement_id, evidence_id) VALUES (:statement, :evidence)"),
-                {"statement": statement_id, "evidence": evidence_ids[index - 1]},
-            )
+            for evid in evids:
+                session.execute(
+                    text("INSERT INTO sar_statement_evidence(statement_id, evidence_id) VALUES (:statement, :evidence)"),
+                    {"statement": statement_id, "evidence": evid},
+                )
         session.execute(
             text("UPDATE aml_case SET state = 'SoanHoSoNghiVan', updated_at = now() WHERE case_id = :case_id"),
             {"case_id": case_id},

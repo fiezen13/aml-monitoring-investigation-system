@@ -20,6 +20,8 @@ from fpdf import FPDF
 from fpdf.enums import Align, XPos, YPos
 from fpdf.fonts import FontFace
 
+from src.api.sar_graph import draw_case_graph
+
 #: Số NUMERIC của PostgreSQL đi qua chuỗi giữ nguyên phần thập phân (vd
 #: "1083674.330000000000000000"). Trong văn bản/bảng nhìn rất rối, nên rút gọn
 #: mọi số có ≥3 chữ số thập phân về 2 chữ số + phân tách hàng nghìn bằng dấu cách.
@@ -260,9 +262,32 @@ def build_sar_pdf(payload: dict[str, Any], *, exported_by: str, exported_at: dat
             pdf.cell(0, 4, f"… và {len(txs) - 15} giao dịch khác (xem hồ sơ điều tra đầy đủ).")
             pdf.ln(5)
 
-    # 5. Phê duyệt
+    # 5. Đồ thị mạng lưới của vụ
+    network = payload.get("network") or {}
+    pdf.h_section("5. Đồ thị mạng lưới của vụ")
+    net_nodes = network.get("nodes") or []
+    if len(net_nodes) < 2:
+        pdf.paragraph("Không đủ quan hệ để dựng mạng lưới cho vụ này.")
+    else:
+        graph_h = 88.0
+        if pdf.get_y() + graph_h > pdf.h - pdf.b_margin:
+            pdf.add_page()
+        graph_y = pdf.get_y()
+        draw_case_graph(
+            pdf,
+            str(network.get("subject") or ""),
+            [str(n) for n in net_nodes],
+            list(network.get("edges") or []),
+            x=pdf.l_margin,
+            y=graph_y,
+            w=pdf.epw,
+            h=graph_h,
+        )
+        pdf.set_y(graph_y + graph_h + 3)
+
+    # 6. Phê duyệt
     approval = payload.get("approval")
-    pdf.h_section("5. Phê duyệt")
+    pdf.h_section("6. Phê duyệt")
     if not approval:
         pdf.paragraph("Hồ sơ chưa có bản ghi phê duyệt.")
     else:
@@ -278,5 +303,16 @@ def build_sar_pdf(payload: dict[str, Any], *, exported_by: str, exported_at: dat
         pdf.set_font("DejaVu", "", 9)
         pdf.set_text_color(*_MUTED)
         pdf.multi_cell(0, 5, f"Lý do: {_s(approval.get('reason'))}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    # 7. Phương pháp & giới hạn — minh bạch về cách dựng báo cáo.
+    pdf.h_section("7. Phương pháp & giới hạn")
+    pdf.paragraph(
+        "Báo cáo do chuyên viên lập với hỗ trợ của trợ lý AI: phần tóm tắt và các nhận định được soạn từ "
+        "kết quả điều tra và chỉ trích dẫn bằng chứng có thật của vụ; chuyên viên đã rà soát và chịu trách "
+        "nhiệm nội dung. Mức rủi ro do bộ phát hiện chấm điểm, là tín hiệu hỗ trợ rà soát — KHÔNG phải xác "
+        "suất rửa tiền. Đây là báo cáo nghi vấn để cơ quan có thẩm quyền xem xét, không phải kết luận về hành "
+        "vi phạm tội. Số liệu giao dịch lấy trực tiếp từ sổ giao dịch; đồ thị mạng lưới dựng từ các giao dịch "
+        "gần nhất của chủ thể."
+    )
 
     return bytes(pdf.output())
