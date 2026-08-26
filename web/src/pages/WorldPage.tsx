@@ -454,15 +454,10 @@ export function WorldPage() {
             </div>
           )}
 
+          {/* Chỉ chú thích kiểu nét (mức đáng ngờ) — bỏ chú giải theo kênh vì dữ
+              liệu chỉ có một loại luồng, liệt kê P2P/VASP/... là thừa và gây rối. */}
           <div className="absolute bottom-2.5 left-3 z-hud flex flex-col gap-[3px] rounded-control border border-line-strong bg-raised/85 px-2.5 py-2 text-meta text-ink-soft backdrop-blur">
-            <div className="flex max-w-[300px] flex-wrap gap-2.5">
-              {CHANNELS.map((ch) => (
-                <span key={ch}>
-                  <span style={{ color: CHANNEL[ch] }}>—</span> {CHANNEL_LABEL[ch]}
-                </span>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2.5 border-t border-line-soft pt-1 text-ink-low">
+            <div className="flex flex-wrap gap-2.5 text-ink-low">
               <span>nét đứt = bình thường</span>
               <span className="text-warn-soft">nét liền = đáng ngờ</span>
               <span className="text-risk-soft">đỏ + hạt = nghiêm trọng</span>
