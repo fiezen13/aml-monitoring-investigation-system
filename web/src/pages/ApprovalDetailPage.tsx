@@ -24,7 +24,7 @@ export function ApprovalDetailPage() {
   const [rejectOpen, setRejectOpen] = useState(false);
 
   if (!sarQuery.data) {
-    return <div className="p-6 text-body text-ink-mid">{sarQuery.error ?? "Đang tải hồ sơ SAR từ PostgreSQL..."}</div>;
+    return <div className="p-6 text-body text-ink-mid">{sarQuery.error ?? "Đang tải hồ sơ SAR..."}</div>;
   }
   const sar = sarQuery.data;
   const detail = {
@@ -32,15 +32,15 @@ export function ApprovalDetailPage() {
     suspicionType: sar.suspicionType,
     subject: {
       name: sar.subjectName,
-      taxCode: `CID: ${sar.subject.customerId} · ${sar.subject.accountKey}`,
-      internalRating: sar.subject.riskRating.toUpperCase(),
+      taxCode: `Mã KH: ${sar.subject.customerId} · ${sar.subject.accountKey}`,
+      internalRating: ({ high: "CAO", medium: "TRUNG BÌNH", low: "THẤP" } as Record<string, string>)[sar.subject.riskRating?.toLowerCase()] ?? sar.subject.riskRating,
       establishedFor: new Date(sar.subject.onboardingDate).toLocaleDateString("vi-VN"),
       previousSars: sar.case_id,
     },
     behaviourSummary: sar.behaviourSummary,
     transactions: sar.relatedTransactions,
     networkConfidence: sar.networkConfidence,
-    networkNote: `${sar.evidence.length} bằng chứng và ${sar.relatedTransactions.length} giao dịch liên quan được truy vấn từ DB.`,
+    networkNote: `${sar.evidence.length} bằng chứng và ${sar.relatedTransactions.length} giao dịch liên quan được truy xuất từ hệ thống.`,
     history: sar.history,
   };
 
@@ -249,11 +249,11 @@ export function ApprovalDetailPage() {
                 {detail.networkConfidence}%
               </span>
               <span className="text-2xs uppercase tracking-wider text-ink-low">
-                Confidence Score
+                Độ tin cậy
               </span>
             </div>
             <p className="mt-2.5 text-2xs leading-relaxed text-ink-mid">{detail.networkNote}</p>
-            <p className="mt-1.5 text-2xs text-ink-low">Nguồn: Công cụ phân tích mạng lưới · GRAPH-008</p>
+            <p className="mt-1.5 text-2xs text-ink-low">Nguồn: Công cụ phân tích mạng lưới</p>
           </Panel>
 
           <Panel title="Lịch sử xử lý">
@@ -288,7 +288,7 @@ export function ApprovalDetailPage() {
             await api.decideApproval(sar.approval.approval_id, "approved", reason);
             await sarQuery.reload();
             setApproveOpen(false);
-            pushToast({ tone: "success", title: `Đã phê duyệt ${detail.sar_id}`, detail: "Quyết định đã ghi bất biến vào approval và audit_log." });
+            pushToast({ tone: "success", title: `Đã phê duyệt ${detail.sar_id}`, detail: "Quyết định đã được lưu và ghi nhật ký." });
           } catch (cause) {
             pushToast({ tone: "error", title: "Phê duyệt thất bại", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
           }
@@ -307,7 +307,7 @@ export function ApprovalDetailPage() {
             await api.decideApproval(sar.approval.approval_id, "rejected", reason);
             await sarQuery.reload();
             setRejectOpen(false);
-            pushToast({ tone: "info", title: `Đã từ chối ${detail.sar_id}`, detail: "Case đã chuyển ĐiềuTraBoSung trong PostgreSQL." });
+            pushToast({ tone: "info", title: `Đã từ chối ${detail.sar_id}`, detail: "Hồ sơ đã chuyển sang Điều tra bổ sung." });
           } catch (cause) {
             pushToast({ tone: "error", title: "Từ chối thất bại", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
           }

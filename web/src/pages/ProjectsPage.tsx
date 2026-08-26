@@ -31,6 +31,17 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** Hàm đặc quyền cho phép người phát hành đơn phương tác động tới người nắm giữ. */
 const DANGEROUS_FUNCTIONS = new Set(["mint", "pause", "blacklist", "setFee", "setTax", "upgradeTo"]);
+// Nhãn tiếng Việt cho quyền đặc biệt của hợp đồng — không hiện tên hàm kỹ thuật.
+const FN_LABEL: Record<string, string> = {
+  mint: "Đúc thêm token",
+  burn: "Đốt token",
+  pause: "Tạm khoá giao dịch",
+  blacklist: "Cấm ví",
+  setFee: "Đổi phí",
+  setTax: "Đổi thuế",
+  upgradeTo: "Nâng cấp hợp đồng",
+  ownershipTransfer: "Chuyển quyền sở hữu",
+};
 
 export function ProjectsPage() {
   const data = useApi(() => api.projects(), [], "projects");
@@ -47,8 +58,8 @@ export function ProjectsPage() {
       {data.error && <ErrorState detail={data.error} onRetry={data.reload} />}
       {!data.loading && !data.error && !projects.length && (
         <Empty
-          text="Bộ dữ liệu IBM AML không cung cấp dữ liệu dự án token"
-          hint="Cần nguồn hợp đồng, holder và thanh khoản on-chain riêng; hệ thống không suy diễn từ giao dịch ngân hàng."
+          text="Chưa có dữ liệu dự án token cho bộ dữ liệu này"
+          hint="Cần nguồn dữ liệu dự án token riêng; hệ thống không suy diễn từ giao dịch ngân hàng."
         />
       )}
 
@@ -85,7 +96,7 @@ export function ProjectsPage() {
                   value={p.holder_gini != null ? p.holder_gini.toFixed(3) : "—"}
                   bar={p.holder_gini != null ? p.holder_gini * 100 : null}
                   // Gini càng gần 1 nghĩa là một nhóm rất nhỏ nắm gần hết nguồn cung.
-                  hint="Hệ số Gini — càng gần 1 càng tập trung"
+                  hint="Mức độ tập trung — càng gần 1 càng ít người nắm phần lớn"
                   color={p.holder_gini != null && p.holder_gini > 0.85 ? C.risk : C.warn}
                 />
                 <Metric
@@ -112,14 +123,14 @@ export function ProjectsPage() {
               </div>
 
               <div className="border-t border-line-soft px-3.5 py-3">
-                <div className="fc-eyebrow mb-2">Hàm đặc quyền trong hợp đồng</div>
+                <div className="fc-eyebrow mb-2">Quyền đặc biệt của hợp đồng</div>
                 <div className="flex flex-wrap gap-1.5">
                   {p.privileged_functions.length === 0 && (
-                    <span className="text-xs text-ink-low">Không phát hiện hàm đặc quyền nào</span>
+                    <span className="text-xs text-ink-low">Không phát hiện quyền đặc biệt nào</span>
                   )}
                   {p.privileged_functions.map((f) => (
                     <Chip key={f} color={DANGEROUS_FUNCTIONS.has(f) ? C.risk : C.inkSoft}>
-                      {f}()
+                      {FN_LABEL[f] ?? f}
                     </Chip>
                   ))}
                 </div>

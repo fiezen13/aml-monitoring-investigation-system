@@ -75,7 +75,7 @@ export function DashboardPage() {
         tone: "neutral" as Tone,
         // Chỉ hiện thương hiệu nguồn ("IBM"), không lộ biến thể nội bộ
         // (LI-Small/HI-Medium) — người dùng không cần và dễ hiểu nhầm là chất lượng.
-        note: d.latest_source_name ? sourceBrand(d.latest_source_name) : "chưa có lô dữ liệu",
+        note: d.latest_source_name ? sourceBrand(d.latest_source_name) : "chưa có dữ liệu",
       },
       {
         label: "Dưới ngưỡng",
@@ -94,7 +94,7 @@ export function DashboardPage() {
         label: "Cảnh báo",
         value: d.subjects_triggered,
         tone: "risk" as Tone,
-        note: `${triggeredPct}% giao dịch vượt ngưỡng · release đang xem`,
+        note: `${triggeredPct}% giao dịch vượt ngưỡng`,
       },
       {
         // Bấm vào để mở thẳng danh sách hồ sơ vụ việc — người dùng thấy con số
@@ -247,11 +247,7 @@ export function DashboardPage() {
     <PageShell
       variant="dense"
       subtitle={
-        <>
-          <span className="font-semibold text-ink-hi">Bộ dữ liệu: {datasetLabel(dataset)}</span> · lô{" "}
-          {d?.latest_source_name ? sourceBrand(d.latest_source_name) : "chưa có nguồn"} · toàn bộ số liệu dưới đây là tổng của một lượt chạy trên
-          đúng bộ này, không phải chuỗi thời gian
-        </>
+        <span className="font-semibold text-ink-hi">Bộ dữ liệu: {datasetLabel(dataset)}</span>
       }
     >
       {dashboard.error && (
@@ -373,7 +369,7 @@ export function DashboardPage() {
               minWidth={760}
               dense
               emptyTitle="Hàng đợi trống"
-              emptyDetail="Không có cảnh báo nào đang chờ xử lý trong lô dữ liệu hiện tại."
+              emptyDetail="Không có cảnh báo nào đang chờ xử lý."
             />
           </Panel>
       </div>

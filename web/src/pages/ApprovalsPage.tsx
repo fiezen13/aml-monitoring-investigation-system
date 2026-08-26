@@ -99,7 +99,7 @@ export function ApprovalsPage() {
   const columns: Column<Approval>[] = [
     {
       key: "id",
-      header: "Case ID",
+      header: "Mã hồ sơ",
       render: (a) => (
         <span className="inline-flex items-center gap-2">
           <Flag
@@ -190,7 +190,7 @@ export function ApprovalsPage() {
         <div>
           <h2 className={TEXT.h2}>Hàng đợi phê duyệt SAR</h2>
           <p className="mt-1 text-body text-ink-soft">
-            Quản lý và thẩm định các báo cáo giao dịch đáng ngờ trong hệ thống FIN-07.
+            Quản lý và thẩm định các báo cáo giao dịch đáng ngờ.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -227,14 +227,14 @@ export function ApprovalsPage() {
           {
             label: "Tổng SAR chờ duyệt",
             value: String(pendingCount),
-            note: "Từ PostgreSQL",
+            note: "Đang chờ duyệt",
             noteTone: "text-ok",
             icon: ClipboardList,
           },
           {
             label: "Ưu tiên cao",
             value: String(rows.filter((row) => row.flagged).length),
-            note: "Theo risk score",
+            note: "Theo điểm rủi ro",
             noteTone: "text-risk",
             icon: OctagonAlert,
           },
@@ -288,7 +288,7 @@ export function ApprovalsPage() {
         }
         action={
           <span className="tabular text-2xs text-ink-low">
-            Hiển thị {rows.length} bản ghi từ DB
+            Hiển thị {rows.length} bản ghi
           </span>
         }
       >
@@ -347,7 +347,7 @@ export function ApprovalsPage() {
           title={
             <span className="inline-flex items-center gap-1.5">
               <Sparkles size={13} className="text-primary" aria-hidden />
-              AI Summary: SAR Queue
+              Tóm tắt AI: Hàng đợi SAR
             </span>
           }
         >
@@ -365,7 +365,7 @@ export function ApprovalsPage() {
                 Gợi ý thẩm định
               </div>
               <p className="mt-1 text-2xs leading-relaxed text-ink-mid">
-                Số liệu tổng hợp trực tiếp từ bảng sar_draft và approval; không dùng dữ liệu mẫu trong trình duyệt.
+                Số liệu lấy trực tiếp từ dữ liệu thật.
               </p>
             </div>
           </div>

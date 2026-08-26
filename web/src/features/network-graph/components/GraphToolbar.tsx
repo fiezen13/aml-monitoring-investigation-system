@@ -100,7 +100,7 @@ export function GraphToolbar({
         value={activeNetworkId ?? ""}
         onChange={(event) => onNetwork(event.target.value)}
         aria-label="Chọn mạng lưới giao dịch"
-        title="Mỗi lựa chọn là một connected component độc lập"
+        title="Mỗi lựa chọn là một mạng lưới riêng biệt"
         className="w-52 rounded-control border border-line bg-sunken px-2 py-1 text-2xs font-medium text-ink-mid outline-none focus:border-primary-line 2xl:w-64"
       >
         {networks.map((network) => (
@@ -197,7 +197,7 @@ export function GraphToolbar({
                 }}
                 className="w-full rounded-control px-2 py-1.5 text-left text-2xs text-ink-mid hover:bg-elev"
               >
-                Xuất JSON
+                Xuất dữ liệu
               </button>
             </div>
           )}

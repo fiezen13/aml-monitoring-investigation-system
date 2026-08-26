@@ -40,7 +40,7 @@ export function EvidenceChip({ evidenceId, onOpen }: EvidenceChipProps) {
     <button
       type="button"
       onClick={() => onOpen(evidenceId)}
-      title={`Mở bằng chứng ${evidenceId} từ API`}
+      title={`Mở bằng chứng ${evidenceId}`}
       className="inline-flex items-center gap-1 rounded-control border border-info/30 bg-info/[0.08] px-1.5 py-0.5 text-2xs font-medium text-info-soft transition-colors hover:border-info/60"
     >
       {KIND_ICON.statement}

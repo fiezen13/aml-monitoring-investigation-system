@@ -18,6 +18,7 @@ import {
   riskRatingLabel,
 } from "../api/format";
 import { useApi } from "../api/useApi";
+import { TYPOLOGY_LABELS } from "../api/typologyLabels";
 import { PageShell } from "../components/ui";
 import { RiskBadge, StatusBadge } from "../components/common/Badges";
 import { AuditFeed } from "../components/common/AuditFeed";
@@ -187,7 +188,7 @@ export function CaseDetailPage() {
                     <span className="text-ink-hi">{r.factor_label}</span>
                     <span className="tabular text-ink-mid">
                       <span className="font-semibold text-ink-hi">{num(r.contribution).toFixed(2)}</span> · trọng
-                      số {num(r.weight).toFixed(2)} · {r.typology_code}
+                      số {num(r.weight).toFixed(2)}
                     </span>
                   </div>
                 ))}
@@ -210,7 +211,10 @@ export function CaseDetailPage() {
           <Panel title="Tóm tắt hồ sơ">
             <dl className="space-y-2 text-2xs">
               <Field label="Tài khoản chủ thể" value={k.subject_account_key} mono />
-              <Field label="Nhóm hành vi chính" value={primaryTypology ?? "Chưa xác định"} />
+              <Field
+                label="Nhóm hành vi chính"
+                value={primaryTypology ? (TYPOLOGY_LABELS[primaryTypology]?.name ?? primaryTypology) : "Chưa xác định"}
+              />
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-ink-mid">Ưu tiên</dt>
                 <dd>
@@ -286,14 +290,14 @@ export function CaseDetailPage() {
       <ReasonModal
         open={sarModal}
         title="Soạn hồ sơ nghi vấn (SAR)"
-        description="Tạo bản nháp SAR cho vụ việc này rồi mở trang soạn để kiểm chứng bằng chứng và nộp cho người phê duyệt (NT3). Nhập lý do để ghi vào nhật ký kiểm toán."
+        description="Tạo bản nháp SAR cho vụ việc này rồi mở trang soạn để kiểm chứng bằng chứng và nộp cho người phê duyệt. Nhập lý do để ghi vào nhật ký kiểm toán."
         confirmLabel="Tạo & mở bản nháp SAR"
         onClose={() => setSarModal(false)}
         onConfirm={async () => {
           try {
             const sar = await api.createSar(k.case_id);
             setSarModal(false);
-            pushToast({ tone: "success", title: `Đã mở ${sar.sar_id}`, detail: "Bản nháp + bằng chứng + nhật ký đã ghi vào DB." });
+            pushToast({ tone: "success", title: `Đã mở ${sar.sar_id}`, detail: "Đã tạo bản nháp SAR kèm bằng chứng và nhật ký." });
             navigate(`/sar/${sar.sar_id}/edit`);
           } catch (cause) {
             pushToast({ tone: "error", title: "Không tạo được SAR", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });

@@ -33,7 +33,7 @@ const LEVEL_META: Record<string, { label: string; color: string }> = {
 const VIEWS = [
   ["flagged", "Model gắn cờ nghi ngờ"],
   ["review", "Cần rà soát (cao/rất cao)"],
-  ["all", "Toàn bộ tập test"],
+  ["all", "Toàn bộ giao dịch"],
 ] as const;
 
 /** `0.9846` → `98,5%`. Dùng cho các tỉ lệ đã ký của release. */
@@ -178,7 +178,7 @@ function TechnicalShap({ row }: { row: FcBitcoinRow }) {
         onClick={() => setOpen((o) => !o)}
         className="text-2xs text-primary hover:underline"
       >
-        {open ? "Ẩn chi tiết kỹ thuật SHAP" : "Xem chi tiết kỹ thuật SHAP (đóng góp từng đặc trưng)"}
+        {open ? "Ẩn chi tiết đóng góp" : "Xem chi tiết đóng góp từng yếu tố"}
       </button>
       {open && (
         <div className="mt-1.5 rounded-panel border border-line-faint bg-sunken/40 p-2.5">
@@ -195,7 +195,7 @@ function TechnicalShap({ row }: { row: FcBitcoinRow }) {
                     </span>
                   </div>
                   <span className="tabular text-right font-mono text-3xs text-ink-soft">
-                    SHAP {d.contribution >= 0 ? "+" : ""}
+                    {d.contribution >= 0 ? "+" : ""}
                     {d.contribution.toFixed(3)}
                     {d.meaningful ? ` · =${fmtVal(d.value)}` : ""}
                   </span>
@@ -204,8 +204,7 @@ function TechnicalShap({ row }: { row: FcBitcoinRow }) {
             })}
           </div>
           <p className="mt-1.5 text-3xs leading-relaxed text-ink-low">
-            SHAP đo mỗi đặc trưng làm tăng/giảm DỰ ĐOÁN của model bao nhiêu — không phải phần trăm xác suất phạm
-            tội. Đặc trưng ẩn danh (feature_N) không có nghĩa công bố nên không được diễn giải thành hành vi.
+            Mỗi yếu tố làm tăng/giảm mức nghi ngờ của hệ thống bao nhiêu — không phải phần trăm xác suất phạm tội. Yếu tố ẩn danh không có nghĩa công bố nên không được diễn giải thành hành vi.
           </p>
         </div>
       )}
@@ -288,12 +287,12 @@ function TechnicalPanel({ row }: { row: FcBitcoinRow }) {
         <div className="mt-2 flex flex-col gap-2 text-2xs">
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {[
-              ["Điểm mô hình P(illicit)", row.illicit_prob.toFixed(3)],
+              ["Điểm mô hình", row.illicit_prob.toFixed(3)],
               ["Mức rủi ro", row.risk_level],
-              ["Thuật toán", "Random Forest · Elliptic (gốc)"],
+              ["Phương pháp", "Mô hình học máy"],
               ["Chất lượng giải thích", `${row.explanation_quality ?? "—"} · ${Math.round(interp * 100)}% đọc được`],
               ["Sức mạnh bằng chứng đồ thị", row.evidence_strength ?? "—"],
-              ["Hop gần nhất tới illicit đã biết", gt?.nearest_known_illicit_hop ?? "—"],
+              ["Khoảng cách tới địa chỉ đã có cảnh báo", gt?.nearest_known_illicit_hop ?? "—"],
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between border-b border-line-faint/60 py-0.5">
                 <span className="text-ink-low">{k}</span>
@@ -311,11 +310,6 @@ function TechnicalPanel({ row }: { row: FcBitcoinRow }) {
           )}
           {/* Đóng góp đặc trưng (SHAP) — chỉ trong kỹ thuật. */}
           <TechnicalShap row={row} />
-          <p className="text-3xs leading-relaxed text-ink-low">
-            Ngữ nghĩa đặc trưng phục hồi theo DFRWS 2026 (151/166). Giá trị đã chuẩn hoá (z-score); SHAP là đóng góp
-            vào dự đoán, KHÔNG phải % xác suất/nguyên nhân. Đây là tái lập benchmark Elliptic — có giới hạn leakage
-            (không phải hiệu năng tổng quát thực tế).
-          </p>
         </div>
       )}
     </div>
@@ -345,14 +339,14 @@ function TxDetail({ row }: { row: FcBitcoinRow }) {
   // THÔNG TIN ĐỐI CHIẾU NGOÀI — hiện chưa tích hợp nguồn nào, nói thẳng là chưa có.
   const external: string[] = [
     "Chưa xác định danh tính/chủ sở hữu địa chỉ",
-    "Chưa có kết quả đối chiếu danh sách cấm / vùng rủi ro (sanctions/watchlist)",
+    "Chưa có kết quả đối chiếu danh sách cấm / vùng rủi ro",
     "Chưa có dữ liệu từ nguồn tình báo blockchain bên ngoài",
     "Chưa xác định địa chỉ thuộc sàn/dịch vụ trộn (mixer)/dịch vụ nào",
   ];
   // Đề xuất rà soát: lấy TỪ BACKEND (sinh từ bằng chứng thật), không tự suy ở frontend.
   const steps = row.recommended_steps?.length ? row.recommended_steps : [
     "Kiểm tra lịch sử các địa chỉ gửi/nhận tiền liên quan tới giao dịch.",
-    "Đối chiếu các địa chỉ liên quan với nguồn blockchain intelligence / danh sách theo dõi nếu có.",
+    "Đối chiếu các địa chỉ liên quan với nguồn tình báo chuỗi khối / danh sách theo dõi nếu có.",
   ];
 
   return (
@@ -561,7 +555,7 @@ export function CryptoPage() {
       {empty ? (
         <Empty
           text="Chưa nạp điểm nhánh Bitcoin"
-          hint="Chạy: .venv/bin/python -m scripts.build_elliptic_scored (chấm tập test Elliptic gốc và nạp vào DB)."
+          hint="Chưa có dữ liệu Bitcoin để hiển thị."
         />
       ) : (
         <>
@@ -605,7 +599,7 @@ export function CryptoPage() {
           </div>
 
           {summary && (
-            <Panel title="Phân bố mức nghi ngờ" subtitle="Trên toàn bộ tập test đã chấm">
+            <Panel title="Phân bố mức nghi ngờ" subtitle="Trên toàn bộ giao dịch đã phân tích">
               <div className="flex flex-col gap-2">
                 {(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const).map((lvl) => {
                   const count = summary.by_level[lvl] ?? 0;

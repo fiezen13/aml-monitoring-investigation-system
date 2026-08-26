@@ -158,7 +158,7 @@ export function NetworkCanvas({ entities, relationships, onSelect }: { entities:
           </li>
           <li className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-risk" aria-hidden />
-            Rủi ro cao (Structuring)
+            Rủi ro cao (Cấu trúc giao dịch)
           </li>
           <li className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-ink-low" aria-hidden />
@@ -241,7 +241,7 @@ export function NetworkView({ caseId, embedded = false }: { caseId: string; embe
         <aside className="flex w-[320px] shrink-0 flex-col overflow-y-auto border-l border-line bg-panel">
           <div className="flex items-start justify-between p-4 pb-0">
             <span className="rounded-control bg-risk px-2 py-0.5 text-2xs font-bold uppercase tracking-wider text-white">
-              Cảnh báo: Structuring
+              Cảnh báo: Cấu trúc giao dịch
             </span>
             <button
               type="button"
@@ -270,22 +270,19 @@ export function NetworkView({ caseId, embedded = false }: { caseId: string; embe
 
             <div className="rounded-panel border border-primary/25 bg-primary-soft p-3">
               <div className="flex items-center gap-1.5 text-body font-semibold text-primary">
-                ✦ Phân tích AI Copilot
+                Phân tích AI
               </div>
               <p className="mt-1.5 text-2xs leading-relaxed text-ink-mid">
-                Đồ thị được dựng từ {network.transactions.length} giao dịch thật giữa {network.nodes.length} tài khoản. Chưa gọi mô hình huấn luyện; các cạnh chỉ phản ánh luồng tiền trong PostgreSQL.
+                Đồ thị được dựng từ {network.transactions.length} giao dịch thật giữa {network.nodes.length} tài khoản. Các đường nối phản ánh luồng tiền thật giữa các tài khoản.
               </p>
               <ul className="mt-2 space-y-1 text-2xs text-ink-mid">
                 <li className="flex items-center gap-1.5">
-                  <span className="text-ok">✓</span> {network.edges.filter((edge) => edge.suspicious).length} cạnh vượt ngưỡng heuristic
+                  <span className="text-ok">✓</span> {network.edges.filter((edge) => edge.suspicious).length} đường nối vượt ngưỡng đáng ngờ
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="text-ok">✓</span> Chủ thể {network.subject_account_key}
                 </li>
               </ul>
-              <p className="mt-2 text-2xs text-ink-low">
-                Nguồn: giao dịch + tài khoản + khách hàng
-              </p>
             </div>
 
             <div>
@@ -355,14 +352,14 @@ export function NetworkView({ caseId, embedded = false }: { caseId: string; embe
       <ReasonModal
         open={sarModal}
         title="Chuyển sang soạn bản nháp SAR"
-        description="Không có đường tắt từ mạng lưới tới xuất hồ sơ — bản nháp SAR phải qua kiểm chứng và người phê duyệt (Hình 4). Nhập lý do để tiếp tục."
+        description="Không có đường tắt từ mạng lưới tới xuất hồ sơ — bản nháp SAR phải qua kiểm chứng và người phê duyệt. Nhập lý do để tiếp tục."
         confirmLabel="Tạo/mở bản nháp SAR"
         onClose={() => setSarModal(false)}
         onConfirm={async () => {
           try {
             const sar = await api.createSar(network.case_id);
             setSarModal(false);
-            pushToast({ tone: "success", title: `Đã mở ${sar.sar_id}`, detail: "Bản nháp, evidence và audit đều được ghi trong DB." });
+            pushToast({ tone: "success", title: `Đã mở ${sar.sar_id}`, detail: "Đã tạo bản nháp SAR kèm bằng chứng và nhật ký." });
             navigate(`/sar/${sar.sar_id}/edit`);
           } catch (cause) {
             pushToast({ tone: "error", title: "Không tạo được SAR", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });

@@ -106,7 +106,7 @@ export function TransactionsPage() {
           }}
           placeholder="Điểm tối thiểu (%)"
           inputMode="decimal"
-          aria-label="Điểm mô hình tối thiểu"
+          aria-label="Điểm rủi ro tối thiểu"
           className="fc-input w-[160px]"
         />
         <select
@@ -115,7 +115,7 @@ export function TransactionsPage() {
             setDecision(e.target.value);
             setPage(1);
           }}
-          aria-label="Kết quả mô hình"
+          aria-label="Kết quả rà soát"
           className="fc-input"
         >
           <option value="all">Kết quả: tất cả</option>
@@ -145,9 +145,8 @@ export function TransactionsPage() {
           không xuất hiện — nói rõ để chuyên viên khỏi tưởng thiếu dữ liệu. */}
       {dataset === "ibm_hi_medium" && (
         <p className="-mt-0.5 text-2xs leading-relaxed text-ink-low">
-          Không thấy giao dịch <span className="font-medium text-ink-soft">Reinvestment</span> (tái đầu tư)? Trong bộ
-          IBM, đây là chuyển khoản tự-thân — tài khoản chuyển cho chính nó — nên đường ống cố ý loại khỏi bảng: self-loop
-          không phải dòng tiền giữa hai bên và không có tín hiệu cho phân tích mạng lưới.
+          Giao dịch tài khoản tự chuyển cho chính nó (tái đầu tư) không hiển thị ở đây vì không phải dòng tiền
+          giữa hai bên.
         </p>
       )}
 
@@ -161,10 +160,10 @@ export function TransactionsPage() {
             <span>Thời điểm</span>
             <span>Từ tài khoản</span>
             <span>Đến tài khoản</span>
-            <span className="text-right">Amount Paid</span>
-            <span className="text-right">Amount Received</span>
+            <span className="text-right">Số tiền chuyển</span>
+            <span className="text-right">Số tiền nhận</span>
             <span>Kênh</span>
-            <span className="text-right">Điểm model</span>
+            <span className="text-right">Điểm rủi ro</span>
           </div>
 
           {data.loading && <Skeleton rows={8} />}
@@ -195,10 +194,10 @@ export function TransactionsPage() {
               <span className="text-xs text-ink-soft">{r.channel}</span>
               <span
                 className={`tabular text-right font-mono text-xs ${r.triggered ? "text-risk-soft" : "text-ink-soft"}`}
-                title={r.threshold == null ? undefined : `Ngưỡng ${(r.threshold * 100).toFixed(4)}%`}
+                
               >
                 {r.model_score == null ? "—" : `${(r.model_score * 100).toFixed(4)}%`}
-                {r.triggered ? " · ALERT" : ""}
+                {r.triggered ? " · Cảnh báo" : ""}
               </span>
             </div>
           ))}

@@ -161,7 +161,7 @@ export function AlertDetailPage() {
           </button>
           <h1 className="tabular text-h2 font-bold text-ink-hi">{a.alert_id}</h1>
           <p className="mt-0.5 text-body text-ink-mid">
-            <span className="tabular font-semibold">{a.typology_code}</span> — {a.typology_label}
+            <span className="font-semibold">{a.typology_label}</span>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -221,9 +221,7 @@ export function AlertDetailPage() {
                           {/* Tên nghiệp vụ hiển thị; mã kỹ thuật (txn_count,
                               total_outflow_log1p…) chuyển vào tooltip, không bày
                               ra view chính vì analyst không cần đọc. */}
-                          <span className="text-ink-hi" title={`Mã kỹ thuật: ${r.factor_code}`}>
-                            {r.factor_label}
-                          </span>
+                          <span className="text-ink-hi">{r.factor_label}</span>
                           <span className="tabular text-ink-mid">
                             đóng góp{" "}
                             <span className="font-semibold text-ink-hi">{contribution.toFixed(2)}</span>
@@ -241,7 +239,7 @@ export function AlertDetailPage() {
               <div className="mt-4 flex items-start gap-1.5 border-t border-line pt-3 text-2xs text-ink-low">
                 <Info size={12} className="mt-0.5 shrink-0" aria-hidden />
                 <p>
-                  NT7 — mỗi điểm rủi ro luôn kèm danh sách yếu tố đóng góp có giá trị số. Điểm do bộ phát hiện
+                  Mỗi điểm rủi ro luôn kèm danh sách yếu tố đóng góp có giá trị số. Điểm do bộ phát hiện
                   của chính cảnh báo này chấm; vẫn cần người phân tích xác nhận.
                 </p>
               </div>
@@ -283,7 +281,7 @@ export function AlertDetailPage() {
                 </div>
               </dl>
               <p className="mt-3 border-t border-line pt-2 text-2xs text-ink-low">
-                Mức rủi ro hồ sơ suy ra từ nguyên mẫu và quốc gia đăng ký, không suy ra từ nhãn rửa tiền (ND1).
+                Mức rủi ro hồ sơ suy ra từ nguyên mẫu và quốc gia đăng ký, không suy ra từ nhãn rửa tiền.
               </p>
             </Panel>
 

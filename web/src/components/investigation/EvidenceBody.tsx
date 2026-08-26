@@ -119,13 +119,6 @@ const RAW_AMOUNT_FROM_OBSERVED: Record<string, string> = {
   total_outflow: "outflow_amount",
 };
 
-/** Khoá tiền tệ không có số nguyên bản trong `observed`: nói rõ là thang log. */
-const LOG_SCALE_ONLY = new Set(["net_flow", "median_amount", "p90_amount", "amount_std"]);
-
-function labelFor(key: string, label: string): string {
-  return LOG_SCALE_ONLY.has(key) ? `${label} (thang log)` : label;
-}
-
 /** Đặc trưng hành vi, nhóm lại và dịch sang tiếng Việt kèm đơn vị. */
 function BehaviorFeature({ p }: { p: Payload }) {
   const raw = (p.features ?? {}) as Record<string, unknown>;
@@ -150,7 +143,7 @@ function BehaviorFeature({ p }: { p: Payload }) {
             <h5 className="mb-1 text-micro font-semibold uppercase tracking-wider text-ink-low">{group.title}</h5>
             {keys.map((k) => {
               const meta = featureMeta(k);
-              return <Line key={k} label={labelFor(k, meta.label)} value={formatFeature(features[k], meta.format)} hint={meta.hint} />;
+              return <Line key={k} label={meta.label} value={formatFeature(features[k], meta.format)} hint={meta.hint} />;
             })}
           </div>
         );
@@ -159,7 +152,7 @@ function BehaviorFeature({ p }: { p: Payload }) {
         .filter((k) => !shown.has(k))
         .map((k) => {
           const meta = featureMeta(k);
-          return <Line key={k} label={labelFor(k, meta.label)} value={formatFeature(features[k], meta.format)} hint={meta.hint} />;
+          return <Line key={k} label={meta.label} value={formatFeature(features[k], meta.format)} hint={meta.hint} />;
         })}
     </div>
   );
@@ -190,7 +183,6 @@ function AnomalyExplanation({ p }: { p: Payload }) {
           />
         );
       })}
-      <p className="mt-2 text-micro text-ink-low">Cách tính: {String(p.method ?? "—")}.</p>
     </div>
   );
 }
@@ -340,7 +332,7 @@ export function EvidenceBody({ type, payload }: { type: string; payload: unknown
         onClick={() => setShowRaw((v) => !v)}
         className="mt-3 text-micro text-ink-low underline decoration-dotted underline-offset-2 hover:text-ink-mid"
       >
-        {showRaw ? "Ẩn dữ liệu gốc" : "Dữ liệu gốc (JSON)"}
+        {showRaw ? "Ẩn dữ liệu chi tiết" : "Dữ liệu chi tiết"}
       </button>
       {showRaw && (
         <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap rounded bg-app p-2 text-micro text-ink-mid">

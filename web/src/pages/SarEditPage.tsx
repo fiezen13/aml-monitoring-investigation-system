@@ -37,7 +37,7 @@ export function SarEditPage() {
     return (
       <EmptyState
         title={sarQuery.error ? "Không tìm thấy bản nháp SAR" : "Đang tải SAR"}
-        detail={sarQuery.error ?? "Đang truy vấn PostgreSQL..."}
+        detail={sarQuery.error ?? "Đang tải..."}
       />
     );
   }
@@ -85,7 +85,7 @@ export function SarEditPage() {
               try {
                 await api.validateSar(SAR_DRAFT.sar_id);
                 await sarQuery.reload();
-                pushToast({ tone: "success", title: "Kiểm chứng đạt", detail: "View uncited_statement rỗng; audit_log đã ghi kết quả." });
+                pushToast({ tone: "success", title: "Kiểm chứng đạt", detail: "Mọi nhận định đã có bằng chứng; đã ghi nhật ký." });
               } catch (cause) {
                 pushToast({ tone: "error", title: "Kiểm chứng thất bại", detail: cause instanceof Error ? cause.message : "Lỗi không xác định" });
               }
@@ -134,7 +134,7 @@ export function SarEditPage() {
                 </div>
                 <div>
                   <div className="mb-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">
-                    Nhận định kèm bằng chứng (NT1 — câu thiếu bằng chứng bị chặn khi gửi)
+                    Nhận định kèm bằng chứng (câu thiếu bằng chứng bị chặn khi gửi)
                   </div>
                   <div className="space-y-2">
                     {SAR_DRAFT.statements.map((st) => (
@@ -201,8 +201,7 @@ export function SarEditPage() {
                   </table>
                 </div>
                 <p className="text-2xs text-ink-low">
-                  Số liệu tổng hợp bởi Công cụ tính toán CALC-014 — kết quả công cụ mã,
-                  không phải số do mô hình sinh (NT2).
+                  Số liệu do công cụ tính toán tổng hợp, không phải số do mô hình sinh.
                 </p>
               </div>
             )}
@@ -276,7 +275,7 @@ export function SarEditPage() {
                               : "bg-panel text-ink-mid"
                         }`}
                       >
-                        {tag}
+                        {tag === "EXPIRED" ? "Hết hạn" : tag === "IP CLASH" ? "Trùng IP" : tag}
                       </span>
                     ))}
                   </div>
@@ -301,7 +300,7 @@ export function SarEditPage() {
       <ReasonModal
         open={submitOpen}
         title={`Gửi ${SAR_DRAFT.sar_id} phê duyệt`}
-        description={`Báo cáo sẽ chuyển sang trạng thái ChoNguoiPheDuyet và gửi tới MLRO. Người gửi (${currentUser?.name ?? ""}) sẽ không thể tự phê duyệt báo cáo này.`}
+        description={`Báo cáo sẽ chuyển sang trạng thái Chờ phê duyệt và gửi tới người phê duyệt. Người gửi (${currentUser?.name ?? ""}) sẽ không thể tự phê duyệt báo cáo này.`}
         confirmLabel="Gửi phê duyệt"
         onClose={() => setSubmitOpen(false)}
         onConfirm={async (reason) => {

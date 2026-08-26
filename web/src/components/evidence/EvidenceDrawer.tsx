@@ -64,7 +64,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
               <button
                 type="button"
                 aria-label="Phóng to"
-                onClick={() => pushToast({ tone: "info", title: "Bản ghi JSON đã được xác minh bằng hash" })}
+                onClick={() => pushToast({ tone: "info", title: "Bằng chứng đã được xác minh" })}
                 className="rounded-full bg-primary p-2 text-app hover:bg-primary-hover"
               >
                 <ZoomIn size={13} />
@@ -87,7 +87,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
             </p>
             <p className="mt-2 text-2xs text-ink-low">
               Nguồn: <span className="text-info">{evidence.source}</span> — đây là kết
-              quả công cụ, không phải số liệu do mô hình tự sinh (NT2).
+              quả công cụ, không phải số liệu do mô hình tự sinh.
             </p>
           </div>
 
@@ -140,7 +140,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
             onClick={() =>
               pushToast({
                 tone: "info",
-                title: "Bằng chứng chỉ được thêm qua API truy hồi",
+                title: "Bằng chứng chỉ được thêm qua hệ thống truy hồi",
                 detail: "Giao diện không tự tạo dữ liệu chứng minh.",
               })
             }

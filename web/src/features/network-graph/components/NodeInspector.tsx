@@ -13,7 +13,7 @@ const TABS: [InspectorTab, string][] = [
   ["transactions", "Giao dịch"],
   ["relationships", "Quan hệ"],
   ["evidence", "Bằng chứng"],
-  ["model", "Mô hình"],
+  ["model", "Chi tiết"],
 ];
 
 const BAND_LABEL: Record<string, string> = {
@@ -200,7 +200,6 @@ export function NodeInspector({ node, model, tab, onTab, onClose, onExpand, onFi
             <dl className="flex flex-col gap-1.5">
               <Row label="Tầng hiển thị" value={`Tầng ${node.tier} · ${BAND_LABEL[node.band] ?? node.band}`} />
               <Row label="Cụm" value={node.clusterId ?? "đứng riêng"} />
-              <Row label="Mốc chuẩn hoá" value={node.t.toFixed(3)} />
             </dl>
             <p className="rounded-control border border-line bg-sunken px-2.5 py-2 text-3xs leading-relaxed text-ink-low">
               Điểm rủi ro do lớp hợp nhất rủi ro chấm trên bằng chứng quan sát được. Vai trò và chặng ở đây là suy luận của

@@ -172,7 +172,7 @@ export function AlertsPage() {
       render: (alert) => (
         <span
           className="truncate-1 block max-w-[200px] text-ink-mid"
-          title={`${alert.typology_code} — ${alert.typology_label}. Gợi ý của hệ thống, cần con người rà soát.`}
+          title={`${alert.typology_label}. Gợi ý của hệ thống, cần con người rà soát.`}
         >
           {alert.typology_label}
         </span>
@@ -184,7 +184,7 @@ export function AlertsPage() {
       numeric: true,
       sortValue: (alert) => alert.factor_count,
       render: (alert) => (
-        <span title="NT7 — mỗi điểm rủi ro kèm tối thiểu ba yếu tố đóng góp">{alert.factor_count}</span>
+        <span title="Mỗi điểm rủi ro kèm tối thiểu ba yếu tố đóng góp">{alert.factor_count}</span>
       ),
     },
     {
@@ -211,7 +211,7 @@ export function AlertsPage() {
           label="Cảnh báo chưa đóng"
           value={d ? d.open_alerts : "—"}
           icon={<BellPlus size={14} aria-hidden />}
-          note="Đếm trực tiếp từ bảng cảnh báo"
+          note="Số cảnh báo chưa xử lý"
         />
         <MetricCard
           label={`Rủi ro cao (≥${RISK_THRESHOLDS.critical})`}
@@ -255,7 +255,7 @@ export function AlertsPage() {
               <option value="">Tất cả nhóm hành vi</option>
               {(d?.typology_distribution ?? []).map((item) => (
                 <option key={item.typology_code} value={item.typology_code}>
-                  {item.typology_code} — {item.typology_label}
+                  {item.typology_label}
                 </option>
               ))}
             </Select>

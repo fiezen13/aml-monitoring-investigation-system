@@ -72,12 +72,10 @@ export function WorldPage() {
   // bị bó lại. Người cần vẫn mở được bằng nút ở góc phải dải.
   const [bottomOpen, setBottomOpen] = useState(false);
 
-  // Nhãn ngắn cho huy hiệu góc bản đồ. "IBM AML LI-Small currency-native" quá
-  // dài cho một dòng chip, nhưng phần "IBM AML" thì mọi màn hình đều đã nói rồi.
-  const datasetBadge = (world.data?.source_name ?? "")
-    .replace(/^IBM AML\s*/i, "")
-    .toUpperCase()
-    .trim() || "CHƯA XÁC ĐỊNH";
+  // Nhãn ngắn cho huy hiệu góc bản đồ — chỉ hiện thương hiệu nguồn, không lộ
+  // biến thể nội bộ (LI-Small/HI-Medium/currency-native).
+  const _src = world.data?.source_name ?? "";
+  const datasetBadge = /saml/i.test(_src) ? "SAML-D" : /ibm/i.test(_src) ? "IBM" : "BẢN ĐỒ";
   const [selFlow, setSelFlow] = useState<string | null>(null);
   const [selHub, setSelHub] = useState<string | null>(null);
 
@@ -164,7 +162,7 @@ export function WorldPage() {
     const susp = flows.filter((f) => f.risk_score >= 60);
     const crit = flows.filter((f) => f.risk_score >= 80);
     return [
-      { l: "Giao dịch xuyên biên giới", v: int(total), t: "neutral" as Tone, d: `${flows.length} hành lang/currency` },
+      { l: "Giao dịch xuyên biên giới", v: int(total), t: "neutral" as Tone, d: `${flows.length} hành lang/loại tiền` },
       {
         l: "Đáng ngờ",
         v: int(susp.reduce((sum, f) => sum + f.txn_count, 0)),
@@ -242,7 +240,7 @@ export function WorldPage() {
     return (
       <PageShell
         title="Không đủ dữ liệu để dựng bản đồ địa lý"
-        subtitle="Hệ thống không suy diễn quốc gia hoặc toạ độ từ mã ngân hàng. Bản đồ được chủ động tắt thay vì ghép lô dữ liệu IBM với kịch bản Việt Nam không liên quan."
+        subtitle="Bộ dữ liệu hiện tại không có thông tin địa lý đã kiểm chứng nên bản đồ tạm tắt."
         actions={
           <Badge tone="warn" icon={<MapPinOff size={12} aria-hidden />}>
             Chưa có dữ liệu địa lý đã kiểm chứng
@@ -260,14 +258,6 @@ export function WorldPage() {
           >
             <dl className="grid gap-3 text-body sm:grid-cols-2">
               <div>
-                <dt className="text-meta text-ink-low">Tệp nguồn</dt>
-                <dd className="mt-1 font-mono text-ink-mid">{world.data.source_name ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-meta text-ink-low">Mã lô dữ liệu</dt>
-                <dd className="mt-1 font-mono text-ink-mid">{world.data.source_id ?? "—"}</dd>
-              </div>
-              <div>
                 <dt className="text-meta text-ink-low">Giao dịch đã chấm điểm</dt>
                 <dd className="mt-1 font-mono text-h3 font-semibold text-ink-hi">
                   {int(world.data.transaction_count)}
@@ -281,24 +271,22 @@ export function WorldPage() {
           </Panel>
 
           <Panel title="Giới hạn dữ liệu">
-            <p className="text-meta leading-relaxed text-ink-soft">{world.data.limitation}</p>
-            <p className="mt-3 text-meta leading-relaxed text-ink-low">
-              Mã ngân hàng trong IBM AML là mã định danh của tập dữ liệu, không phải mã quốc gia và không đủ để đặt
-              một điểm lên bản đồ.
+            <p className="text-meta leading-relaxed text-ink-soft">
+              Bộ dữ liệu hiện tại không có thông tin địa lý đã kiểm chứng nên bản đồ tạm tắt.
             </p>
           </Panel>
         </div>
 
         <Panel
           title="Dữ liệu giao dịch vẫn xem được đầy đủ"
-          subtitle="Tra cứu giao dịch đọc trực tiếp bảng giao dịch và gồm cả giao dịch dưới ngưỡng ML hành vi."
+          subtitle="Tra cứu giao dịch xem được đầy đủ, gồm cả giao dịch dưới ngưỡng."
           actions={
             <Link to="/transactions">
               <Button size="sm">Mở Tra cứu giao dịch</Button>
             </Link>
           }
         >
-          <Eyebrow>Giám sát địa lý · dữ liệu vận hành</Eyebrow>
+          <Eyebrow>Giám sát địa lý</Eyebrow>
         </Panel>
       </PageShell>
     );
@@ -315,12 +303,14 @@ export function WorldPage() {
             {/* Tên bộ dữ liệu đọc từ payload, không viết cứng: trang này từng
                 ghi "HI-Medium" trong khi máy chủ phục vụ LI-Small. */}
             <div className="text-3xs font-semibold uppercase tracking-[0.09em] text-ink-dim">
-              Dữ liệu {world.data?.source_name ?? "chưa xác định"}
+              Bản đồ luồng tiền
             </div>
-            <p className="mt-1 text-2xs leading-relaxed text-ink-soft">{world.data?.limitation}</p>
+            <p className="mt-1 text-2xs leading-relaxed text-ink-soft">
+              Chỉ hiển thị luồng tiền giữa các quốc gia khác nhau; luồng trong cùng một nước không lên bản đồ.
+            </p>
           </div>
           <div>
-            <Eyebrow className="mb-2">Chỉ số release đang hoạt động</Eyebrow>
+            <Eyebrow className="mb-2">Chỉ số của bộ dữ liệu</Eyebrow>
             <div className="grid grid-cols-2 gap-[7px]">
               {stats.map((stat) => (
                 <StatTile key={stat.l} label={stat.l} value={stat.v} sub={stat.d} tone={stat.t} />
@@ -374,8 +364,7 @@ export function WorldPage() {
 
           <p className="border-t border-line-soft pt-2.5 text-2xs leading-relaxed text-ink-low">
             Kéo để xoay · cuộn để phóng · rê chuột lên cung để xem chi tiết · nhấp vào cung hoặc trung tâm để mở
-            bảng thanh tra · nháy đúp nền để đặt lại. Đây là rollup từ giao dịch{" "}
-            {world.data?.source_name ?? "đã nạp"} đã được model chấm.
+            bảng thanh tra · nháy đúp nền để đặt lại. Tổng hợp từ các giao dịch đã được hệ thống chấm điểm.
           </p>
           <p className="text-2xs leading-relaxed text-ink-low">
             <b className="text-ink-mid">Cách đọc:</b> độ dày cung và “Top N” xếp theo{" "}

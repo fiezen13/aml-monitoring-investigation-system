@@ -80,8 +80,8 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
   async function start() {
     setStarting(true);
     try {
-      const result = await api.investigateAlert(alertId);
-      pushToast({ tone: "success", title: `Đã giao tác vụ ${result.job_id}` });
+      await api.investigateAlert(alertId);
+      pushToast({ tone: "success", title: "Đã bắt đầu điều tra" });
       latest.reload();
     } catch (error) {
       pushToast({ tone: "error", title: error instanceof Error ? error.message : "Không khởi động được" });
@@ -114,10 +114,10 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
   if (latest.error) return <ErrorState detail={latest.error} onRetry={latest.reload} />;
   if (!latest.data) {
     return (
-      <Panel title="Điều tra đa tác tử có thể giải thích">
+      <Panel title="Điều tra bằng AI">
         <EmptyState
           title="Chưa có phiên điều tra"
-          detail="Khởi động Tác tử điều phối → Tác tử giải thích → Tác tử phản biện bằng chứng. Quy trình chạy nền và không tự thực hiện quyết định nghiệp vụ."
+          detail="Khởi động phân tích tự động. Quy trình chạy nền và không tự thực hiện quyết định nghiệp vụ."
         />
         <button
           type="button"
@@ -125,7 +125,7 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
           onClick={start}
           className="mx-auto mt-3 flex items-center gap-1.5 rounded-control bg-primary px-4 py-2 text-2xs font-semibold text-app disabled:opacity-50"
         >
-          <Play size={13} /> {starting ? "Đang giao tác vụ…" : "Bắt đầu điều tra"}
+          <Play size={13} /> {starting ? "Đang bắt đầu…" : "Bắt đầu điều tra"}
         </button>
       </Panel>
     );
@@ -156,9 +156,8 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
             tone={inv.status === "COMPLETED" ? "ok" : inv.status === "FAILED" ? "risk" : "primary"}
             label={investigationStatusLabel(inv.status)}
           />
-          <span className="tabular text-2xs text-ink-mid">{inv.investigation_id}</span>
           <span className="text-2xs text-ink-low">
-            vòng lặp {inv.iteration} · {inv.tool_call_count} lần gọi công cụ · ảnh chụp dữ liệu {formatDateTime(inv.snapshot_time)}
+            Cập nhật lúc {formatDateTime(inv.snapshot_time)}
           </span>
         </div>
         {running && (
@@ -166,13 +165,13 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
           // công cụ" đứng yên vài chục giây và tưởng hệ thống hỏng.
           <p className="mt-2 flex items-center gap-1.5 text-2xs text-ink-mid">
             <Loader2 size={12} className="animate-spin" />
-            Tác tử đang chạy trong tiến trình nền, thường mất 40–90 giây. Màn hình tự cập nhật, không cần tải lại
+            Đang phân tích trong nền, thường mất 40–90 giây. Màn hình tự cập nhật, không cần tải lại
             trang.
           </p>
         )}
         {inv.failure_reason && <p className="mt-2 text-2xs text-risk">{investigationTextVi(inv.failure_reason)}</p>}
         <p className="mt-2 text-2xs text-ink-low">
-          Không lưu chuỗi suy luận nội bộ. Dòng thời gian bên dưới chỉ gồm quyết định ngắn, công cụ và mã tham chiếu bằng chứng.
+          Nhật ký chỉ ghi các bước xử lý và bằng chứng liên quan.
         </p>
       </Panel>
 
@@ -233,7 +232,7 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
                 phản biện không chấm lại điểm, chỉ kiểm xem từng câu bên dưới có dẫn đủ bằng chứng hay không.
               </p>
               <p className="mt-1 text-ink-mid">
-                Những câu chưa dẫn được nguồn nằm ở mục Tác tử phản biện bằng chứng. Hãy tự đối chiếu với phần Bằng
+                Những câu chưa dẫn được nguồn nằm ở mục Kiểm tra bằng chứng. Hãy tự đối chiếu với phần Bằng
                 chứng trước khi dùng.
               </p>
             </div>
@@ -267,10 +266,6 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
                   </summary>
                   <div className="mt-2 border-t border-line pt-2 text-2xs text-ink-mid">
                     <EvidenceBody type={item.type} payload={item.payload} />
-                    <div className="mt-3 border-t border-line/50 pt-2 text-micro text-ink-low">
-                      <div>Nguồn: {item.source}</div>
-                      <div className="mt-0.5 break-all">SHA-256: {item.integrity.content_hash}</div>
-                    </div>
                   </div>
                 </details>
               ))}
@@ -289,13 +284,13 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
           )}
         </Panel>
 
-        <Panel title="Dòng thời gian tác tử">
+        <Panel title="Nhật ký xử lý">
           {/* Mặc định thu gọn: chuỗi điều phối/gọi công cụ/phản biện là chi tiết
               kỹ thuật để kiểm toán, không phải thứ chuyên viên đọc ở lượt đầu. */}
           <details>
             <summary className="flex cursor-pointer list-none items-center gap-1.5 text-2xs font-medium text-ink-mid hover:text-ink-hi">
               <ChevronRight size={12} />
-              Xem {(trace.data ?? []).length} bước kỹ thuật (điều phối · gọi công cụ · phản biện)
+              Xem {(trace.data ?? []).length} bước xử lý chi tiết
             </summary>
             <ol className="mt-3 space-y-3">
             {(trace.data ?? []).map((event) => (
@@ -317,7 +312,7 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
                   <div className="tabular text-ink-low">
                     {formatDateTime(event.occurred_at)} · {agentLabel(event.agent)}
                     {event.tool ? ` · ${toolLabel(event.tool)}` : ""}
-                    {event.output_ref ? ` · ${event.output_ref}` : ""}
+                    
                   </div>
                 </div>
               </li>
@@ -328,7 +323,7 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
       </div>
 
       {inv.validation && (
-        <Panel title="Tác tử phản biện bằng chứng">
+        <Panel title="Kiểm tra bằng chứng">
           <div className="flex flex-wrap items-center gap-2">
             {inv.validation.status === "PASS" ? <CheckCircle2 className="text-ok" size={18} /> : <ShieldAlert className="text-risk" size={18} />}
             <span className="font-semibold text-ink-hi">{validationStatusLabel(inv.validation.status)}</span>
