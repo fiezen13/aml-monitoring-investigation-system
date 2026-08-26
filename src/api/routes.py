@@ -43,6 +43,8 @@ from src.models.schemas import (
     AlertReasonOut,
     ApprovalDecisionRequest,
     AuditEventOut,
+    CaseAgeOut,
+    CaseBandOut,
     CaseDetailOut,
     CaseOut,
     CaseTimelineStepOut,
@@ -880,6 +882,64 @@ def dashboard(
             .all()
         )
 
+        # --- Số liệu VỤ VIỆC cho dashboard theo vai trò ---
+        # Vụ việc gắn bộ dữ liệu qua cảnh báo của nó; lọc đúng bộ đang xem để
+        # khớp với bốn thẻ số liệu phía trên. Chỉ đếm vụ CHƯA kết thúc.
+        _case_scope = (
+            "c.state NOT IN ('XuatHoSo','DongKhongBaoCao') "
+            "AND (CAST(:dataset AS text) IS NULL OR EXISTS "
+            "(SELECT 1 FROM alert al WHERE al.case_id = c.case_id "
+            "AND al.dataset = CAST(:dataset AS text)))"
+        )
+        risk_bands = (
+            session.execute(
+                text(
+                    f"""SELECT band, count(*) AS n FROM (
+                            SELECT CASE WHEN c.risk_score >= 90 THEN 'critical'
+                                        WHEN c.risk_score >= 75 THEN 'high'
+                                        WHEN c.risk_score >= 50 THEN 'medium'
+                                        ELSE 'low' END AS band
+                              FROM aml_case c
+                             WHERE {_case_scope}
+                        ) x GROUP BY band"""
+                ),
+                {"dataset": dataset},
+            )
+            .mappings()
+            .all()
+        )
+        age_buckets = (
+            session.execute(
+                text(
+                    f"""SELECT bucket, count(*) AS n FROM (
+                            SELECT CASE WHEN now() - c.created_at < interval '1 day'  THEN 'lt1d'
+                                        WHEN now() - c.created_at < interval '7 day'  THEN 'd1_7'
+                                        WHEN now() - c.created_at < interval '30 day' THEN 'd7_30'
+                                        ELSE 'gt30d' END AS bucket
+                              FROM aml_case c
+                             WHERE {_case_scope}
+                        ) x GROUP BY bucket"""
+                ),
+                {"dataset": dataset},
+            )
+            .mappings()
+            .all()
+        )
+        case_totals = (
+            session.execute(
+                text(
+                    f"""SELECT count(*) AS total,
+                               count(*) FILTER (WHERE c.assigned_to IS NULL) AS unassigned
+                          FROM aml_case c WHERE {_case_scope}"""
+                ),
+                {"dataset": dataset},
+            )
+            .mappings()
+            .one()
+        )
+
+    _band_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    _age_order = {"lt1d": 0, "d1_7": 1, "d7_30": 2, "gt30d": 3}
     total_alerts = sum(d["alert_count"] for d in distribution) or 1
     return DashboardOut(
         open_alerts=counts["open_alerts"],
@@ -906,6 +966,16 @@ def dashboard(
         top_alerts=[_alert_out(dict(row)) for row in top],
         queue_depth=queue.queue_depth(),
         worker_alive=queue.worker_alive(),
+        case_risk_bands=[
+            CaseBandOut(band=r["band"], count=r["n"])
+            for r in sorted(risk_bands, key=lambda r: _band_order.get(r["band"], 9))
+        ],
+        case_age_buckets=[
+            CaseAgeOut(bucket=r["bucket"], count=r["n"])
+            for r in sorted(age_buckets, key=lambda r: _age_order.get(r["bucket"], 9))
+        ],
+        cases_unassigned=case_totals["unassigned"],
+        cases_total=case_totals["total"],
     )
 
 

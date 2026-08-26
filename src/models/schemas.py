@@ -141,6 +141,20 @@ class TypologyShareOut(BaseModel):
     share_pct: float
 
 
+class CaseBandOut(BaseModel):
+    """Số vụ việc theo dải điểm rủi ro (critical/high/medium/low)."""
+
+    band: str
+    count: int
+
+
+class CaseAgeOut(BaseModel):
+    """Số vụ việc theo tuổi hồ sơ (lt1d/d1_7/d7_30/gt30d)."""
+
+    bucket: str
+    count: int
+
+
 class DashboardOut(BaseModel):
     """Số liệu Trung tâm Điều hành — đếm thật từ PostgreSQL, không cứng hoá."""
 
@@ -160,6 +174,11 @@ class DashboardOut(BaseModel):
     top_alerts: list[AlertOut]
     queue_depth: int
     worker_alive: bool
+    # Số liệu VỤ VIỆC cho dashboard theo vai trò (đếm thật, lọc theo dataset).
+    case_risk_bands: list[CaseBandOut] = Field(default_factory=list)
+    case_age_buckets: list[CaseAgeOut] = Field(default_factory=list)
+    cases_unassigned: int = 0
+    cases_total: int = 0
 
 
 class InvestigateOut(BaseModel):

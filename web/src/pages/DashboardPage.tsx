@@ -6,7 +6,8 @@ import { int } from "../api/fcFormat";
 import { alertStatusLabel, datasetLabel, detectorLabel, formatRelative, sourceBrand } from "../api/format";
 import { useApi } from "../api/useApi";
 import { useConsole } from "../context/ConsoleContext";
-import { Chart, type ChartSpec } from "../components/fc/Chart";
+import { useApp } from "../context/AppContext";
+import { type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
 import {
   Badge,
@@ -20,7 +21,7 @@ import {
   RiskIndicator,
 } from "../components/ui";
 import { ALERT_STATUS_TONE, DETECTOR_TONE, type Tone } from "../design/semantic";
-import { SERIES, toneColor } from "../design";
+import { toneColor } from "../design";
 import type { ApiAlert } from "../api/client";
 
 /**
@@ -35,9 +36,28 @@ import type { ApiAlert } from "../api/client";
  * hàng đợi ưu tiên, thứ analyst thực sự phải làm gì đó với nó.
  */
 
+// Nhãn + tông màu cho phân bố rủi ro vụ việc và tuổi hồ sơ (dùng chung ở các
+// biểu đồ). Để ngoài component để không vào deps của useMemo.
+const BAND_META: Record<string, { label: string; tone: Tone }> = {
+  critical: { label: "Nghiêm trọng", tone: "risk" },
+  high: { label: "Cao", tone: "warn" },
+  medium: { label: "Vừa", tone: "info" },
+  low: { label: "Thấp", tone: "ok" },
+};
+const AGE_META: Record<string, { label: string; tone: Tone }> = {
+  lt1d: { label: "< 1 ngày", tone: "ok" },
+  d1_7: { label: "1–7 ngày", tone: "info" },
+  d7_30: { label: "7–30 ngày", tone: "warn" },
+  gt30d: { label: "> 30 ngày", tone: "risk" },
+};
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const { dataset } = useConsole();
+  const { currentUser } = useApp();
+  // Dashboard theo vai trò: chuyên viên cần biết vụ nào GIÀ để xử trước; quản lý
+  // cần thấy PHỄU xử lý và nút thắt (chưa phân công). Admin xem như quản lý.
+  const showFunnel = currentUser?.role !== "analyst";
   // `dataset` nằm trong deps: đổi bộ dữ liệu ở header thì Tổng quan hỏi lại
   // ngay, không còn cảnh thẻ số một bộ mà biểu đồ lại bộ khác.
   const dashboard = useApi(() => api.dashboard({ dataset }), [dataset], `dashboard:${dataset}`);
@@ -100,37 +120,58 @@ export function DashboardPage() {
     ];
   }, [d, navigate]);
 
-  // Xu hướng dựng từ chính thời điểm tạo cảnh báo — số thật, không phải đường
-  // cong minh hoạ.
-  const trendSpec = useMemo<ChartSpec | null>(() => {
-    if (!d?.top_alerts?.length) return null;
-    const buckets = new Map<string, { total: number; high: number }>();
-    for (const alert of d.top_alerts) {
-      const key = new Date(alert.created_at).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
-      const current = buckets.get(key) ?? { total: 0, high: 0 };
-      current.total += 1;
-      if (num(alert.risk_score) >= 80) current.high += 1;
-      buckets.set(key, current);
-    }
-    const labels = [...buckets.keys()].reverse();
+  // Phân bố RỦI RO vụ việc — trả lời trực tiếp "điểm rủi ro đang ở đâu", đếm
+  // thật từ vụ việc đang mở (không phải điểm bất thường của 5 cảnh báo lẻ).
+  const riskBandSpec = useMemo<ChartSpec | null>(() => {
+    if (!d?.case_risk_bands?.length) return null;
+    const total = d.case_risk_bands.reduce((s, b) => s + b.count, 0) || 1;
     return {
-      type: "bars",
-      labels,
-      series: [
-        { name: "Tổng cảnh báo", data: labels.map((l) => buckets.get(l)!.total), color: toneColor("info") },
-        { name: "Rủi ro cao", data: labels.map((l) => buckets.get(l)!.high), color: toneColor("risk") },
+      type: "hbars",
+      items: d.case_risk_bands.map((b) => ({
+        label: BAND_META[b.band]?.label ?? b.band,
+        value: b.count,
+        color: toneColor(BAND_META[b.band]?.tone ?? "info"),
+        sub: `${Math.round((b.count / total) * 100)}% số vụ đang mở`,
+      })),
+    };
+  }, [d]);
+
+  // Phễu xử lý (quản lý): Cảnh báo → Vụ việc → Chờ duyệt SAR, kèm tỉ lệ chuyển.
+  const funnelSpec = useMemo<ChartSpec | null>(() => {
+    if (!d) return null;
+    const a = d.open_alerts;
+    const c = d.cases_total;
+    const s = d.sar_pending;
+    if (a + c + s === 0) return null;
+    return {
+      type: "funnel",
+      items: [
+        { label: "Cảnh báo chưa đóng", value: a, color: toneColor("info") },
+        {
+          label: "Đã thành vụ việc",
+          value: c,
+          color: toneColor("warn"),
+          pctOfPrev: a ? `${((c / a) * 100).toFixed(1)}%` : undefined,
+        },
+        {
+          label: "Chờ duyệt SAR",
+          value: s,
+          color: toneColor("risk"),
+          pctOfPrev: c ? `${((s / c) * 100).toFixed(1)}%` : undefined,
+        },
       ],
     };
   }, [d]);
 
-  const typologySpec = useMemo<ChartSpec | null>(() => {
-    if (!d?.typology_distribution?.length) return null;
+  // Tuổi hồ sơ đang mở (chuyên viên): vụ nào đang GIÀ đi để ưu tiên xử trước.
+  const ageSpec = useMemo<ChartSpec | null>(() => {
+    if (!d?.case_age_buckets?.length) return null;
     return {
-      type: "donut",
-      items: d.typology_distribution.map((t, index) => ({
-        label: t.typology_code,
-        value: t.alert_count,
-        color: SERIES[index % SERIES.length],
+      type: "hbars",
+      items: d.case_age_buckets.map((b) => ({
+        label: AGE_META[b.bucket]?.label ?? b.bucket,
+        value: b.count,
+        color: toneColor(AGE_META[b.bucket]?.tone ?? "info"),
       })),
     };
   }, [d]);
@@ -247,11 +288,11 @@ export function DashboardPage() {
         <div className="flex min-w-0 flex-[2.4_1_520px] flex-col gap-3.5">
           <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
             <ChartCard
-              title="5 cảnh báo ưu tiên theo ngày"
-              subtitle="Chỉ gồm nhóm cảnh báo ưu tiên, không phải phân phối của toàn bộ giao dịch"
-              spec={trendSpec}
-              state={dashboard.loading ? "loading" : trendSpec ? "ok" : "empty"}
-              note="Chỉ dựng từ 5 cảnh báo ưu tiên nên không phản ánh xu hướng/khối lượng toàn hệ thống, không dùng để nhận định spike. Điểm là điểm bất thường của ML hành vi, không phải xác suất rửa tiền."
+              title="Phân bố rủi ro vụ việc"
+              subtitle={`${d?.cases_total ?? 0} vụ đang mở, theo dải điểm rủi ro`}
+              spec={riskBandSpec}
+              state={dashboard.loading ? "loading" : riskBandSpec ? "ok" : "empty"}
+              note="Đếm thật từ vụ việc đang mở của đúng bộ dữ liệu này. Điểm rủi ro do bộ phát hiện chấm, cần người rà soát — không phải xác suất rửa tiền."
             />
             <ChartCard
               title="Hành lang địa lý"
@@ -262,29 +303,34 @@ export function DashboardPage() {
             />
           </div>
 
+          {/* Biểu đồ THỨ HAI đổi theo vai trò: quản lý xem phễu xử lý + nút thắt
+              phân công; chuyên viên xem tuổi hồ sơ để biết vụ nào cần xử trước. */}
           <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
-            <Panel title="Nhóm hành vi gợi ý" subtitle="Gợi ý trên tập cảnh báo, chưa phải kết luận điều tra">
-              <div className="flex items-center gap-3">
-                <div className="w-[118px] flex-none">
-                  <Chart spec={typologySpec} height={118} />
-                </div>
-                <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-data">
-                  {d?.typology_distribution.map((typology, index) => (
-                    <div key={typology.typology_code} className="flex items-center gap-1.5 overflow-hidden">
-                      <span
-                        className="h-2 w-2 flex-none rounded-sm"
-                        style={{ background: SERIES[index % SERIES.length] }}
-                        aria-hidden
-                      />
-                      <span className="truncate-1 text-ink-soft" title={typology.typology_label}>
-                        {typology.typology_label}
-                      </span>
-                      <b className="tabular ml-auto font-mono text-ink-hi">{typology.alert_count}</b>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Panel>
+            {showFunnel ? (
+              <ChartCard
+                title="Phễu xử lý"
+                subtitle="Cảnh báo → Vụ việc → Chờ duyệt SAR"
+                spec={funnelSpec}
+                state={dashboard.loading ? "loading" : funnelSpec ? "ok" : "empty"}
+                note={
+                  d && d.cases_unassigned > 0
+                    ? `${int(d.cases_unassigned)}/${int(d.cases_total)} vụ CHƯA phân công — nút thắt cần giao việc.`
+                    : "Toàn bộ vụ đã có người phụ trách."
+                }
+              />
+            ) : (
+              <ChartCard
+                title="Tuổi hồ sơ đang mở"
+                subtitle="Vụ nào đang già đi — ưu tiên xử trước"
+                spec={ageSpec}
+                state={dashboard.loading ? "loading" : ageSpec ? "ok" : "empty"}
+                note={
+                  d && d.cases_unassigned > 0
+                    ? `${int(d.cases_unassigned)} vụ chưa có người nhận — có thể nhận thêm.`
+                    : undefined
+                }
+              />
+            )}
           </div>
 
           <Panel
@@ -292,10 +338,10 @@ export function DashboardPage() {
             padded={false}
             actions={
               <Link
-                to="/alerts"
+                to="/cases"
                 className="text-data text-info-soft transition-colors hover:text-info"
               >
-                Mở Trung tâm cảnh báo →
+                Mở danh sách vụ việc →
               </Link>
             }
           >
@@ -303,7 +349,7 @@ export function DashboardPage() {
               columns={queueColumns}
               rows={d?.top_alerts ?? []}
               rowKey={(alert) => alert.alert_id}
-              onRowClick={(alert) => navigate(`/alerts/${alert.alert_id}`)}
+              onRowClick={(alert) => navigate(alert.case_id ? `/cases/${alert.case_id}` : `/alerts/${alert.alert_id}`)}
               loading={dashboard.loading && !d}
               minWidth={760}
               dense

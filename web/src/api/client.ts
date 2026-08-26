@@ -199,6 +199,10 @@ export interface ApiDashboard {
   top_alerts: ApiAlert[];
   queue_depth: number;
   worker_alive: boolean;
+  case_risk_bands: { band: string; count: number }[];
+  case_age_buckets: { bucket: string; count: number }[];
+  cases_unassigned: number;
+  cases_total: number;
 }
 
 export interface ApiInvestigate {
