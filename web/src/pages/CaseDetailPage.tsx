@@ -1,5 +1,5 @@
 import { ArrowLeft, FileText, RefreshCw } from "lucide-react";
-import { useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api, num } from "../api/client";
@@ -25,6 +25,11 @@ import { Panel } from "../components/common/Panel";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
 import { ReasonModal } from "../components/common/ReasonModal";
 import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
+// Lazy: đồ thị kéo theo react-flow (~150KB) — chỉ tải khi mở một vụ, không nằm
+// trong bundle chính (login/dashboard không cần).
+const CaseNetworkGraph = lazy(() =>
+  import("../components/investigation/CaseNetworkGraph").then((m) => ({ default: m.CaseNetworkGraph })),
+);
 import { PERMISSIONS } from "../rbac/permissions";
 import { useApp } from "../context/AppContext";
 
@@ -103,11 +108,11 @@ export function CaseDetailPage() {
         <div>
           <button
             type="button"
-            onClick={() => navigate("/alerts")}
+            onClick={() => navigate("/cases")}
             className="mb-1.5 inline-flex items-center gap-1 text-2xs text-ink-mid hover:text-ink-hi"
           >
             <ArrowLeft size={12} aria-hidden />
-            Hàng đợi cảnh báo
+            Danh sách vụ việc
           </button>
           <h1 className="tabular text-h2 font-bold text-ink-hi">{k.case_id}</h1>
           <p className="mt-0.5 text-body text-ink-mid" title={k.title}>
@@ -155,6 +160,11 @@ export function CaseDetailPage() {
               />
             </Panel>
           )}
+
+          {/* Đồ thị mạng lưới của vụ — ngay tại đây, không phải một trang riêng. */}
+          <Suspense fallback={<Panel title="Đồ thị mạng lưới của vụ"><LoadingSkeleton rows={5} /></Panel>}>
+            <CaseNetworkGraph caseId={k.case_id} />
+          </Suspense>
 
           <Panel title="Yếu tố đóng góp vào điểm rủi ro">
             {k.reasons.length === 0 ? (

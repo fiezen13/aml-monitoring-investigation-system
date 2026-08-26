@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { AlertTriangle, BellPlus, BrainCircuit, Gauge, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -7,7 +7,8 @@ import { caseDisplayTitle, caseStateLabel, datasetLabel, formatDateTime, formatR
 import { useApi } from "../api/useApi";
 import { useApp } from "../context/AppContext";
 import { useConsole } from "../context/ConsoleContext";
-import { PageShell } from "../components/ui";
+import { MetricCard, PageShell } from "../components/ui";
+import { RISK_THRESHOLDS } from "../design/risk";
 import { RiskBadge, StatusBadge } from "../components/common/Badges";
 import { Panel } from "../components/common/Panel";
 import { SearchInput } from "../components/common/SearchInput";
@@ -59,6 +60,10 @@ export function CasesPage() {
     `cases:${dataset}:${stateFilter}`,
   );
   const rows = cases.data ?? [];
+  // Ngữ cảnh phễu (trước đây ở trang Trung tâm cảnh báo, nay đã gộp vào đây):
+  // tổng tín hiệu thô, rủi ro cao, điểm TB, và số vụ đang điều tra.
+  const dashboard = useApi(() => api.dashboard({ dataset: dataset || undefined }), [dataset], `dashboard:${dataset}`);
+  const d = dashboard.data;
 
   // Khớp "của tôi" theo tên/email/id vì `assigned_to` có thể lưu ở dạng bất kỳ.
   const isMine = (assigned: string | null): boolean => {
@@ -144,8 +149,8 @@ export function CasesPage() {
   return (
     <PageShell>
       <PageHeader
-        title="Hồ sơ vụ việc"
-        subtitle={`Bộ dữ liệu ${datasetLabel(dataset)} · cảnh báo được gom theo chủ thể thành vụ việc; mỗi vụ việc đi qua máy trạng thái 12 bước.`}
+        title="Vụ việc"
+        subtitle={`Bộ dữ liệu ${datasetLabel(dataset)} · trung tâm điều tra — cảnh báo được sàng và gom theo chủ thể thành vụ việc; bạn làm việc trên vụ (điều tra AI, đồ thị, SAR) ngay tại đây.`}
         actions={
           <button
             type="button"
@@ -157,6 +162,38 @@ export function CasesPage() {
           </button>
         }
       />
+
+      {/* Ngữ cảnh phễu gộp từ trang Trung tâm cảnh báo cũ: cảnh báo thô là tín
+          hiệu, không phải nơi làm việc — hệ thống tự sàng/gom thành vụ. Bốn thẻ
+          này cho thấy khối lượng tín hiệu đứng sau số vụ đang mở. */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <MetricCard
+          label="Cảnh báo chưa đóng"
+          value={d ? d.open_alerts : "—"}
+          icon={<BellPlus size={14} aria-hidden />}
+          note="Tín hiệu thô, hệ thống tự sàng thành vụ"
+        />
+        <MetricCard
+          label={`Rủi ro cao (≥${RISK_THRESHOLDS.critical})`}
+          value={d ? d.high_risk_alerts : "—"}
+          tone="risk"
+          icon={<AlertTriangle size={14} aria-hidden />}
+          note={`Ngưỡng điểm ${RISK_THRESHOLDS.critical}/100`}
+        />
+        <MetricCard
+          label="Điểm rủi ro trung bình"
+          value={d ? d.avg_risk_score.toFixed(1) : "—"}
+          icon={<Gauge size={14} aria-hidden />}
+          note="Trung bình toàn bộ cảnh báo"
+        />
+        <MetricCard
+          label="Vụ việc đang điều tra"
+          value={d ? d.cases_investigating : "—"}
+          tone="agent"
+          icon={<BrainCircuit size={14} aria-hidden />}
+          note="Chưa xuất hồ sơ, chưa đóng"
+        />
+      </div>
       <Panel
         padded={false}
         title={

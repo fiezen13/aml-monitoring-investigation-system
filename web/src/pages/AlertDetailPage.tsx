@@ -153,11 +153,11 @@ export function AlertDetailPage() {
         <div>
           <button
             type="button"
-            onClick={() => navigate("/alerts")}
+            onClick={() => navigate("/cases")}
             className="mb-1.5 inline-flex items-center gap-1 text-2xs text-ink-mid hover:text-ink-hi"
           >
             <ArrowLeft size={12} aria-hidden />
-            Hàng đợi cảnh báo
+            Danh sách vụ việc
           </button>
           <h1 className="tabular text-h2 font-bold text-ink-hi">{a.alert_id}</h1>
           <p className="mt-0.5 text-body text-ink-mid">

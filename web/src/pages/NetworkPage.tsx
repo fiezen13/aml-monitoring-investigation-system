@@ -84,7 +84,7 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   "n-wallet": { x: 320, y: 360 },
 };
 
-function NetworkCanvas({ entities, relationships, onSelect }: { entities: NetworkNode[]; relationships: NetworkEdge[]; onSelect: (id: string) => void }) {
+export function NetworkCanvas({ entities, relationships, onSelect }: { entities: NetworkNode[]; relationships: NetworkEdge[]; onSelect: (id: string) => void }) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   const nodes: FlowNode[] = useMemo(

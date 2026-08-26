@@ -8,7 +8,6 @@ import { AppProvider } from "./context/AppContext";
 import { ConsoleProvider } from "./context/ConsoleContext";
 import { AgentRunPage, AgentsPage } from "./pages/AgentsPage";
 import { AlertDetailPage } from "./pages/AlertDetailPage";
-import { AlertsPage } from "./pages/AlertsPage";
 import { ApprovalDetailPage } from "./pages/ApprovalDetailPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { AuditPage } from "./pages/AuditPage";
@@ -38,9 +37,6 @@ import { LoadingState } from "./components/ui";
  * phiên làm việc không hề mở tới bản đồ hay đồ thị.
  */
 const WorldPage = lazy(() => import("./pages/WorldPage").then((m) => ({ default: m.WorldPage })));
-const EntityNetworkPage = lazy(() =>
-  import("./pages/EntityNetworkPage").then((m) => ({ default: m.EntityNetworkPage })),
-);
 const NetworkPage = lazy(() => import("./pages/NetworkPage").then((m) => ({ default: m.NetworkPage })));
 const CryptoPage = lazy(() => import("./pages/CryptoPage").then((m) => ({ default: m.CryptoPage })));
 
@@ -95,21 +91,17 @@ export default function App() {
                 }
               />
 
-              {/* Điều tra */}
-              <Route path="/alerts" element={<RequirePermission permission={PERM.VIEW_ALERTS}><AlertsPage /></RequirePermission>} />
+              {/* Điều tra — gộp về một trang Vụ việc.
+                  `/alerts` (hàng đợi) đã gộp KPI phễu vào trang Vụ việc → chuyển
+                  hướng. `/alerts/:id` giữ làm fallback cho cảnh báo mồ côi (chưa
+                  gom vào vụ). `/network` (toàn mạng) bỏ khỏi điều hướng: đồ thị
+                  giờ nằm trong từng vụ; chỉ giữ `/network/:caseId` (toàn màn hình
+                  của một vụ), mở từ nút trong trang vụ. */}
+              <Route path="/alerts" element={<Navigate to="/cases" replace />} />
               <Route path="/alerts/:alertId" element={<RequirePermission permission={PERM.VIEW_ALERTS}><AlertDetailPage /></RequirePermission>} />
               <Route path="/cases" element={<RequirePermission permission={PERM.VIEW_CASES}><CasesPage /></RequirePermission>} />
               <Route path="/cases/:caseId" element={<RequirePermission permission={PERM.VIEW_CASES}><CaseDetailPage /></RequirePermission>} />
-              {/* Hai đồ thị khác nhau có chủ đích: `/network` là toàn bộ mạng
-                  lưới mô phỏng, `/network/:caseId` là đồ thị gọn của một vụ việc. */}
-              <Route
-                path="/network"
-                element={
-                  <HeavyRoute label="Đang nạp bộ dựng đồ thị…">
-                    <RequirePermission permission={PERM.VIEW_ENTITY_GRAPH}><EntityNetworkPage /></RequirePermission>
-                  </HeavyRoute>
-                }
-              />
+              <Route path="/network" element={<Navigate to="/cases" replace />} />
               <Route
                 path="/network/:caseId"
                 element={

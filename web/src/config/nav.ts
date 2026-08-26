@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Bell,
   Blocks,
   ClipboardCheck,
   Coins,
@@ -10,7 +9,6 @@ import {
   Globe2,
   History,
   LayoutGrid,
-  Network,
   Receipt,
   Settings,
   Sparkles,
@@ -55,19 +53,13 @@ export const NAV: NavItem[] = [
   { section: "Giám sát", to: "/dashboard", label: "Tổng quan", icon: LayoutGrid },
   { to: "/world", label: "Giám sát địa lý", icon: Globe2 },
 
+  // Một mục điều tra duy nhất. Trang Vụ việc đã gộp: hàng đợi cảnh báo (KPI phễu)
+  // + đồ thị mạng lưới của từng vụ nằm ngay trong vụ. Không còn hai mục trùng vai.
   {
     section: "Điều tra",
-    to: "/alerts",
-    label: "Trung tâm cảnh báo",
-    icon: Bell,
-    badge: "alerts",
-    roles: ["analyst", "manager"],
-  },
-  { to: "/cases", label: "Vụ việc", icon: ClipboardCheck, roles: ["analyst", "manager"] },
-  {
-    to: "/network",
-    label: "Đồ thị mạng lưới",
-    icon: Network,
+    to: "/cases",
+    label: "Vụ việc",
+    icon: ClipboardCheck,
     roles: ["analyst", "manager"],
   },
   {
