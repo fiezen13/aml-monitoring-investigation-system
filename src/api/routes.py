@@ -752,6 +752,73 @@ def list_audit(
     return [AuditEventOut(**row) for row in rows]
 
 
+@router.get("/audit/by-case")
+def audit_by_case(limit: int = Query(default=40, ge=1, le=100)) -> list[dict[str, Any]]:
+    """Nhật ký kiểm toán GỘP THEO VỤ VIỆC (không phải dòng sự kiện phẳng).
+
+    Mỗi vụ: giai đoạn hiện tại + dòng thời gian các hành động NGHIỆP VỤ đã làm.
+    Bỏ sự kiện 'case_viewed' (chỉ là lượt xem, không phải hành động nghiệp vụ) và
+    các sự kiện không gắn vụ (đăng nhập…). Sắp theo hoạt động mới nhất.
+    """
+    with get_session() as session:
+        cases = (
+            session.execute(
+                text(
+                    """SELECT c.case_id, c.subject_account_key, c.title, c.state, c.risk_score,
+                              c.priority, c.assigned_to,
+                              count(*) AS event_count, max(l.occurred_at) AS last_at
+                         FROM audit_log l JOIN aml_case c ON c.case_id = l.case_id
+                        WHERE l.case_id IS NOT NULL AND l.event_type <> 'case_viewed'
+                        GROUP BY c.case_id, c.subject_account_key, c.title, c.state, c.risk_score,
+                                 c.priority, c.assigned_to
+                        ORDER BY max(l.occurred_at) DESC
+                        LIMIT :lim"""
+                ),
+                {"lim": limit},
+            )
+            .mappings()
+            .all()
+        )
+        out: list[dict[str, Any]] = []
+        for c in cases:
+            events = (
+                session.execute(
+                    text(
+                        """SELECT event_type, actor, actor_role, occurred_at
+                             FROM audit_log
+                            WHERE case_id = :cid AND event_type <> 'case_viewed'
+                            ORDER BY occurred_at DESC, audit_id DESC LIMIT 25"""
+                    ),
+                    {"cid": c["case_id"]},
+                )
+                .mappings()
+                .all()
+            )
+            out.append(
+                {
+                    "case_id": c["case_id"],
+                    "subject": c["subject_account_key"],
+                    "title": c["title"],
+                    "state": c["state"],
+                    "priority": c["priority"],
+                    "risk_score": float(c["risk_score"]) if c["risk_score"] is not None else 0.0,
+                    "assigned_to": c["assigned_to"],
+                    "event_count": c["event_count"],
+                    "last_at": c["last_at"],
+                    "events": [
+                        {
+                            "event_type": e["event_type"],
+                            "actor": e["actor"],
+                            "actor_role": e["actor_role"],
+                            "occurred_at": e["occurred_at"],
+                        }
+                        for e in events
+                    ],
+                }
+            )
+    return out
+
+
 @router.get("/dashboard", response_model=DashboardOut)
 def dashboard(
     dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),

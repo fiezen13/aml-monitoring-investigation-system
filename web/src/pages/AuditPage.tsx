@@ -1,65 +1,59 @@
-import { Lock, RefreshCw } from "lucide-react";
+import { ChevronRight, Lock, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
-import { auditEventLabel } from "../api/format";
+import { auditEventLabel, caseStateLabel, formatDateTime, formatRelative, priorityLabel } from "../api/format";
 import { useApi } from "../api/useApi";
 import { PageShell } from "../components/ui";
-import { AuditFeed } from "../components/common/AuditFeed";
+import { StatusBadge } from "../components/common/Badges";
 import { Panel } from "../components/common/Panel";
 import { SearchInput } from "../components/common/SearchInput";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
 import { PageHeader } from "../components/layout/PageHeader";
 
-/** Danh mục loại sự kiện — đúng ràng buộc CHECK của audit_log.event_type. */
-const EVENT_TYPES = [
-  "agent_query",
-  "alert_raised",
-  "case_state_changed",
-  "submitted_for_approval",
-  "approved",
-  "rejected",
-  "more_info_requested",
-  "file_exported",
-  "case_viewed",
-  "user_login",
-  "setting_changed",
-  "user_changed",
-  "sar_updated",
-  "validation_run",
-];
+const stateTone = (state: string): "ok" | "warn" | "muted" | "info" =>
+  state === "XuatHoSo" ? "ok" : state === "ChoNguoiPheDuyet" ? "warn" : state === "DongKhongBaoCao" ? "muted" : "info";
 
-/** Nhật ký kiểm toán — chỉ đọc (NT4). Bảng chặn UPDATE/DELETE bằng trigger ở tầng
- *  dữ liệu, nên ở đây không có nút sửa hay xoá nào để mà bỏ sót. */
+const PRIORITY_TONE: Record<string, "risk" | "warn" | "info" | "muted"> = {
+  critical: "risk",
+  high: "warn",
+  medium: "info",
+  low: "muted",
+};
+
+const roleLabel = (r: string): string =>
+  r === "system" ? "hệ thống" : r === "analyst" ? "chuyên viên" : r === "manager" ? "quản lý" : r || "—";
+
+/**
+ * Nhật ký kiểm toán THEO VỤ VIỆC — không phải dòng sự kiện phẳng.
+ *
+ * Mỗi vụ là một thẻ: giai đoạn hiện tại + dòng thời gian các hành động nghiệp vụ
+ * đã làm (điều tra, soạn/sửa SAR, gửi duyệt, phê duyệt, xuất hồ sơ). Bỏ lượt xem
+ * và sự kiện kỹ thuật (đăng nhập…) vì chúng không phải hành động trên hồ sơ.
+ * Chỉ đọc (NT4): bảng chặn sửa/xoá ở tầng dữ liệu.
+ */
 export function AuditPage() {
   const [search, setSearch] = useState("");
-  const [eventType, setEventType] = useState("");
-
-  const audit = useApi(
-    () => api.audit({ event_type: eventType || undefined, limit: 300 }),
-    [eventType],
-  );
-
-  const events = audit.data ?? [];
+  const audit = useApi(() => api.auditByCase(60), []);
+  const cases = audit.data ?? [];
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return events;
-    return events.filter(
-      (e) =>
-        e.actor.toLowerCase().includes(q) ||
-        e.actor_role.toLowerCase().includes(q) ||
-        (e.case_id ?? "").toLowerCase().includes(q) ||
-        auditEventLabel(e.event_type).toLowerCase().includes(q) ||
-        JSON.stringify(e.payload).toLowerCase().includes(q),
+    if (!q) return cases;
+    return cases.filter(
+      (c) =>
+        c.case_id.toLowerCase().includes(q) ||
+        c.subject.toLowerCase().includes(q) ||
+        (c.assigned_to ?? "").toLowerCase().includes(q),
     );
-  }, [events, search]);
+  }, [cases, search]);
 
   return (
     <PageShell>
       <PageHeader
         title="Nhật ký kiểm toán"
-        subtitle="Nhật ký bất biến của mọi hành động trong hệ thống — vụ việc phải tái dựng được khi thanh tra hỏi."
+        subtitle="Theo TỪNG vụ việc: vụ đang ở giai đoạn nào và đã làm những gì — tái dựng được khi thanh tra hỏi."
         actions={
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-control border border-line bg-panel px-2.5 py-1.5 text-2xs font-medium text-ink-mid">
@@ -80,39 +74,65 @@ export function AuditPage() {
       <Panel
         padded={false}
         title={
-          <div className="flex flex-wrap items-center gap-3">
-            <SearchInput
-              value={search}
-              onChange={setSearch}
-              placeholder="Tìm theo người thực hiện, mã vụ việc..."
-              className="w-80 font-normal"
-            />
-            <select
-              value={eventType}
-              onChange={(e) => setEventType(e.target.value)}
-              aria-label="Lọc theo loại sự kiện"
-              className="rounded-control border border-line bg-elev px-2 py-1.5 text-2xs text-ink-hi focus:outline-none"
-            >
-              <option value="">Tất cả loại sự kiện</option>
-              {EVENT_TYPES.map((value) => (
-                <option key={value} value={value}>
-                  {auditEventLabel(value)}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Tìm mã vụ việc, tài khoản chủ thể, người phụ trách..."
+            className="w-96 font-normal"
+          />
         }
-        action={<span className="tabular text-2xs text-ink-low">{filtered.length} sự kiện</span>}
+        action={<span className="tabular text-2xs text-ink-low">{filtered.length} vụ việc</span>}
       >
-        <div className="p-4">
+        <div className="space-y-2.5 p-4">
           {audit.loading && <LoadingSkeleton rows={6} />}
           {audit.error && <ErrorState detail={audit.error} onRetry={audit.reload} />}
           {!audit.loading &&
             !audit.error &&
             (filtered.length === 0 ? (
-              <EmptyState detail="Không có sự kiện nào khớp bộ lọc." />
+              <EmptyState detail="Chưa có vụ việc nào có hành động ghi vào nhật ký." />
             ) : (
-              <AuditFeed events={filtered} />
+              filtered.map((c) => (
+                <details key={c.case_id} className="group rounded-control border border-line bg-elev">
+                  <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-3.5 py-2.5">
+                    <ChevronRight
+                      size={13}
+                      className="flex-none text-ink-low transition-transform group-open:rotate-90"
+                      aria-hidden
+                    />
+                    <Link
+                      to={`/cases/${c.case_id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="tabular font-mono text-2xs text-info hover:underline"
+                    >
+                      {c.case_id}
+                    </Link>
+                    <span className="tabular truncate-1 text-2xs text-ink-mid">{c.subject}</span>
+                    <StatusBadge tone={stateTone(c.state)} label={caseStateLabel(c.state)} />
+                    <StatusBadge tone={PRIORITY_TONE[c.priority] ?? "muted"} label={priorityLabel(c.priority)} />
+                    <span className="ml-auto flex-none text-2xs text-ink-low">
+                      {c.assigned_to ? `${c.assigned_to} · ` : ""}
+                      {c.event_count} hành động · {formatRelative(c.last_at)}
+                    </span>
+                  </summary>
+                  <div className="border-t border-line px-3.5 py-3">
+                    <ol className="relative ml-1.5 space-y-2 border-l border-line pl-4">
+                      {c.events.map((e, i) => (
+                        <li key={i} className="relative">
+                          <span
+                            className="absolute -left-[21px] top-1 h-1.5 w-1.5 rounded-full bg-primary"
+                            aria-hidden
+                          />
+                          <div className="flex flex-wrap items-baseline gap-x-2 text-2xs">
+                            <span className="font-medium text-ink-hi">{auditEventLabel(e.event_type)}</span>
+                            <span className="text-ink-low">· {roleLabel(e.actor_role)}</span>
+                            <span className="tabular ml-auto text-ink-low">{formatDateTime(e.occurred_at)}</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </details>
+              ))
             ))}
         </div>
       </Panel>

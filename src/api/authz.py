@@ -162,6 +162,7 @@ POLICY: dict[str, frozenset[str]] = {
     "/fc/sources": MODEL_QUALITY,
     # --- Quản trị ---
     "/audit": AUDIT,
+    "/audit/by-case": AUDIT,
     "/users": USER_ADMIN,
     "/users/{user_id}": USER_ADMIN,
     "/settings": SETTINGS,

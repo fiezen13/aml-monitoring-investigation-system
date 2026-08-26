@@ -175,6 +175,19 @@ export interface ApiAuditEvent {
   occurred_at: string;
 }
 
+export interface ApiAuditCase {
+  case_id: string;
+  subject: string;
+  title: string;
+  state: string;
+  priority: string;
+  risk_score: number;
+  assigned_to: string | null;
+  event_count: number;
+  last_at: string;
+  events: { event_type: string; actor: string; actor_role: string; occurred_at: string }[];
+}
+
 export interface ApiTypologyShare {
   typology_code: string;
   typology_label: string;
@@ -1109,6 +1122,8 @@ export const api = {
 
   audit: (params: { case_id?: string; event_type?: string; limit?: number } = {}) =>
     request<ApiAuditEvent[]>(`/audit${query(params)}`),
+
+  auditByCase: (limit = 40) => request<ApiAuditCase[]>(`/audit/by-case${query({ limit })}`),
 
   // -------------------------------------------------------------------
   // API phân tích mở rộng. Khi không có simulation, World/Graph/Crypto đọc
