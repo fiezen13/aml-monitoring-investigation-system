@@ -300,11 +300,11 @@ export function DashboardPage() {
         )}
       </div>
 
-      <div className="flex flex-wrap items-start gap-3.5">
-        <div className="flex min-w-0 flex-[2.4_1_520px] flex-col gap-3.5">
-          <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
-            <ChartCard
-              title="Phân bố rủi ro vụ việc"
+      <div className="flex flex-col gap-3.5">
+        {/* Hàng trên: 3 thẻ ngang cân đối — rủi ro vụ việc · tuổi/phễu · hành lang rủi ro */}
+        <div className="grid items-start gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
+          <ChartCard
+            title="Phân bố rủi ro vụ việc"
               subtitle={`${d?.cases_total ?? 0} vụ đang mở, theo dải điểm rủi ro`}
               spec={riskBandSpec}
               state={dashboard.loading ? "loading" : riskBandSpec ? "ok" : "empty"}
@@ -339,6 +339,39 @@ export function DashboardPage() {
                 }
               />
             )}
+
+            <Panel title="Hành lang rủi ro cao nhất" subtitle="Xếp theo điểm rủi ro — cái đáng lo trước">
+              {world.loading && <div className="h-24 animate-pulse rounded-control bg-elev/60" aria-hidden />}
+              {world.data?.geography_available && dangerCorridors.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {dangerCorridors.map((c) => (
+                    <div key={c.name} className="flex items-center gap-2.5 text-data">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate-1 text-ink-hi">{c.name}</div>
+                        <div className="truncate-1 text-meta text-ink-low">
+                          {(c.typ && TYPOLOGY_LABELS[c.typ]?.name) || c.typ || "chưa rõ nhóm"} · {int(c.alerts)} cảnh báo
+                        </div>
+                      </div>
+                      <RiskIndicator score={c.risk} variant="badge" />
+                    </div>
+                  ))}
+                  <Link
+                    to="/world"
+                    className="mt-1 text-center text-data text-info-soft transition-colors hover:text-info"
+                  >
+                    Mở Giám sát địa lý →
+                  </Link>
+                </div>
+              )}
+              {world.data?.geography_available && dangerCorridors.length === 0 && (
+                <div className="text-data text-ink-low">Chưa có hành lang nào vượt ngưỡng rủi ro.</div>
+              )}
+              {world.data && !world.data.geography_available && (
+                <div className="rounded-control border border-warn/25 bg-warn/10 p-3 text-data text-warn-soft">
+                  Chưa có dữ liệu địa lý đã kiểm chứng cho bộ dữ liệu này.
+                </div>
+              )}
+            </Panel>
           </div>
 
           <ChartCard
@@ -373,52 +406,6 @@ export function DashboardPage() {
               emptyDetail="Không có cảnh báo nào đang chờ xử lý trong lô dữ liệu hiện tại."
             />
           </Panel>
-        </div>
-
-        <div className="flex min-w-0 max-w-[420px] flex-[1_1_320px] flex-col gap-3.5">
-          <Panel title="Hành lang rủi ro cao nhất" subtitle="Xếp theo điểm rủi ro — cái đáng lo trước">
-            {world.loading && <div className="h-24 animate-pulse rounded-control bg-elev/60" aria-hidden />}
-            {world.data?.geography_available && dangerCorridors.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {dangerCorridors.map((c) => (
-                  <div key={c.name} className="flex items-center gap-2.5 text-data">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate-1 text-ink-hi">{c.name}</div>
-                      <div className="truncate-1 text-meta text-ink-low">
-                        {(c.typ && TYPOLOGY_LABELS[c.typ]?.name) || c.typ || "chưa rõ nhóm"} · {int(c.alerts)} cảnh báo
-                      </div>
-                    </div>
-                    <RiskIndicator score={c.risk} variant="badge" />
-                  </div>
-                ))}
-                <Link
-                  to="/world"
-                  className="mt-1 text-center text-data text-info-soft transition-colors hover:text-info"
-                >
-                  Mở Giám sát địa lý →
-                </Link>
-              </div>
-            )}
-            {world.data?.geography_available && dangerCorridors.length === 0 && (
-              <div className="text-data text-ink-low">Chưa có hành lang nào vượt ngưỡng rủi ro.</div>
-            )}
-            {world.data && !world.data.geography_available && (
-              <div className="rounded-control border border-warn/25 bg-warn/10 p-3">
-                <div className="text-data font-semibold text-warn-soft">Chưa có dữ liệu địa lý đã kiểm chứng</div>
-                <p className="mt-1.5 text-meta leading-relaxed text-ink-soft">{world.data.limitation}</p>
-                <div className="mt-3 flex items-center justify-between gap-2 text-meta">
-                  <span className="font-mono text-ink-mid">
-                    {int(world.data.transaction_count)} giao dịch · {world.data.source_name ?? "chưa có nguồn"}
-                  </span>
-                  <Link to="/world" className="text-info-soft transition-colors hover:text-info">
-                    Xem nguồn →
-                  </Link>
-                </div>
-              </div>
-            )}
-          </Panel>
-
-        </div>
       </div>
     </PageShell>
   );
