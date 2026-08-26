@@ -1,6 +1,5 @@
 import { ChevronRight, Lock, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
 import { auditEventLabel, caseStateLabel, formatDateTime, formatRelative, priorityLabel } from "../api/format";
@@ -99,13 +98,7 @@ export function AuditPage() {
                       className="flex-none text-ink-low transition-transform group-open:rotate-90"
                       aria-hidden
                     />
-                    <Link
-                      to={`/cases/${c.case_id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="tabular font-mono text-2xs text-info hover:underline"
-                    >
-                      {c.case_id}
-                    </Link>
+                    <span className="tabular font-mono text-2xs text-ink-hi">{c.case_id}</span>
                     <span className="tabular truncate-1 text-2xs text-ink-mid">{c.subject}</span>
                     <StatusBadge tone={stateTone(c.state)} label={caseStateLabel(c.state)} />
                     <StatusBadge tone={PRIORITY_TONE[c.priority] ?? "muted"} label={priorityLabel(c.priority)} />
