@@ -58,8 +58,8 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
           {/* Nội dung bằng chứng — render DỄ ĐỌC theo loại (EvidenceBody), không
               đổ JSON thô cho chuyên viên. */}
           <div className="rounded-panel border border-line bg-elev p-3 text-2xs text-ink-mid">
-            {evidence.type ? (
-              <EvidenceBody type={evidence.type} payload={evidence.payload} />
+            {evidence.payload != null ? (
+              <EvidenceBody type={evidence.type ?? ""} payload={evidence.payload} />
             ) : (
               <p className="leading-relaxed text-ink-mid">{evidence.description}</p>
             )}
