@@ -18,6 +18,7 @@ import {
   MetricCard,
   Panel,
   PageShell,
+  ProgressBar,
   RiskIndicator,
 } from "../components/ui";
 import { ALERT_STATUS_TONE, DETECTOR_TONE, type Tone } from "../design/semantic";
@@ -305,11 +306,12 @@ export function DashboardPage() {
         <div className="grid items-start gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))" }}>
           <ChartCard
             title="Phân bố rủi ro vụ việc"
-              subtitle={`${d?.cases_total ?? 0} vụ đang mở, theo dải điểm rủi ro`}
-              spec={riskBandSpec}
-              state={dashboard.loading ? "loading" : riskBandSpec ? "ok" : "empty"}
-              note="Đếm thật từ vụ việc đang mở của đúng bộ dữ liệu này. Điểm rủi ro do bộ phát hiện chấm, cần người rà soát — không phải xác suất rửa tiền."
-            />
+            subtitle={`${d?.cases_total ?? 0} vụ đang mở, theo dải điểm rủi ro`}
+            spec={riskBandSpec}
+            height={Math.max(110, (d?.case_risk_bands?.length ?? 3) * 44)}
+            state={dashboard.loading ? "loading" : riskBandSpec ? "ok" : "empty"}
+            note="Đếm thật từ vụ việc đang mở của đúng bộ dữ liệu này. Điểm rủi ro do bộ phát hiện chấm, cần người rà soát — không phải xác suất rửa tiền."
+          />
             {/* Biểu đồ thứ hai đổi theo vai trò: quản lý xem phễu xử lý + nút
                 thắt phân công; chuyên viên xem tuổi hồ sơ để biết vụ nào cần xử
                 trước. (Hành lang địa lý đã gộp vào panel "Hành lang rủi ro cao
@@ -331,6 +333,7 @@ export function DashboardPage() {
                 title="Tuổi hồ sơ đang mở"
                 subtitle="Vụ nào đang già đi — ưu tiên xử trước"
                 spec={ageSpec}
+                height={Math.max(110, (d?.case_age_buckets?.length ?? 2) * 44)}
                 state={dashboard.loading ? "loading" : ageSpec ? "ok" : "empty"}
                 note={
                   d && d.cases_unassigned > 0
@@ -343,21 +346,27 @@ export function DashboardPage() {
             <Panel title="Hành lang rủi ro cao nhất" subtitle="Xếp theo điểm rủi ro — cái đáng lo trước">
               {world.loading && <div className="h-24 animate-pulse rounded-control bg-elev/60" aria-hidden />}
               {world.data?.geography_available && dangerCorridors.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  {dangerCorridors.map((c) => (
-                    <div key={c.name} className="flex items-center gap-2.5 text-data">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate-1 text-ink-hi">{c.name}</div>
-                        <div className="truncate-1 text-meta text-ink-low">
-                          {(c.typ && TYPOLOGY_LABELS[c.typ]?.name) || c.typ || "chưa rõ nhóm"} · {int(c.alerts)} cảnh báo
+                <div className="flex flex-col gap-3">
+                  {dangerCorridors.map((c) => {
+                    const tone: Tone = c.risk >= 80 ? "risk" : c.risk >= 60 ? "warn" : c.risk >= 40 ? "info" : "ok";
+                    return (
+                      <div key={c.name} className="flex flex-col gap-1">
+                        <div className="flex items-baseline justify-between gap-2 text-data">
+                          <span className="truncate-1 text-ink-hi">{c.name}</span>
+                          <span className="tabular flex-none font-mono font-semibold" style={{ color: toneColor(tone) }}>
+                            {c.risk}
+                          </span>
                         </div>
+                        <ProgressBar value={c.risk} tone={tone} />
+                        <span className="truncate-1 text-meta text-ink-low">
+                          {(c.typ && TYPOLOGY_LABELS[c.typ]?.name) || c.typ || "chưa rõ nhóm"} · {int(c.alerts)} cảnh báo
+                        </span>
                       </div>
-                      <RiskIndicator score={c.risk} variant="badge" />
-                    </div>
-                  ))}
+                    );
+                  })}
                   <Link
                     to="/world"
-                    className="mt-1 text-center text-data text-info-soft transition-colors hover:text-info"
+                    className="mt-0.5 text-center text-data text-info-soft transition-colors hover:text-info"
                   >
                     Mở Giám sát địa lý →
                   </Link>
