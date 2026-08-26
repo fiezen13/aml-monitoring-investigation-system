@@ -25,10 +25,11 @@ import { Panel } from "../components/common/Panel";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
 import { ReasonModal } from "../components/common/ReasonModal";
 import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
-// Lazy: đồ thị kéo theo react-flow (~150KB) — chỉ tải khi mở một vụ, không nằm
-// trong bundle chính (login/dashboard không cần).
-const CaseNetworkGraph = lazy(() =>
-  import("../components/investigation/CaseNetworkGraph").then((m) => ({ default: m.CaseNetworkGraph })),
+import { Tabs } from "../components/common/Tabs";
+// Lazy: đồ thị kéo theo react-flow (~60KB gzip) — chỉ tải khi chuyển sang tab
+// Đồ thị, không nằm trong bundle chính (login/dashboard không cần).
+const NetworkView = lazy(() =>
+  import("../pages/NetworkPage").then((m) => ({ default: m.NetworkView })),
 );
 import { PERMISSIONS } from "../rbac/permissions";
 import { useApp } from "../context/AppContext";
@@ -56,6 +57,7 @@ export function CaseDetailPage() {
   // Nút soạn SAR ngay trên Chi tiết vụ việc — trước đây chỉ có ở trang Đồ thị
   // mạng lưới nên analyst khó tìm, hàng đợi phê duyệt của quản lý luôn rỗng.
   const [sarModal, setSarModal] = useState(false);
+  const [tab, setTab] = useState("profile");
   const canPrepareSar = currentUser?.permissions?.includes(PERMISSIONS.PREPARE_SAR) ?? false;
 
   const reloadAll = useCallback(() => {
@@ -144,6 +146,16 @@ export function CaseDetailPage() {
         </div>
       </div>
 
+      <Tabs
+        tabs={[
+          { id: "profile", label: "Hồ sơ điều tra" },
+          { id: "graph", label: "Đồ thị mạng lưới" },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
+      {tab === "profile" && (
       <div className="grid gap-3 lg:grid-cols-[1fr_320px]">
         <div className="space-y-3">
           {/* Điều tra bằng AI thật (đa tác tử) — thay cho dải "chạy các bước"
@@ -160,11 +172,6 @@ export function CaseDetailPage() {
               />
             </Panel>
           )}
-
-          {/* Đồ thị mạng lưới của vụ — ngay tại đây, không phải một trang riêng. */}
-          <Suspense fallback={<Panel title="Đồ thị mạng lưới của vụ"><LoadingSkeleton rows={5} /></Panel>}>
-            <CaseNetworkGraph caseId={k.case_id} />
-          </Suspense>
 
           <Panel title="Yếu tố đóng góp vào điểm rủi ro">
             {k.reasons.length === 0 ? (
@@ -265,6 +272,13 @@ export function CaseDetailPage() {
           )}
         </div>
       </div>
+      )}
+
+      {tab === "graph" && (
+        <Suspense fallback={<div className="p-6 text-body text-ink-mid">Đang nạp đồ thị…</div>}>
+          <NetworkView caseId={k.case_id} embedded />
+        </Suspense>
+      )}
 
       <ReasonModal
         open={sarModal}

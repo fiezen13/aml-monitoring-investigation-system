@@ -196,12 +196,13 @@ export function NetworkCanvas({ entities, relationships, onSelect }: { entities:
   );
 }
 
-/** Phân tích Mạng lưới Giao dịch — GRAPH-008, panel chi tiết thực thể bên phải. */
-export function NetworkPage() {
-  const { caseId } = useParams();
+/** Phân tích Mạng lưới Giao dịch — GRAPH-008, panel chi tiết thực thể bên phải.
+ *  Tách khỏi route để tái dùng làm TAB trong trang vụ việc (đồ thị của vụ nằm
+ *  ngay trong vụ, không phải một trang riêng). */
+export function NetworkView({ caseId, embedded = false }: { caseId: string; embedded?: boolean }) {
   const navigate = useNavigate();
   const { pushToast } = useApp();
-  const networkQuery = useApi(() => api.network(caseId ?? ""), [caseId]);
+  const networkQuery = useApi(() => api.network(caseId), [caseId]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [panelOpen, setPanelOpen] = useState(true);
   const [sarModal, setSarModal] = useState(false);
@@ -215,7 +216,13 @@ export function NetworkPage() {
   const totalAmount = network.transactions.reduce((sum, tx) => sum + Number(tx.amount ?? 0), 0);
 
   return (
-    <div className="relative -m-4 flex h-[calc(100vh-56px)]">
+    <div
+      className={
+        embedded
+          ? "relative flex h-[calc(100vh-190px)] min-h-[460px] overflow-hidden rounded-panel border border-line"
+          : "relative -m-4 flex h-[calc(100vh-56px)]"
+      }
+    >
       <div className="min-w-0 flex-1">
         <ReactFlowProvider>
           <NetworkCanvas
@@ -364,4 +371,10 @@ export function NetworkPage() {
       />
     </div>
   );
+}
+
+/** Route /network/:caseId — đồ thị của một vụ ở chế độ toàn màn hình. */
+export function NetworkPage() {
+  const { caseId } = useParams();
+  return <NetworkView caseId={caseId ?? ""} />;
 }
