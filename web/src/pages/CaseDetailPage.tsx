@@ -54,8 +54,15 @@ export function CaseDetailPage() {
   const navigate = useNavigate();
   const { pushToast, currentUser } = useApp();
 
+  // Nhật ký kiểm toán chỉ dành cho vai trò có quyền (quản lý/kiểm toán). Chuyên
+  // viên không có quyền → KHÔNG gọi API (tránh 403 hiện như lỗi) và ẩn hẳn panel.
+  const canViewAudit = currentUser?.permissions?.includes(PERMISSIONS.VIEW_AUDIT_LOG) ?? false;
+
   const detail = useApi(() => api.case(caseId ?? ""), [caseId]);
-  const audit = useApi(() => api.audit({ case_id: caseId, limit: 50 }), [caseId]);
+  const audit = useApi(
+    () => (canViewAudit && caseId ? api.audit({ case_id: caseId, limit: 50 }) : Promise.resolve([])),
+    [caseId, canViewAudit],
+  );
   // Nút soạn SAR ngay trên Chi tiết vụ việc — trước đây chỉ có ở trang Đồ thị
   // mạng lưới nên analyst khó tìm, hàng đợi phê duyệt của quản lý luôn rỗng.
   const [sarModal, setSarModal] = useState(false);
@@ -196,15 +203,17 @@ export function CaseDetailPage() {
             )}
           </Panel>
 
-          <Panel title="Nhật ký kiểm toán">
-            {audit.loading ? (
-              <LoadingSkeleton rows={4} />
-            ) : audit.error ? (
-              <ErrorState detail={audit.error} onRetry={audit.reload} />
-            ) : (
-              <AuditFeed events={audit.data ?? []} />
-            )}
-          </Panel>
+          {canViewAudit && (
+            <Panel title="Nhật ký kiểm toán">
+              {audit.loading ? (
+                <LoadingSkeleton rows={4} />
+              ) : audit.error ? (
+                <ErrorState detail={audit.error} onRetry={audit.reload} />
+              ) : (
+                <AuditFeed events={audit.data ?? []} />
+              )}
+            </Panel>
+          )}
         </div>
 
         <div className="space-y-3">
