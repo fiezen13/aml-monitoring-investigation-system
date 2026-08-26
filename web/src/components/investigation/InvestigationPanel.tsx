@@ -1,5 +1,5 @@
-import { CheckCircle2, ChevronRight, Loader2, Play, RefreshCw, ShieldAlert, ShieldCheck, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CheckCircle2, ChevronRight, Loader2, Play, RefreshCw, ScanSearch, ShieldAlert, ShieldCheck, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../api/client";
 import {
@@ -52,6 +52,20 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
     () => (investigationId ? api.investigationEvidence(investigationId) : Promise.resolve([])),
     [investigationId, latest.data?.updated_at],
   );
+  // Tra loại bằng chứng theo id để nút dẫn chiếu hiện nhãn dễ đọc thay mã EV thô.
+  const evidenceById = useMemo(
+    () => new Map((evidence.data ?? []).map((e) => [e.evidence_id, e])),
+    [evidence.data],
+  );
+  // Bấm một dẫn chiếu bằng chứng: mở hết danh sách, rồi bung + cuộn tới đúng mục.
+  const openEvidence = useCallback((evidenceId: string) => {
+    setShowAllEvidence(true);
+    window.setTimeout(() => {
+      const el = document.getElementById(`ev-${evidenceId}`);
+      if (el instanceof HTMLDetailsElement) el.open = true;
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+  }, []);
   const trace = useApi(
     () => (investigationId ? api.investigationTrace(investigationId) : Promise.resolve([])),
     [investigationId, latest.data?.updated_at],
@@ -239,8 +253,18 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
           )}
           <p className="text-body leading-relaxed text-ink-hi">{investigationTextVi(explanation.data.summary)}</p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <ExplanationList title="DỮ KIỆN" items={explanation.data.claims.filter((claim) => claim.claim_type === "FACT")} />
-            <ExplanationList title="SUY LUẬN" items={explanation.data.claims.filter((claim) => claim.claim_type === "INFERENCE")} />
+            <ExplanationList
+              title="DỮ KIỆN"
+              items={explanation.data.claims.filter((claim) => claim.claim_type === "FACT")}
+              evidenceById={evidenceById}
+              onOpen={openEvidence}
+            />
+            <ExplanationList
+              title="SUY LUẬN"
+              items={explanation.data.claims.filter((claim) => claim.claim_type === "INFERENCE")}
+              evidenceById={evidenceById}
+              onOpen={openEvidence}
+            />
             <TextList title="THÔNG TIN CÒN THIẾU" items={explanation.data.missing_information} />
             <div>
               <h4 className="mb-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">BƯỚC TIẾP THEO ĐƯỢC ĐỀ XUẤT</h4>
@@ -258,7 +282,7 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
           ) : (
             <div className="space-y-2">
               {(showAllEvidence ? (evidence.data ?? []) : (evidence.data ?? []).slice(0, EVIDENCE_PREVIEW)).map((item) => (
-                <details key={item.evidence_id} className="rounded-control border border-line bg-elev p-2.5">
+                <details key={item.evidence_id} id={`ev-${item.evidence_id}`} className="scroll-mt-4 rounded-control border border-line bg-elev p-2.5">
                   <summary className="flex cursor-pointer list-none items-center gap-2 text-2xs text-ink-hi">
                     <ChevronRight size={12} />
                     <span className="font-semibold">{evidenceTypeLabel(item.type)}</span>
@@ -371,13 +395,51 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
   );
 }
 
-function ExplanationList({ title, items }: { title: string; items: Array<{ claim_id: string; claim: string; evidence_refs: string[] }> }) {
+function ExplanationList({
+  title,
+  items,
+  evidenceById,
+  onOpen,
+}: {
+  title: string;
+  items: Array<{ claim_id: string; claim: string; evidence_refs: string[] }>;
+  evidenceById: Map<string, { evidence_id: string; type: string }>;
+  onOpen: (evidenceId: string) => void;
+}) {
   return (
     <div>
       <h4 className="mb-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid">{title}</h4>
-      {items.length === 0 ? <p className="text-2xs text-ink-low">Không có.</p> : (
+      {items.length === 0 ? (
+        <p className="text-2xs text-ink-low">Không có.</p>
+      ) : (
         <ul className="space-y-2">
-          {items.map((item) => <li key={item.claim_id} className="text-body text-ink-hi">{investigationTextVi(item.claim)}<div className="tabular text-2xs text-info">{item.evidence_refs.join(" · ")}</div></li>)}
+          {items.map((item) => (
+            <li key={item.claim_id} className="text-body text-ink-hi">
+              {investigationTextVi(item.claim)}
+              {item.evidence_refs.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {item.evidence_refs.map((ref) => {
+                    const ev = evidenceById.get(ref);
+                    // Chỉ tạo nút BẤM ĐƯỢC khi bằng chứng có thật ở panel dưới;
+                    // nếu không, không hiện gì (không để mã EV chết như link giả).
+                    if (!ev) return null;
+                    return (
+                      <button
+                        key={ref}
+                        type="button"
+                        onClick={() => onOpen(ref)}
+                        title="Mở bằng chứng liên quan ở mục Bằng chứng"
+                        className="inline-flex items-center gap-1 rounded-control border border-info/30 bg-info/[0.08] px-1.5 py-0.5 text-3xs font-medium text-info-soft transition-colors hover:border-info/60 hover:text-info"
+                      >
+                        <ScanSearch size={10} aria-hidden />
+                        {evidenceTypeLabel(ev.type)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </li>
+          ))}
         </ul>
       )}
     </div>
