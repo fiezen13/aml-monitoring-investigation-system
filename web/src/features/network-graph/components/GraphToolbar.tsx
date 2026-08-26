@@ -2,7 +2,6 @@ import { useState } from "react";
 
 import type { PresetKey } from "../types/graph.types";
 import type { GraphComponent } from "../utils/graphComponents";
-import { GraphViewPresets } from "./GraphViewPresets";
 
 interface Props {
   preset: PresetKey;
@@ -69,7 +68,6 @@ function Btn({
  * tràn.
  */
 export function GraphToolbar({
-  preset,
   perf,
   isolated,
   story,
@@ -83,7 +81,6 @@ export function GraphToolbar({
   filtersOpen,
   onSearch,
   onNetwork,
-  onPreset,
   onFilters,
   onFit,
   onExpandHop,
@@ -113,7 +110,8 @@ export function GraphToolbar({
         ))}
       </select>
 
-      <GraphViewPresets value={preset} onChange={onPreset} />
+      {/* Bỏ segmented control Overview/Flow/Evidence — Flow và Evidence trùng
+          trải nghiệm với Overview, chỉ giữ Overview (mặc định). */}
 
       <Btn onClick={() => onExpandHop(hops >= 3 ? 1 : hops + 1)} title="Mở rộng vùng lân cận quanh đỉnh đang chọn">
         Mở rộng 1 hop
