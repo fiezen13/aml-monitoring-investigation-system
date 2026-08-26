@@ -51,8 +51,11 @@ function centerOn(cy: CyCore | null, id: string): void {
  * lại khi đầu vào của chính nó đổi — đó là lý do kéo thanh thời gian không làm
  * chạy lại layout, và đổi focus không làm chạy lại gì ngoài alpha.
  */
-export function InvestigationGraph() {
-  const { model, components, activeComponentId, setActiveComponentId, loading, error, reload } = useGraphModel(600);
+export function InvestigationGraph({ subject }: { subject?: string } = {}) {
+  const { model, components, activeComponentId, setActiveComponentId, loading, error, reload } = useGraphModel(
+    600,
+    subject,
+  );
   const [state, dispatch] = useReducer(graphReducer, undefined, initialState);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>("medium");
   const [fitNonce, setFitNonce] = useState(0);

@@ -1110,7 +1110,8 @@ export const api = {
 
   world: () => request<FcWorld>("/world"),
 
-  entityGraph: (limit = 400, dataset?: string) => request<FcGraph>(`/fc/graph${query({ limit, dataset })}`),
+  entityGraph: (limit = 400, dataset?: string, subject?: string) =>
+    request<FcGraph>(`/fc/graph${query({ limit, dataset, subject })}`),
   graphPatterns: (accounts: string[], pattern?: string, limit = 25) =>
     request<DetectedPattern[]>(`/fc/graph/patterns${query({ accounts: accounts.join(","), pattern, limit })}`),
 

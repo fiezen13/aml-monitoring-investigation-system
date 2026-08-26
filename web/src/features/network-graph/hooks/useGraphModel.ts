@@ -14,11 +14,15 @@ import { splitGraphComponents } from "../utils/graphComponents";
  * chỉ phụ thuộc dữ liệu API nên phải nằm ngoài mọi thay đổi bộ lọc — nếu để
  * trong cùng memo với filter thì mỗi lần kéo thanh trượt lại tính lại từ đầu.
  */
-export function useGraphModel(limit = 600) {
+export function useGraphModel(limit = 600, subject?: string) {
   // Đồ thị mạng lưới bám theo bộ dữ liệu toàn cục ở header: đổi bộ thì cả đồ
-  // thị gieo lại từ cảnh báo của đúng bộ đó.
+  // thị gieo lại từ cảnh báo của đúng bộ đó. Khi có `subject` (tài khoản chủ
+  // thể của một vụ), đồ thị gieo mầm từ đúng tài khoản đó — focus vào vụ.
   const { dataset } = useConsole();
-  const state = useApi(() => api.entityGraph(limit, dataset), [limit, dataset]);
+  const state = useApi(
+    () => api.entityGraph(limit, subject ? undefined : dataset, subject),
+    [limit, dataset, subject],
+  );
   const [activeComponentId, setActiveComponentId] = useState<string | null>(null);
 
   const components = useMemo(() => (state.data ? splitGraphComponents(state.data) : []), [state.data]);

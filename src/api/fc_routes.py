@@ -542,7 +542,9 @@ _NEIGHBOURHOOD_SQL = """
 """
 
 
-def _operational_transaction_graph(session: Session, limit: int, dataset: str | None = None) -> GraphOut:
+def _operational_transaction_graph(
+    session: Session, limit: int, dataset: str | None = None, seed_account: str | None = None
+) -> GraphOut:
     """Đồ thị quanh các cảnh báo rủi ro cao, dựng từ giao dịch đã chấm điểm.
 
     Hạt giống lấy **trực tiếp từ bảng alert**, không nối qua
@@ -564,34 +566,47 @@ def _operational_transaction_graph(session: Session, limit: int, dataset: str | 
     # Hệ quả là đồ thị vẽ ra một hình sao không mang thông tin gì, tab Chu trình
     # luôn rỗng, và chuyên viên không có gì để đọc. Xếp tài khoản có mẫu hình lên
     # trước để vùng vẽ chứa đúng thứ đáng nhìn.
-    seed_limit = max(10, min(100, limit // 4))
-    seed_rows = (
-        session.execute(
-            text(
-                """SELECT a.account_key,
-                          max(a.risk_score) AS risk_score,
-                          bool_or(g.account_key IS NOT NULL) AS has_pattern
-                     FROM alert a
-                     LEFT JOIN graph_detector_evidence g ON g.account_key = a.account_key
-                    WHERE a.status <> 'closed'
-                      -- Gieo mầm theo đúng bộ dữ liệu đang xem: cả đồ thị nở ra
-                      -- từ hạt giống nên lọc ở đây là scope toàn bộ. Không lọc thì
-                      -- một cụm tài khoản IBM và một cụm SAML-D nằm chung khung vẽ,
-                      -- vốn là hai vũ trụ không có cạnh nào nối nhau.
-                      AND (CAST(:dataset AS text) IS NULL OR a.dataset = CAST(:dataset AS text))
-                    GROUP BY a.account_key
-                    ORDER BY has_pattern DESC, max(a.risk_score) DESC, a.account_key
-                    LIMIT :lim"""
-            ),
-            {"lim": seed_limit, "dataset": dataset},
+    if seed_account:
+        # Đồ thị GẮN THEO MỘT VỤ: gieo mầm đúng bằng tài khoản chủ thể của vụ,
+        # rồi nở ra vùng lân cận của nó. Nhờ vậy giao diện đồ thị giàu (Cytoscape)
+        # vẽ đúng mạng lưới quanh vụ đang xem, thay vì toàn bộ release.
+        risk = (
+            session.execute(
+                text("SELECT max(risk_score) FROM alert WHERE account_key = :a"),
+                {"a": seed_account},
+            ).scalar()
         )
-        .mappings()
-        .all()
-    )
-    if not seed_rows:
-        return GraphOut(nodes=[], edges=[])
-    seeds = [row["account_key"] for row in seed_rows]
-    seed_risk = {row["account_key"]: int(round(_f(row["risk_score"]))) for row in seed_rows}
+        seeds = [seed_account]
+        seed_risk = {seed_account: int(round(_f(risk))) if risk is not None else 80}
+    else:
+        seed_limit = max(10, min(100, limit // 4))
+        seed_rows = (
+            session.execute(
+                text(
+                    """SELECT a.account_key,
+                              max(a.risk_score) AS risk_score,
+                              bool_or(g.account_key IS NOT NULL) AS has_pattern
+                         FROM alert a
+                         LEFT JOIN graph_detector_evidence g ON g.account_key = a.account_key
+                        WHERE a.status <> 'closed'
+                          -- Gieo mầm theo đúng bộ dữ liệu đang xem: cả đồ thị nở ra
+                          -- từ hạt giống nên lọc ở đây là scope toàn bộ. Không lọc thì
+                          -- một cụm tài khoản IBM và một cụm SAML-D nằm chung khung vẽ,
+                          -- vốn là hai vũ trụ không có cạnh nào nối nhau.
+                          AND (CAST(:dataset AS text) IS NULL OR a.dataset = CAST(:dataset AS text))
+                        GROUP BY a.account_key
+                        ORDER BY has_pattern DESC, max(a.risk_score) DESC, a.account_key
+                        LIMIT :lim"""
+                ),
+                {"lim": seed_limit, "dataset": dataset},
+            )
+            .mappings()
+            .all()
+        )
+        if not seed_rows:
+            return GraphOut(nodes=[], edges=[])
+        seeds = [row["account_key"] for row in seed_rows]
+        seed_risk = {row["account_key"]: int(round(_f(row["risk_score"]))) for row in seed_rows}
     # Lấy gấp đôi số đỉnh cần vẽ, không gấp tám như trước. Mỗi cạnh mang tối đa
     # hai đỉnh nên chừng ấy dòng đã thừa để chạm trần `limit`, và phần dư bị vòng
     # lặp bên dưới bỏ đi. Trên Cloud SQL, mỗi dòng thừa là một lần đọc khối ngẫu
@@ -682,13 +697,22 @@ def _operational_transaction_graph(session: Session, limit: int, dataset: str | 
 def entity_graph(
     limit: int = Query(default=400, le=2000),
     dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
+    subject: str | None = Query(
+        default=None,
+        description="Tài khoản chủ thể của một vụ việc — trả đồ thị vận hành GẮN THEO VỤ (seed từ tài khoản này).",
+    ),
 ) -> GraphOut:
     """Toàn bộ đồ thị thực thể của lần chạy mô phỏng gần nhất.
 
     ``dataset`` chỉ áp cho đồ thị vận hành (dựng từ cảnh báo thật). Lần chạy mô
     phỏng là một vũ trụ thực thể riêng, không gắn bộ dữ liệu vận hành nào.
+
+    ``subject`` (tài khoản chủ thể của một vụ) buộc dùng đồ thị VẬN HÀNH gieo mầm
+    từ tài khoản đó — dùng cho tab Đồ thị trong trang vụ việc.
     """
     with get_session() as session:
+        if subject:
+            return _operational_transaction_graph(session, limit, dataset, seed_account=subject)
         sim = _current_simulation(session)
         if not sim:
             return _operational_transaction_graph(session, limit, dataset)

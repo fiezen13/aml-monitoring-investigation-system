@@ -26,10 +26,11 @@ import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/St
 import { ReasonModal } from "../components/common/ReasonModal";
 import { InvestigationPanel } from "../components/investigation/InvestigationPanel";
 import { Tabs } from "../components/common/Tabs";
-// Lazy: đồ thị kéo theo react-flow (~60KB gzip) — chỉ tải khi chuyển sang tab
-// Đồ thị, không nằm trong bundle chính (login/dashboard không cần).
-const NetworkView = lazy(() =>
-  import("../pages/NetworkPage").then((m) => ({ default: m.NetworkView })),
+// Lazy: đồ thị Cytoscape (feature nặng) — chỉ tải khi mở tab Đồ thị. Đây đúng
+// là "Đồ thị mạng lưới" giàu tính năng, nhưng gieo mầm theo chủ thể của vụ
+// (prop subject) nên chỉ vẽ mạng lưới quanh vụ đang xem.
+const InvestigationGraph = lazy(() =>
+  import("../features/network-graph").then((m) => ({ default: m.InvestigationGraph })),
 );
 import { PERMISSIONS } from "../rbac/permissions";
 import { useApp } from "../context/AppContext";
@@ -276,7 +277,9 @@ export function CaseDetailPage() {
 
       {tab === "graph" && (
         <Suspense fallback={<div className="p-6 text-body text-ink-mid">Đang nạp đồ thị…</div>}>
-          <NetworkView caseId={k.case_id} embedded />
+          <div className="h-[calc(100vh-190px)] min-h-[520px] overflow-hidden rounded-panel border border-line">
+            <InvestigationGraph subject={k.subject_account_key} />
+          </div>
         </Suspense>
       )}
 
