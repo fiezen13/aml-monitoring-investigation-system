@@ -13,8 +13,25 @@ class CaseOut(BaseModel):
     risk_score: Decimal
     priority: str
     assigned_to: str | None = None
+    #: Họ tên người phụ trách. `assigned_to` là user_id để máy dùng; màn hình
+    #: nghiệp vụ phải đọc ra tên người, không phải mã "U-006".
+    assigned_name: str | None = None
     created_at: datetime
     alert_count: int
+    #: Quy mô lấy từ cảnh báo nặng nhất của vụ — xem AlertOut.
+    flagged_txn_count: int | None = None
+    flagged_amount: Decimal | None = None
+
+
+class CasePageOut(BaseModel):
+    """Một trang vụ việc; dùng phân trang máy chủ cho hàng nghìn hồ sơ."""
+
+    rows: list[CaseOut]
+    total: int
+    page: int
+    page_size: int = Field(alias="pageSize")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class AlertReasonOut(BaseModel):
@@ -72,6 +89,13 @@ class AlertOut(BaseModel):
     # Bộ dữ liệu của cảnh báo. Hàng đợi phục vụ nhiều bộ, và một cảnh báo SAML-D
     # đứng cạnh một cảnh báo IBM mà không có nhãn thì không ai phân biệt được.
     dataset: str = "ibm_hi_medium"
+    #: QUY MÔ của cảnh báo — sự thật đo được, không phải điểm suy ra.
+    #:
+    #: Điểm MEGA-PNA bão hoà ở 100 nên hàng đợi không xếp được thứ tự chỉ bằng
+    #: điểm. Hai trường này là khoá phụ để sắp xếp, và cũng là thứ chuyên viên
+    #: cần thấy để phân biệt hai vụ cùng 100 điểm. None với nhánh chưa backfill.
+    flagged_txn_count: int | None = None
+    flagged_amount: Decimal | None = None
 
 
 class AlertPageOut(BaseModel):
@@ -129,6 +153,8 @@ class AuditEventOut(BaseModel):
     case_id: str | None = None
     event_type: str
     actor: str
+    #: Họ tên người thực hiện; rỗng khi tác nhân là tiến trình của hệ thống.
+    actor_name: str | None = None
     actor_role: str
     payload: dict[str, Any]
     occurred_at: datetime
@@ -167,6 +193,10 @@ class DashboardOut(BaseModel):
     """Số liệu Trung tâm Điều hành — đếm thật từ PostgreSQL, không cứng hoá."""
 
     open_alerts: int
+    # Phân rã đúng tổng cảnh báo chưa đóng: chưa mở vụ + đã gắn vào vụ.
+    # Hai số này giúp dashboard không lấy số vụ việc để ngầm giải thích số cảnh báo.
+    alerts_without_case: int = 0
+    alerts_linked_to_case: int = 0
     high_risk_alerts: int
     cases_investigating: int
     sar_pending: int
@@ -178,6 +208,9 @@ class DashboardOut(BaseModel):
     subjects_below_threshold: int
     subjects_triggered: int
     batch_alerts_created: int
+    # Số cảnh báo của đúng lần chấm gần nhất đã có hồ sơ vụ việc. Khi chính sách
+    # 1:1 được áp dụng, số này phải bằng batch_alerts_created.
+    batch_cases_created: int = 0
     typology_distribution: list[TypologyShareOut]
     top_alerts: list[AlertOut]
     queue_depth: int
@@ -187,6 +220,7 @@ class DashboardOut(BaseModel):
     case_age_buckets: list[CaseAgeOut] = Field(default_factory=list)
     cases_unassigned: int = 0
     cases_total: int = 0
+    cases_awaiting_review: int = 0
     alert_trend: list[AlertTrendPointOut] = Field(default_factory=list)
 
 
@@ -255,6 +289,72 @@ class SarNarrativeRequest(BaseModel):
 
     summary: str = Field(..., min_length=1, max_length=8000)
     findings: list[SarNarrativeFinding] = Field(default_factory=list, max_length=60)
+
+
+class SarPreparerRequest(BaseModel):
+    """Người lập báo cáo tự khai để in lên bản SAR và khối chữ ký.
+
+    Chỉ ``name`` bắt buộc — báo cáo gửi cơ quan có thẩm quyền phải nêu được ai
+    chịu trách nhiệm; các trường liên hệ còn lại tuỳ đơn vị.
+    """
+
+    name: str = Field(..., min_length=2, max_length=120)
+    title: str = Field(default="", max_length=120)
+    department: str = Field(default="", max_length=160)
+    phone: str = Field(default="", max_length=40)
+    email: str = Field(default="", max_length=160)
+
+
+class CaseAssignRequest(BaseModel):
+    """Giao vụ cho một người, hoặc trả vụ về hàng đợi chung (``assignee`` rỗng)."""
+
+    assignee: str | None = Field(default=None, max_length=64)
+    reason: str = Field(default="", max_length=2000)
+
+
+class WorkloadRowOut(BaseModel):
+    """Khối lượng công việc của một người xử lý."""
+
+    user_id: str
+    name: str
+    role: str
+    role_label: str
+    active: bool
+    open_cases: int
+    by_state: dict[str, int]
+    sar_submitted: int
+    sar_approved: int
+    closed_cases: int
+
+
+class WorkloadOut(BaseModel):
+    rows: list[WorkloadRowOut]
+    unassigned_cases: int
+    total_open_cases: int
+
+
+class MyWorkOut(BaseModel):
+    """Số liệu công việc CỦA CHÍNH người đang đăng nhập.
+
+    Khác ``WorkloadOut``: bảng kia là góc nhìn CHIA VIỆC của Quản lý (ai đang
+    gánh bao nhiêu), còn đây là góc nhìn "việc của tôi". Chuyên viên không có
+    thẩm quyền phân công nên không cần — và không được — thấy bảng nhân sự.
+    """
+
+    role: str
+    #: Vụ được giao cho tôi và chưa kết thúc, kèm phân tách theo bước.
+    assigned_open: int
+    assigned_by_state: dict[str, int]
+    #: Hồ sơ tôi đã trình quản lý và đang chờ quyết định.
+    submitted_pending: int
+    #: Hồ sơ bị trả lại để bổ sung thông tin — việc phải làm tiếp.
+    returned_for_info: int
+    #: Hồ sơ tôi trình đã được duyệt, và vụ tôi xử lý đã kết thúc.
+    submitted_approved: int
+    closed_cases: int
+    #: CHỈ Quản lý: hồ sơ đang chờ chính tôi ra quyết định, và hàng đợi chưa giao.
+    awaiting_my_decision: int = 0
+    unassigned_cases: int = 0
 
 
 class ApprovalDecisionRequest(BaseModel):

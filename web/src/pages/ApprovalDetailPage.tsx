@@ -9,6 +9,7 @@ import { ReasonModal } from "../components/common/ReasonModal";
 import { Tooltip } from "../components/common/Tooltip";
 import { Breadcrumb } from "../components/layout/Breadcrumb";
 import { api } from "../api/client";
+import { actorLabel, auditEventLabel, formatAmountText, formatDateTime, paymentChannelLabel } from "../api/format";
 import { useApi } from "../api/useApi";
 import { useApp } from "../context/AppContext";
 
@@ -32,14 +33,15 @@ export function ApprovalDetailPage() {
     suspicionType: sar.suspicionType,
     subject: {
       name: sar.subjectName,
-      taxCode: `Mã KH: ${sar.subject.customerId} · ${sar.subject.accountKey}`,
+      taxCode: `Tài khoản ${sar.subject.accountKey}`,
       internalRating: ({ high: "CAO", medium: "TRUNG BÌNH", low: "THẤP" } as Record<string, string>)[sar.subject.riskRating?.toLowerCase()] ?? sar.subject.riskRating,
       establishedFor: new Date(sar.subject.onboardingDate).toLocaleDateString("vi-VN"),
-      previousSars: sar.case_id,
+      caseId: sar.case_id,
     },
     behaviourSummary: sar.behaviourSummary,
     transactions: sar.relatedTransactions,
-    networkConfidence: sar.networkConfidence,
+    riskLevel: sar.riskLevel,
+    networkSize: sar.networkSize,
     networkNote: `${sar.evidence.length} bằng chứng và ${sar.relatedTransactions.length} giao dịch liên quan được truy xuất từ hệ thống.`,
     history: sar.history,
   };
@@ -132,8 +134,8 @@ export function ApprovalDetailPage() {
       {isSelfApproval && isPending && (
         <div className="mb-3 flex items-center gap-2 rounded-panel border border-warn/40 bg-warn/10 px-3 py-2.5 text-body text-warn">
           <ShieldCheck size={14} aria-hidden />
-          Bạn là người gửi báo cáo này — theo nguyên tắc bốn mắt, hãy chuyển sang tài khoản
-          MLRO (Đàm Minh Tuấn) qua menu tài khoản để phê duyệt.
+          Bạn là người gửi báo cáo này — theo nguyên tắc bốn mắt, hồ sơ phải do một tài khoản
+          Quản lý khác phê duyệt.
         </div>
       )}
 
@@ -156,7 +158,7 @@ export function ApprovalDetailPage() {
                   Mức độ rủi ro
                 </div>
                 <div className="mt-1">
-                  <StatusBadge tone="risk" label="CAO" />
+                  <StatusBadge tone="risk" label={detail.riskLevel} />
                 </div>
               </div>
             </div>
@@ -176,7 +178,7 @@ export function ApprovalDetailPage() {
                 <table className="w-full min-w-[520px] text-left">
                   <thead>
                     <tr className="border-b border-line bg-elev">
-                      {["Mã giao dịch", "Thời gian", "Số tiền", "Địa điểm"].map((h) => (
+                      {["Mã giao dịch", "Thời gian", "Số tiền", "Kênh"].map((h) => (
                         <th
                           key={h}
                           className="px-3 py-2 text-2xs font-semibold uppercase tracking-wider text-ink-mid"
@@ -192,9 +194,9 @@ export function ApprovalDetailPage() {
                         <td className="tabular px-3 py-2 text-body font-medium text-info">
                           {t.transaction_id}
                         </td>
-                        <td className="tabular px-3 py-2 text-body text-ink-mid">{t.time}</td>
-                        <td className="tabular px-3 py-2 text-body text-ink-hi">{t.amount}</td>
-                        <td className="px-3 py-2 text-body text-ink-mid">{t.location}</td>
+                        <td className="tabular px-3 py-2 text-body text-ink-mid">{formatDateTime(t.time)}</td>
+                        <td className="tabular px-3 py-2 text-body text-ink-hi">{formatAmountText(t.amount)}</td>
+                        <td className="px-3 py-2 text-body text-ink-mid">{paymentChannelLabel(t.location)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -230,8 +232,8 @@ export function ApprovalDetailPage() {
                 </dd>
               </div>
               <div className="flex items-center justify-between">
-                <dt className="text-ink-low">Lượt SAR trước đó</dt>
-                <dd className="tabular font-medium text-ink-hi">{detail.subject.previousSars}</dd>
+                <dt className="text-ink-low">Vụ việc</dt>
+                <dd className="tabular font-medium text-ink-hi">{detail.subject.caseId}</dd>
               </div>
             </dl>
           </Panel>
@@ -246,10 +248,10 @@ export function ApprovalDetailPage() {
           >
             <div className="flex flex-col items-center rounded-control border border-line bg-elev py-5">
               <span className="tabular text-h1 font-bold text-ok">
-                {detail.networkConfidence}%
+                {detail.networkSize.accounts}
               </span>
               <span className="text-2xs uppercase tracking-wider text-ink-low">
-                Độ tin cậy
+                Tài khoản trong mạng lưới
               </span>
             </div>
             <p className="mt-2.5 text-2xs leading-relaxed text-ink-mid">{detail.networkNote}</p>
@@ -264,9 +266,11 @@ export function ApprovalDetailPage() {
                     className="absolute -left-[21px] top-1 h-2 w-2 rounded-full border-2 border-panel bg-primary"
                     aria-hidden
                   />
-                  <div className="text-2xs font-semibold text-ink-hi">{h.text}</div>
+                  {/* Nhãn tiếng Việt, giờ đọc được, tên người — không phải mã
+                      sự kiện, dấu thời gian máy và mã tiến trình. */}
+                  <div className="text-2xs font-semibold text-ink-hi">{auditEventLabel(h.text)}</div>
                   <div className="tabular text-2xs text-ink-low">
-                    {h.time} · {h.actor}
+                    {formatDateTime(h.time)} · {actorLabel(h.actor, h.actor_name)}
                   </div>
                 </li>
               ))}

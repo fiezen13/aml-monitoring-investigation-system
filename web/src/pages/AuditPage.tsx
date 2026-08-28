@@ -3,7 +3,10 @@ import { useMemo, useState } from "react";
 
 import type { ApiAuditCaseEvent, ApiAuditMilestone } from "../api/client";
 import { api } from "../api/client";
-import { caseStateLabel, caseStepLabel, formatDateTime, formatRelative, priorityLabel } from "../api/format";
+import { caseStateLabel, caseStepLabel, formatDateTime, formatRelative, priorityLabel,
+  recommendedActionLabel,
+  auditEventLabel,
+} from "../api/format";
 import { useApi } from "../api/useApi";
 import { PageShell } from "../components/ui";
 import { StatusBadge } from "../components/common/Badges";
@@ -25,11 +28,19 @@ const PRIORITY_TONE: Record<string, "risk" | "warn" | "info" | "muted"> = {
 const roleLabel = (r: string): string =>
   r === "system" ? "hệ thống" : r === "agent" ? "tác tử AI" : r === "analyst" ? "chuyên viên" : r === "manager" ? "quản lý" : r || "—";
 
+// Quyết định sau rà soát. Bảng này TỪNG chỉ có ba giá trị của luồng phê duyệt,
+// nên hai quyết định mà tác tử thực sự ghi ra — REVIEW_FOR_SAR_STR và
+// CLOSE_AS_LIKELY_FALSE_POSITIVE — rơi thẳng xuống nhánh dự phòng và hiện
+// nguyên mã trên nhật ký của quản lý. `recommendedActionLabel` đã có sẵn nhãn
+// cho chúng; ở đây chỉ bổ sung ba giá trị riêng của luồng phê duyệt.
 const DECISION_LABELS: Record<string, string> = {
   APPROVE: "Phê duyệt",
   REJECT: "Từ chối",
   REQUEST_MORE_INFORMATION: "Yêu cầu bổ sung thông tin",
 };
+
+const decisionLabel = (decision: string): string =>
+  DECISION_LABELS[decision] ?? recommendedActionLabel(decision);
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -49,7 +60,7 @@ function describeEvent(e: ApiAuditCaseEvent): { title: string; note: string | nu
       return { title: "Phiên điều tra gặp lỗi", note: str(p.error) ?? str(p.reason) };
     case "investigation_reviewed": {
       const d = str(p.decision);
-      const decision = d ? DECISION_LABELS[d] ?? d : "Đã rà soát";
+      const decision = d ? decisionLabel(d) : "Đã rà soát";
       const reason = str(p.reason);
       return { title: `Rà soát điều tra — ${decision}`, note: reason ? `“${reason}”` : null };
     }
@@ -63,7 +74,12 @@ function describeEvent(e: ApiAuditCaseEvent): { title: string; note: string | nu
     }
     case "sar_updated": {
       const a = str(p.action);
-      const map: Record<string, string> = { edited: "sửa nội dung", created: "tạo bản nháp", regenerated: "soạn lại bằng AI" };
+      const map: Record<string, string> = {
+        edited: "sửa nội dung",
+        created: "tạo bản nháp",
+        regenerated: "soạn lại bằng AI",
+        preparer_declared: "khai thông tin người lập báo cáo",
+      };
       return { title: "Cập nhật hồ sơ SAR", note: a ? map[a] ?? a : null };
     }
     case "validation_run": {
@@ -78,7 +94,9 @@ function describeEvent(e: ApiAuditCaseEvent): { title: string; note: string | nu
     case "file_exported":
       return { title: "Xuất hồ sơ (PDF)", note: str(p.kind) };
     default:
-      return { title: e.event_type.replace(/_/g, " "), note: null };
+      // KHÔNG in mã sự kiện ra màn hình quản lý. `auditEventLabel` phủ toàn bộ
+      // ràng buộc CHECK của audit_log và có bài kiểm tra khoá lại điều đó.
+      return { title: auditEventLabel(e.event_type), note: null };
   }
 }
 

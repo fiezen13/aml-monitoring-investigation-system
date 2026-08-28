@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api, num } from "../api/client";
+import type { ApiWorkload } from "../api/client";
 import {
   caseDisplayTitle,
   caseStateLabel,
@@ -21,7 +22,6 @@ import { useApi } from "../api/useApi";
 import { TYPOLOGY_LABELS } from "../api/typologyLabels";
 import { PageShell } from "../components/ui";
 import { RiskBadge, StatusBadge } from "../components/common/Badges";
-import { AuditFeed } from "../components/common/AuditFeed";
 import { Panel } from "../components/common/Panel";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/common/States";
 import { ReasonModal } from "../components/common/ReasonModal";
@@ -54,15 +54,7 @@ export function CaseDetailPage() {
   const navigate = useNavigate();
   const { pushToast, currentUser } = useApp();
 
-  // Nhật ký kiểm toán chỉ dành cho vai trò có quyền (quản lý/kiểm toán). Chuyên
-  // viên không có quyền → KHÔNG gọi API (tránh 403 hiện như lỗi) và ẩn hẳn panel.
-  const canViewAudit = currentUser?.permissions?.includes(PERMISSIONS.VIEW_AUDIT_LOG) ?? false;
-
   const detail = useApi(() => api.case(caseId ?? ""), [caseId]);
-  const audit = useApi(
-    () => (canViewAudit && caseId ? api.audit({ case_id: caseId, limit: 50 }) : Promise.resolve([])),
-    [caseId, canViewAudit],
-  );
   // Nút soạn SAR ngay trên Chi tiết vụ việc — trước đây chỉ có ở trang Đồ thị
   // mạng lưới nên analyst khó tìm, hàng đợi phê duyệt của quản lý luôn rỗng.
   const [sarModal, setSarModal] = useState(false);
@@ -71,8 +63,7 @@ export function CaseDetailPage() {
 
   const reloadAll = useCallback(() => {
     detail.reload();
-    audit.reload();
-  }, [detail, audit]);
+  }, [detail]);
 
   if (detail.loading) {
     return (
@@ -203,17 +194,10 @@ export function CaseDetailPage() {
             )}
           </Panel>
 
-          {canViewAudit && (
-            <Panel title="Nhật ký kiểm toán">
-              {audit.loading ? (
-                <LoadingSkeleton rows={4} />
-              ) : audit.error ? (
-                <ErrorState detail={audit.error} onRetry={audit.reload} />
-              ) : (
-                <AuditFeed events={audit.data ?? []} />
-              )}
-            </Panel>
-          )}
+          {/* Nhật ký kiểm toán đã bỏ khỏi trang này: nó có trang riêng ở
+              /audit, và ở đây nó đẩy phần nghiệp vụ xuống dưới một danh sách
+              dài toàn dòng "Xem hồ sơ · api · Hệ thống" — tiếng ồn kỹ thuật do
+              chính việc mở trang sinh ra, không giúp gì cho việc rà soát vụ. */}
         </div>
 
         <div className="space-y-3">
@@ -232,7 +216,13 @@ export function CaseDetailPage() {
               </div>
               <Field label="Số cảnh báo" value={String(k.alert_count)} mono />
               <Field label="Số bằng chứng" value={String(k.evidence_count)} mono />
-              <Field label="Phụ trách" value={k.assigned_to ?? "Chưa giao"} />
+              <AssignmentField
+                caseId={k.case_id}
+                assignedTo={k.assigned_to}
+                assignedName={k.assigned_name}
+                closed={CLOSED_CASE_STATES.has(k.state)}
+                onChanged={() => detail.reload()}
+              />
               <Field label="Tuổi hồ sơ" value={formatRelative(k.created_at)} />
               <Field label="Mở lúc" value={formatDateTime(k.created_at)} />
             </dl>
@@ -291,7 +281,7 @@ export function CaseDetailPage() {
       {tab === "graph" && (
         <Suspense fallback={<div className="p-6 text-body text-ink-mid">Đang nạp đồ thị…</div>}>
           <div className="h-[calc(100vh-190px)] min-h-[520px] overflow-hidden rounded-panel border border-line">
-            <InvestigationGraph subject={k.subject_account_key} />
+            <InvestigationGraph subject={k.subject_account_key} caseId={k.case_id} />
           </div>
         </Suspense>
       )}
@@ -314,6 +304,142 @@ export function CaseDetailPage() {
         }}
       />
     </PageShell>
+  );
+}
+
+/** Vụ đã kết thúc thì không giao được nữa — khớp `_CLOSED_CASE_STATES` ở máy chủ. */
+const CLOSED_CASE_STATES = new Set(["XuatHoSo", "DongKhongBaoCao"]);
+
+/** Trường "Phụ trách" kèm thao tác giao việc ngay tại chỗ.
+ *
+ * Quản lý chọn người trong danh sách kèm SỐ VỤ ĐANG GIỮ của từng người — giao
+ * việc mà không thấy ai đang gánh bao nhiêu thì chỉ là đoán. Chuyên viên chỉ có
+ * hai nút: nhận vụ chưa ai giữ, hoặc trả lại vụ của chính mình.
+ */
+function AssignmentField({
+  caseId,
+  assignedTo,
+  assignedName,
+  closed,
+  onChanged,
+}: {
+  caseId: string;
+  assignedTo: string | null;
+  assignedName: string | null;
+  closed: boolean;
+  onChanged: () => void;
+}) {
+  const { currentUser, pushToast } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const isManager = currentUser?.role === "manager";
+  // Danh sách người để "Giao cho…" chỉ Quản lý mới dùng; Chuyên viên chỉ tự
+  // nhận hoặc trả vụ, không cần biết ai đang gánh gì. API cũng đã khoá
+  // "/workload" lại cho Quản lý nên Chuyên viên gọi vào sẽ nhận 403.
+  const team = useApi<ApiWorkload | null>(
+    () => (isManager ? api.workload() : Promise.resolve(null)),
+    [isManager],
+  );
+  const isMine = assignedTo != null && assignedTo === currentUser?.id;
+
+  const apply = async (assignee: string | null, reason: string) => {
+    setBusy(true);
+    try {
+      await api.assignCase(caseId, assignee, reason);
+      setPicking(false);
+      onChanged();
+      pushToast({
+        tone: "success",
+        title: assignee ? "Đã giao vụ việc" : "Đã trả vụ về hàng đợi chung",
+        detail: "Thay đổi người phụ trách đã được ghi vào nhật ký kiểm toán.",
+      });
+    } catch (cause) {
+      pushToast({
+        tone: "error",
+        title: "Không đổi được người phụ trách",
+        detail: cause instanceof Error ? cause.message : "Lỗi không xác định",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Chỉ Chuyên viên nhận vụ. Quản lý chốt hồ sơ do Chuyên viên trình; để họ
+  // trong danh sách này là mời người phê duyệt vào vị trí người lập hồ sơ.
+  const candidates = (team.data?.rows ?? []).filter((r) => r.active && r.role === "analyst");
+
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-line-soft pt-2">
+      <div className="flex items-center justify-between gap-2">
+        <dt className="text-ink-mid">Phụ trách</dt>
+        <dd className="font-medium text-ink-hi">{assignedName ?? "Chưa giao"}</dd>
+      </div>
+
+      {!closed && (
+        <div className="flex flex-wrap gap-1.5">
+          {!isManager && assignedTo == null && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => apply(currentUser?.id ?? null, "Chuyên viên tự nhận vụ")}
+              className="rounded-control border border-line px-2 py-1 text-2xs font-medium text-ink-hi hover:border-line-emphasis disabled:opacity-50"
+            >
+              Nhận vụ này
+            </button>
+          )}
+          {!isManager && isMine && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => apply(null, "Chuyên viên trả vụ về hàng đợi chung")}
+              className="rounded-control border border-line px-2 py-1 text-2xs font-medium text-ink-mid hover:text-ink-hi disabled:opacity-50"
+            >
+              Trả lại hàng đợi
+            </button>
+          )}
+          {isManager && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setPicking((v) => !v)}
+              className="rounded-control border border-line px-2 py-1 text-2xs font-medium text-ink-hi hover:border-line-emphasis disabled:opacity-50"
+            >
+              {assignedTo ? "Đổi người phụ trách" : "Giao cho…"}
+            </button>
+          )}
+          {isManager && assignedTo && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => apply(null, "Quản lý thu hồi vụ việc")}
+              className="rounded-control border border-line px-2 py-1 text-2xs font-medium text-ink-mid hover:text-ink-hi disabled:opacity-50"
+            >
+              Thu hồi
+            </button>
+          )}
+        </div>
+      )}
+
+      {picking && (
+        <ul className="mt-1 space-y-1 rounded-control border border-line bg-elev p-1.5">
+          {candidates.length === 0 && <li className="px-1 text-2xs text-ink-low">Đang tải danh sách…</li>}
+          {candidates.map((person) => (
+            <li key={person.user_id}>
+              <button
+                type="button"
+                disabled={busy || person.user_id === assignedTo}
+                onClick={() => apply(person.user_id, `Quản lý giao vụ cho ${person.name}`)}
+                className="flex w-full items-center gap-2 rounded-control px-1.5 py-1 text-left text-2xs hover:bg-panel disabled:opacity-40"
+              >
+                <span className="flex-1 text-ink-hi">{person.name}</span>
+                <span className="text-ink-low">{person.role_label}</span>
+                <span className="tabular font-mono text-ink-mid">{person.open_cases} vụ</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

@@ -112,7 +112,7 @@ export function GraphTopologySummary({ model, graph, paths, cycles, health, onOp
           if (!currencies.length && model.totalFlowUsd > 0) {
             return (
               <div className="flex gap-2">
-                <dt className="w-32 flex-none text-ink-low">Tổng dòng tiền</dt>
+                <dt className="w-32 flex-none text-ink-low">Dòng tiền cả mạng</dt>
                 <dd className="tabular font-mono text-ink-hi">{usd(model.totalFlowUsd)}</dd>
               </div>
             );
@@ -126,15 +126,29 @@ export function GraphTopologySummary({ model, graph, paths, cycles, health, onOp
             );
           }
           return (
-            <div className="flex gap-2">
-              <dt className="w-32 flex-none text-ink-low">Dòng tiền</dt>
-              <dd className="flex flex-col gap-0.5">
-                {currencies.map(([currency, value]) => (
-                  <span key={currency} className="tabular font-mono text-ink-hi">
-                    {value.toLocaleString("vi-VN", { maximumFractionDigits: 0 })} {currency}
-                  </span>
-                ))}
-              </dd>
+            /* Nhãn phải nói rõ PHẠM VI.
+             *
+             * Con số này cộng trên MỌI cạnh của mạng đang vẽ, gồm cả giao dịch
+             * giữa các tài khoản khác. Bản giải thích của phiên điều tra chỉ đo
+             * giao dịch của riêng tài khoản bị cảnh báo. Để trần chữ "Dòng tiền"
+             * thì hai con số lệch nhau hai bậc độ lớn nằm cạnh nhau trên cùng
+             * một màn hình mà không chỗ nào nói vì sao. */
+            <div className="flex flex-col gap-1">
+              <div className="flex gap-2">
+                <dt className="w-32 flex-none text-ink-low">Dòng tiền cả mạng</dt>
+                <dd className="flex flex-col gap-0.5">
+                  {currencies.map(([currency, value]) => (
+                    <span key={currency} className="tabular font-mono text-ink-hi">
+                      {value.toLocaleString("vi-VN", { maximumFractionDigits: 0 })} {currency}
+                    </span>
+                  ))}
+                </dd>
+              </div>
+              <p className="text-3xs leading-relaxed text-ink-low">
+                Cộng trên toàn bộ {model.edges.length} cạnh đang vẽ và trên toàn bộ lịch sử giao dịch của chúng.
+                Gồm cả giao dịch giữa các tài khoản khác, và không giới hạn trong cửa sổ 30 ngày mà bản giải
+                thích dùng — nên con số này lớn hơn nhiều là bình thường.
+              </p>
             </div>
           );
         })()}

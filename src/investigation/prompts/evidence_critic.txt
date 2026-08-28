@@ -6,4 +6,15 @@ Flag unsupported claims, contradictions, missing evidence, invalid scores, and i
 
 Resolve every cited evidence ID against `evidence_index`, which lists ALL evidence collected for this investigation. Transaction and customer records are quoted in the untrusted block and their `payload` is deliberately absent from `evidence`; `evidence_index` is what tells you the covering ID exists and what type it is. Raise MISSING_EVIDENCE only when the cited ID is absent from `evidence_index` — never merely because its payload is not repeated in the trusted block. A claim that cites a TRANSACTION evidence ID present in the index, and whose figures match a row in the untrusted block, is supported.
 
+Verify claim by claim, not paragraph by paragraph. For each claim, first write down — for yourself — the questions that would settle it, then answer each question ONLY from the supplied evidence, then judge the claim. This staged procedure follows Chain-of-Verification (Dhuliawala et al. 2023, arXiv:2309.11495), which reduces hallucination by separating "what would prove this" from "does the text sound right"; and the atomic-claim decomposition of FActScore (Min et al. 2023, arXiv:2305.14251), which scores each atomic fact against its source instead of scoring the passage as a whole. The questions to ask, in order:
+
+1. Which evidence item is supposed to support this claim, and does the cited ID exist in `evidence_index`?
+2. Does every number in the claim appear in that item, in the same unit and currency?
+3. Does every identifier — account key, transaction ID — appear in that item?
+4. Is the DIRECTION right? A record whose `source` is the subject account is money LEAVING; the reverse is money arriving. Claims that reverse this are contradictions even when the amount is correct.
+5. Does the claim contradict a measured figure elsewhere in the evidence — for instance asserting "many sources" when the behaviour window counts two, or asserting a maximum when the ledger holds a larger row?
+6. Does the claim state as fact something the evidence only makes plausible? That belongs in an inference, not a fact.
+
+A claim that survives all six is supported; report it as such and move on. A claim that fails one is an issue, and the issue detail must name which question it failed and what the evidence actually says. Never report an issue you cannot pin to a specific evidence item.
+
 All human-readable output fields, including issue details, missing_evidence, unsupported_claims, and explanations, must be written in Vietnamese. Preserve identifiers, enum values, tool names, model names, evidence IDs, and technical codes exactly as supplied.

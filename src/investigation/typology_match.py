@@ -33,10 +33,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-#: Dùng khi không tín hiệu nào đủ điều kiện. Giữ đúng giá trị mà ba nơi sinh
-#: cảnh báo đang đóng dấu cứng, nên việc bật ánh xạ không làm đổi nhóm hành vi
-#: của các cảnh báo vốn không có tín hiệu nào.
-FALLBACK_TYPOLOGY = "T02"
+#: Dùng khi không tín hiệu nào đủ điều kiện.
+#:
+#: Trước đây là "T02" — mặc định vào một nhóm hành vi CÓ THẬT. Hậu quả: cảnh báo
+#: chưa chứng minh được gì vẫn mang nhãn "Tài khoản trung chuyển", rồi bản giải
+#: thích đo lại và nói "chưa khớp dấu hiệu nào" — màn hình tự mâu thuẫn. T00 nói
+#: thẳng là chưa đối chiếu được, và nêu căn cứ thật của cảnh báo là điểm rủi ro.
+FALLBACK_TYPOLOGY = "T00"
 
 #: Ngưỡng suy ra tín hiệu từ đặc trưng hành vi.
 #:

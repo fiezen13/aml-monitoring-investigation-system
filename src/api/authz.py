@@ -50,10 +50,18 @@ INVESTIGATION_READ = INVESTIGATION
 #: tác tử. Theo yêu cầu sản phẩm — CHỈ ADMIN. Chuyên viên và Quản lý đều KHÔNG thấy.
 MODEL_QUALITY = frozenset({ADMIN})
 
-#: Vòng đời hồ sơ SAR (soạn/kiểm tra/nộp/xem/xuất): Chuyên viên soạn và nộp, Quản
-#: lý cũng thao tác được. QUYẾT ĐỊNH phê duyệt thì tách riêng — chỉ Quản lý (xem
-#: "/approvals/{approval_id}/decision" bên dưới).
-SAR = INVESTIGATION
+#: ĐỌC hồ sơ SAR (xem danh sách, xem chi tiết, xuất bản đã duyệt, hỏi trợ lý).
+#: Cả hai vai: Quản lý phải đọc được hồ sơ mới phê duyệt được nó.
+SAR_READ = frozenset({ANALYST, MANAGER})
+
+#: SOẠN/SỬA/KIỂM CHỨNG/NỘP hồ sơ SAR — CHỈ Chuyên viên.
+#:
+#: Phân tách nhiệm vụ: người lập hồ sơ và người chốt hồ sơ phải khác VAI, không
+#: chỉ khác người. Trước đây Quản lý cũng soạn và nộp được, nên một Quản lý đã
+#: tự trình một hồ sơ rồi thấy nó trong hàng đợi chờ chính mình duyệt — chốt
+#: "người gửi không tự phê duyệt" chặn được cá nhân đó, nhưng vụ việc thì kẹt
+#: và quy trình mất ý nghĩa.
+SAR_PREPARE = frozenset({ANALYST})
 
 #: Nhật ký kiểm toán nghiệp vụ — Quản lý giám sát, Admin xem dấu vết hệ thống.
 AUDIT = frozenset({MANAGER, ADMIN})
@@ -99,29 +107,45 @@ POLICY: dict[str, frozenset[str]] = {
     "/alerts/{alert_id}/investigation": INVESTIGATION_READ,
     # --- Vụ việc --- (Chuyên viên + Quản lý; quản trị hệ thống không đọc)
     "/cases": INVESTIGATION_READ,
+    "/cases/page": INVESTIGATION_READ,
     "/cases/{case_id}": INVESTIGATION_READ,
-    "/cases/{case_id}/investigate": INVESTIGATION,
     "/cases/{case_id}/network": INVESTIGATION_READ,
-    "/cases/{case_id}/sar": SAR,
+    "/cases/{case_id}/sar": SAR_PREPARE,
+    "/cases/{case_id}/assign": INVESTIGATION,
+    # Bảng nhân sự "ai đang gánh bao nhiêu" là công cụ CHIA VIỆC — thẩm quyền
+    # của Quản lý. Chuyên viên xem số liệu việc của chính mình qua "/my-work".
+    "/workload": frozenset({MANAGER}),
+    "/my-work": INVESTIGATION_READ,
     # --- Phiên điều tra của tác tử ---
     "/investigations/{investigation_id}": INVESTIGATION_READ,
     "/investigations/{investigation_id}/evidence": INVESTIGATION_READ,
     "/investigations/{investigation_id}/trace": INVESTIGATION_READ,
     "/investigations/{investigation_id}/explanation": INVESTIGATION_READ,
     "/investigations/{investigation_id}/package": INVESTIGATION_READ,
-    "/investigations/{investigation_id}/review": frozenset({MANAGER}),
+    # KẾT LUẬN điều tra là việc của CHUYÊN VIÊN (quản lý chốt ở tầng phê duyệt).
+    # Cổng này còn sót lại từ mô hình cũ "quản lý vừa kết luận vừa duyệt": thân
+    # hàm đã mở cho analyst nhưng cổng vẫn chặn, nên chuyên viên không đẩy được
+    # vụ nào sang Soạn hồ sơ nghi vấn — cả quy trình hai vai bị kẹt ngay bước một.
+    # Kết luận về một phiên điều tra là bước NGHIỆP VỤ của Chuyên viên; nó
+    # đẩy vụ sang "Soạn hồ sơ nghi vấn" hoặc sinh đề nghị đóng vụ. Quản lý
+    # chốt ở "/approvals/{approval_id}/decision", không kết luận thay.
+    "/investigations/{investigation_id}/review": frozenset({ANALYST}),
     # Nhãn rà soát: vòng phản hồi của Quản lý (giám sát nghiệp vụ) và Admin (theo
     # dõi chất lượng mô hình). Chuyên viên không tham gia gắn nhãn.
     "/feedback/labels": AUDIT,
     # --- Hồ sơ SAR và phê duyệt ---
-    "/sars": SAR,
+    "/sars": SAR_READ,
+    # Hàng đợi ĐỀ NGHỊ ĐÓNG VỤ. Cùng chính sách với SAR: chuyên viên nộp đề
+    # nghị, quản lý chốt bằng "/approvals/{approval_id}/decision".
+    "/approvals/close-requests": SAR_READ,
     # Trợ lý AI hỏi–đáp về hàng đợi SAR — chỉ đọc/tư vấn, cùng quyền xem SAR.
-    "/sars/ai-chat": SAR,
-    "/sars/{sar_id}": SAR,
-    "/sars/{sar_id}/narrative": SAR,
-    "/sars/{sar_id}/validate": SAR,
-    "/sars/{sar_id}/submit": SAR,
-    "/sars/{sar_id}/export": SAR,
+    "/sars/ai-chat": SAR_READ,
+    "/sars/{sar_id}": SAR_READ,
+    "/sars/{sar_id}/narrative": SAR_PREPARE,
+    "/sars/{sar_id}/preparer": SAR_PREPARE,
+    "/sars/{sar_id}/validate": SAR_PREPARE,
+    "/sars/{sar_id}/submit": SAR_PREPARE,
+    "/sars/{sar_id}/export": SAR_READ,
     # Màn hình "Phê duyệt SAR" dựng từ /sars — bảng `approval` đi kèm mỗi hồ sơ
     # trong payload đó. Không có endpoint danh sách riêng và cũng không cần.
     # Quyết định phê duyệt hồ sơ rủi ro cao là THẨM QUYỀN NGHIỆP VỤ AML — chỉ
@@ -146,7 +170,6 @@ POLICY: dict[str, frozenset[str]] = {
     # Giải thích Gemini on-demand cho một giao dịch Bitcoin — cùng quyền điều tra.
     "/fc/bitcoin/{tx_id}/explain": INVESTIGATION,
     "/fc/bitcoin": INVESTIGATION_READ,
-    "/fc/projects": INVESTIGATION,
     # --- Tác tử AI ---
     "/fc/agent-runs": MODEL_QUALITY,
     "/fc/agent-runs/{run_id}": MODEL_QUALITY,

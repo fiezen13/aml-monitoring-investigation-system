@@ -118,8 +118,13 @@ def test_approval_decides_once_then_locks(db_engine, sample_case):
     with db_engine.begin() as conn:
         conn.execute(
             text(
-                """INSERT INTO approval (approval_id, case_id, decision)
-                   VALUES (:approval_id, :case_id, 'pending')"""
+                # request_kind='close': đề nghị đóng vụ, không kèm hồ sơ SAR.
+                # Ràng buộc approval_kind_matches_draft đòi loại 'sar' phải có
+                # sar_draft_id — bài kiểm này nói về tính bất biến của quyết
+                # định phê duyệt, đúng với cả hai loại, nên dùng loại không cần
+                # dựng thêm bản nháp.
+                """INSERT INTO approval (approval_id, case_id, decision, request_kind)
+                   VALUES (:approval_id, :case_id, 'pending', 'close')"""
             ),
             {"approval_id": approval_id, "case_id": sample_case["case_id"]},
         )
@@ -147,7 +152,10 @@ def test_approval_requires_reason(db_engine, sample_case):
     approval_id = f"APR2-{sample_case['case_id']}"
     with db_engine.begin() as conn:
         conn.execute(
-            text("INSERT INTO approval (approval_id, case_id, decision) VALUES (:a, :c, 'pending')"),
+            text(
+                "INSERT INTO approval (approval_id, case_id, decision, request_kind) "
+                "VALUES (:a, :c, 'pending', 'close')"
+            ),
             {"a": approval_id, "c": sample_case["case_id"]},
         )
 

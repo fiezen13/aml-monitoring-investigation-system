@@ -9,6 +9,9 @@ Nguồn: FIN-07-ARC-001 Hình 4 (máy trạng thái), FIN-07-BUS-001 (typology).
 
 # Nhãn typology T01–T10 dùng chung cho alert/case từ LI-Small.
 TYPOLOGY_LABELS: dict[str, str] = {
+    # Cảnh báo có căn cứ (điểm rủi ro + yếu tố đóng góp) nhưng hành vi quan sát
+    # được chưa khớp mẫu hình có tên nào. Nói thẳng còn hơn gán bừa một nhóm.
+    "T00": "Rủi ro theo mô hình — chưa khớp nhóm hành vi có tên",
     "T01": "Chia nhỏ giao dịch dưới ngưỡng báo cáo",
     "T02": "Tài khoản trung chuyển trong mạng lưới",
     "T03": "Giao dịch vòng quay lại chủ thể ban đầu",
@@ -28,19 +31,21 @@ def typology_label(code: str) -> str:
     return TYPOLOGY_LABELS.get(code, code)
 
 
-# Chuỗi điều tra tuyến tính: mỗi bước là một lần worker chạy. Dừng ở
-# ChoNguoiPheDuyet — đó là điểm bàn giao cho con người. Không có cung nào từ
-# đây đi thẳng tới XuatHoSo bằng máy: NT3 đòi một quyết định có người ký tên,
-# và cung đó nằm ở tầng phê duyệt, không nằm trong vòng lặp tự động.
+# Chuỗi vụ việc, rút còn những bước THẬT SỰ có người đẩy.
+#
+# Sáu bước cũ (TruyHoiBangChung, PhanTichDoThi, DoiChieuTrungPhatPEP,
+# TinhToanBangCongCu, LapLuanGanTypology, KiemChungBangChung) đã gỡ ngày
+# 27/08/2026: lối vào duy nhất của chúng là `POST /cases/{id}/investigate`, một
+# endpoint không giao diện nào gọi. Chúng chưa từng có một vụ nào đi qua (đo
+# trên production: 0 vụ, 0 dòng nhật ký) nhưng vẫn hiện trong nhật ký kiểm toán
+# như những giai đoạn đã xảy ra — mô tả một quy trình không tồn tại.
+#
+# Hai bước còn lại là hai bước có người bấm thật: chuyên viên soạn hồ sơ, rồi
+# nộp lên chờ duyệt. Chuỗi dừng ở ChoNguoiPheDuyet vì bước sau đó đòi một quyết
+# định có người ký tên, nằm ở tầng phê duyệt chứ không phải vòng lặp tự động.
 INVESTIGATION_CHAIN: tuple[str, ...] = (
     "TiepNhanCanhBao",
-    "TruyHoiBangChung",
-    "PhanTichDoThi",
-    "DoiChieuTrungPhatPEP",
-    "TinhToanBangCongCu",
-    "LapLuanGanTypology",
     "SoanHoSoNghiVan",
-    "KiemChungBangChung",
     "ChoNguoiPheDuyet",
 )
 
@@ -50,13 +55,7 @@ TERMINAL_STATES: frozenset[str] = frozenset({"XuatHoSo", "DongKhongBaoCao", "Die
 
 CASE_STATE_LABELS: dict[str, str] = {
     "TiepNhanCanhBao": "Tiếp nhận cảnh báo",
-    "TruyHoiBangChung": "Truy hồi bằng chứng",
-    "PhanTichDoThi": "Phân tích đồ thị",
-    "DoiChieuTrungPhatPEP": "Đối chiếu trừng phạt / PEP",
-    "TinhToanBangCongCu": "Tính toán bằng công cụ",
-    "LapLuanGanTypology": "Lập luận gán typology",
     "SoanHoSoNghiVan": "Soạn hồ sơ nghi vấn",
-    "KiemChungBangChung": "Kiểm chứng bằng chứng",
     "ChoNguoiPheDuyet": "Chờ người phê duyệt",
     "DieuTraBoSung": "Điều tra bổ sung",
     "XuatHoSo": "Xuất hồ sơ",

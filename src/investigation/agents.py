@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.config import get_settings
+from src.investigation import consistency
 from src.investigation.llm import GeminiCallResult, GeminiService
 from src.investigation.prompts import get_prompt
 from src.investigation.repository import InvestigationRepository
@@ -57,18 +58,62 @@ FEATURE_LABELS_VI = {
 
 
 def _amount(value: float) -> str:
-    """Plain decimal, no grouping separators.
+    """Số tiền có phân tách hàng nghìn bằng DẤU CÁCH mảnh.
 
-    The evidence critic re-extracts every number from claim text and matches it
-    against the cited payload. A thousands separator splits one number into two
-    that no payload contains, so the claim would fail its own audit.
+    "30752077.04" là một dãy chín chữ số không ai đọc được bằng mắt; chuyên viên
+    phải đếm từng cụm mới biết là ba mươi triệu hay ba trăm triệu. Dấu cách mảnh
+    (U+202F) tách cụm mà không tạo ký tự nào có thể bị đọc thành dấu thập phân.
+
+    Bộ kiểm số của tác tử phản biện chuẩn hoá lại dấu cách này trước khi so khớp
+    (xem ``_normalise_numbers``), nên câu vẫn tự kiểm chứng được.
     """
-    return f"{float(value):.2f}"
+    return f"{float(value):,.2f}".replace(",", THIN_SPACE)
+
+
+#: Kênh thanh toán → tiếng Việt.
+#:
+#: Hai bộ dữ liệu ghi cùng một khái niệm theo hai kiểu (`CREDIT_CARD` với IBM,
+#: `Credit card` với SAML-D), và cả hai đều là mã thô. Câu dữ kiện đọc lên phải
+#: là tiếng Việt: "qua kênh thẻ tín dụng", không phải "qua kênh CREDIT_CARD".
+_CHANNEL_VI = {
+    "cheque": "séc",
+    "ach": "chuyển khoản ACH",
+    "creditcard": "thẻ tín dụng",
+    "debitcard": "thẻ ghi nợ",
+    "crossborder": "chuyển tiền quốc tế",
+    "cash": "tiền mặt",
+    "cashwithdrawal": "rút tiền mặt",
+    "cashdeposit": "nộp tiền mặt",
+    "wire": "điện chuyển tiền",
+    "bitcoin": "Bitcoin",
+}
+
+
+def _channel(value: Any) -> str:
+    """Tên kênh thanh toán để ĐỌC. Mã lạ thì trả nguyên văn, không đoán."""
+    raw = str(value or "").strip()
+    if not raw:
+        return "không rõ"
+    return _CHANNEL_VI.get(re.sub(r"[\s_-]", "", raw).lower(), raw)
 
 
 def _day(value: Any) -> str:
-    return str(value)[:10]
+    """Ngày viết theo lối Việt Nam (dd/mm/yyyy).
 
+    "2022-09-16" là định dạng máy. Bộ kiểm số nhận ra dạng dd/mm/yyyy và quy về
+    ISO trước khi đối chiếu với bằng chứng (xem ``_mask_identifiers``).
+    """
+    iso = str(value)[:10]
+    parts = iso.split("-")
+    if len(parts) == 3 and all(part.isdigit() for part in parts):
+        return f"{parts[2]}/{parts[1]}/{parts[0]}"
+    return iso
+
+
+#: Dấu cách mảnh dùng để tách hàng nghìn. Không phải dấu cách thường: dấu cách
+#: thường bị các bước chuẩn hoá chuỗi khác gộp mất, và khi ấy "30 752 077" biến
+#: thành ba số rời.
+THIN_SPACE = "\u202f"
 
 # Screening thresholds for reading a typology signal off the observed window.
 # They decide wording only — never the risk score, which stays the detector's.
@@ -101,7 +146,8 @@ def _signal_measurements(grouped: dict[EvidenceType, list[EvidenceEnvelope]]) ->
             lift = geo.get("lift_vs_cross_border")
             measurements["cross_border_flow"] = f"hành lang {corridor}"
             measurements["jurisdiction_signal"] = (
-                f"hành lang {corridor}, gấp {float(lift):.1f} lần mức nền xuyên biên giới, ngưỡng ≥ 1,0"
+                # Dấu thập phân thống nhất với mọi số đo khác trong cùng câu ("12.1 giờ").
+                f"hành lang {corridor}, gấp {float(lift):.1f} lần mức nền xuyên biên giới, ngưỡng ≥ 1.0"
                 if lift
                 else f"hành lang {corridor}"
             )
@@ -114,23 +160,163 @@ def _signal_measurements(grouped: dict[EvidenceType, list[EvidenceEnvelope]]) ->
     if not observed:
         return measurements
     dwell = observed.get("median_dwell_hours")
+    # Cửa sổ nhiều loại tiền thì MỌI tỉ lệ tính trên số tiền đều vô nghĩa.
+    #
+    # Đo được trên bản thật: câu tóm tắt vừa nói "không cộng gộp thành một tổng"
+    # xong đã ghi ngay "nhận 4 932.33 rồi chuyển đi 4 694.59 — 95% số tiền nhận
+    # được đã đi tiếp" — mà hai con số ấy chính là USD cộng EUR. Một đoạn tự
+    # phủ định chính nó. Phép đo theo SỐ LƯỢNG (đối tác, giao dịch) và theo THỜI
+    # GIAN không phụ thuộc loại tiền nên vẫn giữ.
+    single_currency = bool(observed.get("currency"))
     measurements |= {
         "fan_in": f"{observed['unique_in_counterparties']} đối tác gửi, ngưỡng ≥ {FAN_COUNTERPARTIES}",
         "fan_out": f"{observed['unique_out_counterparties']} đối tác nhận, ngưỡng ≥ {FAN_COUNTERPARTIES}",
-        "rapid_outflow": (
-            f"{observed['rapid_outflow_percent']:.0f}% tiền ra đi nhanh, ngưỡng ≥ {RAPID_OUTFLOW_PERCENT:.0f}%"
-        ),
         "new_counterparties": f"{observed['new_counterparties']} đối tác mới, ngưỡng > 0",
     }
+    if single_currency:
+        measurements["rapid_outflow"] = (
+            f"{observed['rapid_outflow_percent']:.0f}% tiền ra đi nhanh, ngưỡng ≥ {RAPID_OUTFLOW_PERCENT:.0f}%"
+        )
     if dwell is not None:
         measurements["short_dwell_time"] = f"tiền nằm lại trung vị {dwell:.1f} giờ, ngưỡng ≤ {SHORT_DWELL_HOURS:.0f}"
         measurements["short_duration"] = measurements["short_dwell_time"]
-    if observed["inflow_amount"] > 0:
+    if observed["inflow_amount"] > 0 and single_currency:
         share = observed["outflow_amount"] / observed["inflow_amount"]
         measurements["value_retention"] = (
             f"chuyển đi {share:.0%} số nhận vào, ngưỡng giữ lại < {RETAINED_OUTFLOW_RATIO:.0%}"
         )
+
+    # --- Các tín hiệu còn lại: cũng phải có SỐ ĐO, không chỉ có tên ---
+    #
+    # Trước đây chỉ 9 tín hiệu trên có phép đo; những tín hiệu định nghĩa nên
+    # T01/T02/T03 (chia nhỏ dưới ngưỡng, trung chuyển, khép vòng) thì không, nên
+    # bản giải thích của các nhóm ấy chỉ nói "khớp dấu hiệu" mà không nói khớp ở
+    # mức nào — đúng chỗ chuyên viên cần con số nhất.
+    window = observed.get("window_days")
+    if window:
+        total_txn = int(observed["incoming_count"]) + int(observed["outgoing_count"])
+        measurements["short_window"] = f"{total_txn} giao dịch dồn trong {int(window)} ngày"
+    features = next((item.payload.get("features") or {} for item in reversed(behavior)), {})
+    repeated = features.get("repeated_amount_ratio")
+    if repeated is not None:
+        measurements["repeated_amounts"] = (
+            f"{float(repeated):.0%} giao dịch lặp lại cùng mức tiền, ngưỡng ≥ {REPEATED_AMOUNT_RATIO:.0%}"
+        )
+    if observed["inflow_amount"] > 0 and observed["outflow_amount"] > 0 and single_currency:
+        # Khoá RIÊNG, không gán vào `network_flow`.
+        #
+        # `network_flow` là tín hiệu của bộ phát hiện ĐỒ THỊ. Mượn khoá ấy cho
+        # một phép đo tính từ đặc trưng hành vi thì câu trạng thái đọc thành mâu
+        # thuẫn: "chưa đạt ngưỡng tiền đi qua tài khoản trung gian (94% số tiền
+        # chỉ đi qua tài khoản)". Đây là phép đo phụ, chỉ dùng cho câu nhấn mạnh.
+        # Tỉ lệ là PHẦN CỦA SỐ NHẬN ĐƯỢC đã chuyển đi tiếp, chặn trên ở 100%.
+        #
+        # Lấy thẳng outflow/inflow cho ra "811% số tiền chỉ đi qua tài khoản" khi
+        # tài khoản chuyển đi nhiều hơn số nhận trong cửa sổ (tiền vào từ trước
+        # cửa sổ). Không có nghĩa nào cho một tỉ lệ đi qua vượt 100%.
+        forwarded = min(observed["outflow_amount"], observed["inflow_amount"]) / observed["inflow_amount"]
+        # Chú thích NGẮN: phép đo này còn được nhét vào danh sách dấu hiệu đã
+        # khớp, vốn đã nằm trong ngoặc — một mệnh đề dài nữa thành ngoặc ba tầng.
+        extra = " (chênh do tiền vào trước cửa sổ)" if observed["outflow_amount"] > observed["inflow_amount"] else ""
+        # Số tiền LUÔN đi kèm loại tiền. Một con số trần không nói được nó là
+        # bốn nghìn đô hay bốn nghìn yên — hai thứ lệch nhau hai bậc độ lớn.
+        # Nhánh này chỉ chạy khi cửa sổ dùng một loại tiền, nên nêu được đích danh.
+        unit = f" {observed['currency']}"
+        measurements["pass_through"] = (
+            f"nhận {_amount(observed['inflow_amount'])}{unit} rồi chuyển đi "
+            f"{_amount(observed['outflow_amount'])}{unit} — {forwarded:.0%} số tiền nhận được đã đi tiếp{extra}"
+        )
     return measurements
+
+
+def _graph_measurements(grouped: dict[EvidenceType, list[EvidenceEnvelope]]) -> dict[str, str]:
+    """Số đo lấy từ bằng chứng đồ thị (mẫu hình, số tài khoản trong mẫu hình)."""
+    measurements: dict[str, str] = {}
+    for item in grouped.get(EvidenceType.GRAPH_PATTERN, []):
+        pattern = str(item.payload.get("pattern") or "")
+        if not pattern:
+            continue
+        accounts = len(item.payload.get("accounts", []) or [])
+        if "CYCLE" in pattern.upper():
+            measurements["directed_cycle"] = f"vòng tiền khép kín qua {accounts} tài khoản"
+        measurements.setdefault("network_flow", f"mẫu hình {pattern} nối {accounts} tài khoản")
+    return measurements
+
+
+#: Mỗi kiểu hành vi có MỘT chiều đo quyết định nó — và chuyên viên đọc bản giải
+#: thích là để biết chiều ấy đo ra bao nhiêu.
+#:
+#: Trước đây mọi nhóm hành vi đều được kể bằng cùng một khuôn: liệt kê tên các
+#: dấu hiệu đã khớp, không kèm số. "Khớp 3 trong 3 dấu hiệu" đúng nhưng rỗng —
+#: với nhóm luân chuyển nhanh thì phải thấy tiền nằm lại BAO LÂU, với nhóm gom
+#: toả thì phải thấy BAO NHIÊU nguồn và BAO NHIÊU đích, với nhóm chia nhỏ thì
+#: phải thấy NGƯỠNG là bao nhiêu và các giao dịch nằm dưới nó thế nào.
+#:
+#: `angle` là chiều đo, `signals` là thứ tự nêu số — đặt tín hiệu định nghĩa
+#: nhóm lên trước.
+_TYPOLOGY_FOCUS: dict[str, dict[str, Any]] = {
+    "T01": {
+        "angle": "cách chia nhỏ so với ngưỡng phải báo cáo",
+        "signals": ["rule_trigger", "repeated_amounts", "short_window"],
+    },
+    "T02": {
+        "angle": "vai trò trung chuyển — tiền đi qua chứ không nằm lại",
+        # `pass_through` và `value_retention` nói cùng một tỉ lệ bằng hai cách;
+        # chỉ giữ một để câu nhấn mạnh không lặp số.
+        "signals": ["pass_through", "network_flow", "rapid_outflow", "new_counterparties"],
+    },
+    "T03": {
+        "angle": "đường đi khép vòng của dòng tiền",
+        "signals": ["directed_cycle", "short_duration", "value_retention"],
+    },
+    "T04": {
+        "angle": "số lượng nguồn dồn vào và số đích toả ra",
+        "signals": ["fan_in", "fan_out", "short_dwell_time"],
+    },
+    "T05": {
+        "angle": "tốc độ — tiền nằm lại bao lâu trước khi rời đi",
+        "signals": ["rapid_outflow", "short_dwell_time"],
+    },
+    "T06": {
+        "angle": "hành lang địa lý mà tiền đi qua",
+        "signals": ["jurisdiction_signal", "cross_border_flow"],
+    },
+    "T07": {"angle": "độ lệch giữa hành vi và hồ sơ khách hàng", "signals": ["identity_mismatch", "shared_device"]},
+    "T09": {"angle": "chênh lệch giá trị trong chứng từ thương mại", "signals": ["trade_value_mismatch"]},
+    "T10": {
+        "angle": "mức lệch so với hồ sơ và quy mô thường thấy",
+        "signals": ["profile_deviation", "volume_deviation"],
+    },
+}
+
+
+def _focus_clause(code: str, measurements: dict[str, str]) -> str:
+    """Câu NHẤN MẠNH đúng chiều đo của nhóm hành vi, kèm mọi số đo đã có.
+
+    Nêu số đo của MỌI tín hiệu thuộc chiều ấy, không chỉ tín hiệu đã khớp: câu
+    ngay trước đó đã nói rõ cái nào khớp, cái nào chưa đạt ngưỡng, cái nào chưa
+    kiểm tra được. Một phép đo vẫn là một phép đo — với nhóm trung chuyển, tỉ lệ
+    tiền đi qua tài khoản là con số chuyên viên cần thấy, kể cả khi bộ phát hiện
+    đồ thị chưa xác nhận mẫu hình.
+    """
+    focus = _TYPOLOGY_FOCUS.get(code)
+    if not focus:
+        return ""
+    # Bỏ phép đo TRÙNG hoặc BỊ BAO HÀM trong phép đo đứng trước.
+    #
+    # Hai tín hiệu của cùng một nhóm hay dựng câu từ cùng một con số — nhóm địa
+    # lý là ví dụ rõ nhất: "hành lang UK → Morocco, gấp 2,0 lần mức nền" và
+    # "hành lang UK → Morocco". In cả hai thì câu nhấn mạnh tự lặp lại chính nó.
+    kept: list[str] = []
+    for name in focus["signals"]:
+        measure = measurements.get(name)
+        if not measure or any(measure in earlier or earlier in measure for earlier in kept):
+            continue
+        kept.append(measure)
+    if not kept:
+        return f"Với kiểu này, điều quyết định là {focus['angle']}."
+    numbers = "; ".join(kept)
+    return f"Với kiểu này, điều quyết định là {focus['angle']} — đo được: {numbers}."
 
 
 #: Tín hiệu tính từ khoảng thời gian giữa lúc nhận và lúc chuyển đi.
@@ -216,6 +402,11 @@ def _observed_signals(grouped: dict[EvidenceType, list[EvidenceEnvelope]]) -> di
             signals["short_duration"] = signals["short_dwell_time"]
         if observed["inflow_amount"] > 0:
             signals["value_retention"] = observed["outflow_amount"] < RETAINED_OUTFLOW_RATIO * observed["inflow_amount"]
+            # Tiền vào rồi phần lớn đi tiếp — bằng chứng TRỰC TIẾP của vai trò
+            # trung chuyển, đo ngay trên sổ giao dịch của chính tài khoản. Mẫu
+            # hình đồ thị chứng minh vai trò trong MẠNG LƯỚI, nhưng nhãn thì gắn
+            # cho MỘT tài khoản nên phép đo cấp tài khoản mới chứng minh được nó.
+            signals["pass_through"] = observed["outflow_amount"] >= RETAINED_OUTFLOW_RATIO * observed["inflow_amount"]
 
     # Gộp bằng OR trên toàn bộ bằng chứng đồ thị, không ghi đè theo dòng cuối.
     #
@@ -328,9 +519,16 @@ def _corridor_claim(geo: dict[str, Any], evidence_id: str) -> Claim:
             f"và gấp {all_lift:.1f} lần nếu so với toàn bộ giao dịch kể cả nội địa ({base_all_pct}%) — "
             "đây là mẫu số mà điểm rủi ro của cảnh báo đang dùng"
         )
+    # Tách làm hai câu.
+    #
+    # Nối cả bốn mệnh đề bằng dấu phẩy cho ra một câu ba trăm ký tự với năm con
+    # số — đúng nhưng không ai đọc hết. Câu đầu nói hành lang nào và tỉ lệ bao
+    # nhiêu; câu sau nói tỉ lệ ấy cao hơn mức nền bao nhiêu lần.
+    head = ", ".join(parts[:2]) + "."
+    tail = (" " + ", ".join(parts[2:]).capitalize() + ".") if len(parts) > 2 else ""
     return Claim(
         claim_id=_claim_id(),
-        claim=", ".join(parts) + ".",
+        claim=head + tail,
         claim_type="FACT",
         evidence_refs=[evidence_id],
         confidence=1.0,
@@ -339,9 +537,103 @@ def _corridor_claim(geo: dict[str, Any], evidence_id: str) -> Claim:
 
 #: Ngưỡng đọc hình dạng dòng tiền. Đặt tên rời ra để câu văn và phép đo không
 #: bao giờ lệch nhau, và để sửa ngưỡng là sửa một chỗ.
-_MANY_SOURCES = 3  # từ bao nhiêu tài khoản trở lên thì gọi là "nhiều nguồn"
-_MANY_DESTINATIONS = 5  # toả ra bao nhiêu tài khoản trở lên thì gọi là "toả rộng"
+#: MỘT định nghĩa "nhiều" cho cả trang, lấy đúng ngưỡng của tín hiệu.
+#:
+#: Trước đây văn xuôi dùng ngưỡng riêng (3) còn phần đối chiếu dấu hiệu dùng
+#: `FAN_COUNTERPARTIES` (5). Hậu quả đọc thấy ngay trên màn hình: câu tóm tắt
+#: viết "nhiều nguồn nộp vào" rồi ba dòng sau ghi "chưa đạt ngưỡng nhiều nguồn
+#: dồn vào (3 đối tác gửi, ngưỡng ≥ 5)". Cùng một trang, hai nghĩa của một chữ.
+_MANY_SOURCES = FAN_COUNTERPARTIES
+_MANY_DESTINATIONS = FAN_COUNTERPARTIES
 _FEW = 2  # bao nhiêu trở xuống thì gọi là "rất ít"
+
+
+#: Thứ tự đọc của phần DỮ KIỆN, từ việc tài khoản đã làm tới cách hệ chấm điểm.
+#:
+#: Bản trước xếp theo thứ tự CODE chạy: điểm rủi ro và các yếu tố chấm điểm nằm
+#: trên cùng, hành vi thật nằm dưới. Người mở một cảnh báo cần biết "tài khoản
+#: này đã làm gì với tiền" trước, còn "hệ thống cộng điểm thế nào" là thứ đọc
+#: sau khi đã hiểu câu chuyện.
+_FACT_ORDER: tuple[tuple[int, str], ...] = (
+    (10, "Trong khoảng "),           # dòng tiền của cả cửa sổ
+    (20, "được chuyển đi trong vòng"),  # tốc độ
+    (21, "Thời gian giữ tiền"),
+    (30, "chưa từng giao dịch với tài khoản này"),  # đối tác mới
+    (40, "Ngày "),                   # từng giao dịch dẫn chứng
+    (50, "So với các tài khoản hoạt động"),  # đặc trưng hành vi
+    (55, "Bộ phát hiện đồ thị"),
+    (60, "hành lang"),
+)
+
+#: Dữ kiện thuộc về cách CHẤM ĐIỂM — đúng nhưng không phải câu chuyện, nên xuống cuối.
+_SCORING_FACT = ("Hệ thống chấm mức rủi ro", "đóng góp", "vượt ngưỡng cảnh báo", "bị gắn cờ")
+
+
+def _order_facts(facts: list[str]) -> list[str]:
+    """Xếp dữ kiện theo MẠCH ĐỌC, giữ nguyên thứ tự trong cùng một nhóm."""
+
+    def rank(fact: str) -> int:
+        for priority, marker in _FACT_ORDER:
+            if marker in fact:
+                return priority
+        if any(marker in fact for marker in _SCORING_FACT):
+            return 90
+        return 70
+
+    return [fact for _, fact in sorted(enumerate(facts), key=lambda pair: (rank(pair[1]), pair[0]))]
+
+
+def _side(amount: float, count: int, parties: int, unit: str, *, verb: str) -> str:
+    """Một vế dòng tiền; vế rỗng thì nói "không", đừng viết "0.00 USD từ 0 đối tác".
+
+    "tài khoản nhận 0.00 US Dollar từ 0 đối tác" là cách máy nói. Người viết
+    "tài khoản không nhận giao dịch nào".
+    """
+    if count == 0:
+        return f"không {verb} giao dịch nào"
+    preposition = "từ" if verb == "nhận" else "tới"
+    return f"{verb} {_amount(amount)}{unit} {preposition} {parties} đối tác"
+
+
+def _percent(value: float, *, of_nonzero: bool = False) -> str:
+    """Tỉ lệ viết cho người đọc, không bao giờ làm một lượng khác 0 thành "0%".
+
+    "332.79 UK pounds được chuyển đi trong vòng 2 giờ, chiếm 0% tổng tiền ra" là
+    một câu tự mâu thuẫn: có tiền đi mà tỉ lệ bằng không.
+
+    ``of_nonzero`` là khi NƠI GỌI đã biết lượng gốc khác 0. Cần cờ này vì tỉ lệ
+    được làm tròn hai chữ số ngay từ nguồn: một lượng rất nhỏ so với tổng cho ra
+    đúng 0.0, và khi ấy chỉ nhìn con số thì không phân biệt được "không có đồng
+    nào" với "có nhưng chưa tới 0,005%".
+    """
+    if value < 0.5 and (of_nonzero or value > 0):
+        return "dưới 1"
+    return f"{value:.0f}"
+
+
+def _absence_wording(label: str) -> str:
+    """"0 giao dịch tiền mặt" → "Kỳ chấm điểm không ghi nhận giao dịch tiền mặt".
+
+    Phải nêu rõ PHẠM VI. Yếu tố chấm điểm đo trên cửa sổ của ô chấm điểm, còn sổ
+    giao dịch đính kèm là các dòng gần nhất — hai khoảng khác nhau. Viết trống
+    thành "Không có giao dịch tiền mặt" là một khẳng định tuyệt đối, và khi sổ
+    giao dịch có đúng một dòng rút tiền mặt thì bản giải thích tự mâu thuẫn;
+    tác tử phản biện bắt đúng lỗi đó rồi đánh trượt cả phiên.
+    """
+    if label.startswith("0 "):
+        return "Kỳ chấm điểm không ghi nhận " + label[2:]
+    return label
+
+
+def _label_already_states(label: str, contribution: float) -> bool:
+    """True nếu nhãn yếu tố đã nói ra chính con số đóng góp ấy.
+
+    "Giao dịch rủi ro nhất trong kỳ đạt 92 điểm rủi ro — yếu tố này đóng góp
+    91.76 điểm vào mức rủi ro" là một câu nói hai lần cùng một việc: chuyên viên
+    đọc hai con số gần bằng nhau rồi phải tự hỏi chúng khác nhau chỗ nào. Khi
+    nhãn đã chứa con số ấy (sai lệch dưới một điểm), phần đuôi là thừa.
+    """
+    return any(abs(float(number) - contribution) < 1.0 for number in _CLAIM_NUMBER_RE.findall(label))
 
 
 def _money_shape(observed: dict[str, Any]) -> str | None:
@@ -380,26 +672,27 @@ def _money_shape(observed: dict[str, Any]) -> str | None:
     if ins >= _MANY_SOURCES and outs == 1:
         return (
             f"Hình phễu: tiền chảy vào từ {ins} tài khoản khác nhau rồi dồn hết về đúng 1 tài khoản. "
-            "Đây là dáng của một điểm gom tiền — nhiều người nộp vào, một nơi hưởng."
+            f"Đây là dáng của một điểm gom tiền — {ins} nơi nộp vào, một nơi hưởng."
         )
     if ins >= _MANY_SOURCES and outs <= _FEW:
         return (
             f"Tiền chảy vào từ {ins} tài khoản khác nhau rồi dồn về {outs} tài khoản. Dáng gom tiền: "
-            "nhiều nguồn nộp vào, rất ít đích nhận."
+            f"{ins} nơi nộp vào, chỉ {outs} nơi nhận."
         )
     if ins <= _FEW and outs >= _MANY_DESTINATIONS:
         return (
             f"Tiền vào từ {ins} tài khoản rồi chia nhỏ toả ra {outs} tài khoản khác nhau. Dáng phát tán: "
-            "một nguồn, nhiều đích — kiểu chia nhỏ để khó lần theo."
+            f"{ins} nơi vào, {outs} nơi ra — kiểu chia nhỏ để khó lần theo."
         )
-    if fast >= RAPID_OUTFLOW_PERCENT and outflow > 0:
+    if fast >= RAPID_OUTFLOW_PERCENT and outflow > 0 and observed.get("currency"):
         return (
-            f"Tài khoản gần như không giữ tiền: {fast}% số tiền ra rời đi trong vòng "
+            f"Tài khoản gần như không giữ tiền: {_percent(fast)}% số tiền ra rời đi trong vòng "
             f"{observed['rapid_window_hours']} giờ kể từ lúc nhận. Dáng trung chuyển — tiền chỉ đi ngang qua."
         )
-    if outflow > inflow and outs <= _FEW and outs > 0:
+    if outflow > inflow and outs <= _FEW and outs > 0 and observed.get("currency"):
         return (
-            f"Số tiền chuyển đi ({_amount(outflow)}) lớn hơn hẳn số nhận vào ({_amount(inflow)}) trong cùng "
+            f"Số tiền chuyển đi ({_amount(outflow)} {observed['currency']}) lớn hơn hẳn số nhận vào "
+            f"({_amount(inflow)} {observed['currency']}) trong cùng "
             f"khoảng quan sát, và chảy về {outs} tài khoản. Phần lớn nguồn tiền đã có từ trước khoảng này — "
             "cần mở rộng mốc thời gian để thấy tiền từ đâu tới."
         )
@@ -412,6 +705,7 @@ def _summary(
     grouped: dict[EvidenceType, list[EvidenceEnvelope]],
     typologies: list[str],
     missing: list[str],
+    focus: str = "",
 ) -> str:
     """Kể hành vi, không kể đường ống.
 
@@ -463,14 +757,32 @@ def _summary(
                 "dịch — nên chưa mô tả được tài khoản này đã làm gì."
             )
     else:
-        unit = f" {observed['currency']}" if observed.get("currency") else ""
-        headline = (
-            f"Trong cửa sổ 30 ngày ({_day(observed['window_start'])}–{_day(observed['window_end'])}), tài khoản "
-            f"nhận {_amount(observed['inflow_amount'])}{unit} từ {observed['unique_in_counterparties']} đối tác "
-            f"và chuyển đi {_amount(observed['outflow_amount'])}{unit} tới "
-            f"{observed['unique_out_counterparties']} đối tác. "
-            "(Đồ thị mạng lưới vẽ các giao dịch gần nhất nên có thể hiện nhiều tài khoản hơn con số trong cửa sổ này.)"
-        )
+        window_text = f"{_day(observed['window_start'])}–{_day(observed['window_end'])}"
+        if observed.get("currency"):
+            unit = f" {observed['currency']}"
+            received = _side(
+                observed["inflow_amount"], observed["incoming_count"],
+                observed["unique_in_counterparties"], unit, verb="nhận",
+            )
+            sent = _side(
+                observed["outflow_amount"], observed["outgoing_count"],
+                observed["unique_out_counterparties"], unit, verb="chuyển đi",
+            )
+            headline = f"Trong cửa sổ 30 ngày ({window_text}), tài khoản {received} và {sent}."
+        else:
+            # Cửa sổ có NHIỀU LOẠI TIỀN thì không có tổng nào để nêu.
+            #
+            # Cộng đô-la với yên rồi in ra một con số trần không đơn vị là một
+            # phép tính vô nghĩa — đó chính là câu "nhận 30 752 077.04 từ 2 đối
+            # tác" đã lọt lên màn hình thật. Ở đây kể bằng SỐ GIAO DỊCH và SỐ ĐỐI
+            # TÁC (cộng được), còn số tiền để ở từng dòng giao dịch bên dưới,
+            # nơi mỗi số đi kèm đúng loại tiền của nó.
+            headline = (
+                f"Trong cửa sổ 30 ngày ({window_text}), tài khoản nhận {observed['incoming_count']} giao dịch "
+                f"từ {observed['unique_in_counterparties']} đối tác và chuyển đi {observed['outgoing_count']} "
+                f"giao dịch tới {observed['unique_out_counterparties']} đối tác. Các giao dịch thuộc nhiều loại "
+                "tiền khác nhau nên không cộng gộp thành một tổng; số tiền của từng giao dịch nêu ở phần dữ kiện."
+            )
         # Câu quan trọng nhất của cả bản giải thích: rốt cuộc tài khoản này đang
         # làm gì với tiền. Đứng ngay sau con số, trước mọi thứ khác.
         shape = _money_shape(observed)
@@ -478,6 +790,13 @@ def _summary(
             headline += f" {shape}"
 
     tail = f" Kiểu hành vi đối chiếu: {', '.join(typologies)}." if typologies else ""
+    # Nêu NGAY chiều đo quyết định của kiểu hành vi ấy, kèm số.
+    #
+    # Câu tóm tắt cũ dừng ở tên kiểu ("Kiểu hành vi đối chiếu: Luân chuyển tiền
+    # tốc độ cao") — người đọc phải lần xuống mục nhận định mới biết nhanh là
+    # nhanh bao nhiêu. Số quan trọng nhất phải nằm ở đoạn đầu.
+    if focus:
+        tail += f" {focus}"
     if missing:
         tail += " Bản giải thích còn một số chỗ chưa đủ dữ liệu, nêu ở mục bên dưới."
     return f"{headline}{tail} Đây là nhận định của hệ thống để hỗ trợ rà soát; kết luận thuộc về chuyên viên."
@@ -522,15 +841,54 @@ def _mask_identifiers(claim: str, cited: list[EvidenceEnvelope]) -> str:
     # Định danh luôn có ký tự không phải chữ số (``001:A``, ``EV-abc123``,
     # ``AE:4598413445``); một token toàn chữ số thì hoặc là số cần kiểm chứng,
     # hoặc là thứ vô hại để lại.
+    # Chuẩn hoá dấu tách hàng nghìn ở CẢ HAI PHÍA.
+    #
+    # Câu được bỏ dấu cách mảnh trước khi so khớp (bên dưới). Nếu bằng chứng vẫn
+    # giữ dấu ấy thì chuỗi hai bên không còn bằng nhau: nhãn "Tổng 9 294 trên các
+    # giao dịch bị gắn cờ" nằm nguyên trong bằng chứng nhưng không che được câu
+    # đã chuẩn hoá thành "Tổng 9294 …", và con số 9294 bị đòi bằng chứng số học —
+    # thứ không tồn tại vì nó chỉ sống trong chuỗi nhãn. Đo trên bản chạy lại
+    # 27/08/2026: lỗi này đánh trượt 100% số phiên của hai lô liên tiếp.
     tokens = {
-        token
+        variant
         for item in cited
         for token in _string_values(item.payload)
         if len(token) > 1 and not token.replace(".", "").replace(",", "").isdigit()
+        for variant in (token, token.replace(THIN_SPACE, ""))
     }
+    # Bỏ dấu tách hàng nghìn TRƯỚC khi so khớp: "30 752 077.04" phải quay về
+    # đúng con số nằm trong bằng chứng, nếu không mỗi cụm thành một số lạ.
+    claim = claim.replace(THIN_SPACE, "")
+    # Mô hình diễn đạt lại thường thay dấu cách mảnh bằng DẤU CÁCH THƯỜNG.
+    #
+    # Khi ấy "5 155.25" bị đọc thành hai số 5 và 155,25 — không số nào có trong
+    # bằng chứng, và một câu hoàn toàn đúng bị đánh trượt. Chỉ gộp khi bên phải
+    # đúng ba chữ số, tức là một nhóm hàng nghìn, để không dính vào "2 giao dịch".
+    claim = _GROUPING_SPACE_RE.sub("", claim)
+    # Ngày viết theo lối Việt Nam quy về ISO rồi mới đối chiếu. Không có bước này
+    # thì "16/09/2022" bị đọc thành ba con số 16, 9, 2022 mà bằng chứng không có.
+    claim = _VN_DATE_RE.sub(lambda m: _iso_if_cited(m, tokens), claim)
     for token in sorted(tokens, key=len, reverse=True):
         claim = claim.replace(token, " ")
     return claim
+
+
+#: Dấu cách ĐỨNG GIỮA hai nhóm chữ số của một số có phân tách hàng nghìn.
+_GROUPING_SPACE_RE = re.compile(r"(?<=\d)[ \u00a0](?=\d{3}(?!\d))")
+
+#: Ngày dd/mm/yyyy trong câu diễn giải.
+_VN_DATE_RE = re.compile(r"\b(\d{2})/(\d{2})/(\d{4})\b")
+
+
+def _iso_if_cited(match: re.Match[str], cited_tokens: set[str]) -> str:
+    """Đổi dd/mm/yyyy thành ISO nếu bằng chứng có ngày đó; không thì giữ nguyên.
+
+    Giữ nguyên khi không khớp là có chủ ý: một ngày KHÔNG có trong bằng chứng
+    phải rơi xuống bộ kiểm số và bị nêu, chứ không được lặng lẽ biến mất.
+    """
+    day, month, year = match.groups()
+    iso = f"{year}-{month}-{day}"
+    return iso if any(iso in token for token in cited_tokens) else match.group(0)
 
 
 #: Số liệu trong câu diễn giải, dùng để đối chiếu với bằng chứng đã trích dẫn.
@@ -556,6 +914,11 @@ def _mask_identifiers(claim: str, cited: list[EvidenceEnvelope]) -> str:
 #: trước khi quét.
 _CLAIM_NUMBER_RE = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?![\w-])")
 
+#: Định danh nghiệp vụ xuất hiện trong câu diễn giải: khoá tài khoản (``070:10042B660``)
+#: và mã có tiền tố (``EV-…``, ``ALT-…``, ``CASE-…``, ``INV-…``). Số giao dịch thuần
+#: chữ số KHÔNG nằm ở đây — bộ kiểm số đã phủ chúng.
+_IDENTIFIER_RE = re.compile(r"\b(?:[0-9A-Za-z]{1,20}:[0-9A-Za-z]{2,20}|(?:EV|ALT|CASE|SAR|INV|APR)-[0-9A-Za-z-]{4,})\b")
+
 
 _EVIDENCE_ID_RE = re.compile(r"\bEV-[A-Za-z0-9_]{3,}\b")
 _TRUNCATION_RE = re.compile(
@@ -571,6 +934,78 @@ _DENIES_EXISTENCE_RE = re.compile(
     r"không tồn tại|không có trong|không nằm trong|thiếu trong|does not exist|not present|absent",
     re.IGNORECASE,
 )
+#: Nhận định ĐANG ĐẾM giao dịch: "15 giao dịch xuyên biên giới", "nhận qua 4
+#: giao dịch", "3 giao dịch rút tiền mặt". Một phép đếm không bao giờ nằm sẵn
+#: trong payload bằng chứng — nó được suy ra bằng cách đếm các dòng — nên bộ
+#: kiểm tất định luôn báo nó là số bịa. Điều đó chỉ chấp nhận được khi bằng
+#: chứng ĐẦY ĐỦ; khi sổ giao dịch bị cắt ở 50 dòng thì phép đếm không thể kiểm
+#: chứng được bằng cả hai phía, và đứng trên nó là buộc tội bịa đặt oan.
+_TRANSACTION_COUNT_RE = re.compile(
+    r"\d+\s+giao dịch|\d+\s+transactions?|số lượng giao dịch|qua \d+ giao dịch",
+    re.IGNORECASE,
+)
+
+
+def _transaction_facts(evidence: list[EvidenceEnvelope]) -> dict[str, Any]:
+    """Đếm sổ giao dịch BẰNG CODE để tác tử phản biện khỏi phải tự đếm.
+
+    Trả về đúng những phép đếm mà tranh cãi hay nổ ra: tổng số dòng, số giao
+    dịch xuyên biên giới, và phân bố theo quốc gia đích. Kèm cờ ``truncated``:
+    thiếu nó thì một con số đúng-trên-phần-đọc-được lại bị đọc thành tổng thật.
+    """
+    rows: list[dict[str, Any]] = []
+    truncated = False
+    for item in evidence:
+        if item.type is not EvidenceType.TRANSACTION:
+            continue
+        payload = item.payload or {}
+        truncated = truncated or bool(payload.get("truncated"))
+        for row in payload.get("items") or []:
+            if isinstance(row, dict):
+                rows.append(row)
+
+    if not rows:
+        return {"available": False, "note": "Chưa thu sổ giao dịch nào cho phiên này."}
+
+    by_destination: dict[str, int] = {}
+    cross_border = 0
+    for row in rows:
+        src, dst = row.get("source_country"), row.get("destination_country")
+        if dst:
+            by_destination[dst] = by_destination.get(dst, 0) + 1
+        if src and dst and src != dst:
+            cross_border += 1
+
+    return {
+        "available": True,
+        "transactions_in_evidence": len(rows),
+        "cross_border_transactions": cross_border,
+        "transactions_by_destination_country": dict(
+            sorted(by_destination.items(), key=lambda kv: (-kv[1], kv[0]))
+        ),
+        "ledger_truncated": truncated,
+        "how_to_use": (
+            "Đây là phép đếm do hệ thống tính trên chính sổ giao dịch đã thu, không phải "
+            "do mô hình đếm. Dùng nó làm chuẩn khi đối chiếu các con số trong nhận định; "
+            "đừng tự đếm lại trong khối dữ liệu không tin cậy. Nếu ledger_truncated là "
+            "true thì mọi phép đếm chỉ đúng trên phần đã đọc được, và một nhận định lệch "
+            "so với nó KHÔNG phải là bịa đặt."
+        ),
+    }
+
+
+def _is_counting_claim(issue: Any) -> bool:
+    """Khiếu nại này có đang tranh cãi về một PHÉP ĐẾM giao dịch không?
+
+    Xét cả ``claim`` lẫn ``detail``: bộ kiểm tất định để phép đếm ở ``claim``
+    ("15 giao dịch xuyên biên giới") còn phần ``detail`` chỉ ghi con số trần
+    ("Các con số [15.0] không có trong bằng chứng"), trong khi tác tử phản biện
+    thì ngược lại. Bỏ sót một trong hai vế là bỏ sót đúng một nửa số trường hợp.
+    """
+    return bool(
+        _TRANSACTION_COUNT_RE.search(getattr(issue, "claim", "") or "")
+        or _TRANSACTION_COUNT_RE.search(getattr(issue, "detail", "") or "")
+    )
 
 
 def _numeric_values(value: Any) -> Iterable[float]:
@@ -771,10 +1206,36 @@ class ExplanationAgent:
     async def explain(self, alert: dict[str, Any], evidence: list[EvidenceEnvelope]) -> GeminiCallResult[Explanation]:
         deterministic = self._deterministic(alert, evidence)
         prompt = get_prompt(self.name)
+        # Chiều đo quyết định của nhóm hành vi này, kèm số đo đã tính sẵn.
+        #
+        # Không đưa vào thì mô hình viết cùng một khuôn cho mọi nhóm: liệt kê
+        # tên dấu hiệu đã khớp mà không nói khớp ở mức nào. Số ở đây do CODE
+        # tính từ bằng chứng, mô hình chỉ việc nêu đúng thứ tự.
+        grouped_evidence = _evidence_by_type(evidence)
+        measurements = _signal_measurements(grouped_evidence) | _graph_measurements(grouped_evidence)
+        matched_signals = [name for name, ok in _observed_signals(grouped_evidence).items() if ok]
         trusted = {
             "alert": alert,
             "evidence": [item.model_dump(mode="json") for item in evidence if not item.is_untrusted_content],
             "deterministic_candidate": deterministic.model_dump(mode="json"),
+            "typology_focus": [
+                {
+                    "typology_code": item.payload["typology_code"],
+                    "typology_name": item.payload.get("name_vi") or item.payload.get("name"),
+                    "dimension": _TYPOLOGY_FOCUS.get(item.payload["typology_code"], {}).get("angle", ""),
+                    "measurements": [
+                        {"signal": name, "measured": measurements[name]}
+                        for name in _TYPOLOGY_FOCUS.get(item.payload["typology_code"], {}).get("signals", [])
+                        if name in measurements
+                    ],
+                    "matched_signals": [
+                        name
+                        for name in _TYPOLOGY_FOCUS.get(item.payload["typology_code"], {}).get("signals", [])
+                        if name in matched_signals
+                    ],
+                }
+                for item in grouped_evidence.get(EvidenceType.TYPOLOGY_MAPPING, [])
+            ],
         }
         untrusted = [item.payload for item in evidence if item.is_untrusted_content]
         result = await self.service.generate_structured(
@@ -800,6 +1261,51 @@ class ExplanationAgent:
             return GeminiCallResult(output=deterministic, metadata=result.metadata)
         return result
 
+    #: Mã nội bộ của nhánh phát hiện → tên nghiệp vụ. Cùng bảng với
+    #: RISK_COMPONENT_LABELS ở web/src/api/format.ts.
+    _BRANCH_WORDS = {
+        "mega_pna": "mô hình phân tích mạng lưới giao dịch",
+        "geo_rule": "bộ luật địa lý",
+        "anomaly": "mô hình phát hiện bất thường",
+        "rule": "bộ luật nghiệp vụ",
+    }
+
+    @classmethod
+    def _scrub_prose(cls, text_value: str) -> str:
+        """Xoá mã nội bộ và mẫu số N/100 khỏi câu chữ MÔ HÌNH tự viết.
+
+        Sửa khuôn mẫu tất định là chưa đủ: Gemini viết phần tóm tắt bằng lời của
+        nó, và nó CHÉP mã nội bộ từ ngữ cảnh được đưa vào. Đo trên 30 phiên
+        thật, bản tóm tắt ra câu "dựa trên mô hình phân tích mạng lưới giao dịch
+        (mega_pna) với mức điểm rủi ro tối đa là 100/100" — vừa lộ mã nhánh vừa
+        dính lại đúng mẫu số đã bỏ.
+
+        Đây là bộ lọc TẤT ĐỊNH chứ không phải một câu nhắc trong prompt: mô hình
+        đã chứng minh là không giữ được lời hứa loại này, nên chặn ở đầu ra.
+        """
+        cleaned = re.sub(r"\s*\((?:mega_pna|geo_rule|anomaly|rule|ml|graph)\)", "", text_value)
+        for code, label in cls._BRANCH_WORDS.items():
+            cleaned = re.sub(rf"(?<![\w-]){re.escape(code)}(?![\w-])", label, cleaned)
+        # "100/100" → "100 điểm": mẫu số viết bằng số bị bộ kiểm tất định đòi
+        # bằng chứng riêng, và cảnh báo 57 điểm không có số 100 nào để khớp.
+        cleaned = re.sub(r"(?<![\d/])(\d{1,3})/100(?![\d/])", r"\1 điểm", cleaned)
+        # Câu vốn đã có chữ "điểm" trước con số thì phép thay trên đẻ ra "điểm 57
+        # điểm". Gộp lại thay vì để một câu lặp chữ ra màn hình.
+        cleaned = re.sub(r"điểm\s+(\d{1,3})\s+điểm", r"điểm \1", cleaned)
+        return cleaned
+
+    @classmethod
+    def _scrub_tree(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return cls._scrub_prose(value)
+        if isinstance(value, list):
+            return [cls._scrub_tree(v) for v in value]
+        if isinstance(value, dict):
+            # `source` là KHOÁ MÁY (tra nhãn hiển thị), không phải câu chữ —
+            # đổi nó sẽ làm hỏng phép tra ở cả API lẫn giao diện.
+            return {k: (v if k == "source" else cls._scrub_tree(v)) for k, v in value.items()}
+        return value
+
     @staticmethod
     def _drop_uncited_facts(parsed: Any) -> Any:
         """Refuse the offending claim, not the whole investigation.
@@ -811,7 +1317,10 @@ class ExplanationAgent:
         for the critic to audit. The removal is stated in the output, so a
         reviewer sees that the model asserted something it could not source.
         """
-        if not isinstance(parsed, dict) or not isinstance(parsed.get("claims"), list):
+        if not isinstance(parsed, dict):
+            return parsed
+        parsed = ExplanationAgent._scrub_tree(parsed)
+        if not isinstance(parsed.get("claims"), list):
             return parsed
         kept = [
             claim
@@ -844,9 +1353,20 @@ class ExplanationAgent:
             claims.append(
                 Claim(
                     claim_id=_claim_id(),
+                    # Thang 0-100, KHÔNG phải 0-1 ba chữ số thập phân: "1.000"
+                    # đọc trong tiếng Việt là "một nghìn", và bộ đối chiếu số của
+                    # tác tử phản biện cũng đọc đúng như vậy. Cột `risk_score`
+                    # trên bảng cảnh báo và trang Chi tiết đều đã dùng thang 100.
+                    #
+                    # Thang viết BẰNG CHỮ ("một trăm"), không viết "X/100": bộ
+                    # kiểm tất định rút MỌI chữ số trong câu rồi đòi mỗi số phải
+                    # có mặt trong bằng chứng. Mẫu số 100 viết bằng số sẽ bị đòi
+                    # bằng chứng cho riêng nó, và với cảnh báo 57 điểm thì không
+                    # có số 100 nào để khớp — cả phiên trượt vì một mẫu số. Cùng
+                    # luật với `flow_shape` ở trên.
                     claim=(
-                        f"Hệ thống chấm mức rủi ro {breakdown['final_risk_score']:.3f} trên thang từ 0 "
-                        f"đến 1 (càng gần 1 càng đáng chú ý) cho cảnh báo {alert['alert_id']}."
+                        f"Hệ thống chấm mức rủi ro {float(breakdown['final_risk_score_100']):.0f} điểm "
+                        f"trên thang một trăm cho cảnh báo {alert['alert_id']} (càng cao càng đáng chú ý)."
                     ),
                     claim_type="FACT",
                     evidence_refs=[risk_ev.evidence_id],
@@ -865,7 +1385,9 @@ class ExplanationAgent:
                     "anomaly": "Mô hình phát hiện bất thường",
                     "rule": "Bộ luật nghiệp vụ",
                     "graph": "Bộ phát hiện đồ thị mạng lưới",
-                    "mega_pna": "Mô hình đồ thị MEGA-PNA",
+                    # Tên kiến trúc ("MEGA-PNA") không đi vào bản giải thích đọc
+                    # cho chuyên viên: các nhánh khác đều gọi theo VIỆC chúng làm.
+                    "mega_pna": "Mô hình phân tích mạng lưới giao dịch",
                     "geo_rule": "Bộ luật địa lý",
                 }.get(source, source)
                 reason = f"{branch} là nhánh sinh ra cảnh báo này và là nguồn điểm chính thức."
@@ -905,9 +1427,30 @@ class ExplanationAgent:
                     claim_id=_claim_id(),
                     # Nhãn, không phải mã. "GEO_FX" không nói gì với chuyên viên;
                     # "3 giao dịch đổi loại tiền" thì có.
+                    # Yếu tố BỐI CẢNH (đóng góp và trọng số đều 0) mô tả tình
+                    # huống chứ không chấm điểm. Dán "đóng góp 0.00 điểm" vào
+                    # sau nó khiến bản giải thích tự phủ định chính mình: nêu ra
+                    # một dữ kiện rồi bảo dữ kiện ấy không đóng góp gì.
                     claim=(
-                        f"{rule.get('factor_label') or rule['factor_code']} "
-                        f"— yếu tố này đóng góp {float(rule['contribution']):.2f} điểm vào mức rủi ro."
+                        # "0 giao dịch tiền mặt." đứng một mình đọc như một dòng
+                        # rác. Cùng thông tin ấy, viết là "Không có giao dịch
+                        # tiền mặt" thì thành một câu tiếng Việt bình thường.
+                        f"{_absence_wording(rule.get('factor_label') or rule['factor_code'])}"
+                        + (
+                            "."
+                            # Điều kiện chỉ xét ĐÓNG GÓP, không xét trọng số nữa.
+                            #
+                            # Bản trước đòi cả hai bằng 0, nên yếu tố geo_rule như
+                            # GEO_CASH (trọng số 0,30 nhưng đóng góp 0,00 khi tài
+                            # khoản không có giao dịch tiền mặt) vẫn in ra "0 giao
+                            # dịch tiền mặt — yếu tố này đóng góp 0.00 điểm". Đo
+                            # trên 30 phiên thật: 15 bản giải thích dính câu này.
+                            # Đóng góp bằng 0 thì câu "đóng góp 0.00" là thừa và
+                            # tự phủ định, bất kể trọng số bao nhiêu.
+                            if float(rule["contribution"]) == 0
+                            or _label_already_states(rule.get("factor_label") or "", float(rule["contribution"]))
+                            else f" — yếu tố này đóng góp {float(rule['contribution']):.2f} điểm vào mức rủi ro."
+                        )
                     ),
                     claim_type="FACT",
                     evidence_refs=[item.evidence_id],
@@ -925,10 +1468,20 @@ class ExplanationAgent:
                 _tx_ev = next(iter(grouped.get(EvidenceType.TRANSACTION, [])), None)
                 _corr_claim = Claim(
                     claim_id=_claim_id(),
+                    # NÓI RÕ PHẠM VI: đây là hành lang đọc từ SỔ GIAO DỊCH đính
+                    # kèm, không phải hành lang đã làm cảnh báo nổ.
+                    #
+                    # Hai thứ khác nhau và có thể khác quốc gia: ô chấm điểm địa
+                    # lý xét một cửa sổ riêng, còn sổ giao dịch ở đây chỉ là các
+                    # dòng gần nhất. Gọi chung một tên thì bản giải thích tự mâu
+                    # thuẫn với phần phân rã điểm — tác tử phản biện bắt đúng lỗi
+                    # ấy và đánh trượt, và đó là nguyên nhân phần lớn phiên điều
+                    # tra nhánh địa lý không chạy xong (đo 27/08/2026).
                     claim=(
-                        f"Giao dịch đi qua hành lang {_corr['from_country']} → {_corr['to_country']} "
-                        f"({_corr['txn_count']} giao dịch xuyên biên giới trong bằng chứng); "
-                        f"{_corr['to_country']} là vùng tài phán bị bộ luật địa lý xếp mức rủi ro cao."
+                        f"Trong sổ giao dịch đính kèm, hành lang xuyên biên giới xuất hiện nhiều nhất là "
+                        f"{_corr['from_country']} → {_corr['to_country']} ({_corr['txn_count']} giao dịch). "
+                        "Đây là quan sát trên các giao dịch gần nhất, không phải hành lang mà bộ luật địa lý "
+                        "dùng để chấm điểm cảnh báo — hai phạm vi có thể khác nhau."
                     ),
                     claim_type="FACT",
                     evidence_refs=[_tx_ev.evidence_id] if _tx_ev else [],
@@ -966,16 +1519,26 @@ class ExplanationAgent:
                 )
                 continue
 
-            flow = Claim(
-                claim_id=_claim_id(),
-                claim=(
+            if observed.get("currency"):
+                flow_text = (
                     f"Trong khoảng {window}, tài khoản nhận {_amount(observed['inflow_amount'])}{unit} "
                     f"qua {observed['incoming_count']} giao dịch từ {observed['unique_in_counterparties']} đối tác, "
                     f"và chuyển đi {_amount(observed['outflow_amount'])}{unit} qua {observed['outgoing_count']} "
                     f"giao dịch tới {observed['unique_out_counterparties']} đối tác, "
-                    f"trải trên {observed['active_days']} ngày có phát sinh "
-                    "(cộng trên toàn bộ giao dịch của khoảng này, không phải trên vài giao dịch nêu ở dưới)."
-                ),
+                    f"trải trên {observed['active_days']} ngày có phát sinh. Đây là tổng của toàn bộ giao dịch "
+                    "trong khoảng, không phải của vài giao dịch nêu bên dưới."
+                )
+            else:
+                flow_text = (
+                    f"Trong khoảng {window}, tài khoản nhận {observed['incoming_count']} giao dịch từ "
+                    f"{observed['unique_in_counterparties']} đối tác và chuyển đi {observed['outgoing_count']} "
+                    f"giao dịch tới {observed['unique_out_counterparties']} đối tác, trải trên "
+                    f"{observed['active_days']} ngày có phát sinh. Các giao dịch thuộc nhiều loại tiền khác nhau "
+                    "nên không cộng gộp thành một tổng."
+                )
+            flow = Claim(
+                claim_id=_claim_id(),
+                claim=flow_text,
                 claim_type="FACT",
                 evidence_refs=[item.evidence_id],
                 confidence=1.0,
@@ -983,10 +1546,18 @@ class ExplanationAgent:
             claims.append(flow)
             facts.append(flow.claim)
 
-            if observed["rapid_outflow_amount"] > 0:
+            # Chỉ nêu tỉ lệ tiền ra đi nhanh khi cửa sổ dùng MỘT loại tiền; còn
+            # lại vẫn nêu thời gian giữ tiền vì thời gian không phụ thuộc loại tiền.
+            if observed["rapid_outflow_amount"] > 0 and observed.get("currency"):
                 dwell = observed.get("median_dwell_hours")
+                # MỘT cách làm tròn cho một số đo.
+                #
+                # Câu tóm tắt in "1.2 giờ" còn dữ kiện in "1.25 giờ" — cùng một
+                # phép đo, hai con số. Người đọc không biết mình đang nhìn hai
+                # thứ khác nhau hay một thứ bị ghi sai, và mất tin ở cả hai.
                 dwell_text = (
-                    f" Thời gian giữ tiền trung vị giữa lúc nhận và lần chuyển đi kế tiếp là {dwell} giờ."
+                    f" Thời gian giữ tiền trung vị giữa lúc nhận và lần chuyển đi kế tiếp là "
+                    f"{float(dwell):.1f} giờ."
                     if dwell is not None
                     else ""
                 )
@@ -995,8 +1566,9 @@ class ExplanationAgent:
                     claim=(
                         f"{_amount(observed['rapid_outflow_amount'])}{unit} được chuyển đi trong vòng "
                         f"{observed['rapid_window_hours']} giờ sau khi nhận, chiếm "
-                        f"{observed['rapid_outflow_percent']}% tổng tiền ra của cửa sổ "
-                        f".{dwell_text}"
+                        f"{_percent(float(observed['rapid_outflow_percent']), of_nonzero=True)}% "
+                        "tổng tiền ra của cửa sổ."
+                        f"{dwell_text}"
                     ),
                     claim_type="FACT",
                     evidence_refs=[item.evidence_id],
@@ -1179,7 +1751,7 @@ class ExplanationAgent:
                     claim=(
                         f"Ngày {_day(record['timestamp'])}, tài khoản {direction} "
                         f"{_amount(record['amount'])} {record['currency']} {preposition} {counterparty} "
-                        f"qua kênh {record['payment_format']}{corridor} "
+                        f"qua kênh {_channel(record['payment_format'])}{corridor} "
                         f"(mã giao dịch {record['transaction_id']})."
                     ),
                     claim_type="FACT",
@@ -1196,7 +1768,8 @@ class ExplanationAgent:
                 )
 
         signals = _observed_signals(grouped)
-        measurements = _signal_measurements(grouped)
+        measurements = _signal_measurements(grouped) | _graph_measurements(grouped)
+        focus_lines: list[str] = []
         for item in grouped.get(EvidenceType.TYPOLOGY_MAPPING, []):
             code = item.payload["typology_code"]
             typologies.append(code)
@@ -1223,7 +1796,32 @@ class ExplanationAgent:
                 return ", ".join(parts)
 
             if matched:
-                status = f"khớp {len(matched)} trong {len(expected)} dấu hiệu đặc trưng của kiểu này ({_vi(matched)})"
+                # Kèm SỐ ĐO cho dấu hiệu đã khớp, không chỉ tên.
+                #
+                # "khớp 3 trong 3 dấu hiệu (nhiều nguồn dồn vào, phân tán ra
+                # nhiều đích, tiền nằm lại rất ngắn)" đúng nhưng rỗng: chuyên
+                # viên vẫn không biết bao nhiêu nguồn, bao nhiêu đích, nằm lại
+                # bao lâu. Ngưỡng đi kèm để họ tự thấy nó vượt bao xa.
+                ordered_matched = sorted(
+                    matched,
+                    key=lambda name: (
+                        _TYPOLOGY_FOCUS.get(code, {}).get("signals", []).index(name)
+                        if name in _TYPOLOGY_FOCUS.get(code, {}).get("signals", [])
+                        else len(expected)
+                    ),
+                )
+                # Dùng gạch ngang thay ngoặc: bản trước ghép "nhãn (số đo)" rồi
+                # bọc cả danh sách trong một cặp ngoặc nữa, mà số đo lại có chú
+                # thích trong ngoặc — thành ba tầng ngoặc trong một câu.
+                status = (
+                    f"khớp {len(matched)} trong {len(expected)} dấu hiệu đặc trưng của kiểu này: "
+                    + "; ".join(
+                        f"{labels.get(name, name)} — {measurements[name]}"
+                        if measurements.get(name)
+                        else labels.get(name, name)
+                        for name in ordered_matched
+                    )
+                )
             else:
                 status = "chưa khớp dấu hiệu đặc trưng nào của kiểu này"
             if unmatched:
@@ -1263,6 +1861,40 @@ class ExplanationAgent:
 
             name = item.payload.get("name_vi") or item.payload["name"]
             description = item.payload.get("description_vi") or item.payload.get("description", "")
+
+            # Nhóm "chưa đối chiếu được" KHÔNG có dấu hiệu nào để đối chiếu.
+            #
+            # Chạy khuôn chung cho nó sẽ ra câu "khớp 0 trong 0 dấu hiệu đặc
+            # trưng của kiểu này" — vô nghĩa. Ở đây phải nói rõ hai điều: chưa
+            # chứng minh được mẫu hình nào, và căn cứ THẬT của cảnh báo nằm ở
+            # điểm rủi ro cùng các yếu tố đóng góp phía trên, không phải ở nhãn.
+            if not expected:
+                unmatched_note = (
+                    "Hành vi quan sát được chưa đủ dấu hiệu của bất kỳ nhóm hành vi nào trong danh mục, "
+                    "nên chưa đối chiếu được mẫu hình có tên. Căn cứ của cảnh báo là mức rủi ro và các "
+                    "yếu tố đóng góp nêu ở trên; việc đối chiếu nhóm hành vi vẫn còn để ngỏ và cần "
+                    "chuyên viên xem xét thêm bằng ngữ cảnh khách hàng."
+                )
+                inferences.append(unmatched_note)
+                claims.append(
+                    Claim(
+                        claim_id=_claim_id(),
+                        claim=unmatched_note,
+                        claim_type="INFERENCE",
+                        evidence_refs=[item.evidence_id, *([risk_ev.evidence_id] if risk_ev else [])],
+                        confidence=0.5,
+                    )
+                )
+                continue
+
+            # Câu nhấn mạnh CHỈ đứng ở phần tóm tắt.
+            #
+            # Trước đây in cả ở tóm tắt lẫn cuối nhận định: cùng một câu dài xuất
+            # hiện hai lần trong một màn hình. Phần nhận định đã kèm số đo ngay
+            # sau từng dấu hiệu nên không mất thông tin nào.
+            focus_clause = _focus_clause(code, measurements)
+            if focus_clause:
+                focus_lines.append(focus_clause)
             inference = (
                 f"Đối chiếu với kiểu hành vi \u201c{name}\u201d — {description.rstrip('.').lower()} — "
                 f"thì hành vi quan sát được {status}. "
@@ -1279,15 +1911,43 @@ class ExplanationAgent:
                 )
             )
 
+        # Nhãn "chưa đối chiếu được" mà KHÔNG có bằng chứng nhóm hành vi nào thì
+        # vòng lặp trên không chạy, và bản giải thích im lặng về chuyện ấy. Người
+        # đọc chỉ thấy số liệu dòng tiền rồi tự hỏi vì sao cảnh báo tồn tại.
+        if not typologies and str(alert.get("typology_code") or "") == "T00":
+            unmatched_note = (
+                "Hành vi quan sát được chưa đủ dấu hiệu của bất kỳ nhóm hành vi nào trong danh mục, "
+                "nên chưa đối chiếu được mẫu hình có tên. Căn cứ của cảnh báo là mức rủi ro và các "
+                "yếu tố đóng góp nêu ở trên; việc đối chiếu nhóm hành vi vẫn còn để ngỏ và cần "
+                "chuyên viên xem xét thêm bằng ngữ cảnh khách hàng."
+            )
+            inferences.append(unmatched_note)
+            if risk_ev is not None:
+                claims.append(
+                    Claim(
+                        claim_id=_claim_id(),
+                        claim=unmatched_note,
+                        claim_type="INFERENCE",
+                        evidence_refs=[risk_ev.evidence_id],
+                        confidence=0.5,
+                    )
+                )
+
         # Two evidence items of the same type raise the same gap twice.
         missing = list(dict.fromkeys(missing))
-        summary = _summary(alert, drivers, grouped, typology_names, missing)
-        action = "REQUEST_MORE_INFORMATION" if missing else "ESCALATE_TO_L2"
+        summary = _summary(alert, drivers, grouped, typology_names, missing, focus=" ".join(focus_lines))
+        # Không đề xuất "ESCALATE_TO_L2" nữa: nó đã bị bỏ khỏi lựa chọn của
+        # người rà soát, nên gợi ý ấy sẽ trỏ tới một nút không tồn tại. Bằng
+        # chứng đủ mà cảnh báo vẫn đứng thì bước kế tiếp thật sự trong hệ này
+        # là cân nhắc lập hồ sơ nghi vấn.
+        action = "REQUEST_MORE_INFORMATION" if missing else "REVIEW_FOR_SAR_STR"
         return Explanation(
             summary=summary,
             risk_drivers=drivers,
             claims=claims,
-            facts=facts,
+            # `claims` giữ nguyên thứ tự sinh ra (vết kiểm toán); chỉ phần HIỂN
+            # THỊ được xếp lại theo mạch đọc.
+            facts=_order_facts(facts),
             inferences=inferences,
             missing_information=missing,
             typologies=typologies,
@@ -1345,6 +2005,17 @@ class EvidenceCriticAgent:
                     for item in evidence
                 ],
                 "risk_breakdown": [item.payload for item in evidence if item.type == EvidenceType.RISK_BREAKDOWN],
+                # PHÉP ĐẾM DO CODE LÀM, không để tác tử tự đếm.
+                #
+                # Sổ giao dịch nằm trong khối KHÔNG TIN CẬY, nên trước đây tác tử
+                # phản biện phải tự đếm ở đó — và nó đếm không ổn định: trên cùng
+                # một hồ sơ, vòng 2 nói "17 giao dịch tới Morocco", vòng 3 nói
+                # "chỉ có 12". Ba con số cho cùng một câu hỏi thì không thể hội
+                # tụ, và một nhận định đúng vẫn bị đánh trượt.
+                #
+                # Đây là cùng những dòng ấy, đếm bằng Python, đặt trong khối TIN
+                # CẬY. Tác tử không còn phải đếm — chỉ đối chiếu.
+                "transaction_facts": _transaction_facts(evidence),
                 "deterministic_backend_validation": deterministic.model_dump(mode="json"),
                 "allow_listed_tools": sorted(InvestigationTools.ALLOWED),
             },
@@ -1353,7 +2024,30 @@ class EvidenceCriticAgent:
             fallback_response=deterministic,
         )
         gemini = result.output
-        issues = list(deterministic.issues)
+        # Bộ kiểm tất định đi thẳng vào danh sách, KHÔNG qua `_is_refuted` — nó
+        # là nửa đáng tin, không nên bị các luật bác bỏ nới lỏng. Ngoại lệ duy
+        # nhất: phép đếm giao dịch trên một sổ đã tự khai là bị cắt. Ở đó chính
+        # bộ kiểm cũng không có đủ dữ liệu để kết luận, nên giữ lại khiếu nại là
+        # buộc tội bịa đặt trong khi không ai kiểm chứng được.
+        truncated = any(_TRUNCATION_RE.search(note) for note in explanation.missing_information)
+        det_kept, det_excused = [], 0
+        for issue in deterministic.issues:
+            if truncated and _is_counting_claim(issue):
+                det_excused += 1
+                continue
+            det_kept.append(issue)
+        if det_excused:
+            self.repository.add_trace(
+                self.investigation_id,
+                agent=self.name,
+                event_type="CRITIC_OBJECTION_REFUTED",
+                rationale=(
+                    f"Đã bỏ qua {det_excused} khiếu nại của bộ kiểm tất định về phép đếm giao dịch: "
+                    "bản giải thích đã tự khai sổ giao dịch bị cắt ngắn, nên phép đếm không kiểm "
+                    "chứng được bằng bằng chứng hiện có."
+                ),
+            )
+        issues = list(det_kept)
         seen = {issue.model_dump_json() for issue in issues}
         refuted = 0
         for issue in gemini.issues:
@@ -1419,6 +2113,25 @@ class EvidenceCriticAgent:
         ):
             return True
 
+        # Cùng lý lẽ, nhưng cho trường hợp khiếu nại KHÔNG tự nhắc tới việc cắt
+        # ngắn — vốn là đa số.
+        #
+        # Đo trên một hồ sơ thật: bản giải thích tự khai "Chỉ trích xuất được 50
+        # giao dịch đầu tiên", rồi nói "15 giao dịch xuyên biên giới". Tác tử
+        # phản biện đếm trên đúng 50 dòng ấy và phản đối — vòng 2 bảo "có 17",
+        # vòng 3 bảo "chỉ có 12". Ba con số cho cùng một câu hỏi, vì cả ba đều
+        # đếm trên một sổ đã bị cắt. Luật bên trên không cứu được vì lời phản đối
+        # chỉ nói "chỉ có 12 giao dịch tới Morocco", không có chữ nào về cắt ngắn.
+        #
+        # Khi bản giải thích ĐÃ TỰ KHAI sổ bị cắt, một phép đếm giao dịch là thứ
+        # KHÔNG BÊN NÀO kiểm chứng được. Đứng trên nó để đánh trượt là buộc tội
+        # bịa đặt trong khi cả hai phía cùng mù. Hạn chế đã công bố ở mục "thông
+        # tin còn thiếu" là chỗ chuyên viên đọc để tự trừ hao.
+        if _is_counting_claim(issue) and any(
+            _TRUNCATION_RE.search(note) for note in explanation.missing_information
+        ):
+            return True
+
         # Cáo buộc "mã chứng cứ này không tồn tại" là mệnh đề về sổ bằng chứng,
         # và sổ bằng chứng là bên nói lời cuối. Tác tử phản biện đôi khi phát
         # biểu nó dưới nhãn UNSUPPORTED_CLAIM thay vì MISSING_EVIDENCE; xét theo
@@ -1454,6 +2167,26 @@ class EvidenceCriticAgent:
     def _deterministic_validate(self, explanation: Explanation, evidence: list[EvidenceEnvelope]) -> ValidationResult:
         by_id = {item.evidence_id: item for item in evidence}
         issues: list[ValidationIssue] = []
+
+        # Nhất quán LOGIC: câu có dẫn nguồn, số có thật, nhưng ghép lại thì vô lý.
+        # Bộ kiểm token không thấy loại lỗi này — xem src/investigation/consistency.py.
+        account_key = next((item.account_key for item in evidence if item.account_key), "")
+        # Khử trùng lặp trước khi kiểm: bản giải thích tất định đặt CÙNG một câu
+        # vào cả `claims` lẫn `facts`, nên không khử thì mỗi mâu thuẫn bị báo hai
+        # lần và vòng sửa lỗi tưởng có gấp đôi vấn đề phải sửa.
+        for contradiction in consistency.check(
+            list(dict.fromkeys([claim.claim for claim in explanation.claims] + list(explanation.facts))),
+            evidence,
+            account_key=account_key,
+            fan_threshold=FAN_COUNTERPARTIES,
+        ):
+            issues.append(
+                ValidationIssue(
+                    type="CONTRADICTION",
+                    claim=contradiction.claim,
+                    detail=f"[{contradiction.rule}] {contradiction.detail}",
+                )
+            )
 
         for claim in explanation.claims:
             missing_refs = [reference for reference in claim.evidence_refs if reference not in by_id]
@@ -1491,6 +2224,29 @@ class EvidenceCriticAgent:
                             type="UNSUPPORTED_CLAIM",
                             claim=claim.claim,
                             detail=(f"Các con số {unsupported_numbers} không có trong bằng chứng được trích dẫn."),
+                        )
+                    )
+                # Định danh cũng phải NEO vào bằng chứng, không chỉ con số.
+                #
+                # Bộ kiểm số một mình không đủ: một mã tài khoản bịa mà phần chữ
+                # số tình cờ trùng số nào đó trong bằng chứng sẽ lọt, và người
+                # đọc nhận một đối tác không tồn tại trong hồ sơ. Đây là phép
+                # kiểm quy kết ở mức định danh (Rashkin và cộng sự 2021).
+                cited_strings = {value for item in cited for value in _string_values(item.payload)}
+                invented = [
+                    token
+                    for token in set(_IDENTIFIER_RE.findall(claim.claim))
+                    if token not in cited_strings
+                ]
+                if invented:
+                    issues.append(
+                        ValidationIssue(
+                            type="UNSUPPORTED_CLAIM",
+                            claim=claim.claim,
+                            detail=(
+                                f"Định danh {sorted(invented)} không có trong bằng chứng được trích dẫn — "
+                                "không dẫn được tài khoản hay giao dịch không tồn tại trong hồ sơ."
+                            ),
                         )
                     )
             if "money laundering" in lower and claim.claim_type == "FACT":

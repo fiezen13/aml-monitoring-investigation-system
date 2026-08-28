@@ -67,6 +67,11 @@ scrape_configs:
 
   # Caddy đứng trước toàn bộ hệ thống nên số liệu của nó là thứ người dùng
   # thật sự trải nghiệm: bao nhiêu request, chậm bao nhiêu, lỗi bao nhiêu.
+  # Metrics phơi ở cổng riêng :2020 (xem deploy/Caddyfile), không ra Internet.
+  - job_name: caddy
+    static_configs:
+      - targets: ["caddy:2020"]
+
   - job_name: redis
     static_configs:
       - targets: ["redis-exporter:9121"]

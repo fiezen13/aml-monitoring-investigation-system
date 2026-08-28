@@ -169,26 +169,28 @@ async def test_full_production_flow_and_cleanup(client, production_flow_state):
 
     detail = await client.get(f"/api/v1/sars/{sar['sar_id']}", headers=manager)
     assert detail.status_code == 200
-    assert detail.json()["approval"]["decided_by"] == "U-001"
+    # Khối ký của bản báo cáo chính thức phải ghi HỌ TÊN người phê duyệt, không
+    # phải mã người dùng nội bộ (`decided_by` lưu user_id).
+    assert detail.json()["approval"]["decided_by"] == "Nguyễn Quang Hưng"
     with get_engine().connect() as conn:
         assert (
             conn.execute(text("SELECT state FROM aml_case WHERE case_id = :case_id"), {"case_id": case_id}).scalar_one()
             == "XuatHoSo"
         )
-        events = (
-            conn.execute(
-                text(
-                    """SELECT event_type FROM audit_log WHERE case_id = :case_id
-                   AND audit_id > :before ORDER BY audit_id"""
-                ),
-                {"case_id": case_id, "before": production_flow_state["audit_before"]},
-            )
-            .scalars()
-            .all()
-        )
+        rows = conn.execute(
+            text(
+                """SELECT event_type, actor_role FROM audit_log WHERE case_id = :case_id
+               AND audit_id > :before ORDER BY audit_id"""
+            ),
+            {"case_id": case_id, "before": production_flow_state["audit_before"]},
+        ).all()
+    events = [r for r in rows if r[0] != "case_viewed"]
     assert ["sar_updated", "validation_run", "submitted_for_approval", "approved", "file_exported"] == [
-        event for event in events if event != "case_viewed"
+        e[0] for e in events
     ]
+    # Vết kiểm toán phải ghi ĐÚNG VAI: người phê duyệt là Quản lý, không phải
+    # "điều tra viên" — tách nhiệm vụ giữa điều tra và phê duyệt nằm ở đúng đây.
+    assert dict((e[0], e[1]) for e in events)["approved"] == "manager"
 
 
 @pytest.mark.asyncio
@@ -196,7 +198,12 @@ async def test_users_and_settings_are_database_backed(client, production_flow_st
     admin = await _login(client, "manh.dh@velrix.vn")
     users = await client.get("/api/v1/users", headers=admin)
     assert users.status_code == 200
-    assert len(users.json()) == 7
+    # Không chốt cứng số lượng: danh sách người dùng còn thay đổi khi mở thêm
+    # tài khoản cho quy trình giao việc. Điều cần khẳng định là mỗi vai nghiệp vụ
+    # đều CÓ người hoạt động — thiếu vai nào là quy trình kẹt ở vai đó.
+    roles = {u["role"] for u in users.json() if u["active"]}
+    assert {"analyst", "manager", "admin"} <= roles, roles
+    assert len(users.json()) >= 7
 
     settings = await client.get("/api/v1/settings", headers=admin)
     assert settings.status_code == 200
@@ -210,18 +217,24 @@ async def test_users_and_settings_are_database_backed(client, production_flow_st
     assert changed.status_code == 200, changed.text
     assert changed.json()["value"] == "5"
 
+    # Bật/tắt một tài khoản rồi TRẢ VỀ ĐÚNG trạng thái ban đầu.
+    #
+    # Trước đây bài kiểm thử này đóng cứng "khoá lại khi xong". Khi U-007 được mở
+    # để tham gia luồng giao việc, mỗi lần chạy test lại khoá tài khoản ấy — một
+    # bài kiểm thử tự làm hỏng dữ liệu của hệ thống.
     admin = await _login(client, "manh.dh@velrix.vn")
-    activated = await client.patch(
+    before_active = next(u for u in users.json() if u["id"] == "U-007")["active"]
+    toggled = await client.patch(
         "/api/v1/users/U-007",
         headers=admin,
-        json={"active": True, "reason": "Kiểm thử kích hoạt tài khoản bằng dữ liệu DB."},
+        json={"active": not before_active, "reason": "Kiểm thử đổi trạng thái tài khoản bằng dữ liệu DB."},
     )
-    assert activated.status_code == 200, activated.text
-    assert activated.json()["active"] is True
+    assert toggled.status_code == 200, toggled.text
+    assert toggled.json()["active"] is (not before_active)
     restored = await client.patch(
         "/api/v1/users/U-007",
         headers=admin,
-        json={"active": False, "reason": "Phục hồi trạng thái tài khoản sau kiểm thử."},
+        json={"active": before_active, "reason": "Phục hồi trạng thái tài khoản sau kiểm thử."},
     )
     assert restored.status_code == 200, restored.text
-    assert restored.json()["active"] is False
+    assert restored.json()["active"] is before_active

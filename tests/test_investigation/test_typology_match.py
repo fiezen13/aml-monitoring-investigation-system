@@ -54,17 +54,31 @@ def test_the_ranking_is_deterministic_across_runs():
     assert len(codes) == 1
 
 
-def test_t02_becomes_a_real_conclusion_once_network_flow_is_evidenced():
-    """Đúng khoảng trống mà tác tử phản biện phàn nàn trên UI.
+def test_t02_chung_minh_bang_phep_do_tien_di_qua_tai_khoan():
+    """T02 chứng minh được bằng chính sổ giao dịch của tài khoản.
 
-    T02 đòi tín hiệu ``network_flow``; chỉ khi bộ phát hiện đồ thị báo trúng
-    gather/scatter thì mã này mới thôi là giá trị mặc định.
+    Trước đây T02 đòi ``network_flow`` — tín hiệu của bộ phát hiện ĐỒ THỊ. Nhãn
+    thì gắn cho MỘT tài khoản, nên phép đo cấp tài khoản (tiền vào rồi phần lớn
+    đi tiếp) mới là thứ chứng minh được nó; mẫu hình đồ thị lùi về vai trò hỗ trợ.
     """
-    match = match_typology({"network_flow", "rapid_outflow"})
+    match = match_typology({"pass_through", "network_flow", "rapid_outflow"})
 
     assert match.typology_code == "T02"
     assert match.is_fallback is False
-    assert match.matched_required == ("network_flow",)
+    assert match.matched_required == ("pass_through",)
+    assert "network_flow" in match.matched_supporting
+
+
+def test_khong_chung_minh_duoc_nhom_nao_thi_khong_gan_bua_mot_nhom_co_that():
+    """Mặc định vào T02 là gán cho tài khoản một hành vi chưa ai đo được.
+
+    Đó chính là nguồn của mâu thuẫn trên màn hình: nhãn nói "Tài khoản trung
+    chuyển" còn bản giải thích đo lại rồi nói "chưa khớp dấu hiệu nào".
+    """
+    match = match_typology({"new_counterparties"})
+
+    assert match.typology_code == "T00"
+    assert match.is_fallback is True
 
 
 def test_behavior_signals_respect_the_configured_thresholds():

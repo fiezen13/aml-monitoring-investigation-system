@@ -11,7 +11,7 @@
  */
 
 import { useState } from "react";
-import { formatDateTime, riskComponentLabel } from "../../api/format";
+import { formatDateTime, riskComponentLabel, paymentChannelLabel } from "../../api/format";
 import { FEATURE_GROUPS, featureMeta, formatFeature } from "../../api/behaviorLabels";
 import { signalList, typologyDescription, typologyLabel } from "../../api/typologyLabels";
 
@@ -215,7 +215,7 @@ function Transactions({ p }: { p: Payload }) {
                 <td className="tabular text-right text-ink-hi">
                   {Number(t.amount).toLocaleString("vi-VN", { maximumFractionDigits: 2 })} {String(t.currency ?? "")}
                 </td>
-                <td className="text-ink-mid">{String(t.payment_format ?? "—")}</td>
+                <td className="text-ink-mid">{paymentChannelLabel(t.payment_format as string | null)}</td>
               </tr>
             ))}
           </tbody>

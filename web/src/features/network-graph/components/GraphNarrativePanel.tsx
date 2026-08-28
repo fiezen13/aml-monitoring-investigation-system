@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 
 import { api, type GraphNarrative } from "../../../api/client";
+import { formatDate } from "../../../api/format";
 import { Eyebrow } from "../../../components/fc/primitives";
 
 interface Props {
   accountKey: string | null;
+  /** Vụ việc đang mở. Truyền vào để bản kể neo cùng mốc thời gian với bản giải
+   *  thích của phiên điều tra; thiếu nó thì hai khối đo trên hai cửa sổ lệch
+   *  nhau và cùng một vụ hiện ra hai bộ số. */
+  caseId?: string;
   onPickAccount?: (accountKey: string) => void;
 }
 
@@ -18,7 +23,7 @@ interface Props {
  *
  * Bốn khối dưới đây là bốn câu trả lời ấy, theo đúng thứ tự người ta hỏi.
  */
-export function GraphNarrativePanel({ accountKey, onPickAccount }: Props) {
+export function GraphNarrativePanel({ accountKey, caseId, onPickAccount }: Props) {
   const [data, setData] = useState<GraphNarrative | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
 
@@ -31,7 +36,7 @@ export function GraphNarrativePanel({ accountKey, onPickAccount }: Props) {
     let cancelled = false;
     setState("loading");
     api
-      .graphNarrative(accountKey)
+      .graphNarrative(accountKey, caseId)
       .then((result) => {
         if (cancelled) return;
         setData(result);
@@ -47,7 +52,7 @@ export function GraphNarrativePanel({ accountKey, onPickAccount }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [accountKey]);
+  }, [accountKey, caseId]);
 
   if (!accountKey) return null;
 
@@ -74,6 +79,14 @@ export function GraphNarrativePanel({ accountKey, onPickAccount }: Props) {
 
       {data && (
         <div className="flex flex-col gap-2">
+          {/* Nêu rõ CỬA SỔ đã đo. Cùng một tài khoản mở từ trang vụ việc và mở
+              từ màn hình đồ thị có thể rơi vào hai khoảng khác nhau; không ghi
+              ra thì người đọc thấy hai bộ số mà không hiểu vì sao. */}
+          {data.window_start && data.window_end && (
+            <p className="text-3xs text-ink-low">
+              Số liệu đo trong khoảng {formatDate(data.window_start)} – {formatDate(data.window_end)}.
+            </p>
+          )}
           <Block title="Tiền vào từ đâu" body={data.flow_in} />
           <Block title="Tiền đi đâu" body={data.flow_out} />
 

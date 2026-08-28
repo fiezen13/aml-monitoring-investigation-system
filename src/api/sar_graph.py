@@ -48,12 +48,24 @@ def draw_case_graph(
         return
 
     cx, cy = x + w / 2, y + h / 2
-    radius = min(w, h) / 2 - 12
+    # Bố trí trên ELLIP dẹt chứ không phải vòng tròn: vùng vẽ rộng gấp đôi chiều
+    # cao, nên vòng tròn dồn các đối tác vào đỉnh và đáy — chỗ duy nhất phải đặt
+    # nhãn chồng lên nhau. Ellip đẩy phần lớn đối tác ra hai bên, nơi nhãn nằm
+    # ngang cạnh nút và không đụng nhau, chừa đỉnh/đáy cho vài nút thưa.
+    rx = max(w / 2 - 26, 20.0)
+    ry = max(h / 2 - 16, 14.0)
     pos: dict[str, tuple[float, float]] = {subject: (cx, cy)}
+    # Nhãn đặt trên một vòng RỘNG HƠN vòng nút và so le trong/ngoài: khi vụ có
+    # nhiều đối tác, nhãn đặt sát nút sẽ chồng lên nhau và không đọc được.
+    label_pos: dict[str, tuple[float, float]] = {}
+    angle: dict[str, float] = {}
     n = len(others)
     for i, node in enumerate(others):
         ang = -math.pi / 2 + 2 * math.pi * i / n
-        pos[node] = (cx + radius * math.cos(ang), cy + radius * math.sin(ang))
+        angle[node] = ang
+        pos[node] = (cx + rx * math.cos(ang), cy + ry * math.sin(ang))
+        gap = 5.0 if i % 2 == 0 else 9.5
+        label_pos[node] = (cx + (rx + gap) * math.cos(ang), cy + (ry + gap) * math.sin(ang))
 
     # --- Cạnh (vẽ trước để nút nằm trên) ---
     pdf.set_line_width(0.3)
@@ -76,9 +88,23 @@ def draw_case_graph(
         pdf.set_text_color(*(_INK if not is_subject else _INK))
         label = _short(node)
         tw = pdf.get_string_width(label)
-        # Nhãn chủ thể đặt dưới nút; đối tác đặt phía ngoài để đỡ chồng.
-        ly = ny + r + 1.2 if ny >= cy else ny - r - 3.4
-        pdf.set_xy(nx - tw / 2 - 1, ly)
+        # Chủ thể: nhãn ngay dưới nút. Đối tác: đặt HẲN RA NGOÀI theo hướng nan
+        # hoa — bên phải thì nhãn nằm bên phải nút, bên trái thì nằm bên trái —
+        # để nhãn không đè lên chính nút của mình như bản cũ.
+        if is_subject:
+            lx0, ly = nx - tw / 2, ny + r + 2.4
+        else:
+            ang = angle[node]
+            _, ly = label_pos[node]
+            if abs(math.cos(ang)) < 0.12:  # đúng đỉnh hoặc đúng đáy vòng tròn
+                lx0 = nx - tw / 2
+                ly = ly - 3.2 if math.sin(ang) < 0 else ly + 0.4
+            elif math.cos(ang) > 0:
+                lx0, ly = nx + r + 1.5, ly - 1.6
+            else:
+                lx0, ly = nx - r - 1.5 - tw, ly - 1.6
+        lx0 = min(max(lx0, x), x + w - tw - 1)
+        pdf.set_xy(lx0 - 1, ly)
         pdf.cell(tw + 2, 3, label, align="C")
 
     # Chú giải nhỏ dưới đồ thị.

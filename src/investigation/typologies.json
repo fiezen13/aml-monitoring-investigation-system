@@ -26,9 +26,10 @@
     "name": "Intermediary account network",
     "description": "Funds move through intermediary accounts toward a collector or onward destination.",
     "required_signals": [
-      "network_flow"
+      "pass_through"
     ],
     "supporting_signals": [
+      "network_flow",
       "rapid_outflow",
       "new_counterparties"
     ],
@@ -38,7 +39,8 @@
     "signal_labels_vi": {
       "network_flow": "tiền đi qua tài khoản trung gian",
       "rapid_outflow": "tiền ra ngay sau khi nhận",
-      "new_counterparties": "đối tác mới xuất hiện"
+      "new_counterparties": "đối tác mới xuất hiện",
+      "pass_through": "tiền chỉ đi ngang qua tài khoản"
     }
   },
   {
@@ -196,5 +198,17 @@
       "profile_deviation": "lệch hồ sơ khách hàng",
       "volume_deviation": "lệch mức hoạt động thường thấy"
     }
+  },
+  {
+    "pattern": "UNMATCHED",
+    "typology_code": "T00",
+    "name": "Model risk without a named typology",
+    "description": "The model scored this risky but observed behaviour matches no catalogued typology.",
+    "required_signals": [],
+    "supporting_signals": [],
+    "version": "v1",
+    "name_vi": "Rủi ro theo mô hình — chưa khớp nhóm hành vi có tên",
+    "description_vi": "Mô hình chấm điểm thấy rủi ro cao, nhưng hành vi quan sát được chưa đủ dấu hiệu của bất kỳ nhóm hành vi nào trong danh mục. Căn cứ của cảnh báo là điểm rủi ro và các yếu tố đóng góp, không phải nhãn nhóm; việc đối chiếu mẫu hình vẫn còn để ngỏ.",
+    "signal_labels_vi": {}
   }
 ]

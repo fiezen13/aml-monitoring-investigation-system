@@ -102,6 +102,9 @@ export interface ApiAlert {
   factor_count: number;
   /** Bộ dữ liệu của cảnh báo — hàng đợi phục vụ nhiều bộ cùng lúc. */
   dataset: string;
+  /** Quy mô cảnh báo — sự thật đo được, dùng xếp thứ tự khi điểm bão hoà. */
+  flagged_txn_count: number | null;
+  flagged_amount: string | null;
 }
 
 export interface ApiAlertPage {
@@ -146,8 +149,20 @@ export interface ApiCase {
   risk_score: string;
   priority: "low" | "medium" | "high" | "critical";
   assigned_to: string | null;
+  /** Họ tên người phụ trách; `assigned_to` là mã người dùng cho máy. */
+  assigned_name: string | null;
   created_at: string;
   alert_count: number;
+  /** Quy mô lấy từ cảnh báo nặng nhất của vụ — xem ApiAlert. */
+  flagged_txn_count: number | null;
+  flagged_amount: string | null;
+}
+
+export interface ApiCasePage {
+  rows: ApiCase[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface ApiTimelineStep {
@@ -170,6 +185,8 @@ export interface ApiAuditEvent {
   case_id: string | null;
   event_type: string;
   actor: string;
+  /** Họ tên người thực hiện; rỗng khi tác nhân là tiến trình của hệ thống. */
+  actor_name?: string | null;
   actor_role: string;
   payload: Record<string, unknown>;
   occurred_at: string;
@@ -217,6 +234,8 @@ export interface ApiTypologyShare {
 
 export interface ApiDashboard {
   open_alerts: number;
+  alerts_without_case: number;
+  alerts_linked_to_case: number;
   high_risk_alerts: number;
   cases_investigating: number;
   sar_pending: number;
@@ -228,6 +247,7 @@ export interface ApiDashboard {
   subjects_below_threshold: number;
   subjects_triggered: number;
   batch_alerts_created: number;
+  batch_cases_created: number;
   typology_distribution: ApiTypologyShare[];
   top_alerts: ApiAlert[];
   queue_depth: number;
@@ -236,6 +256,7 @@ export interface ApiDashboard {
   case_age_buckets: { bucket: string; count: number }[];
   cases_unassigned: number;
   cases_total: number;
+  cases_awaiting_review: number;
   alert_trend: { week: string; total: number; high: number }[];
 }
 
@@ -257,7 +278,20 @@ export interface ApiLogin {
   user: User;
 }
 
+/** Người lập báo cáo tự khai — in lên phần đầu và khối ký của bản PDF. */
+export interface SarPreparer {
+  name: string;
+  title: string;
+  department: string;
+  phone: string;
+  email: string;
+  preparedAt: string | null;
+  declared: boolean;
+}
+
 export interface ApiSar extends SarDraft {
+  preparer: SarPreparer;
+  institution: { name: string; unit: string; recipient: string };
   subject: {
     customerId: string;
     accountKey: string;
@@ -275,6 +309,39 @@ export interface ApiSar extends SarDraft {
     requested_at: string;
     decided_at: string | null;
   };
+}
+
+/** Khối lượng công việc của một người xử lý — đếm thẳng trên vụ việc/nhật ký. */
+/** Số liệu công việc của CHÍNH người đang đăng nhập (xem `MyWorkOut` phía API). */
+export interface ApiMyWork {
+  role: string;
+  assigned_open: number;
+  assigned_by_state: Record<string, number>;
+  submitted_pending: number;
+  returned_for_info: number;
+  submitted_approved: number;
+  closed_cases: number;
+  awaiting_my_decision: number;
+  unassigned_cases: number;
+}
+
+export interface ApiWorkloadRow {
+  user_id: string;
+  name: string;
+  role: string;
+  role_label: string;
+  active: boolean;
+  open_cases: number;
+  by_state: Record<string, number>;
+  sar_submitted: number;
+  sar_approved: number;
+  closed_cases: number;
+}
+
+export interface ApiWorkload {
+  rows: ApiWorkloadRow[];
+  unassigned_cases: number;
+  total_open_cases: number;
 }
 
 export interface ApiNetwork {
@@ -985,6 +1052,20 @@ function query(params: Record<string, string | number | boolean | undefined>): s
   return qs ? `?${qs}` : "";
 }
 
+export type ApiCloseRequest = {
+  approval_id: string;
+  case_id: string;
+  requested_at: string;
+  subject_account_key: string;
+  risk_score: number | string;
+  priority: string;
+  title: string;
+  alert_id: string | null;
+  typology_code: string | null;
+  analyst_reason: string | null;
+  requested_by: string | null;
+};
+
 export const api = {
   loginUsers: () => request<User[]>("/auth/users"),
 
@@ -1049,7 +1130,29 @@ export const api = {
   cases: (params: { state?: string; dataset?: string; limit?: number } = {}) =>
     request<ApiCase[]>(`/cases${query(params)}`),
 
+  casesPage: (
+    params: {
+      state?: string;
+      dataset?: string;
+      q?: string;
+      assignment?: "mine" | "unassigned";
+      page?: number;
+      page_size?: number;
+    } = {},
+  ) => request<ApiCasePage>(`/cases/page${query(params)}`),
+
   case: (caseId: string) => request<ApiCaseDetail>(`/cases/${encodeURIComponent(caseId)}`),
+
+  /** Giao vụ cho một người, hoặc trả về hàng đợi chung khi `assignee` là null. */
+  assignCase: (caseId: string, assignee: string | null, reason: string) =>
+    request<ApiCaseDetail>(`/cases/${encodeURIComponent(caseId)}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ assignee, reason }),
+    }),
+
+  workload: () => request<ApiWorkload>("/workload"),
+
+  myWork: () => request<ApiMyWork>("/my-work"),
 
   investigate: (caseId: string) =>
     request<ApiInvestigate>(`/cases/${encodeURIComponent(caseId)}/investigate`, { method: "POST" }),
@@ -1073,6 +1176,15 @@ export const api = {
     request<ApiSar>(`/sars/${encodeURIComponent(sarId)}/narrative`, {
       method: "PUT",
       body: JSON.stringify({ summary, findings }),
+    }),
+
+  updateSarPreparer: (
+    sarId: string,
+    preparer: { name: string; title: string; department: string; phone: string; email: string },
+  ) =>
+    request<ApiSar>(`/sars/${encodeURIComponent(sarId)}/preparer`, {
+      method: "PUT",
+      body: JSON.stringify(preparer),
     }),
 
   validateSar: (sarId: string) =>
@@ -1153,19 +1265,33 @@ export const api = {
   // trực tiếp release vận hành HI-Medium và công bố rõ giới hạn nguồn.
   // -------------------------------------------------------------------
 
-  navCounts: () => request<FcNavCounts>("/nav-counts"),
+  // Đề nghị ĐÓNG vụ đang chờ quản lý chốt. Không nằm trong `sars()` vì đề nghị
+  // đóng không kèm bản nháp SAR nào.
+  closeRequests: () => request<ApiCloseRequest[]>("/approvals/close-requests"),
+
+  navCounts: (params?: { dataset?: string }) =>
+    request<FcNavCounts>(
+      `/nav-counts${params?.dataset ? `?dataset=${encodeURIComponent(params.dataset)}` : ""}`,
+    ),
 
   search: (q: string) => request<FcSearchHit[]>(`/search${query({ q })}`),
 
-  world: () => request<FcWorld>("/world"),
+  // `dataset` bắt buộc phải đi theo bộ đang chọn: bảng hành lang và bản đồ đọc
+  // rollup riêng của từng bộ, không truyền thì API trả bản mới nhất và người xem
+  // bộ IBM sẽ thấy hành lang SAML-D.
+  world: (params?: { dataset?: string }) =>
+    request<FcWorld>(`/world${params?.dataset ? `?dataset=${encodeURIComponent(params.dataset)}` : ""}`),
 
   entityGraph: (limit = 400, dataset?: string, subject?: string) =>
     request<FcGraph>(`/fc/graph${query({ limit, dataset, subject })}`),
   graphPatterns: (accounts: string[], pattern?: string, limit = 25) =>
     request<DetectedPattern[]>(`/fc/graph/patterns${query({ accounts: accounts.join(","), pattern, limit })}`),
 
-  graphNarrative: (accountKey: string, windowDays = 30) =>
-    request<GraphNarrative>(`/fc/graph/narrative${query({ account_key: accountKey, window_days: windowDays })}`),
+  /** `caseId` để bản kể neo đúng mốc thời gian mà phiên điều tra của vụ dùng. */
+  graphNarrative: (accountKey: string, caseId?: string, windowDays = 30) =>
+    request<GraphNarrative>(
+      `/fc/graph/narrative${query({ account_key: accountKey, window_days: windowDays, case_id: caseId })}`,
+    ),
 
   crypto: (limit = 200) => request<FcCrypto>(`/fc/crypto${query({ limit })}`),
 

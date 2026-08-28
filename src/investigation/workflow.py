@@ -218,6 +218,9 @@ class InvestigationWorkflow:
             workflow_state=WorkflowState.COLLECTING_EVIDENCE,
         )
         last_validation: ValidationResult | None = None
+        #: Chữ ký của bộ vấn đề vòng trước, để phát hiện vòng lặp giậm chân.
+        previous_issue_signature: tuple[tuple[str, str], ...] | None = None
+        stalled = False
         last_explanation = None
         tool_count = state.tool_call_count
         service: GeminiService | None = self.gemini_service
@@ -510,6 +513,32 @@ class InvestigationWorkflow:
                     self._audit_completion(investigation_id, state.case_id, "investigation_completed")
                     return
 
+                # DỪNG SỚM khi phản biện nêu lại Y HỆT bộ vấn đề của vòng trước.
+                #
+                # Đo trên 16 phiên chạy nhiều vòng: 11 phiên giảm dần số vấn đề
+                # và về 0 (vòng lặp có tác dụng thật), nhưng 2 phiên lặp lại
+                # nguyên văn cùng bộ khiếu nại qua cả ba vòng. Với chúng, vòng
+                # sau đọc đúng bằng chứng cũ, viết lại theo đúng cách cũ, và bị
+                # chấm trượt vì đúng lý do cũ — chỉ tốn thêm lượt gọi Gemini.
+                #
+                # So khớp theo (loại, nhận định) chứ không theo `detail`: phần
+                # `detail` do Gemini viết tự do nên đổi chữ mỗi lần dù nội dung
+                # y nguyên. Đúng cặp ấy lặp lại nghĩa là chưa có gì mới.
+                signature = tuple(sorted((issue.type, issue.claim) for issue in last_validation.issues))
+                if signature and signature == previous_issue_signature:
+                    stalled = True
+                    self.repository.add_trace(
+                        investigation_id,
+                        agent="orchestrator",
+                        event_type="VALIDATION_STALLED",
+                        rationale=(
+                            f"Vòng {iteration} nêu lại đúng {len(signature)} vấn đề của vòng trước, "
+                            "không có tiến triển. Dừng sớm thay vì đốt thêm lượt gọi mô hình."
+                        ),
+                    )
+                    break
+                previous_issue_signature = signature
+
                 if tool_count >= self.settings.max_tool_calls:
                     METRICS.supervisor_limit_reached.add(1, attrs(limit="tool_calls"))
                     logger.warning(
@@ -530,14 +559,25 @@ class InvestigationWorkflow:
             # Nói rõ ngân sách nào thực sự cạn. Câu chung "tác tử/công cụ" buộc
             # chuyên viên phải mở nhật ký mới biết nên nới vòng lặp hay nới số
             # lần gọi công cụ — hai cách xử lý khác hẳn nhau.
-            failure_reason = (
-                f"Kiểm chứng bằng chứng chưa đạt: đã dùng hết {tool_count}/{self.settings.max_tool_calls} "
-                "lượt gọi công cụ được cấu hình."
-                if tool_budget_spent
-                else f"Kiểm chứng bằng chứng chưa đạt: đã dùng hết {iteration}/"
-                f"{self.settings.max_agent_iterations} vòng lặp được cấu hình "
-                f"(mới dùng {tool_count}/{self.settings.max_tool_calls} lượt gọi công cụ)."
-            )
+            if stalled:
+                # Phân biệt "giậm chân" với "cạn ngân sách": hai thứ này đòi hai
+                # cách xử lý khác hẳn nhau. Cạn ngân sách thì chạy lại có cơ hội;
+                # giậm chân thì chạy lại cho ra đúng kết quả cũ, và việc cần làm
+                # là người đọc bằng chứng chứ không phải bấm lại.
+                failure_reason = (
+                    f"Kiểm chứng bằng chứng chưa đạt và KHÔNG tiến triển: vòng {iteration} nêu lại "
+                    "đúng những vấn đề của vòng trước. Chạy lại sẽ cho kết quả tương tự — "
+                    "cần chuyên viên đọc mục Bằng chứng và quyết định."
+                )
+            else:
+                failure_reason = (
+                    f"Kiểm chứng bằng chứng chưa đạt: đã dùng hết {tool_count}/{self.settings.max_tool_calls} "
+                    "lượt gọi công cụ được cấu hình."
+                    if tool_budget_spent
+                    else f"Kiểm chứng bằng chứng chưa đạt: đã dùng hết {iteration}/"
+                    f"{self.settings.max_agent_iterations} vòng lặp được cấu hình "
+                    f"(mới dùng {tool_count}/{self.settings.max_tool_calls} lượt gọi công cụ)."
+                )
             self.repository.update_state(
                 investigation_id,
                 status=final_status,
@@ -550,6 +590,26 @@ class InvestigationWorkflow:
                 agent="orchestrator",
                 event_type="HUMAN_REVIEW_REQUIRED",
                 rationale="Đã đạt giới hạn cấu hình nhưng vẫn còn khoảng trống bằng chứng chưa được xử lý.",
+            )
+            # ĐẨY VỤ VIỆC SANG "Điều tra bổ sung".
+            #
+            # Trước đây phiên trượt chỉ ghi một dòng HUMAN_REVIEW_REQUIRED vào
+            # nhật ký kiểm toán — mà nhật ký không nổi lên màn hình nào. Vụ việc
+            # vẫn nằm ở "Tiếp nhận cảnh báo", trông y hệt vụ chưa ai đụng tới, và
+            # lẫn giữa hàng nghìn vụ khác. Đo trên prod: 6/6 phiên trượt chưa
+            # từng có người rà soát.
+            #
+            # `DieuTraBoSung` KHÔNG làm vụ biến mất: bộ đếm "vụ đang mở" loại trừ
+            # đúng hai trạng thái `XuatHoSo` và `DongKhongBaoCao`. Nó nằm ngoài
+            # chuỗi điều tra tự động nên worker không tự đẩy tiếp — đúng ý đồ,
+            # vì bước kế tiếp phải do con người quyết.
+            self.session.execute(
+                text(
+                    """UPDATE aml_case SET state = 'DieuTraBoSung', updated_at = now()
+                        WHERE case_id = :case_id
+                          AND state NOT IN ('XuatHoSo', 'DongKhongBaoCao', 'ChoNguoiPheDuyet')"""
+                ),
+                {"case_id": state.case_id},
             )
             self._audit_completion(investigation_id, state.case_id, "investigation_completed")
         except Exception as exc:
@@ -588,11 +648,26 @@ class InvestigationWorkflow:
                 )
                 logger.error("Gemini workflow unavailable: %s", type(exc).__name__)
             else:
+                # `failure_reason` HIỆN THẲNG RA MÀN HÌNH chuyên viên, nên nó
+                # phải là câu tiếng Việt, không phải nội dung ngoại lệ.
+                #
+                # Trước đây dán `str(exc)[:500]` vào đây, và một lỗi SQL đã đẩy
+                # nguyên câu lệnh INSERT kèm "current transaction is aborted"
+                # lên trang Vụ việc. Chuyên viên không đọc được, không làm gì
+                # được với nó, và nó lộ cả tên bảng lẫn tên cột ra ngoài.
+                #
+                # Chi tiết kỹ thuật KHÔNG mất: `logger.exception` bên dưới ghi
+                # đủ vết cho người vận hành, kèm investigation_id để tra.
+                logger.exception("Investigation %s failed", investigation_id)
                 self.repository.update_state(
                     investigation_id,
                     status=InvestigationStatus.FAILED,
                     workflow_state=WorkflowState.FAILED,
-                    failure_reason=f"{type(exc).__name__}: {str(exc)[:500]}",
+                    failure_reason=(
+                        "Phiên dừng do lỗi kỹ thuật của hệ thống, không phải do thiếu bằng chứng. "
+                        "Bấm “Chạy lại điều tra”; nếu vẫn lỗi, báo quản trị hệ thống kèm mã phiên "
+                        f"{investigation_id}."
+                    ),
                     completed=True,
                 )
                 self.repository.add_trace(
@@ -601,7 +676,6 @@ class InvestigationWorkflow:
                     event_type="INVESTIGATION_FAILED",
                     rationale=f"Quy trình thất bại với lỗi {type(exc).__name__}; nội dung nhạy cảm không được ghi lại.",
                 )
-                logger.exception("Investigation %s failed", investigation_id)
             self._audit_completion(investigation_id, state.case_id, "investigation_failed")
         finally:
             if owns_service and service is not None:

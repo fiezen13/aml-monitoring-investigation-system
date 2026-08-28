@@ -38,6 +38,30 @@ def _hash(value: Any) -> str:
     return hashlib.sha256(_json(value).encode()).hexdigest()
 
 
+def snapshot_time(session: Session, account_key: str, alert_created_at: datetime) -> datetime:
+    """Mốc thời gian điểm-trong-quá-khứ cho MỌI phép đo của một vụ việc.
+
+    ``now()`` là sai ở đây: cảnh báo dựng trên dữ liệu lịch sử, nên cửa sổ neo
+    vào giờ hệ thống sẽ nằm hoàn toàn sau giao dịch cuối cùng và mọi công cụ trả
+    về rỗng. Mốc là giao dịch gần nhất của tài khoản TÍNH ĐẾN LÚC CÓ CẢNH BÁO —
+    dữ liệu mà bộ phát hiện cũng nhìn thấy được, và không bao giờ là tương lai.
+
+    Hàm này ở cấp module vì nó phải dùng chung. Bản kể đồ thị trên trang vụ việc
+    từng tự neo vào giao dịch mới nhất MỌI THỜI ĐIỂM: cùng một vụ, khối "tiền vào
+    từ đâu" nói 13 979.96 còn bản giải thích nói 12 068.26, vì hai cửa sổ 30 ngày
+    lệch nhau khi tài khoản còn giao dịch sau lúc cảnh báo nổ.
+    """
+    latest = session.execute(
+        text(
+            """SELECT max(occurred_at) FROM transaction
+                WHERE occurred_at <= :alert_time
+                  AND (from_account_key = :account OR to_account_key = :account)"""
+        ),
+        {"alert_time": alert_created_at, "account": account_key},
+    ).scalar_one_or_none()
+    return latest or alert_created_at
+
+
 class InvestigationRepository:
     """Persistence boundary for the explicit workflow.
 
@@ -49,23 +73,7 @@ class InvestigationRepository:
         self.session = session
 
     def _snapshot_time(self, account_key: str, alert_created_at: datetime) -> datetime:
-        """Point-in-time anchor for the whole run.
-
-        Wall-clock ``now()`` is wrong here: the alert is raised over historical
-        transactions, so a now-anchored window can sit entirely after the last
-        booked transaction and hand every tool an empty result set. The anchor
-        is the account's latest transaction at or before the alert, which is
-        real data the detector could also have seen, and never the future.
-        """
-        latest = self.session.execute(
-            text(
-                """SELECT max(occurred_at) FROM transaction
-                    WHERE occurred_at <= :alert_time
-                      AND (from_account_key = :account OR to_account_key = :account)"""
-            ),
-            {"alert_time": alert_created_at, "account": account_key},
-        ).scalar_one_or_none()
-        return latest or alert_created_at
+        return snapshot_time(self.session, account_key, alert_created_at)
 
     def create(self, alert_id: str, *, triggered_by: str = "system") -> InvestigationOut:
         alert = (
@@ -101,7 +109,7 @@ class InvestigationRepository:
         if not case_id:
             case_id = _id("CASE")
             score = float(alert["risk_score"])
-            priority = "critical" if score >= 90 else "high" if score >= 80 else "medium" if score >= 60 else "low"
+            priority = "critical" if score >= 80 else "high" if score >= 60 else "medium" if score >= 40 else "low"
             self.session.execute(
                 text(
                     """INSERT INTO aml_case
@@ -111,7 +119,7 @@ class InvestigationRepository:
                 {
                     "case_id": case_id,
                     "account_key": alert["account_key"],
-                    "title": f"Explainable investigation for {alert_id}",
+                    "title": f"Rà soát cảnh báo {alert_id}",
                     "risk_score": alert["risk_score"],
                     "priority": priority,
                 },
@@ -553,12 +561,55 @@ class InvestigationRepository:
         self.session.execute(
             text(
                 """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
-                   VALUES (:case_id, 'investigation_reviewed', :actor, 'analyst', CAST(:payload AS jsonb))"""
+                   VALUES (:case_id, 'investigation_reviewed', :actor, 'investigator', CAST(:payload AS jsonb))"""
             ),
             {"case_id": state.case_id, "actor": user_id, "payload": _json(review)},
         )
+        self._apply_case_transition(state, decision=decision, user_id=user_id)
         self._record_feedback(state, decision=decision, reason=reason, user_id=user_id)
         return self.get(investigation_id)
+
+    #: Quyết định của người rà soát ĐẨY VỤ VIỆC ĐI ĐÂU.
+    #:
+    #: Trước đây `review()` chỉ ghi `human_review`, một dòng nhật ký và một nhãn
+    #: huấn luyện — vụ việc không nhúc nhích. Chọn "Đóng — cảnh báo giả" xong vụ
+    #: vẫn nằm ở "Tiếp nhận cảnh báo" giữa hàng nghìn vụ khác, nên năm lựa chọn
+    #: ấy chỉ là nơi thu thập nhãn chứ chưa điều hành được quy trình.
+    #:
+    #: Hai lựa chọn KHÔNG đổi trạng thái, có chủ ý:
+    #: * CONTINUE_MONITORING — nghĩa đen là giữ nguyên và theo dõi tiếp; đẩy đi
+    #:   đâu cũng sai với chính lựa chọn ấy.
+    #: * ESCALATE_TO_L2 — máy trạng thái không có khái niệm "cấp rà soát 2".
+    #:   Bịa một trạng thái cho nó sẽ tạo một bậc quy trình không ai định nghĩa.
+    _DECISION_STATES = {
+        "REVIEW_FOR_SAR_STR": "SoanHoSoNghiVan",
+        "REQUEST_MORE_INFORMATION": "DieuTraBoSung",
+    }
+
+    def _apply_case_transition(self, state: InvestigationOut, *, decision: str, user_id: str) -> None:
+        # "Đóng, không báo cáo" KHÔNG đi thẳng: nó rẽ theo mức rủi ro.
+        #
+        # Đây là chốt phân tách nhiệm vụ. Cho chuyên viên đóng mọi vụ thì một
+        # người vừa điều tra vừa tự kết luận không báo cáo, đúng thứ mà chốt
+        # "người gửi không được tự phê duyệt" ở tầng SAR sinh ra để ngăn. Bắt
+        # duyệt mọi vụ thì hàng đợi của quản lý nhận cả 14.263 vụ.
+        if decision == "CLOSE_AS_LIKELY_FALSE_POSITIVE":
+            self._close_or_request_close(state, user_id=user_id)
+            return
+
+        target = self._DECISION_STATES.get(decision)
+        if target is None:
+            return
+        # KHÔNG kéo ngược một vụ đã kết thúc hoặc đang chờ phê duyệt: hồ sơ đã
+        # xuất và hồ sơ nằm trong hàng đợi phê duyệt đều do luồng khác làm chủ,
+        # một lượt rà soát muộn không được giành lại quyền ấy.
+        if self.session.execute(
+            text("SELECT state FROM aml_case WHERE case_id = :c"), {"c": state.case_id}
+        ).scalar_one_or_none() == "ChoNguoiPheDuyet":
+            # Vụ đang nằm trong hàng đợi phê duyệt thì quản lý làm chủ nó; một
+            # kết luận muộn của chuyên viên không được giành lại quyền ấy.
+            return
+        self._set_case_state(state.case_id, target, user_id=user_id, decision=decision)
 
     #: Quy đổi quyết định của chuyên viên thành nhãn huấn luyện.
     #:
@@ -572,6 +623,75 @@ class InvestigationRepository:
         "CONTINUE_MONITORING": "INCONCLUSIVE",
         "REQUEST_MORE_INFORMATION": "INCONCLUSIVE",
     }
+
+    def _close_or_request_close(self, state: InvestigationOut, *, user_id: str) -> None:
+        """Vụ nhẹ thì chuyên viên đóng thẳng; vụ nặng thì xin Quản lý duyệt.
+
+        Ngưỡng lấy từ ``case_self_close_max_risk`` (mặc định 80 — cùng lằn ranh
+        "nghiêm trọng" mà `priority` và badge critical đang dùng, không đẻ thêm
+        một định nghĩa "rủi ro cao" thứ ba).
+        """
+        row = (
+            self.session.execute(
+                text("SELECT risk_score, state FROM aml_case WHERE case_id = :c FOR UPDATE"),
+                {"c": state.case_id},
+            )
+            .mappings()
+            .first()
+        )
+        if row is None or row["state"] in {"XuatHoSo", "DongKhongBaoCao", "ChoNguoiPheDuyet"}:
+            return
+
+        threshold = get_settings().case_self_close_max_risk
+        if float(row["risk_score"]) < threshold:
+            self._set_case_state(state.case_id, "DongKhongBaoCao", user_id=user_id, decision="tu_dong")
+            return
+
+        # Vượt ngưỡng: mở một đề xuất ĐÓNG trong hàng đợi phê duyệt. Dùng lại
+        # bảng `approval` chứ không dựng bảng thứ hai — quản lý phải có MỘT chỗ
+        # duy nhất để chốt, không phải hai hàng đợi cho hai loại đề xuất.
+        # `sar_draft_id` để NULL: đề nghị đóng thì không có hồ sơ nào kèm theo.
+        existing = self.session.execute(
+            text(
+                """SELECT approval_id FROM approval
+                    WHERE case_id = :c AND request_kind = 'close' AND decision = 'pending'"""
+            ),
+            {"c": state.case_id},
+        ).scalar_one_or_none()
+        if existing is None:
+            self.session.execute(
+                text(
+                    """INSERT INTO approval (approval_id, case_id, sar_draft_id, decision, request_kind)
+                       VALUES (:a, :c, NULL, 'pending', 'close')"""
+                ),
+                {"a": _id("APR"), "c": state.case_id},
+            )
+        self._set_case_state(state.case_id, "ChoNguoiPheDuyet", user_id=user_id, decision="xin_duyet_dong")
+
+    def _set_case_state(self, case_id: str, target: str, *, user_id: str, decision: str) -> None:
+        changed = self.session.execute(
+            text(
+                """UPDATE aml_case SET state = :target, updated_at = now()
+                    WHERE case_id = :case_id
+                      AND state NOT IN ('XuatHoSo', 'DongKhongBaoCao')
+                      AND state <> :target
+                 RETURNING case_id"""
+            ),
+            {"target": target, "case_id": case_id},
+        ).first()
+        if changed is None:
+            return
+        self.session.execute(
+            text(
+                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+                   VALUES (:case_id, 'case_state_changed', :actor, 'analyst', CAST(:payload AS jsonb))"""
+            ),
+            {
+                "case_id": case_id,
+                "actor": user_id,
+                "payload": _json({"decision": decision, "new_state": target, "source": "human_review"}),
+            },
+        )
 
     def _record_feedback(self, state: InvestigationOut, *, decision: str, reason: str, user_id: str) -> None:
         """Lưu nhãn kèm ảnh chụp điểm tại thời điểm ra quyết định.

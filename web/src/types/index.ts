@@ -179,12 +179,15 @@ export interface SarDraft {
   behaviourSummary: string;
   inflow: number;
   outflow: number;
+  /** Tổng tiền vào/ra tách theo từng loại tiền — không cộng gộp các loại tiền khác nhau. */
+  flowByCurrency: { currency: string; inflow: number; outflow: number; count: number }[];
   inflowNote: string;
   outflowNote: string;
   validationIssues: SarValidationIssue[];
   relatedTransactions: SarTransactionRow[];
-  networkConfidence: number;
-  history: { time: string; text: string; actor: string }[];
+  networkSize: { accounts: number; transactions: number };
+  /** `actor` là mã cho vết kiểm toán; `actor_name` là tên người để hiện lên màn hình. */
+  history: { time: string; text: string; actor: string; actor_name?: string | null }[];
 }
 
 export interface SarTransactionRow {

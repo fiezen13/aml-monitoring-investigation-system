@@ -45,6 +45,9 @@ export function ApprovalsPage() {
   const [listTab, setListTab] = useState("all");
   const [page, setPage] = useState(1);
   const sars = useApi(() => api.sars(), []);
+  // Đề nghị ĐÓNG vụ: chuyên viên kết luận không đáng ngờ nhưng vụ vượt ngưỡng
+  // rủi ro nên phải qua quản lý. Không nằm trong `sars()` vì không có bản nháp.
+  const closeReqs = useApi(() => api.closeRequests(), []);
 
   // Trợ lý AI thật (Gemini) hỏi–đáp về hàng đợi SAR — chỉ tư vấn, không tự quyết.
   const [chatOpen, setChatOpen] = useState(false);
@@ -184,13 +187,38 @@ export function ApprovalsPage() {
     },
   ];
 
+  const pendingCloses = closeReqs.data ?? [];
+  const [decidingId, setDecidingId] = useState<string | null>(null);
+
+  async function decideClose(approvalId: string, decision: "approved" | "rejected") {
+    setDecidingId(approvalId);
+    try {
+      await api.decideApproval(
+        approvalId,
+        decision,
+        decision === "approved"
+          ? "Quản lý duyệt đề nghị đóng vụ, không lập báo cáo."
+          : "Quản lý không duyệt đề nghị đóng; trả lại để điều tra bổ sung.",
+      );
+      pushToast({
+        tone: "success",
+        title: decision === "approved" ? "Đã đóng vụ việc" : "Đã trả lại cho chuyên viên",
+      });
+      closeReqs.reload();
+    } catch (error) {
+      pushToast({ tone: "error", title: error instanceof Error ? error.message : "Không lưu được quyết định" });
+    } finally {
+      setDecidingId(null);
+    }
+  }
+
   return (
     <PageShell>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className={TEXT.h2}>Hàng đợi phê duyệt SAR</h2>
+          <h2 className={TEXT.h2}>Hàng đợi phê duyệt</h2>
           <p className="mt-1 text-body text-ink-soft">
-            Quản lý và thẩm định các báo cáo giao dịch đáng ngờ.
+            Thẩm định hồ sơ nghi vấn do chuyên viên nộp, và chốt các đề nghị đóng vụ.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -220,6 +248,60 @@ export function ApprovalsPage() {
           </button>
         </div>
       </div>
+
+      {/* ĐỀ NGHỊ ĐÓNG VỤ — hàng đợi thứ hai của quản lý.
+          Chuyên viên kết luận "không đáng ngờ" trên một vụ VƯỢT ngưỡng rủi ro
+          thì không tự đóng được; đề nghị nằm ở đây chờ chốt. Dưới ngưỡng thì họ
+          đã đóng thẳng và vụ không bao giờ xuất hiện ở màn hình này. */}
+      {pendingCloses.length > 0 && (
+        <Panel title={`Đề nghị đóng vụ · ${pendingCloses.length}`}>
+          <p className="mb-2 text-2xs text-ink-mid">
+            Chuyên viên kết luận không đáng ngờ; vụ vượt ngưỡng rủi ro nên cần quản lý chốt.
+          </p>
+          <div className="space-y-2">
+            {pendingCloses.map((r) => (
+              <div
+                key={r.approval_id}
+                className="rounded-control border border-line bg-elev px-3 py-2.5 text-2xs"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/cases/${r.case_id}`)}
+                    className="font-semibold text-ink-hi hover:underline"
+                  >
+                    {r.case_id}
+                  </button>
+                  <span className="tabular text-ink-mid">
+                    điểm rủi ro <span className="font-semibold text-ink-hi">{Math.round(Number(r.risk_score))}</span>
+                  </span>
+                </div>
+                {r.analyst_reason && (
+                  <p className="mt-1.5 text-ink-mid">Lý do chuyên viên nêu: {r.analyst_reason}</p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={decidingId === r.approval_id}
+                    onClick={() => decideClose(r.approval_id, "approved")}
+                    className="rounded-control bg-primary px-3 py-1.5 font-semibold text-app disabled:opacity-50"
+                  >
+                    Duyệt đóng vụ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={decidingId === r.approval_id}
+                    onClick={() => decideClose(r.approval_id, "rejected")}
+                    className="rounded-control border border-line px-3 py-1.5 font-semibold text-ink-mid disabled:opacity-50"
+                  >
+                    Không duyệt — trả lại điều tra
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
 
       {/* KPI */}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">

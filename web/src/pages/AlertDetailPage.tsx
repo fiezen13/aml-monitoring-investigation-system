@@ -215,6 +215,19 @@ export function AlertDetailPage() {
                   {a.reasons.map((r) => {
                     const contribution = num(r.contribution);
                     const pct = totalContribution > 0 ? (contribution / totalContribution) * 100 : 0;
+                    // Yếu tố BỐI CẢNH: mô tả tình huống chứ không chấm điểm, nên
+                    // không có đóng góp lẫn trọng số. Hiện "đóng góp 0.00 · trọng
+                    // số 0.00" kèm thanh rỗng khiến chuyên viên đọc thành "yếu tố
+                    // này vô nghĩa", trong khi nó là phần giải thích dễ hiểu nhất
+                    // (bao nhiêu giao dịch vượt ngưỡng, tổng bao nhiêu tiền).
+                    const isContext = contribution === 0 && num(r.weight) === 0;
+                    if (isContext) {
+                      return (
+                        <div key={r.factor_code} className="text-2xs text-ink-mid">
+                          {r.factor_label}
+                        </div>
+                      );
+                    }
                     return (
                       <div key={r.factor_code}>
                         <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-2xs">

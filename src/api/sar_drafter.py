@@ -16,6 +16,7 @@ Rào chắn nghiêm ngặt:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from google.genai import types
@@ -37,7 +38,14 @@ _SYSTEM = (
     "- CHỈ dùng số liệu/sự kiện có trong CONTEXT; TUYỆT ĐỐI không bịa con số, tên, quốc gia, ngày.\n"
     "- MỖI finding phải có ít nhất một evidence_id CÓ THẬT trong CONTEXT.evidence; không bịa mã.\n"
     "- KHÔNG kết luận 'đây là hành vi rửa tiền'; chỉ nêu DẤU HIỆU nghi vấn cần rà soát thêm.\n"
-    "- Viết tiếng Việt, giọng báo cáo tuân thủ, KHÔNG markdown, KHÔNG emoji.\n"
+    "- KHÔNG BAO GIỜ cộng gộp các loại tiền khác nhau thành một tổng. Vụ việc có nhiều loại "
+    "tiền thì kể riêng từng loại, hoặc chỉ kể loại tiền lớn nhất và nói rõ đó là loại nào.\n"
+    "- Mỗi con số tiền phải đi kèm TÊN LOẠI TIỀN ĐẦY ĐỦ đúng như trong CONTEXT (ví dụ 'Canadian "
+    "Dollar', 'Ruble'). TUYỆT ĐỐI không viết 'đơn vị tiền tệ', 'đơn vị', hay bỏ trống đơn vị.\n"
+    "- KHÔNG trích điểm số nội bộ của mô hình theo thang gốc (ví dụ '1.0 trên thang 0-1'). "
+    "Điểm rủi ro chỉ được nêu theo thang 0-100 đúng như màn hình nghiệp vụ, hoặc mô tả bằng lời.\n"
+    "- Viết tiếng Việt, giọng báo cáo tuân thủ, KHÔNG markdown, KHÔNG emoji. Không dùng thuật "
+    "ngữ tiếng Anh (fan-in/fan-out, structuring, layering) — diễn đạt bằng tiếng Việt.\n"
     "Trả về đúng JSON theo schema, không kèm chữ nào khác."
 )
 
@@ -59,6 +67,16 @@ _SCHEMA = {
     },
     "required": ["summary", "findings"],
 }
+
+
+#: Cách nói né đơn vị tiền — con số mất nghĩa, và thường là dấu hiệu mô hình đã
+#: cộng gộp nhiều loại tiền vào làm một.
+_VAGUE_CURRENCY = re.compile(r"đơn vị tiền tệ|đơn vị tiền\b|(?<!\w)đơn vị(?!\s*(tiền|tính))", re.I)
+
+
+def _hides_currency(text: str) -> bool:
+    """Câu có nêu số tiền mà không gọi tên loại tiền."""
+    return bool(_VAGUE_CURRENCY.search(text))
 
 
 def draft_sar(context: dict[str, Any]) -> dict[str, Any] | None:
@@ -105,6 +123,12 @@ def draft_sar(context: dict[str, Any]) -> dict[str, Any] | None:
             if text and ev:
                 findings.append({"text": text, "evidence_ids": ev})
         if not summary or not findings:
+            return None
+        # Rào chắn tất định cho ĐƠN VỊ TIỀN. Lời nhắc trong prompt là mong đợi,
+        # không phải bảo đảm; mà "hơn 5 tỷ đơn vị tiền tệ" thì đã lọt vào một bản
+        # PDF gửi ra ngoài. Vi phạm thì bỏ bản AI, caller dùng template tất định.
+        if _hides_currency(summary) or any(_hides_currency(f["text"]) for f in findings):
+            METRICS.gemini_requests.add(1, attrs(agent=_AGENT, model=settings.gemini_model, status="rejected"))
             return None
         return {"summary": summary, "findings": findings}
     except Exception as exc:  # noqa: BLE001 — trả None, caller fallback template

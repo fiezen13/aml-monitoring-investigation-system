@@ -51,7 +51,7 @@ function centerOn(cy: CyCore | null, id: string): void {
  * lại khi đầu vào của chính nó đổi — đó là lý do kéo thanh thời gian không làm
  * chạy lại layout, và đổi focus không làm chạy lại gì ngoài alpha.
  */
-export function InvestigationGraph({ subject }: { subject?: string } = {}) {
+export function InvestigationGraph({ subject, caseId }: { subject?: string; caseId?: string } = {}) {
   const { model, components, activeComponentId, setActiveComponentId, loading, error, reload } = useGraphModel(
     600,
     subject,
@@ -669,7 +669,7 @@ export function InvestigationGraph({ subject }: { subject?: string } = {}) {
               {/* Bản kể đứng TRƯỚC gợi ý điều tra có chủ đích: gợi ý nói
                   "nhìn vào đâu", còn bản kể nói "đang nhìn cái gì". Đọc gợi ý
                   trước khi biết mình đang xem gì thì cũng như không. */}
-              <GraphNarrativePanel accountKey={narrativeAccount} onPickAccount={focusNode} />
+              <GraphNarrativePanel accountKey={narrativeAccount} caseId={caseId} onPickAccount={focusNode} />
               <GraphInvestigationLeads
                 leads={leads}
                 onPick={(lead) => {
@@ -707,7 +707,9 @@ export function InvestigationGraph({ subject }: { subject?: string } = {}) {
             />
           )}
 
-          {model && selectedNode && <GraphNarrativePanel accountKey={selectedNode.id} onPickAccount={focusNode} />}
+          {model && selectedNode && (
+            <GraphNarrativePanel accountKey={selectedNode.id} caseId={caseId} onPickAccount={focusNode} />
+          )}
 
           {model && selectedTx && (
             <TransactionDetail

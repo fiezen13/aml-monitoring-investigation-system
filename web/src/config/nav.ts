@@ -76,6 +76,7 @@ export const NAV: NavItem[] = [
     icon: Coins,
     roles: ["analyst", "manager"],
   },
+
   { to: "/projects", label: "Rủi ro dự án", icon: Blocks, roles: ["analyst", "manager"] },
 
   // Tab KỸ THUẬT — chỉ Quản trị hệ thống (admin). Chuyên viên và Quản lý không thấy.

@@ -17,6 +17,7 @@ import {
 } from "../../api/format";
 import { useApi } from "../../api/useApi";
 import { useApp } from "../../context/AppContext";
+import { PERMISSIONS } from "../../rbac/permissions";
 import { StatusBadge } from "../common/Badges";
 import { EvidenceBody } from "./EvidenceBody";
 import { Panel } from "../common/Panel";
@@ -28,23 +29,33 @@ const POLL_MS = 2000;
 // An investigation that stops for a human still produced the explanation that
 // sent it there, and that is the part a reviewer needs to read.
 const EXPLAINED = new Set(["COMPLETED", "NEEDS_HUMAN_REVIEW", "INSUFFICIENT_EVIDENCE"]);
+// KHÔNG có "Chuyển lên cấp rà soát 2": hệ thống chỉ có ba vai và ô rà soát này
+// đã chỉ quản lý dùng được, nên nó là chuyển lên một cấp không tồn tại. Bốn lựa
+// chọn còn lại đều đẩy vụ việc đi một hướng thật (xem _DECISION_STATES).
 const REVIEW_ACTIONS = [
   ["CONTINUE_MONITORING", "Tiếp tục giám sát"],
   ["REQUEST_MORE_INFORMATION", "Yêu cầu thêm thông tin"],
-  ["ESCALATE_TO_L2", "Chuyển lên cấp rà soát 2"],
   ["REVIEW_FOR_SAR_STR", "Rà soát để lập báo cáo SAR/STR"],
   ["CLOSE_AS_LIKELY_FALSE_POSITIVE", "Đóng — nhiều khả năng là cảnh báo giả"],
 ] as const;
 
 export function InvestigationPanel({ alertId }: { alertId: string }) {
-  const { pushToast } = useApp();
+  const { pushToast, currentUser } = useApp();
+  // Người ĐIỀU TRA là người kết luận, và đó là Chuyên viên.
+  //
+  // Ô này từng khoá theo REVIEW_INVESTIGATION (quyền của Quản lý) — chuyên viên
+  // điều tra xong không ghi được kết luận của chính mình. Sửa sang
+  // INVESTIGATE_CASE thì chuyên viên ghi được, nhưng Quản lý cũng ghi được, tức
+  // vừa kết luận vừa phê duyệt. PREPARE_SAR nay CHỈ Chuyên viên có, và nó đúng
+  // là quyền "người lập hồ sơ" — cùng một vai với người kết luận.
+  const canReview = currentUser?.permissions?.includes(PERMISSIONS.PREPARE_SAR) ?? false;
   const [starting, setStarting] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   // Mặc định chỉ hiện ~6 bằng chứng chính; phần còn lại mở theo yêu cầu để view
   // không bị hàng chục evidence ID đẩy phần kết luận xuống dưới.
   const [showAllEvidence, setShowAllEvidence] = useState(false);
   const EVIDENCE_PREVIEW = 6;
-  const [decision, setDecision] = useState<(typeof REVIEW_ACTIONS)[number][0]>("ESCALATE_TO_L2");
+  const [decision, setDecision] = useState<(typeof REVIEW_ACTIONS)[number][0]>("REVIEW_FOR_SAR_STR");
   const [reason, setReason] = useState("");
   const latest = useApi(() => api.latestInvestigation(alertId), [alertId]);
   const investigationId = latest.data?.investigation_id ?? null;
@@ -147,6 +158,12 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
 
   const inv = latest.data;
   const risk = inv.risk_summary;
+  // Nhánh nào THẬT SỰ chấm ra cảnh báo này. Bảng phân rã cũ bắt chuyên viên tự
+  // dò trong năm dòng để tìm dòng duy nhất có dữ liệu; ở đây rút thẳng ra tên.
+  const detectedBy = Object.entries(risk?.components ?? {})
+    .filter(([, c]) => c.available)
+    .map(([name]) => riskComponentLabel(name))
+    .join(" và ");
   return (
     <div className="space-y-3">
       <Panel
@@ -189,45 +206,30 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
         </p>
       </Panel>
 
+      {/* Chỉ còn ĐIỂM và NGUỒN phát hiện.
+          Bảng phân rã theo nhánh đã bỏ: nó liệt kê năm nhánh mà bốn trong số đó
+          luôn ghi "không có dữ liệu — không phải điểm 0", còn nhánh thật thì hiện
+          "điểm 1.000 · trọng số 1.00 · mức đóng góp 1.000". Ba con số ấy là thang
+          0-1 của bộ chấm, không phải thang 100 mà cả console dùng — "1.000" đọc
+          trong tiếng Việt còn thành "một nghìn". Chuyên viên không quyết định gì
+          khác đi nhờ chúng; điều họ cần là điểm bao nhiêu và ai chấm. Phân rã
+          theo nhánh vẫn còn nguyên ở trang Giám sát mô hình (chỉ Admin). */}
       {risk.components && (
-        <Panel title="Chi tiết điểm rủi ro">
-          <div className="mb-3 flex items-baseline gap-2">
+        <Panel title="Điểm rủi ro">
+          <div className="flex items-baseline gap-2">
             <span className="tabular text-2xl font-bold text-ink-hi">
               {Math.round((risk.final_risk_score ?? 0) * 100)}
             </span>
-            <span className="text-2xs text-ink-mid">rủi ro cuối cùng · nguồn: Bộ máy phát hiện</span>
+            <span className="text-2xs text-ink-mid">trên thang một trăm</span>
           </div>
-          <div className="space-y-2">
-            {Object.entries(risk.components).map(([name, component]) => (
-              // "Không có dữ liệu" KHÁC "điểm 0". Detector không chạy/không đủ dữ
-              // liệu thì không hiện "điểm 0.000" (dễ đọc thành điểm rủi ro bằng 0)
-              // — hiện thẳng "không có dữ liệu" và thanh gạch đứt, không thanh đặc.
-              <div key={name}>
-                <div className="mb-1 flex items-center justify-between gap-2 text-2xs">
-                  <span className="capitalize text-ink-hi">{riskComponentLabel(name)}</span>
-                  {component.available ? (
-                    <span className="tabular text-ink-mid">
-                      điểm {component.score.toFixed(3)} · trọng số {component.weight.toFixed(2)} · mức đóng góp {component.contribution.toFixed(3)}
-                    </span>
-                  ) : (
-                    <span className="rounded bg-elev px-1.5 py-0.5 text-micro font-medium text-ink-low">
-                      không có dữ liệu — không phải điểm 0
-                    </span>
-                  )}
-                </div>
-                {component.available ? (
-                  <div className="h-1.5 rounded bg-elev">
-                    <div className="h-full rounded bg-primary" style={{ width: `${component.score * 100}%` }} />
-                  </div>
-                ) : (
-                  <div className="h-1.5 rounded border border-dashed border-line/70" aria-hidden />
-                )}
-              </div>
-            ))}
-          </div>
-          {!risk.fusion_available && risk.limitation && (
-            <p className="mt-3 border-t border-line pt-2 text-2xs text-ink-low">{risk.limitation}</p>
+          {detectedBy && (
+            <p className="mt-1 text-2xs text-ink-mid">
+              Do <span className="text-ink-hi">{detectedBy}</span> phát hiện.
+            </p>
           )}
+          <p className="mt-3 border-t border-line pt-2 text-2xs text-ink-low">
+            Điểm dùng để xếp thứ tự ưu tiên rà soát, không phải kết luận về hành vi rửa tiền.
+          </p>
         </Panel>
       )}
 
@@ -285,8 +287,10 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
                 <details key={item.evidence_id} id={`ev-${item.evidence_id}`} className="scroll-mt-4 rounded-control border border-line bg-elev p-2.5">
                   <summary className="flex cursor-pointer list-none items-center gap-2 text-2xs text-ink-hi">
                     <ChevronRight size={12} />
+                    {/* Mã EV-<băm 24 ký tự> từng in ở đây. Nó không tra cứu được
+                        thứ gì cho chuyên viên, và nút trích dẫn phía trên đã trỏ
+                        thẳng tới bằng chứng bằng nhãn tiếng Việt. */}
                     <span className="font-semibold">{evidenceTypeLabel(item.type)}</span>
-                    <span className="tabular ml-auto text-ink-low">{item.evidence_id}</span>
                   </summary>
                   <div className="mt-2 border-t border-line pt-2 text-2xs text-ink-mid">
                     <EvidenceBody type={item.type} payload={item.payload} />
@@ -372,8 +376,64 @@ export function InvestigationPanel({ alertId }: { alertId: string }) {
         </Panel>
       )}
 
-      {["COMPLETED", "INSUFFICIENT_EVIDENCE", "NEEDS_HUMAN_REVIEW"].includes(inv.status) && (
-        <Panel title="Chuyên viên phân tích rà soát">
+      {/* Phiên dừng giữa chừng thì phải có đường chạy lại NGAY TẠI ĐÂY.
+          Nút "Bắt đầu điều tra" chỉ hiện khi cảnh báo chưa từng có phiên nào,
+          nên sau một phiên trượt nó biến mất và chuyên viên không còn cách nào
+          cho chạy lại từ giao diện — dù API vẫn tạo phiên mới bình thường.
+          `investigateAlert` chỉ tái dùng phiên đang QUEUED/INVESTIGATING; gặp
+          phiên đã kết thúc nó mở phiên mới, nên dùng lại đúng hàm `start`. */}
+      {["INSUFFICIENT_EVIDENCE", "NEEDS_HUMAN_REVIEW", "FAILED"].includes(inv.status) && (
+        <Panel title="Phiên điều tra dừng giữa chừng">
+          <div className="space-y-3 text-2xs">
+            <p className="text-ink-mid">
+              {inv.failure_reason ??
+                "Phiên dừng trước khi mọi nhận định được đối chiếu xong với bằng chứng."}
+            </p>
+            <p className="text-ink-mid">
+              Bản nháp bên dưới <span className="text-ink-hi">chưa được đóng dấu kiểm chứng</span>. Đọc theo
+              từng nhận định và đối chiếu với mục Bằng chứng trước khi dùng bất kỳ con số nào.
+            </p>
+            {/* Dừng vì GIẬM CHÂN thì chạy lại cho ra đúng kết quả cũ — quy
+                trình đã tự đo được điều đó và dừng sớm. Mời bấm lại ở đây là
+                lời khuyên sai, nên nút bị hạ xuống thứ yếu kèm cảnh báo thẳng. */}
+            {/KHÔNG tiến triển/.test(inv.failure_reason ?? "") ? (
+              <>
+                <p className="rounded-control border border-warn/30 bg-warn-soft p-3 text-ink-hi">
+                  Quy trình đã thử lại và nhận đúng những vấn đề cũ, nên nó dừng sớm thay vì chạy tiếp.
+                  Chạy lại nhiều khả năng cho cùng kết quả — việc cần làm là đọc mục Bằng chứng rồi
+                  ghi quyết định ở ô bên dưới.
+                </p>
+                <button
+                  type="button"
+                  disabled={starting}
+                  onClick={start}
+                  className="flex items-center gap-1.5 rounded-control border border-line px-4 py-2 text-2xs font-semibold text-ink-mid disabled:opacity-50"
+                >
+                  <Play size={13} /> {starting ? "Đang chạy lại…" : "Vẫn chạy lại"}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={starting}
+                onClick={start}
+                className="flex items-center gap-1.5 rounded-control bg-primary px-4 py-2 text-2xs font-semibold text-app disabled:opacity-50"
+              >
+                <Play size={13} /> {starting ? "Đang chạy lại…" : "Chạy lại điều tra"}
+              </button>
+            )}
+            <p className="text-ink-mid">
+              Chạy lại mở một phiên mới và giữ nguyên phiên cũ trong nhật ký, không ghi đè.
+            </p>
+          </div>
+        </Panel>
+      )}
+
+      {/* Ô kết luận của NGƯỜI ĐIỀU TRA. "Đóng — cảnh báo giả" rẽ theo mức rủi
+          ro: dưới ngưỡng thì đóng thẳng, từ ngưỡng trở lên thì thành một đề nghị
+          nằm chờ Quản lý chốt ở trang Phê duyệt SAR. */}
+      {canReview && ["COMPLETED", "INSUFFICIENT_EVIDENCE", "NEEDS_HUMAN_REVIEW"].includes(inv.status) && (
+        <Panel title="Kết luận điều tra">
           {inv.human_review ? (
             <div className="rounded-control border border-ok/30 bg-ok-soft p-3 text-2xs text-ink-hi">
               Quyết định đã được ghi vào nhật ký kiểm toán: {recommendedActionLabel(String(inv.human_review.decision))}

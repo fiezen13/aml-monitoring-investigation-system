@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import type { ApiAuditEvent } from "../../api/client";
-import { auditEventLabel, caseStateLabel, formatDateTime, roleLabel } from "../../api/format";
+import { actorLabel, auditEventLabel, caseStateLabel, formatDateTime, roleLabel } from "../../api/format";
 import { EmptyState } from "./States";
 
 const ACTOR_DOT: Record<string, string> = {
@@ -81,7 +81,7 @@ export function AuditFeed({ events }: { events: ApiAuditEvent[] }) {
                   <span className="tabular text-2xs text-ink-low">{formatDateTime(event.occurred_at)}</span>
                 </div>
                 <div className="mt-0.5 text-2xs text-ink-mid">
-                  <span className="font-medium text-ink-hi">{event.actor}</span>
+                  <span className="font-medium text-ink-hi">{actorLabel(event.actor, event.actor_name)}</span>
                   {" · "}
                   {roleLabel(event.actor_role)}
                   {event.case_id && (

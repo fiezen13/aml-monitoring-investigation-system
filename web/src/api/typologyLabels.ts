@@ -11,6 +11,11 @@
  */
 
 export const TYPOLOGY_LABELS: Record<string, { name: string; description: string }> = {
+  T00: {
+    name: "Rủi ro theo mô hình — chưa khớp nhóm hành vi có tên",
+    description:
+      "Mô hình chấm điểm thấy rủi ro cao, nhưng hành vi quan sát được chưa đủ dấu hiệu của nhóm hành vi nào trong danh mục. Căn cứ của cảnh báo là điểm rủi ro và các yếu tố đóng góp.",
+  },
   T01: {
     name: "Chia nhỏ giao dịch dưới ngưỡng báo cáo",
     description: "Nhiều giao dịch lặp lại ngay dưới ngưỡng phải báo cáo, cần rà theo ngữ cảnh.",

@@ -77,6 +77,41 @@ def refresh_operational_geography(session) -> dict[str, int]:
     if not rollup_schema:
         raise RuntimeError("Thiếu migration 014; chạy `make migrate` rồi nạp geography lại")
 
+    # CHỈ dựng bản đồ cho bộ dữ liệu CÓ QUỐC GIA TRÊN GIAO DỊCH.
+    #
+    # Bộ IBM AML không mang quốc gia: 6.754.950 giao dịch, `from_country` NULL
+    # toàn bộ. Quốc gia của tài khoản IBM là suy từ TÊN NGÂN HÀNG, và 39% trong
+    # số đó (574.050/1.474.941 tài khoản) rơi vào nhánh `assigned` — tức đoán
+    # theo hình dạng tên, không phải tra được. Dựng hành lang trên nền ấy rồi
+    # đặt cạnh hành lang SAML-D — nơi quốc gia có sẵn trên từng giao dịch — là
+    # trình bày suy đoán như dữ kiện, người xem không phân biệt được hai thứ.
+    #
+    # Điểm rủi ro hành lang càng làm nó tệ hơn: nó lấy max(model_score)*100, mà
+    # điểm MEGA-PNA bão hoà, nên 352/1.307 hành lang IBM cùng bằng 100 — một
+    # bảng "rủi ro cao nhất" xếp hạng bằng con số phần lớn bằng nhau.
+    #
+    # Bảng `bank` vẫn giữ quốc gia suy ra: nó phục vụ việc tra cứu ngân hàng và
+    # không tự khẳng định điều gì. Chỉ phần ROLLUP bản đồ là bị chặn.
+    covered = session.execute(
+        text(
+            """SELECT count(*) FROM transaction t
+                JOIN transaction_model_score s USING (transaction_id)
+                WHERE s.release_id = :release AND t.from_country IS NOT NULL"""
+        ),
+        {"release": release_id},
+    ).scalar_one()
+    if not covered:
+        session.execute(text("DELETE FROM edge_country_flow WHERE release_id=:release"), {"release": release_id})
+        session.execute(text("DELETE FROM edge_country_hub WHERE release_id=:release"), {"release": release_id})
+        return {
+            "rollup_hubs": 0,
+            "rollup_flows": 0,
+            "rollup_skipped": (
+                "Bộ dữ liệu của bản phát hành này không mang quốc gia trên giao dịch; "
+                "không dựng bản đồ hành lang từ quốc gia suy ra."
+            ),
+        }
+
     session.execute(text("DELETE FROM edge_country_flow WHERE release_id=:release"), {"release": release_id})
     session.execute(text("DELETE FROM edge_country_hub WHERE release_id=:release"), {"release": release_id})
     session.execute(

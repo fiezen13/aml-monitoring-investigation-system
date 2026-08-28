@@ -63,6 +63,13 @@ const RISK_RATING_LABELS: Record<string, string> = {
   unknown: "Chưa gán",
 };
 
+/** Loại khách hàng. Giá trị thô (`organisation`) vẫn dùng để so sánh trong mã. */
+export function customerTypeLabel(type: string | null | undefined): string {
+  if (type === "organisation") return "Tổ chức";
+  if (type === "individual") return "Cá nhân";
+  return type || "—";
+}
+
 export function riskRatingLabel(rating: string): string {
   return RISK_RATING_LABELS[rating] ?? rating;
 }
@@ -82,7 +89,11 @@ const DETECTOR_LABELS: Record<string, string> = {
   rule: "Luật",
   ml: "Học máy",
   graph: "Đồ thị",
-  mega_pna: "MEGA-PNA",
+  // Không để tên kiến trúc mô hình ("MEGA-PNA") ra hàng đợi: các nguồn khác đều
+  // gọi theo CÁCH phát hiện bằng tiếng Việt thường, và từ khi nhánh IBM chuyển
+  // sang mô hình đồ thị thì nhãn này xuất hiện trên MỌI cảnh báo IBM. Tên mô hình
+  // vẫn còn nguyên ở trang Giám sát mô hình (chỉ Admin xem được).
+  mega_pna: "Mạng lưới",
   geo_rule: "Luật địa lý",
 };
 
@@ -141,7 +152,33 @@ const AUDIT_EVENT_LABELS: Record<string, string> = {
   user_changed: "Thay đổi người dùng",
   sar_updated: "Cập nhật SAR",
   validation_run: "Kiểm chứng SAR",
+  // Sự kiện của phiên điều tra. Thiếu chúng thì màn hình hiện nguyên mã
+  // "investigation_completed" cho chuyên viên đọc.
+  investigation_started: "Bắt đầu điều tra",
+  investigation_completed: "Điều tra xong",
+  investigation_failed: "Điều tra dừng giữa chừng",
+  investigation_reviewed: "Chuyên viên kết luận điều tra",
+  case_assigned: "Đổi người phụ trách",
 };
+
+/** Tác nhân của một dòng lịch sử, viết cho người đọc.
+ *
+ * `actor` là mã dùng cho vết kiểm toán: mã người dùng ("U-001"), tiến trình
+ * ("api", "investigation-worker"), và cả tên tác vụ nội bộ do người vận hành
+ * đặt khi chạy lại hàng loạt. Không mã nào trong số đó có nghĩa với chuyên viên.
+ */
+const SYSTEM_ACTORS: Record<string, string> = {
+  api: "Hệ thống",
+  system: "Hệ thống",
+  "investigation-worker": "Trợ lý điều tra",
+};
+
+export function actorLabel(actor: string | null | undefined, name?: string | null): string {
+  if (name) return name;
+  const key = String(actor ?? "").trim();
+  if (!key) return "Hệ thống";
+  return SYSTEM_ACTORS[key] ?? "Hệ thống";
+}
 
 export function auditEventLabel(eventType: string): string {
   return AUDIT_EVENT_LABELS[eventType] ?? eventType;
@@ -311,7 +348,7 @@ const RISK_COMPONENT_LABELS: Record<string, string> = {
   graph: "Đồ thị",
   rules: "Luật nghiệp vụ",
   rule: "Luật nghiệp vụ",
-  mega_pna: "Mô hình đồ thị MEGA-PNA",
+  mega_pna: "Mô hình phân tích mạng lưới giao dịch",
   geo_rule: "Bộ luật địa lý",
 };
 
@@ -320,18 +357,153 @@ export function riskComponentLabel(component: string): string {
 }
 
 const EVIDENCE_TYPE_LABELS: Record<string, string> = {
-  RISK_BREAKDOWN: "Chi tiết điểm rủi ro",
-  BEHAVIOR_FEATURE: "Đặc trưng hành vi",
-  ANOMALY_EXPLANATION: "Giải thích điểm bất thường",
-  TRANSACTION: "Giao dịch",
-  TYPOLOGY_MAPPING: "Ánh xạ nhóm hành vi",
-  GRAPH_PATTERN: "Mẫu hình đồ thị",
-  GRAPH_NEIGHBORHOOD: "Vùng lân cận đồ thị",
-  RULE_TRIGGER: "Luật đã kích hoạt",
+  RISK_BREAKDOWN: "Cơ sở tính điểm rủi ro",
+  BEHAVIOR_FEATURE: "Dấu hiệu hành vi tài khoản",
+  ANOMALY_EXPLANATION: "Lý do được xem là bất thường",
+  TRANSACTION: "Giao dịch liên quan",
+  TYPOLOGY_MAPPING: "Nhóm hành vi được đối chiếu",
+  GRAPH_PATTERN: "Mô hình luân chuyển tiền",
+  GRAPH_NEIGHBORHOOD: "Quan hệ giao dịch liên quan",
+  RULE_TRIGGER: "Quy tắc cảnh báo đã kích hoạt",
 };
 
 export function evidenceTypeLabel(type: string): string {
   return EVIDENCE_TYPE_LABELS[type] ?? type;
+}
+
+/** Tên nguồn dành cho chuyên viên. Tên bảng và tên dịch vụ vẫn được giữ ở API
+ * để truy vết, nhưng không nên bắt người dùng tự dịch chúng khi đọc hồ sơ. */
+const EVIDENCE_SOURCE_LABELS: Record<string, string> = {
+  detection_engine: "Hệ thống phát hiện cảnh báo",
+  rule_engine: "Bộ quy tắc cảnh báo",
+  feature_service: "Hệ thống phân tích hành vi",
+  transaction_service: "Kho dữ liệu giao dịch",
+  typology_registry: "Danh mục nhóm hành vi",
+  anomaly_explanation_service: "Hệ thống phân tích bất thường",
+  graph_detector: "Hệ thống phân tích quan hệ giao dịch",
+  transaction: "Kho dữ liệu giao dịch",
+  alert: "Hệ thống cảnh báo",
+  behavior_feature_snapshot: "Kho dữ liệu hành vi",
+};
+
+export function evidenceSourceLabel(source: string | null | undefined): string {
+  if (!source) return "Hệ thống nghiệp vụ";
+  const known = EVIDENCE_SOURCE_LABELS[source];
+  if (known) return known;
+  // Nguồn của bằng chứng "quy tắc đã kích hoạt" được SINH RA từ tên bộ phát
+  // hiện (`mega_pna` → `mega_pna_engine`), nên bảng tra cứng sẽ thủng ngay lần
+  // thêm bộ phát hiện tiếp theo. Bắt theo hậu tố để bộ mới cũng có tên đọc được.
+  const engine = source.match(/^(.+)_engine$/);
+  if (engine) return `Bộ phát hiện ${detectorLabel(engine[1]).toLowerCase()}`;
+  return "Hệ thống nghiệp vụ";
+}
+
+const EVIDENCE_SOURCE_TITLES: Record<string, string> = {
+  detection_engine: "Cơ sở tính điểm rủi ro",
+  rule_engine: "Quy tắc cảnh báo đã kích hoạt",
+  feature_service: "Dấu hiệu hành vi tài khoản",
+  transaction_service: "Giao dịch liên quan",
+  typology_registry: "Nhóm hành vi được đối chiếu",
+  anomaly_explanation_service: "Lý do được xem là bất thường",
+  graph_detector: "Quan hệ giao dịch liên quan",
+  transaction: "Giao dịch liên quan",
+};
+
+/** "1083674.330000000000000000 Ruble" → "1.083.674,33 Ruble".
+ *
+ * Cột NUMERIC của PostgreSQL đi qua chuỗi giữ nguyên 18 chữ số thập phân. Đổ
+ * thẳng ra bảng thì chuyên viên phải đọc một dãy số vô nghĩa và không so sánh
+ * được hai dòng với nhau. */
+export function formatAmountText(raw: string | null | undefined): string {
+  const text = String(raw ?? "").trim();
+  // Cho phép dấu tách hàng nghìn NẰM TRONG phần số: máy chủ nay trả
+  // "1 083 674.33 Ruble" (dấu cách mảnh U+202F). Nếu regex dừng ở khoảng trắng
+  // đầu tiên thì "083 674.33 Ruble" bị đọc thành tên loại tiền.
+  const match = text.match(/^(-?[\d.,\u202f\u00a0 ]+)(.*)$/);
+  if (!match) return text || "—";
+  const value = Number(match[1].replace(/[\s\u202f\u00a0,]/g, ""));
+  if (!Number.isFinite(value)) return text;
+  const money = value.toLocaleString("vi-VN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return match[2] ? `${money} ${match[2].trim()}` : money;
+}
+
+export function evidenceTitle(type: string | undefined, source: string | undefined): string {
+  if (type) return evidenceTypeLabel(type);
+  return (source && EVIDENCE_SOURCE_TITLES[source]) || "Bằng chứng nghiệp vụ";
+}
+
+type EvidencePayload = Record<string, unknown>;
+
+function windowLabel(value: unknown): string {
+  const raw = String(value ?? "");
+  const match = raw.match(/^(\d+)d$/);
+  return match ? `${match[1]} ngày` : raw;
+}
+
+/** Một câu tóm tắt ngắn cho danh sách bằng chứng. Phần dữ liệu đầy đủ vẫn nằm
+ * trong ngăn chi tiết; danh sách chỉ trả lời nhanh "bằng chứng này nói gì?". */
+export function evidenceSummary(type: string | undefined, payload: unknown): string {
+  const p = (payload ?? {}) as EvidencePayload;
+
+  switch (type) {
+    case "RISK_BREAKDOWN": {
+      const score = typeof p.final_risk_score === "number" ? `${(p.final_risk_score * 100).toFixed(1)}%` : null;
+      return score ? `Điểm rủi ro được hệ thống xác định là ${score}.` : "Chi tiết các yếu tố tạo nên điểm rủi ro.";
+    }
+    case "RULE_TRIGGER": {
+      const rules = Array.isArray(p.triggered_rules)
+        ? (p.triggered_rules as EvidencePayload[]).filter(
+            (rule) => !String(rule.factor_code ?? "").startsWith("CTX_"),
+          )
+        : [];
+      if (rules.length === 1) {
+        const label = String(rules[0].factor_label ?? "").trim();
+        return label ? `Quy tắc đã kích hoạt: ${label}.` : "Có 1 quy tắc cảnh báo đã kích hoạt.";
+      }
+      return rules.length > 1
+        ? `Có ${rules.length} quy tắc cảnh báo đã kích hoạt.`
+        : "Mở để xem quy tắc và điều kiện đã kích hoạt cảnh báo.";
+    }
+    case "BEHAVIOR_FEATURE": {
+      const window = windowLabel(p.window);
+      return window
+        ? `Số liệu hành vi của tài khoản trong ${window}.`
+        : "Các dấu hiệu hành vi được hệ thống tổng hợp từ giao dịch.";
+    }
+    case "ANOMALY_EXPLANATION": {
+      const score = typeof p.anomaly_score === "number" ? p.anomaly_score.toFixed(2) : null;
+      return score
+        ? `Mức độ bất thường ${score}, kèm các dấu hiệu ảnh hưởng nhiều nhất.`
+        : "Các dấu hiệu khiến hoạt động này khác với thông lệ.";
+    }
+    case "TRANSACTION": {
+      const count = Array.isArray(p.items) ? p.items.length : 0;
+      return count > 0
+        ? `${count} giao dịch được dùng để đối chiếu nhận định.`
+        : "Danh sách giao dịch được dùng để đối chiếu nhận định.";
+    }
+    case "TYPOLOGY_MAPPING": {
+      const code = String(p.typology_code ?? "").trim();
+      const name = String(p.name_vi ?? "").trim();
+      if (code && name) return `${code} — ${name}.`;
+      if (code) return `Nhóm hành vi ${code}.`;
+      return "Kết quả đối chiếu với danh mục nhóm hành vi của ngân hàng.";
+    }
+    case "GRAPH_PATTERN": {
+      const accounts = Array.isArray(p.accounts) ? p.accounts.length : 0;
+      return accounts > 0
+        ? `Mối liên hệ luân chuyển tiền giữa ${accounts} tài khoản.`
+        : "Mối liên hệ luân chuyển tiền giữa các tài khoản.";
+    }
+    case "GRAPH_NEIGHBORHOOD": {
+      const nodes = Array.isArray(p.nodes) ? p.nodes.length : 0;
+      return nodes > 0
+        ? `${nodes} tài khoản nằm trong phạm vi giao dịch liên quan.`
+        : "Các tài khoản và giao dịch có liên quan trực tiếp.";
+    }
+    default:
+      return "Mở để xem nội dung và nguồn dữ liệu của bằng chứng.";
+  }
 }
 
 const VALIDATION_ISSUE_LABELS: Record<string, string> = {
@@ -381,7 +553,6 @@ export function roleLabel(role: string): string {
 }
 
 const PROFILE_VALUE_LABELS: Record<string, string> = {
-  "KYC unavailable — Behaviour batch import": "Chưa có KYC — nhập từ lô dữ liệu hành vi",
   kyc_unavailable: "Chưa có thông tin KYC",
   active: "Đang hoạt động",
   inactive: "Không hoạt động",
@@ -390,7 +561,49 @@ const PROFILE_VALUE_LABELS: Record<string, string> = {
 };
 
 export function profileValueLabel(value: string): string {
+  // Nghề nghiệp khi thiếu KYC được ghi kèm TÊN BỘ DỮ LIỆU gốc — "KYC unavailable
+  // - IBM AML HI-Medium", "KYC unavailable - SAML-D". Khớp chính xác từng chuỗi
+  // là thua: mỗi lần nạp một bộ mới lại lọt một biến thể tiếng Anh ra màn hình
+  // nghiệp vụ. Khớp theo tiền tố, và bỏ luôn tên bộ dữ liệu — chuyên viên chỉ
+  // cần biết hồ sơ này chưa có KYC, không cần biết nó đến từ kho nào.
+  if (/^KYC unavailable/i.test(value)) return "Chưa có thông tin KYC";
   return PROFILE_VALUE_LABELS[value] ?? value;
+}
+
+/**
+ * Kênh thanh toán, Việt hoá và HỢP NHẤT giữa các bộ dữ liệu.
+ *
+ * Cùng một khái niệm đang được hai bộ ghi hai kiểu — IBM ghi `CREDIT_CARD`,
+ * SAML-D ghi `Credit card` — nên màn hình tra cứu hiện lẫn lộn cả hai, và cả
+ * hai đều là mã thô. Chuẩn hoá về một nhãn tiếng Việt cho mỗi khái niệm.
+ */
+const PAYMENT_CHANNEL_LABELS: Record<string, string> = {
+  cheque: "Séc",
+  ach: "Chuyển khoản ACH",
+  creditcard: "Thẻ tín dụng",
+  debitcard: "Thẻ ghi nợ",
+  crossborder: "Chuyển tiền quốc tế",
+  cash: "Tiền mặt",
+  cashwithdrawal: "Rút tiền mặt",
+  cashdeposit: "Nộp tiền mặt",
+  wire: "Điện chuyển tiền",
+  bitcoin: "Bitcoin",
+};
+
+/**
+ * Số tiền theo cách viết Việt Nam, KHÔNG kèm đơn vị.
+ *
+ * Nơi gọi phải tự in loại tiền ngay cạnh — chính vì hàm cũ tự dán sẵn "₫" mà
+ * màn hình soạn SAR hiện tổng Đô la Canada dưới nhãn đồng Việt Nam.
+ */
+export function formatMoney(amount: number): string {
+  return amount.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
+}
+
+export function paymentChannelLabel(channel: string | null | undefined): string {
+  if (!channel) return "—";
+  const key = channel.toLowerCase().replace(/[\s_-]/g, "");
+  return PAYMENT_CHANNEL_LABELS[key] ?? channel;
 }
 
 const COUNTRY_LABELS: Record<string, string> = {
@@ -409,7 +622,25 @@ export function countryLabel(country: string): string {
 /** Việt hoá tương thích các bản điều tra cũ đã được ghi bất biến bằng tiếng Anh. */
 export function investigationTextVi(value: string): string {
   if (!value) return value;
+
+  // Bước "thiếu bằng chứng bắt buộc" nhúng thẳng MÃ bộ phát hiện vào một câu
+  // tiếng Việt. Phải xử lý TRƯỚC chỗ tách "; " ngay dưới, vì chính câu này có
+  // dấu chấm phẩy và sẽ bị cắt đôi trước khi tới bất kỳ luật dịch nào.
+  value = value.replace(
+    /cảnh báo loại '([a-z0-9_]+)'/g,
+    (_whole, detector: string) => `cảnh báo nhóm ${detectorLabel(detector).toLowerCase()}`,
+  );
+
   if (value.includes("; ")) return value.split("; ").map(investigationTextVi).join("; ");
+
+  // Bản giải thích được ghi BẤT BIẾN tại thời điểm điều tra, nên những bản đã
+  // sinh trước khi tác tử biết Việt hoá kênh vẫn mang nguyên "qua kênh
+  // CREDIT_CARD". Không chạy lại cả trăm phiên điều tra chỉ vì một cụm từ —
+  // đổi ở lớp hiển thị, số liệu và vết kiểm toán giữ nguyên.
+  value = value.replace(/qua kênh ([A-Za-z][A-Za-z_-]*(?: [A-Za-z][a-z]+)?)/g, (whole, channel: string) => {
+    const vi = paymentChannelLabel(channel);
+    return vi === channel ? whole : `qua kênh ${vi.toLowerCase()}`;
+  });
 
   const exact: Record<string, string> = {
     "Obtain the authoritative score and available detector branch first.":
@@ -462,15 +693,7 @@ export function investigationTextVi(value: string): string {
   }
   match = value.match(/^Added (.+) from allow-listed source (.+)\.$/);
   if (match) {
-    const sources: Record<string, string> = {
-      detection_engine: "bộ máy phát hiện",
-      feature_service: "dịch vụ đặc trưng",
-      transaction_service: "dịch vụ giao dịch",
-      typology_registry: "danh mục nhóm hành vi",
-      anomaly_explanation_service: "dịch vụ giải thích điểm bất thường",
-      graph_detector: "bộ phát hiện đồ thị",
-    };
-    return `Đã bổ sung bằng chứng ${evidenceTypeLabel(match[1])} từ ${sources[match[2]] ?? match[2]}.`;
+    return `Đã bổ sung bằng chứng ${evidenceTypeLabel(match[1])} từ ${evidenceSourceLabel(match[2])}.`;
   }
   return value;
 }

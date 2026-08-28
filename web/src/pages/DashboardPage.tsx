@@ -3,9 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { api, num } from "../api/client";
 import { int } from "../api/fcFormat";
-import { alertStatusLabel, datasetLabel, detectorLabel, formatRelative, sourceBrand } from "../api/format";
+import { alertStatusLabel, caseStateLabel, datasetLabel, formatRelative } from "../api/format";
 import { TYPOLOGY_LABELS } from "../api/typologyLabels";
 import { useApi } from "../api/useApi";
+import { useApp } from "../context/AppContext";
 import { useConsole } from "../context/ConsoleContext";
 import { type ChartSpec } from "../components/fc/Chart";
 import { ChartCard } from "../components/fc/ChartCard";
@@ -19,10 +20,11 @@ import {
   PageShell,
   ProgressBar,
   RiskIndicator,
+  SectionHeader,
 } from "../components/ui";
-import { ALERT_STATUS_TONE, DETECTOR_TONE, type Tone } from "../design/semantic";
+import { ALERT_STATUS_TONE, type Tone } from "../design/semantic";
 import { toneColor } from "../design";
-import type { ApiAlert } from "../api/client";
+import type { ApiAlert, ApiWorkload, ApiWorkloadRow } from "../api/client";
 
 /**
  * Tổng quan giám sát — màn hình mặc định và bản mẫu tham chiếu của hệ thiết kế.
@@ -45,70 +47,62 @@ const BAND_META: Record<string, { label: string; tone: Tone }> = {
   low: { label: "Thấp", tone: "ok" },
 };
 
+/** "Tiếp nhận cảnh báo 2 · Điều tra bổ sung 1" — vụ của tôi đang nằm ở bước nào. */
+function stateBreakdown(byState: Record<string, number> | undefined): string {
+  const parts = Object.entries(byState ?? {}).sort((a, b) => b[1] - a[1]);
+  if (parts.length === 0) return "Chưa có vụ nào đang giữ";
+  return parts.map(([state, n]) => `${caseStateLabel(state)} ${n}`).join(" · ");
+}
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const { dataset } = useConsole();
   // `dataset` nằm trong deps: đổi bộ dữ liệu ở header thì Tổng quan hỏi lại
   // ngay, không còn cảnh thẻ số một bộ mà biểu đồ lại bộ khác.
   const dashboard = useApi(() => api.dashboard({ dataset }), [dataset], `dashboard:${dataset}`);
-  const world = useApi(() => api.world(), [], "world");
+  const world = useApi(() => api.world({ dataset }), [dataset], `world:${dataset}`);
+  const hasGeography = Boolean(world.data?.geography_available);
+  // Đã có sẵn trong payload /dashboard và lọc đúng bộ dữ liệu, nhưng trước
+  // nay không trang nào vẽ ra.
+  const typologyShares = dashboard.data?.typology_distribution ?? [];
 
   const d = dashboard.data;
+  const casesAwaitingReview = d?.cases_awaiting_review ?? d?.cases_total ?? 0;
 
-  const kpis = useMemo<
+  // Chuyên viên làm việc trên một phạm vi duy nhất: bộ dữ liệu đang chọn. Không
+  // trộn số của một bản phát hành riêng với tổng tồn đọng của các cách phát hiện.
+  const overviewKpis = useMemo<
     { label: string; value: ReactNode; tone: Tone; note: ReactNode; onClick?: () => void }[]
   >(() => {
     if (!d) return [];
-    const normalPct = Math.round((d.subjects_below_threshold / Math.max(1, d.subjects_analyzed)) * 1000) / 10;
-    const triggeredPct = Math.round((d.subjects_triggered / Math.max(1, d.subjects_analyzed)) * 1000) / 10;
     return [
       {
-        // "đã chấm điểm", KHÔNG phải "đã nạp": con số này là
-        // `edge_model_release.transaction_rows`, tức tập mà mô hình thật sự chấm
-        // — không phải số dòng trong bảng `transaction`. Hai con số lệch nhau
-        // hẳn (6,75 triệu so với 18,5 triệu) vì cơ sở dữ liệu còn giữ lịch sử
-        // ngoài tập đánh giá. Nhãn cũ khiến người đọc tưởng đã mất dữ liệu.
-        //
-        // Ba ô ở đây phải cộng đúng: dưới ngưỡng + vượt ngưỡng = đã chấm điểm.
-        label: "Giao dịch đã chấm điểm",
+        label: "Giao dịch đã phân tích",
         value: d.transactions_analyzed,
-        tone: "neutral" as Tone,
-        // Chỉ hiện thương hiệu nguồn ("IBM"), không lộ biến thể nội bộ
-        // (LI-Small/HI-Medium) — người dùng không cần và dễ hiểu nhầm là chất lượng.
-        note: d.latest_source_name ? sourceBrand(d.latest_source_name) : "chưa có dữ liệu",
+        tone: "neutral",
+        note: `toàn bộ giao dịch của ${datasetLabel(dataset)}`,
       },
       {
-        label: "Dưới ngưỡng",
-        value: d.subjects_below_threshold,
-        tone: "ok" as Tone,
-        note: `${normalPct}% giao dịch được chấm`,
+        label: "Cảnh báo cần rà soát",
+        value: d.open_alerts,
+        tone: "risk",
+        note: "tổng số cảnh báo chưa đóng",
       },
       {
-        // "Vượt ngưỡng" CHÍNH LÀ cảnh báo: mỗi giao dịch mô hình chấm quá ngưỡng
-        // là một cảnh báo. Trước đây tách làm hai thẻ — "Vượt ngưỡng"
-        // (triggered_rows của release đang xem) và "Cảnh báo chưa xử lý"
-        // (đếm TOÀN bảng alert, cộng dồn mọi đợt chạy + mọi detector) — nên hai
-        // con số lệch nhau vô lý (3.085 so với 10.415) dù đáng lẽ là một. Gộp lại,
-        // lấy THEO RELEASE HIỆN TẠI: dưới ngưỡng + cảnh báo = đã chấm điểm, phễu
-        // Tổng quan khớp trong một lô, không kéo tồn đọng của đợt cũ vào.
-        label: "Cảnh báo",
-        value: d.subjects_triggered,
-        tone: "risk" as Tone,
-        note: `${triggeredPct}% giao dịch vượt ngưỡng`,
-      },
-      {
-        // Bấm vào để mở thẳng danh sách hồ sơ vụ việc — người dùng thấy con số
-        // "đang xử lý" thì việc kế tiếp luôn là xem đó là những vụ nào.
-        label: "Vụ việc đang xử lý",
-        value: d.cases_investigating,
-        tone: "agent" as Tone,
-        note: "chưa kết luận · mở hồ sơ →",
+        label: "Vụ việc đang mở",
+        value: d.cases_total,
+        tone: "agent",
+        note: "mỗi cảnh báo đã có một hồ sơ · mở danh sách →",
         onClick: () => navigate("/cases"),
       },
-      // Bỏ thẻ "Hàng lệnh worker": chiều sâu hàng đợi/trạng thái worker là việc
-      // nội bộ của hệ thống, không phải chỉ số nghiệp vụ mà analyst cần theo dõi.
+      {
+        label: "Chờ chuyên viên rà soát",
+        value: casesAwaitingReview,
+        tone: "warn",
+        note: "đã có hồ sơ, chưa gọi AI",
+      },
     ];
-  }, [d, navigate]);
+  }, [casesAwaitingReview, d, dataset, navigate]);
 
   // Phân bố RỦI RO vụ việc — trả lời trực tiếp "điểm rủi ro đang ở đâu", đếm
   // thật từ vụ việc đang mở (không phải điểm bất thường của 5 cảnh báo lẻ).
@@ -126,32 +120,25 @@ export function DashboardPage() {
     };
   }, [d]);
 
-  // Phễu xử lý (quản lý): Cảnh báo → Vụ việc → Chờ duyệt SAR, kèm tỉ lệ chuyển.
+  // Tình trạng xử lý dùng TOÀN BỘ vụ việc của bộ dữ liệu. Các dòng là trạng
+  // thái vận hành có thể giao nhau, không phải phép trừ của một phễu.
   const funnelSpec = useMemo<ChartSpec | null>(() => {
     if (!d) return null;
-    const a = d.open_alerts;
     const c = d.cases_total;
+    const waiting = casesAwaitingReview;
+    const assigned = Math.max(0, c - d.cases_unassigned);
     const s = d.sar_pending;
-    if (a + c + s === 0) return null;
+    if (c + waiting + assigned + s === 0) return null;
     return {
-      type: "funnel",
+      type: "hbars",
       items: [
-        { label: "Cảnh báo chưa đóng", value: a, color: toneColor("info") },
-        {
-          label: "Đã thành vụ việc",
-          value: c,
-          color: toneColor("warn"),
-          pctOfPrev: a ? `${((c / a) * 100).toFixed(1)}%` : undefined,
-        },
-        {
-          label: "Chờ duyệt SAR",
-          value: s,
-          color: toneColor("risk"),
-          pctOfPrev: c ? `${((s / c) * 100).toFixed(1)}%` : undefined,
-        },
+        { label: "Vụ việc đang mở", value: c, color: toneColor("agent") },
+        { label: "Chờ chuyên viên rà soát", value: waiting, color: toneColor("warn") },
+        { label: "Đã giao chuyên viên", value: assigned, color: toneColor("info") },
+        { label: "Chờ duyệt SAR", value: s, color: toneColor("risk") },
       ],
     };
-  }, [d]);
+  }, [casesAwaitingReview, d]);
 
   // Xu hướng cảnh báo theo TUẦN trên cả cửa sổ dữ liệu — trend thật để bắt spike.
   const trendSpec = useMemo<ChartSpec | null>(() => {
@@ -191,12 +178,74 @@ export function DashboardPage() {
     return [...byCorridor.values()].sort((a, b) => b.risk - a.risk || b.alerts - a.alerts).slice(0, 6);
   }, [world.data]);
 
+  // Số liệu công việc phải khớp THẨM QUYỀN của vai trò. Bảng "ai đang gánh bao
+  // nhiêu" là công cụ chia việc của Quản lý; Chuyên viên không phân công cho ai
+  // nên nó vừa vô dụng vừa để lộ khối lượng việc của đồng nghiệp. API cũng đã
+  // khoá "/workload" lại cho Quản lý, nên Chuyên viên gọi vào sẽ nhận 403 —
+  // đừng gọi.
+  const { currentUser } = useApp();
+  const isManager = currentUser?.role === "manager";
+  const myWork = useApi(() => api.myWork(), []);
+  const workload = useApi<ApiWorkload | null>(
+    () => (isManager ? api.workload() : Promise.resolve(null)),
+    [isManager],
+  );
+  const workloadColumns: Column<ApiWorkloadRow>[] = [
+    {
+      key: "name",
+      header: "Người xử lý",
+      render: (r) => (
+        <div className="flex flex-col">
+          <span className="font-medium text-ink-hi">{r.name}</span>
+          <span className="text-meta text-ink-low">{r.role_label}</span>
+        </div>
+      ),
+    },
+    {
+      key: "open",
+      header: "Vụ đang giữ",
+      numeric: true,
+      render: (r) => <span className="tabular font-mono font-semibold text-ink-hi">{int(r.open_cases)}</span>,
+    },
+    {
+      key: "states",
+      header: "Đang ở bước",
+      render: (r) => {
+        const parts = Object.entries(r.by_state).sort((a, b) => b[1] - a[1]);
+        if (parts.length === 0) return <span className="text-ink-low">—</span>;
+        return (
+          <span className="truncate-1 text-ink-mid" title={parts.map(([k, n]) => `${caseStateLabel(k)}: ${n}`).join(" · ")}>
+            {parts.map(([k, n]) => `${caseStateLabel(k)} ${n}`).join(" · ")}
+          </span>
+        );
+      },
+    },
+    {
+      key: "sar",
+      header: "Hồ sơ đã nộp / được duyệt",
+      numeric: true,
+      render: (r) => (
+        <span className="tabular font-mono text-ink-mid">
+          {int(r.sar_submitted)} / <span className="text-ink-hi">{int(r.sar_approved)}</span>
+        </span>
+      ),
+    },
+    {
+      key: "closed",
+      header: "Vụ đã kết thúc",
+      numeric: true,
+      render: (r) => <span className="tabular font-mono text-ink-mid">{int(r.closed_cases)}</span>,
+    },
+  ];
+
   const queueColumns: Column<ApiAlert>[] = [
     {
       key: "alert_id",
-      header: "Cảnh báo",
+      header: "Vụ việc",
       render: (alert) => (
-        <span className="tabular whitespace-nowrap font-mono text-data text-primary">{alert.alert_id}</span>
+        <span className="tabular whitespace-nowrap font-mono text-data text-primary">
+          {alert.case_id ?? alert.alert_id}
+        </span>
       ),
     },
     {
@@ -218,15 +267,6 @@ export function DashboardPage() {
       header: "Rủi ro",
       sortValue: (alert) => num(alert.risk_score),
       render: (alert) => <RiskIndicator score={num(alert.risk_score)} />,
-    },
-    {
-      key: "detector",
-      header: "Bộ phát hiện",
-      render: (alert) => (
-        <Badge tone={DETECTOR_TONE[alert.detector] ?? "neutral"} icon={false}>
-          {detectorLabel(alert.detector)}
-        </Badge>
-      ),
     },
     {
       key: "created",
@@ -256,22 +296,35 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(168px,1fr))" }}>
-        {dashboard.loading && !d ? (
-          <CardSkeleton count={4} height={84} />
-        ) : (
-          kpis.map((kpi) => (
-            <MetricCard
-              key={kpi.label}
-              label={kpi.label}
-              value={kpi.value}
-              tone={kpi.tone}
-              note={kpi.note}
-              onClick={kpi.onClick}
-            />
-          ))
-        )}
-      </div>
+      <section aria-labelledby="overview-summary-title">
+        <SectionHeader
+          title={<span id="overview-summary-title">Tổng quan bộ dữ liệu {datasetLabel(dataset)}</span>}
+          className="max-lg:flex-col max-lg:items-start"
+          actions={
+            d ? (
+              <span className="tabular text-right text-meta text-ink-low max-lg:text-left">
+                {int(d.transactions_analyzed)} giao dịch → {int(d.open_alerts)} cảnh báo → {int(d.cases_total)} vụ việc
+              </span>
+            ) : undefined
+          }
+        />
+        <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(168px,1fr))" }}>
+          {dashboard.loading && !d ? (
+            <CardSkeleton count={4} height={84} />
+          ) : (
+            overviewKpis.map((kpi) => (
+              <MetricCard
+                key={kpi.label}
+                label={kpi.label}
+                value={kpi.value}
+                tone={kpi.tone}
+                note={kpi.note}
+                onClick={kpi.onClick}
+              />
+            ))
+          )}
+        </div>
+      </section>
 
       <div className="flex flex-col gap-3.5">
         {/* Hàng trên: 3 thẻ ngang cân đối — rủi ro vụ việc · tuổi/phễu · hành lang rủi ro */}
@@ -282,25 +335,34 @@ export function DashboardPage() {
             spec={riskBandSpec}
             height={Math.max(110, (d?.case_risk_bands?.length ?? 3) * 44)}
             state={dashboard.loading ? "loading" : riskBandSpec ? "ok" : "empty"}
-            note="Đếm thật từ vụ việc đang mở của đúng bộ dữ liệu này. Điểm rủi ro do bộ phát hiện chấm, cần người rà soát — không phải xác suất rửa tiền."
+            note="Đếm thật từ vụ việc đang mở của đúng bộ dữ liệu này. Điểm rủi ro dùng để xếp thứ tự ưu tiên, không phải kết luận rửa tiền."
           />
-            {/* Phễu xử lý: Cảnh báo → Vụ việc → Chờ duyệt SAR, kèm nút thắt
-                phân công. Hữu ích cho cả chuyên viên (còn việc để nhận) lẫn quản
-                lý (pipeline + tồn đọng). (Hành lang địa lý gộp vào panel bên
-                cạnh — không để đồ thị hành lang ở hai chỗ.) */}
+            {/* Tình trạng xử lý dùng toàn bộ vụ việc của bộ dữ liệu đang chọn. */}
             <ChartCard
-              title="Phễu xử lý"
-              subtitle="Cảnh báo → Vụ việc → Chờ duyệt SAR"
+              title="Tình trạng vụ việc"
+              subtitle="Toàn bộ hồ sơ đang mở của bộ dữ liệu đang chọn"
               spec={funnelSpec}
               state={dashboard.loading ? "loading" : funnelSpec ? "ok" : "empty"}
               note={
-                d && d.cases_unassigned > 0
-                  ? `${int(d.cases_unassigned)}/${int(d.cases_total)} vụ CHƯA phân công — có thể nhận thêm / cần giao việc.`
-                  : "Toàn bộ vụ đã có người phụ trách."
+                d
+                  ? `${int(casesAwaitingReview)} vụ đã sẵn sàng để chuyên viên rà soát trước khi quyết định gọi AI.`
+                  : undefined
               }
             />
 
-            <Panel title="Hành lang rủi ro cao nhất" subtitle="Xếp theo điểm rủi ro — cái đáng lo trước">
+            {/* Bộ dữ liệu KHÔNG có địa lý thì đổi hẳn nội dung ô, không để một ô
+                trống mang tiêu đề "Hành lang rủi ro".
+                Bộ IBM không mang quốc gia trên giao dịch nên không có hành lang
+                nào để xếp hạng — nhưng nó có NHÓM HÀNH VI, và "nhóm nào đang
+                nhiều nhất" mới là câu hỏi chuyên viên cần trả lời ở đây. */}
+            <Panel
+              title={hasGeography ? "Hành lang rủi ro cao nhất" : "Nhóm hành vi đang nhiều nhất"}
+              subtitle={
+                hasGeography
+                  ? "Xếp theo điểm rủi ro — cái đáng lo trước"
+                  : "Cảnh báo chưa đóng của bộ dữ liệu đang xem, xếp theo số lượng"
+              }
+            >
               {world.loading && <div className="h-24 animate-pulse rounded-control bg-elev/60" aria-hidden />}
               {world.data?.geography_available && dangerCorridors.length > 0 && (
                 <div className="flex flex-col gap-3">
@@ -332,10 +394,32 @@ export function DashboardPage() {
               {world.data?.geography_available && dangerCorridors.length === 0 && (
                 <div className="text-data text-ink-low">Chưa có hành lang nào vượt ngưỡng rủi ro.</div>
               )}
-              {world.data && !world.data.geography_available && (
-                <div className="rounded-control border border-warn/25 bg-warn/10 p-3 text-data text-warn-soft">
-                  Chưa có dữ liệu địa lý đã kiểm chứng cho bộ dữ liệu này.
+              {!hasGeography && typologyShares.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  {typologyShares.map((t) => (
+                    <div key={t.typology_code} className="flex flex-col gap-1">
+                      <div className="flex items-baseline justify-between gap-2 text-data">
+                        <span className="truncate-1 text-ink-hi" title={t.typology_label}>
+                          {t.typology_label}
+                        </span>
+                        <span className="tabular flex-none font-mono font-semibold text-ink-hi">
+                          {int(t.alert_count)}
+                        </span>
+                      </div>
+                      <ProgressBar value={t.share_pct} tone="info" />
+                      <span className="text-meta text-ink-low">{t.share_pct}% tổng cảnh báo chưa đóng</span>
+                    </div>
+                  ))}
+                  <Link
+                    to="/cases"
+                    className="mt-0.5 text-center text-data text-info-soft transition-colors hover:text-info"
+                  >
+                    Mở danh sách vụ việc →
+                  </Link>
                 </div>
+              )}
+              {!hasGeography && !dashboard.loading && typologyShares.length === 0 && (
+                <div className="text-data text-ink-low">Chưa có cảnh báo nào đang mở cho bộ dữ liệu này.</div>
               )}
             </Panel>
           </div>
@@ -347,6 +431,121 @@ export function DashboardPage() {
             state={dashboard.loading ? "loading" : trendSpec ? "ok" : "empty"}
             tools={["data", "dl", "full"]}
           />
+
+          {/* Số liệu công việc, TÁCH THEO VAI TRÒ.
+
+              Chuyên viên hỏi "việc của tôi đang ở đâu": vụ được giao, hồ sơ đã
+              trình, hồ sơ bị trả lại. Quản lý hỏi "đội đang gánh gì và tôi phải
+              duyệt bao nhiêu". Trước đây cả hai vai cùng thấy một bảng nhân sự,
+              tức Chuyên viên vừa xem được khối lượng việc của đồng nghiệp vừa
+              không tìm được con số của chính mình. */}
+          {isManager ? (
+            <Panel
+              title="Phân công và khối lượng công việc"
+              subtitle={
+                workload.data
+                  ? `${int(workload.data.unassigned_cases)} vụ chưa ai giữ trên tổng ${int(workload.data.total_open_cases)} vụ đang mở`
+                  : "Đang tải…"
+              }
+              padded={false}
+              actions={
+                <Link to="/cases?assignment=unassigned" className="text-data text-info-soft transition-colors hover:text-info">
+                  Mở hàng đợi chưa giao →
+                </Link>
+              }
+            >
+              <div className="grid gap-3 p-4 sm:grid-cols-3">
+                <MetricCard
+                  label="Hồ sơ chờ tôi phê duyệt"
+                  value={myWork.data?.awaiting_my_decision ?? 0}
+                  tone={(myWork.data?.awaiting_my_decision ?? 0) > 0 ? "warn" : "neutral"}
+                  // Hồ sơ do CHÍNH mình trình đã bị trừ khỏi con số trên — bốn
+                  // mắt chặn ở cổng quyết định. Nhưng nó vẫn đang treo, nên phải
+                  // nói ra, không thì vụ kẹt im lặng và không ai biết vì sao.
+                  note={
+                    (myWork.data?.submitted_pending ?? 0) > 0
+                      ? `${int(myWork.data?.submitted_pending ?? 0)} hồ sơ do chính tôi trình phải để Quản lý khác duyệt`
+                      : "Chuyên viên đã trình, đang chờ quyết định"
+                  }
+                  size="sm"
+                  onClick={() => navigate("/approvals")}
+                />
+                <MetricCard
+                  label="Vụ chưa giao cho ai"
+                  value={myWork.data?.unassigned_cases ?? 0}
+                  note="Cần chia việc"
+                  size="sm"
+                  onClick={() => navigate("/cases?assignment=unassigned")}
+                />
+                <MetricCard
+                  label="Vụ chuyên viên đang xử lý"
+                  value={(workload.data?.total_open_cases ?? 0) - (myWork.data?.unassigned_cases ?? 0)}
+                  note="Đã có người phụ trách"
+                  size="sm"
+                  onClick={() => navigate("/cases")}
+                />
+              </div>
+              <DataTable
+                columns={workloadColumns}
+                rows={(workload.data?.rows ?? []).filter((r) => r.active)}
+                rowKey={(r) => r.user_id}
+                loading={workload.loading && !workload.data}
+                minWidth={640}
+                dense
+                emptyTitle="Chưa có người xử lý"
+                emptyDetail="Chưa có tài khoản Chuyên viên hoặc Quản lý nào đang hoạt động."
+              />
+            </Panel>
+          ) : (
+            <Panel
+              title="Việc của tôi"
+              subtitle={
+                myWork.data
+                  ? `${int(myWork.data.assigned_open)} vụ đang giữ · ${int(myWork.data.submitted_pending)} hồ sơ đang chờ quản lý duyệt`
+                  : "Đang tải…"
+              }
+              actions={
+                <Link to="/cases?assignment=mine" className="text-data text-info-soft transition-colors hover:text-info">
+                  Mở vụ việc của tôi →
+                </Link>
+              }
+            >
+              {myWork.loading && !myWork.data ? (
+                <CardSkeleton />
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <MetricCard
+                    label="Vụ được giao cho tôi"
+                    value={myWork.data?.assigned_open ?? 0}
+                    note={stateBreakdown(myWork.data?.assigned_by_state)}
+                    size="sm"
+                    onClick={() => navigate("/cases?assignment=mine")}
+                  />
+                  <MetricCard
+                    label="Đã trình, chờ quản lý duyệt"
+                    value={myWork.data?.submitted_pending ?? 0}
+                    tone={(myWork.data?.submitted_pending ?? 0) > 0 ? "info" : "neutral"}
+                    note="Không còn việc của tôi cho tới khi có quyết định"
+                    size="sm"
+                  />
+                  <MetricCard
+                    label="Bị trả lại cần bổ sung"
+                    value={myWork.data?.returned_for_info ?? 0}
+                    tone={(myWork.data?.returned_for_info ?? 0) > 0 ? "warn" : "neutral"}
+                    note="Quản lý yêu cầu làm rõ thêm"
+                    size="sm"
+                  />
+                  <MetricCard
+                    label="Hồ sơ đã được duyệt"
+                    value={myWork.data?.submitted_approved ?? 0}
+                    tone="ok"
+                    note={`${int(myWork.data?.closed_cases ?? 0)} vụ tôi xử lý đã kết thúc`}
+                    size="sm"
+                  />
+                </div>
+              )}
+            </Panel>
+          )}
 
           <Panel
             title="Hàng đợi ưu tiên — cần xử lý trước"

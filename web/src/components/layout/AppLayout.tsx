@@ -6,6 +6,7 @@ import { api } from "../../api/client";
 import { useApi } from "../../api/useApi";
 import { ROUTE_TITLES, canAccess } from "../../config/nav";
 import { useApp } from "../../context/AppContext";
+import { useConsole } from "../../context/ConsoleContext";
 import { pageVariants, safeVariants, transitions, useReduced } from "../../design/motion";
 import { useIsNarrow } from "../../hooks/useMediaQuery";
 import { ToastRegion } from "../common/Toast";
@@ -44,7 +45,11 @@ export function AppLayout() {
   const [paletteQuery, setPaletteQuery] = useState("");
   const [navOpen, setNavOpen] = useState(false);
 
-  const counts = useApi(() => api.navCounts(), [], "nav-counts");
+  // Badge sidebar và dải ngày trên header phải theo bộ dữ liệu đang chọn:
+  // không lọc thì badge cộng cảnh báo của hai bộ, và dải ngày ghép min của
+  // bộ này với max của bộ kia.
+  const { dataset } = useConsole();
+  const counts = useApi(() => api.navCounts({ dataset }), [dataset], `nav-counts:${dataset}`);
   // Ô lệnh tra ra cảnh báo, vụ việc và tài khoản. Vai trò không được vào hồ sơ
   // điều tra thì cũng không được tra cứu chúng ở đây — API sẽ trả 403, và gọi
   // để nhận về 403 sau mỗi ký tự chỉ tạo tiếng ồn.

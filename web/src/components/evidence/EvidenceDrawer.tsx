@@ -1,6 +1,6 @@
 import { Plus, X } from "lucide-react";
 
-import { evidenceTypeLabel } from "../../api/format";
+import { evidenceSourceLabel, evidenceTypeLabel } from "../../api/format";
 import { useApp } from "../../context/AppContext";
 import type { Evidence } from "../../types";
 import { StatusBadge } from "../common/Badges";
@@ -28,7 +28,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
   return (
     <div className="fixed inset-0 z-[70] flex justify-end bg-black/50" onClick={onClose}>
       <aside
-        className="flex h-full w-[380px] flex-col border-l border-line bg-panel"
+        className="flex h-full w-full max-w-[440px] flex-col border-l border-line bg-panel"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Ngăn bằng chứng"
@@ -39,6 +39,7 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
             <p className="text-2xs text-ink-mid">
               {evidence.type ? evidenceTypeLabel(evidence.type) : evidence.title}
             </p>
+            <p className="tabular mt-0.5 break-all text-micro text-ink-low">Mã bằng chứng: {evidence.id}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -65,8 +66,8 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
             )}
           </div>
           <p className="text-2xs text-ink-low">
-            Nguồn: <span className="text-info">{evidence.source}</span> — kết quả công cụ truy hồi, không phải số
-            liệu do mô hình tự sinh.
+            Nguồn: <span className="text-info">{evidenceSourceLabel(evidence.source)}</span> — dữ liệu do hệ thống
+            truy xuất, không phải số liệu do AI tự tạo.
           </p>
 
           <div>
@@ -85,7 +86,9 @@ export function EvidenceDrawer({ evidenceId, evidence: allEvidence, onClose, onS
                     <div className="truncate text-body font-medium text-ink-hi">
                       {other.type ? evidenceTypeLabel(other.type) : other.title}
                     </div>
-                    <div className="truncate text-2xs text-ink-low">Nguồn: {other.source}</div>
+                    <div className="truncate text-2xs text-ink-low">
+                      Nguồn: {evidenceSourceLabel(other.source)}
+                    </div>
                   </div>
                   <span className="text-ink-low">›</span>
                 </button>

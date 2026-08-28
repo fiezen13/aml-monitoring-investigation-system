@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import statistics
 import time
 from bisect import bisect_left
@@ -313,6 +314,22 @@ def _behavior_from_rows(
         "median_inter_txn_gap": round(statistics.median(gaps), 6) if gaps else 99999.0,
         "p10_inter_txn_gap": round(_quantile(gaps, 0.1), 6) if gaps else 99999.0,
     }
+
+
+#: Số nằm trong nhãn yếu tố, kể cả khi có dấu tách hàng nghìn.
+_LABEL_NUMBER_RE = re.compile(r"\d[\d\u202f\u00a0 ]*(?:\.\d+)?")
+
+
+def _label_numbers(label: str) -> list[float]:
+    """Các con số đọc được từ một nhãn yếu tố, đã bỏ dấu tách hàng nghìn."""
+    values: list[float] = []
+    for raw in _LABEL_NUMBER_RE.findall(label):
+        cleaned = re.sub(r"[\s\u202f\u00a0]", "", raw)
+        try:
+            values.append(float(cleaned))
+        except ValueError:
+            continue
+    return values
 
 
 class InvestigationTools:
@@ -638,6 +655,7 @@ class InvestigationTools:
         result = RiskBreakdown(
             alert_id=args.alert_id,
             final_risk_score=score,
+            final_risk_score_100=round(float(row["risk_score"]), 2),
             fusion_available=fusion_available,
             components=components,
             limitation=limitation,
@@ -668,6 +686,18 @@ class InvestigationTools:
             ).mappings()
         ]
         if reasons:
+            # Số nằm trong NHÃN cũng phải kiểm chứng được như một con số.
+            #
+            # "Tổng 14 983 trên các giao dịch bị gắn cờ" chỉ tồn tại dưới dạng
+            # chuỗi. Bộ kiểm của tác tử phản biện che được câu khi nó CHÉP y
+            # nguyên nhãn, nhưng chỉ cần mô hình diễn đạt lại — bỏ mấy chữ cuối,
+            # đổi dấu tách — là chuỗi không khớp nữa, con số rơi xuống phép kiểm
+            # số học, và không payload nào chứa nó. Tách sẵn ra đây thì mọi cách
+            # diễn đạt đều kiểm được, và không cần nới lỏng bộ kiểm.
+            for reason in reasons:
+                values = _label_numbers(str(reason.get("factor_label") or ""))
+                if values:
+                    reason["label_values"] = values
             payload: dict[str, Any] = {
                 "alert_id": args.alert_id,
                 "detector": row["detector"],
@@ -704,7 +734,17 @@ class InvestigationTools:
         **xuyên biên giới**, nơi mức nền là 0,31% — cao gấp ba. Cùng một hành
         lang vì thế đọc ra 5,1 lần hay 1,7 lần tuỳ mẫu số. Giấu đi một trong hai
         là để chuyên viên tự suy ra con số họ không có cách nào kiểm chứng.
+
+        ``geo_cell``/``geo_weight`` do pipeline ``build_geo_rule_alerts.py`` sinh
+        ra; nếu pipeline đó chưa chạy trên môi trường này thì bảng KHÔNG tồn tại.
+        Truy vấn thẳng khi thiếu bảng sẽ ném ``UndefinedTable`` — và vì cả phiên
+        điều tra dùng CHUNG một session, lỗi đó làm hỏng cả transaction, khiến MỌI
+        cảnh báo (kể cả cảnh báo không phải geo-rule) điều tra là fail. Nên kiểm
+        tra bảng tồn tại trước (``to_regclass`` trả NULL, KHÔNG ném lỗi); thiếu
+        thì bỏ qua phần ngữ cảnh địa lý một cách trung thực.
         """
+        if self.session.execute(text("SELECT to_regclass('geo_cell')")).scalar() is None:
+            return None
         row = (
             self.session.execute(
                 text(

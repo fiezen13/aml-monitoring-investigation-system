@@ -27,6 +27,8 @@ const KIND_ICON: Record<EvidenceKind, ReactNode> = {
 
 interface EvidenceChipProps {
   evidenceId: string;
+  /** Nhãn nghiệp vụ. Không truyền thì chip ghi "Bằng chứng" chứ KHÔNG in mã thô. */
+  label?: string;
   onOpen: (evidenceId: string) => void;
 }
 
@@ -34,8 +36,11 @@ interface EvidenceChipProps {
  * Chip bằng chứng — mọi nhận định AI phải trỏ được về một chip (NT1).
  * Click mở Evidence Drawer.
  */
-export function EvidenceChip({ evidenceId, onOpen }: EvidenceChipProps) {
-  const label = evidenceId;
+export function EvidenceChip({ evidenceId, label, onOpen }: EvidenceChipProps) {
+  // Mã bằng chứng (EV-1f321dc25a63…) là định danh nội bộ, không nói gì với
+  // chuyên viên. Nó vẫn cần cho việc truy vết, nên chuyển vào tooltip — cùng
+  // quy ước đã dùng ở trang Chi tiết cảnh báo cho mã yếu tố đóng góp.
+  const text = label ?? "Bằng chứng";
   return (
     <button
       type="button"
@@ -44,7 +49,7 @@ export function EvidenceChip({ evidenceId, onOpen }: EvidenceChipProps) {
       className="inline-flex items-center gap-1 rounded-control border border-info/30 bg-info/[0.08] px-1.5 py-0.5 text-2xs font-medium text-info-soft transition-colors hover:border-info/60"
     >
       {KIND_ICON.statement}
-      {label}
+      {text}
     </button>
   );
 }

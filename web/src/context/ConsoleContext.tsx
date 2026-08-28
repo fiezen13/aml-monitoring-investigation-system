@@ -30,10 +30,16 @@ interface ConsoleState {
   setPaletteOpen: (open: boolean) => void;
 }
 
-/** Các bộ dữ liệu có mặt trong hàng đợi vận hành. Nhãn khớp `datasetLabel`. */
+/** Các bộ dữ liệu có mặt trong hàng đợi vận hành. Nhãn khớp `datasetLabel`.
+ *
+ * SAML-D đứng đầu và là bộ mặc định vì nó có ĐỦ dữ liệu cho mọi màn hình, kể cả
+ * Giám sát địa lý. Bộ IBM không có trường quốc gia trong giao dịch, nên người mở
+ * hệ thống lần đầu mà rơi vào IBM sẽ thấy bản đồ tắt và số 0 — dễ tưởng hệ thống
+ * hỏng trong khi đó là giới hạn của bộ dữ liệu.
+ */
 export const OPERATIONAL_DATASETS = [
-  { value: "ibm_hi_medium", label: "Ngân hàng (IBM)" },
   { value: "saml_d", label: "SAML-D" },
+  { value: "ibm_hi_medium", label: "Ngân hàng (IBM)" },
 ] as const;
 
 const ConsoleContext = createContext<ConsoleState | null>(null);
@@ -45,7 +51,7 @@ interface Prefs {
   sidebarCollapsed: boolean;
 }
 
-const DEFAULTS: Prefs = { dataset: "ibm_hi_medium", sidebarCollapsed: false };
+const DEFAULTS: Prefs = { dataset: "saml_d", sidebarCollapsed: false };
 
 function readPrefs(): Prefs {
   try {

@@ -2,6 +2,14 @@
 #
 # Cùng lý do với Jenkins dựng từ `jenkins/casc.yaml`: thứ cấu hình bằng tay
 # trên giao diện sẽ biến mất cùng volume, và không ai dựng lại được y hệt.
+#
+# LƯU Ý (Grafana 13+): KHÔNG khai báo tham chiếu chéo `datasourceUid` giữa các
+# nguồn (exemplar→jaeger, derivedFields→jaeger, tracesToLogs/tracesToMetrics…)
+# ngay trong file provisioning. Grafana 13.1.0 siết validation: lúc provision,
+# nguồn được trỏ tới "chưa tồn tại" → lỗi "Datasource provisioning error: data
+# source not found" → module provisioning fail → cả Grafana crash-loop. Ba nguồn
+# vẫn khai đầy đủ ở đây; phần liên kết trace↔log↔metric (tiện, không cốt lõi) để
+# thiết lập sau qua Correlations nếu cần, không nhét vào provisioning.
 
 apiVersion: 1
 
@@ -18,9 +26,6 @@ datasources:
       # bước nhảy sai và đồ thị hiện răng cưa ở mức thu phóng nhỏ.
       timeInterval: 15s
       httpMethod: POST
-      exemplarTraceIdDestinations:
-        - name: trace_id
-          datasourceUid: jaeger
 
   - name: Loki
     uid: loki
@@ -28,12 +33,6 @@ datasources:
     access: proxy
     url: http://loki:3100
     editable: false
-    jsonData:
-      derivedFields:
-        - name: TraceID
-          matcherRegex: '"trace_id":"([0-9a-f]{32})"'
-          datasourceUid: jaeger
-          url: '$${__value.raw}'
 
   - name: Jaeger
     uid: jaeger
@@ -41,19 +40,3 @@ datasources:
     access: proxy
     url: http://jaeger:16686
     editable: false
-    jsonData:
-      tracesToLogsV2:
-        datasourceUid: loki
-        spanStartTimeShift: -2m
-        spanEndTimeShift: 2m
-        filterByTraceID: true
-        filterBySpanID: false
-        customQuery: true
-        query: '{service_name="$${__span.tags["service.name"]}"} | trace_id="$${__trace.traceId}"'
-      tracesToMetrics:
-        datasourceUid: prometheus
-        spanStartTimeShift: -2m
-        spanEndTimeShift: 2m
-        tags:
-          - key: service.name
-            value: service_name

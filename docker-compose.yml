@@ -41,8 +41,8 @@ x-app-env: &app-env
   GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
   GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
   GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-2}
-  AML_AGENT_MAX_ITERATIONS: ${AML_AGENT_MAX_ITERATIONS:-3}
-  AML_AGENT_MAX_TOOL_CALLS: ${AML_AGENT_MAX_TOOL_CALLS:-12}
+  AML_AGENT_MAX_ITERATIONS: ${AML_AGENT_MAX_ITERATIONS:-5}
+  AML_AGENT_MAX_TOOL_CALLS: ${AML_AGENT_MAX_TOOL_CALLS:-16}
   MAX_GRAPH_HOPS: ${MAX_GRAPH_HOPS:-2}
   MAX_GRAPH_NODES: ${MAX_GRAPH_NODES:-100}
   MAX_GRAPH_EDGES: ${MAX_GRAPH_EDGES:-250}
@@ -245,7 +245,7 @@ services:
   # cần ZooKeeper. Đủ cho máy cá nhân; cụm thật thì tách vai trò ra.
   kafka:
     image: apache/kafka:3.9.1
-    profiles: ["aml"]
+    profiles: ["aml", "bitcoin", "stream"]
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -285,7 +285,7 @@ services:
   # Tạo topic, chạy một lần rồi thoát. Chạy lại an toàn: `--if-not-exists`.
   kafka-init:
     image: apache/kafka:3.9.1
-    profiles: ["aml"]
+    profiles: ["aml", "bitcoin", "stream"]
     depends_on:
       kafka:
         condition: service_healthy
@@ -524,6 +524,167 @@ services:
       kafka:
         condition: service_healthy
     restart: "no"
+
+  # ===================================================================
+  # NHÁNH BITCOIN REAL-TIME (profile `bitcoin`) — xương sống streaming lát A.
+  #
+  # bitcoin-producer phát lại giao dịch Elliptic vào Kafka; bitcoin-scorer là
+  # consumer thường trú, chấm RF trực tiếp và ghi bitcoin_scored_tx để trang
+  # /crypto hiện ngay. RF chấm ĐỘC LẬP từng giao dịch nên điểm giống hệt batch.
+  #
+  # Chạy local:  docker compose --profile bitcoin up -d bitcoin-scorer
+  #              docker compose --profile bitcoin run --rm bitcoin-producer
+  # data/ không nằm trong image (nặng) — gắn chỉ đọc từ máy chủ.
+  # ===================================================================
+  bitcoin-producer:
+    image: *app-image
+    build: *app-build
+    profiles: ["bitcoin"]
+    entrypoint: ["python", "-m", "src.bitcoin_aml.stream"]
+    command: ["produce", "--rate", "1.0", "--batch", "200"]
+    environment:
+      <<: *app-env
+      BTC_KAFKA_BOOTSTRAP: kafka:9092
+      BTC_RAW_TOPIC: ${BTC_RAW_TOPIC:-aml.bitcoin.raw.v1}
+    volumes:
+      - ./data/raw/elliptic:/app/data/raw/elliptic:ro
+      - ./data/models/bitcoin_elliptic:/app/data/models/bitcoin_elliptic:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+
+  bitcoin-scorer:
+    image: *app-image
+    build: *app-build
+    profiles: ["bitcoin"]
+    entrypoint: ["python", "-m", "src.bitcoin_aml.stream"]
+    command: ["score"]
+    environment:
+      <<: *app-env
+      BTC_KAFKA_BOOTSTRAP: kafka:9092
+      BTC_RAW_TOPIC: ${BTC_RAW_TOPIC:-aml.bitcoin.raw.v1}
+      BTC_SCORE_BATCH: ${BTC_SCORE_BATCH:-200}
+      BTC_KAFKA_OFFSET_RESET: ${BTC_KAFKA_OFFSET_RESET:-earliest}
+    volumes:
+      - ./data/raw/elliptic:/app/data/raw/elliptic:ro
+      - ./data/models/bitcoin_elliptic:/app/data/models/bitcoin_elliptic:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===================================================================
+  # STREAMING ĐỒ THỊ TĂNG DẦN (profile `stream`) — Pha 1.
+  #
+  # Consumer đọc aml.transactions.raw.v1 và dựng đồ thị AML từng cạnh một vào
+  # các bảng stream_* (db/init/032). Đây là nền cho chấm cục bộ (Pha 2), dò mẫu
+  # (Pha 3), bồi tụ vụ việc (Pha 4). Chạy local:
+  #   docker compose --profile aml up -d kafka kafka-init
+  #   docker compose --profile aml run --rm aml-producer --max-records 5000
+  #   docker compose --profile stream up -d stream-graph-ingest
+  # ===================================================================
+  stream-graph-ingest:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.graph_ingest"]
+    environment:
+      <<: *app-env
+      STREAM_KAFKA_BOOTSTRAP: kafka:9092
+      STREAM_RAW_TOPIC: ${AML_RAW_TOPIC:-aml.transactions.raw.v1}
+      STREAM_INGEST_BATCH: ${STREAM_INGEST_BATCH:-500}
+      STREAM_KAFKA_OFFSET_RESET: ${STREAM_KAFKA_OFFSET_RESET:-earliest}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # SAML-D → topic canonical (consumer graph_ingest dùng lại y nguyên, chỉ đổi
+  # STREAM_RAW_TOPIC=aml.samld.raw.v1). account_key = <quốc gia>:<số tài khoản>.
+  samld-producer:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.samld_producer"]
+    command: ["--max-records", "5000", "--rate", "1.0"]
+    environment:
+      <<: *app-env
+      STREAM_KAFKA_BOOTSTRAP: kafka:9092
+      SAMLD_RAW_CSV: /app/data/raw/saml-d/SAML-D.csv
+    volumes:
+      - ./data/raw/saml-d:/app/data/raw/saml-d:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+
+  # Pha 2 — chấm GNN cục bộ SAML-D: neighbor-loader per-edge trên đồ thị tích luỹ.
+  # Cần checkpoint + encoder ở data/models/samld và ngưỡng ở artifacts/samld.
+  samld-score:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.samld_score"]
+    environment:
+      <<: *app-env
+      # PIN đúng gốc dataset để elapsed_days khớp chuẩn hoá encoder (bắt buộc).
+      SAMLD_ORIGIN: ${SAMLD_ORIGIN:-2022-10-07T10:35:19}
+      SAMLD_GRAPH_WINDOW: ${SAMLD_GRAPH_WINDOW:-0}
+    volumes:
+      - ./data/models/samld:/app/data/models/samld:ro
+      - ./artifacts/samld:/app/artifacts/samld:ro
+      - ./artifacts/streaming:/app/artifacts/streaming:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Pha 2 — chấm GNN cục bộ IBM MEGA-PNA (HI-Medium): neighbor-loader per-edge
+  # trên đồ thị đã mã hoá (stream_ibm_edge). Cần checkpoint + file đã format.
+  ibm-score:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.ibm_score", "run"]
+    environment:
+      <<: *app-env
+      # Ngưỡng streaming + warm_degree đọc từ artifacts/streaming/thresholds.json
+      # (hiệu chỉnh bằng scripts/streaming/calibrate_ibm_threshold.py). Đặt
+      # IBM_THRESHOLD/IBM_WARM_DEGREE để ghi đè khi cần.
+      IBM_GRAPH_WINDOW: ${IBM_GRAPH_WINDOW:-0}
+    volumes:
+      - ./models/mega-pna/Medium_HI:/app/models/mega-pna/Medium_HI:ro
+      - ./data/processed/mega-pna/Medium_HI:/app/data/processed/mega-pna/Medium_HI:ro
+      - ./artifacts/streaming:/app/artifacts/streaming:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Bitcoin: đồ thị GIAO DỊCH→GIAO DỊCH tăng dần (topology từ edgelist Elliptic).
+  bitcoin-graph-ingest:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.bitcoin_graph_ingest"]
+    environment:
+      <<: *app-env
+      STREAM_KAFKA_BOOTSTRAP: kafka:9092
+      BTC_RAW_TOPIC: ${BTC_RAW_TOPIC:-aml.bitcoin.raw.v1}
+      BTC_EDGELIST: /app/data/raw/elliptic/elliptic_txs_edgelist.csv
+    volumes:
+      - ./data/raw/elliptic:/app/data/raw/elliptic:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
   # ===================================================================
   # GIÁM SÁT — profile `obs` / `observability`, không chạy cùng core stack.

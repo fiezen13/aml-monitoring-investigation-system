@@ -61,7 +61,12 @@ class Settings(BaseSettings):
 
     # Explainable investigation workflow. These are hard safety budgets, not
     # suggestions passed to a model.
-    aml_agent_max_iterations: int = Field(default=3, ge=1, le=10)
+    #: Số vòng "viết bản giải thích → phản biện chấm → viết lại" cho một phiên.
+    #:
+    #: Nâng 3 → 5 vì đo được trên prod: cả 6 phiên trượt đều cạn VÒNG LẶP trong
+    #: khi vẫn còn ngân sách công cụ (3/3 vòng nhưng mới 6–9/12 lượt gọi). Chúng
+    #: bị cắt ngang lúc còn dư chỗ để tự sửa, chứ không phải bí thật.
+    aml_agent_max_iterations: int = Field(default=5, ge=1, le=10)
     #: Trần lượt gọi công cụ cho một phiên điều tra.
     #:
     #: Nâng 8 → 12 khi thêm bước bổ sung bằng chứng bắt buộc. Quy trình tự gọi
@@ -73,7 +78,30 @@ class Settings(BaseSettings):
     #: Vẫn TÍNH hai lượt bổ sung vào ngân sách chứ không miễn trừ: chúng là lượt
     #: gọi thật, có ghi vào `investigation_tool_call`. Miễn trừ sẽ khiến
     #: `tool_call_count` không khớp số bản ghi — một sai lệch tệ hơn.
-    aml_agent_max_tool_calls: int = Field(default=12, ge=1, le=50)
+    #:
+    #: Nâng tiếp 12 → 16 cùng lúc với việc nới vòng lặp lên 5: thêm hai vòng mà
+    #: giữ nguyên trần công cụ thì hai vòng ấy không có gì mới để đọc, chỉ viết
+    #: lại trên đúng bằng chứng cũ.
+    aml_agent_max_tool_calls: int = Field(default=16, ge=1, le=50)
+    #: Chuyên viên tự đóng được vụ có điểm rủi ro DƯỚI ngưỡng này; từ ngưỡng
+    #: trở lên phải qua Quản lý duyệt.
+    #:
+    #: Chọn 80 vì đó là lằn ranh "nghiêm trọng" hệ thống đã dùng ở hai chỗ khác
+    #: (priority trong repository.create, và badge critical ở nav-counts) — thêm
+    #: một con số thứ ba sẽ là thêm một định nghĩa "rủi ro cao" nữa.
+    #:
+    #: Đo trên production 27/08/2026: ngưỡng 80 giải phóng 2.794/14.267 vụ
+    #: (19,6%). Không cao hơn được vì điểm MEGA-PNA bão hoà ở 100 (p25 = 99,98),
+    #: nên ngưỡng theo điểm gần như không phân loại được nhánh IBM. Nới lên 99
+    #: cũng chỉ tới 43,6%. Muốn thoát thật thì phải sửa chỗ điểm bão hoà, không
+    #: phải chỗ ngưỡng này.
+    case_self_close_max_risk: int = Field(default=80, ge=0, le=100)
+    #: Phần đầu bản SAR xuất ra (tổ chức báo cáo và nơi nhận). Để ở cấu hình vì
+    #: đây là thông tin của đơn vị triển khai, không phải dữ liệu của từng vụ.
+    sar_institution_name: str = "NGÂN HÀNG VELRIX"
+    sar_institution_unit: str = "Khối Tuân thủ — Bộ phận Phòng, chống rửa tiền"
+    sar_recipient: str = "Cục Phòng, chống rửa tiền — Ngân hàng Nhà nước Việt Nam"
+
     max_graph_hops: int = Field(default=2, ge=1, le=4)
     max_graph_nodes: int = Field(default=100, ge=2, le=1000)
     max_graph_edges: int = Field(default=250, ge=1, le=5000)

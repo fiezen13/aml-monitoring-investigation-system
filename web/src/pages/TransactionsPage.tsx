@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import { int } from "../api/fcFormat";
-import { datasetLabel, formatDateTime } from "../api/format";
+import { datasetLabel, formatDateTime, paymentChannelLabel } from "../api/format";
 import { useApi } from "../api/useApi";
 import { useConsole } from "../context/ConsoleContext";
 import { PageShell } from "../components/ui";
@@ -83,7 +83,7 @@ export function TransactionsPage() {
         >
           {CHANNELS.map((c) => (
             <option key={c} value={c}>
-              {c === "all" ? "Kênh: tất cả" : c}
+              {c === "all" ? "Kênh: tất cả" : paymentChannelLabel(c)}
             </option>
           ))}
         </select>
@@ -185,18 +185,27 @@ export function TransactionsPage() {
               <span className="truncate-1 font-mono text-xs">{r.from_account}</span>
               <span className="truncate-1 font-mono text-xs">{r.to_account}</span>
               <span className="tabular text-right font-mono text-xs" title="Giá trị gốc; không quy đổi USD">
-                {r.amount.toLocaleString("vi-VN", { maximumFractionDigits: 8 })} {r.currency}
+                {/* Tiền hiển thị hai chữ số thập phân. `maximumFractionDigits: 8`
+                    kéo nguyên đuôi của kiểu NUMERIC ra màn hình
+                    ("10.924,92000000") — tám chữ số ấy không mang thông tin nào. */}
+                {r.amount.toLocaleString("vi-VN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
+                {r.currency}
               </span>
               <span className="tabular text-right font-mono text-xs" title="Giá trị nhận gốc; không quy đổi USD">
-                {r.amount_received?.toLocaleString("vi-VN", { maximumFractionDigits: 8 }) ?? "—"}{" "}
+                {r.amount_received?.toLocaleString("vi-VN", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }) ?? "—"}{" "}
                 {r.receiving_currency ?? ""}
               </span>
-              <span className="text-xs text-ink-soft">{r.channel}</span>
+              <span className="text-xs text-ink-soft">{paymentChannelLabel(r.channel)}</span>
               <span
                 className={`tabular text-right font-mono text-xs ${r.triggered ? "text-risk-soft" : "text-ink-soft"}`}
                 
               >
-                {r.model_score == null ? "—" : `${(r.model_score * 100).toFixed(4)}%`}
+                {/* Điểm mô hình: hai chữ số là đủ để xếp thứ tự; bốn chữ số chỉ
+                    làm cột số dài ra mà không đổi quyết định nào. */}
+                {r.model_score == null ? "—" : `${(r.model_score * 100).toFixed(2)}%`}
                 {r.triggered ? " · Cảnh báo" : ""}
               </span>
             </div>

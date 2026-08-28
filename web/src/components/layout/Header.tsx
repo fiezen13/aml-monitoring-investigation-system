@@ -40,7 +40,10 @@ export function Header({ crumb, criticalCount = 0, onOpenNav, dataPeriod }: Prop
   // KỸ THUẬT/QUẢN TRỊ — không đọc giá trị này, nên ẩn bộ chọn cho nhất quán (chọn
   // ở đó không đổi gì mà còn âm thầm đổi trạng thái toàn cục cho trang khác).
   const pathname = useLocation().pathname;
-  const showDatasetSelector = ["/dashboard", "/alerts", "/cases", "/transactions"].some(
+  // `/world` (Giám sát địa lý) CŨNG đọc bộ dữ liệu: bộ IBM không có trường quốc
+  // gia nên trang tắt bản đồ. Trước đây bộ chọn bị ẩn ở đây, thành ra người dùng
+  // rơi vào một màn hình rỗng mà không có cách nào đổi sang bộ có địa lý.
+  const showDatasetSelector = ["/dashboard", "/alerts", "/cases", "/transactions", "/world"].some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 
 import { api, num } from "../api/client";
-import { alertStatusLabel, detectorLabel, formatRelative, initials, profileValueLabel, datasetLabel } from "../api/format";
+import { alertStatusLabel, detectorLabel, formatAmount, formatRelative, initials, profileValueLabel, datasetLabel } from "../api/format";
 import { useApi } from "../api/useApi";
 import { useConsole } from "../context/ConsoleContext";
 import {
@@ -158,6 +158,27 @@ export function AlertsPage() {
       header: "Điểm rủi ro",
       sortValue: (alert) => num(alert.risk_score),
       render: (alert) => <RiskIndicator score={num(alert.risk_score)} variant="badge" />,
+    },
+    {
+      // QUY MÔ — cột này tồn tại vì điểm rủi ro bão hoà.
+      //
+      // 7.226 tài khoản có điểm đúng 100, và đo trên nhãn thật thì cả 7.226 đều
+      // trúng: mô hình không sai, điểm 100 là đúng. Nhưng chuyên viên nhìn một
+      // khối vụ giống hệt nhau thì không biết làm cái nào trước. Hai con số này
+      // là sự thật đo được về tài khoản, và chúng tách khối ấy ra làm 5.573
+      // nhóm phân biệt được.
+      key: "scale",
+      header: "Quy mô",
+      sortValue: (alert) => num(alert.flagged_amount ?? 0),
+      render: (alert) =>
+        alert.flagged_amount == null ? (
+          <span className="text-2xs text-ink-low">—</span>
+        ) : (
+          <div className="text-2xs leading-tight">
+            <div className="tabular text-ink-hi">{formatAmount(num(alert.flagged_amount))}</div>
+            <div className="text-ink-mid">{alert.flagged_txn_count} giao dịch bị gắn cờ</div>
+          </div>
+        ),
     },
     {
       key: "detector",

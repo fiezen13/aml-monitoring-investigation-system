@@ -58,16 +58,21 @@ DETECTOR = "mega_pna"
 #: mọi cảnh báo sẽ làm hỏng thống kê theo nhóm hành vi và khiến tác tử viện dẫn
 #: sai nhóm.
 def typology_for(row: dict[str, Any]) -> tuple[str, str]:
-    incoming = int(row["incoming_count"])
-    outgoing = int(row["outgoing_count"])
-    edges = max(1, int(row["edge_count"]))
-    if incoming >= 5 and outgoing >= 5:
-        return "T04", "Nhiều nguồn dồn vào rồi toả ra nhiều đích"
-    if outgoing >= 3 and incoming >= 1 and outgoing / edges >= 0.7:
-        return "T05", "Tiền vào rồi ra ngay trong cửa sổ quan sát"
-    if incoming >= 5:
-        return "T04", "Nhiều nguồn dồn về một tài khoản"
-    return "T02", "Tài khoản trung chuyển trong mạng lưới"
+    """KHÔNG còn gán nhãn nhóm hành vi ở đây.
+
+    Quy tắc cũ đếm ``incoming_count``/``outgoing_count`` — số GIAO DỊCH trong ô
+    chấm điểm — rồi gán T04 với tên "Nhiều nguồn dồn vào rồi toả ra nhiều đích".
+    Chín giao dịch vào có thể chỉ đến từ hai người gửi, nên cái tên hứa nhiều hơn
+    thứ nó đo. Bản giải thích của tác tử đếm đúng số đối tác khác nhau và nói
+    "2 đối tác gửi, ngưỡng ≥ 5 — chưa đạt": nhãn và lời giải thích đá nhau ngay
+    trên một màn hình. Đo trên 1.500 cảnh báo: chỉ 1,9% thật sự đạt ≥5 nguồn và
+    ≥5 đích.
+
+    Nay cảnh báo sinh ra với ``T00`` (chưa đối chiếu được nhóm hành vi), rồi
+    ``scripts/relabel_alert_typologies.py`` đo cửa sổ giao dịch — CÙNG cửa sổ mà
+    phiên điều tra dùng — và gán nhãn nào chứng minh được.
+    """
+    return "T00", "Chưa đối chiếu nhóm hành vi; chờ đo trên cửa sổ giao dịch"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -120,16 +125,28 @@ def reasons_for(row: dict[str, Any]) -> list[tuple[str, str, float, float]]:
     top5 = float(row["score_top5_mean"] or 0.0)
     over = int(row["edges_over_threshold"])
     amount = float(row["flagged_amount"] or 0.0)
+    # Thang 0-100 chứ không phải xác suất 3 chữ số: cột `risk_score` và tiêu đề
+    # trang Chi tiết cảnh báo đều nói theo thang 100, để "đạt 1.000" bên cạnh
+    # "Điểm rủi ro 100" thì chuyên viên không biết hai số đó có liên quan gì nhau.
+    # KHÔNG viết "X/100": bộ kiểm chứng tất định rút mọi chữ số trong câu rồi đòi
+    # mỗi số phải có mặt trong bằng chứng, nên mẫu số 100 cũng bị đòi bằng chứng
+    # riêng. Cảnh báo 57 điểm không có số 100 nào để khớp và cả phiên điều tra
+    # trượt vì đúng một mẫu số. Bỏ mẫu số đi thì con số duy nhất trong câu chính
+    # là `contribution` nằm ngay bên cạnh nó.
     return [
-        ("MP_SCORE_MAX", f"Giao dịch rủi ro nhất trong khoảng quan sát đạt {score:.3f}", round(score * 100, 2), 1.0),
-        ("MP_SCORE_TOP5", f"Trung bình 5 giao dịch rủi ro nhất đạt {top5:.3f}", round(top5 * 100, 2), 0.0),
+        ("MP_SCORE_MAX", f"Giao dịch rủi ro nhất trong kỳ đạt {score * 100:.0f} điểm rủi ro", round(score * 100, 2), 1.0),
+        ("MP_SCORE_TOP5", f"Trung bình 5 giao dịch rủi ro nhất đạt {top5 * 100:.0f} điểm rủi ro", round(top5 * 100, 2), 0.0),
         ("MP_EDGES_OVER", f"{over} giao dịch vượt ngưỡng cảnh báo", 0.0, 0.0),
-        # Không dấu phân cách hàng nghìn. "9,258" đọc trong tiếng Việt là chín
-        # phẩy hai năm tám, và bộ đối chiếu số của tác tử phản biện cũng đọc đúng
-        # như vậy rồi kết luận con số ấy không có trong bằng chứng nào.
+        # Tách hàng nghìn bằng DẤU CÁCH MẢNH (U+202F), không phải dấu phẩy.
+        #
+        # Dấu phẩy thì "9,258" đọc trong tiếng Việt là chín phẩy hai năm tám. Còn
+        # để trần thì "13696" là một dãy phải đếm bằng mắt. Dấu cách mảnh đọc
+        # đúng, và bộ đối chiếu số của tác tử phản biện đã biết bỏ nó ra trước
+        # khi so khớp (`_normalise` trong src/investigation/agents.py).
         (
             "MP_FLAGGED_AMOUNT",
-            f"Tổng {amount:.0f} trên các giao dịch bị gắn cờ, cộng thô theo nguyên tệ (chưa quy đổi)",
+            f"Tổng {amount:,.0f}".replace(",", "\u202f")
+            + " trên các giao dịch bị gắn cờ, cộng thô theo nguyên tệ (chưa quy đổi)",
             0.0,
             0.0,
         ),

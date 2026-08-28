@@ -6,6 +6,8 @@ import { api } from "../api/client";
 import { int } from "../api/fcFormat";
 import { riskRatingLabel } from "../api/format";
 import { useApi } from "../api/useApi";
+import { TYPOLOGY_LABELS, typologyLabel } from "../api/typologyLabels";
+import { OPERATIONAL_DATASETS, useConsole } from "../context/ConsoleContext";
 import { Chart, type ChartSpec } from "../components/fc/Chart";
 import { WorldMap, type MapData } from "../components/fc/WorldMap";
 import {
@@ -53,8 +55,16 @@ function nativeAmount(value: number, currency: string): string {
   return `${value.toLocaleString("vi-VN", { maximumFractionDigits: 8 })} ${currency}`;
 }
 
+/** Chỉ phần TÊN của nhóm hành vi (ô lọc đã có mã đứng riêng ở tiền tố). */
+function typologyName(code: string): string {
+  return TYPOLOGY_LABELS[code]?.name ?? code;
+}
+
 export function WorldPage() {
-  const world = useApi(() => api.world(), [], "world");
+  // Bản đồ phải theo bộ dữ liệu đang chọn ở header, giống Tổng quan và Cảnh báo.
+  // Không lọc thì người xem bộ IBM lại thấy hành lang SAML-D.
+  const { dataset, setDataset } = useConsole();
+  const world = useApi(() => api.world({ dataset }), [dataset], `world:${dataset}`);
 
   const [mode, setMode] = useState<"map" | "globe">("map");
   // Mọi lớp dòng tiền luôn bật. Công tắc bật/tắt trước đây không đổi gì trên bản
@@ -256,24 +266,37 @@ export function WorldPage() {
             }
             className="md:col-span-2"
           >
+            {/* KHÔNG hiện "Giao dịch đã chấm điểm" ở nhánh này. Con số đó đếm
+                giao dịch trong LÔ DỰNG BẢN ĐỒ; bộ không có địa lý thì lô đó không
+                tồn tại nên nó luôn bằng 0 — trong khi bộ dữ liệu vẫn có hàng triệu
+                giao dịch. Một số 0 cạnh chữ "đang hoạt động" khiến người xem tưởng
+                hệ thống hỏng, đúng thứ màn hình này cần tránh. */}
             <dl className="grid gap-3 text-body sm:grid-cols-2">
               <div>
-                <dt className="text-meta text-ink-low">Giao dịch đã chấm điểm</dt>
-                <dd className="mt-1 font-mono text-h3 font-semibold text-ink-hi">
-                  {int(world.data.transaction_count)}
+                <dt className="text-meta text-ink-low">Bộ dữ liệu đang chọn</dt>
+                <dd className="mt-1 font-medium text-ink-hi">
+                  {OPERATIONAL_DATASETS.find((ds) => ds.value === dataset)?.label ?? dataset}
                 </dd>
               </div>
               <div>
                 <dt className="text-meta text-ink-low">Phạm vi địa lý</dt>
-                <dd className="mt-1 font-medium text-warn-soft">Không được cung cấp</dd>
+                <dd className="mt-1 font-medium text-warn-soft">Không có trường quốc gia</dd>
               </div>
             </dl>
           </Panel>
 
-          <Panel title="Giới hạn dữ liệu">
+          <Panel title="Xem bộ dữ liệu khác">
             <p className="text-meta leading-relaxed text-ink-soft">
-              Bộ dữ liệu hiện tại không có thông tin địa lý đã kiểm chứng nên bản đồ tạm tắt.
+              Đây là giới hạn của bộ dữ liệu đang chọn, không phải lỗi hệ thống. Bộ dưới đây có
+              đủ thông tin quốc gia để dựng bản đồ.
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {OPERATIONAL_DATASETS.filter((ds) => ds.value !== dataset).map((ds) => (
+                <Button key={ds.value} size="sm" onClick={() => setDataset(ds.value)}>
+                  Chuyển sang {ds.label}
+                </Button>
+              ))}
+            </div>
           </Panel>
         </div>
 
@@ -349,13 +372,20 @@ export function WorldPage() {
                     key={t}
                     type="button"
                     onClick={() => setTyp(t)}
-                    className={`flex items-center gap-2 rounded-[7px] px-2 py-1.5 text-sm transition-colors hover:bg-elev ${
+                    title={typologyLabel(t)}
+                    className={`flex items-start gap-2 rounded-[7px] px-2 py-1.5 text-left text-sm transition-colors hover:bg-elev ${
                       typ === t ? "bg-primary-soft text-primary" : "text-ink-soft"
                     }`}
                   >
-                    <span className="h-[7px] w-[7px] flex-none rounded-sm bg-risk" />
-                    <span className="truncate-1 flex-1 text-left">{t}</span>
-                    <span className="tabular flex-none font-mono text-2xs text-ink-low">{n}</span>
+                    <span className="mt-[6px] h-[7px] w-[7px] flex-none self-start rounded-sm bg-risk" />
+                    {/* Mã "T06" một mình không nói được đây là hành vi gì. Tên
+                        nhóm là thứ chuyên viên cần đọc; mã giữ làm tiền tố nhỏ
+                        để còn đối chiếu với hồ sơ và tài liệu nghiệp vụ. */}
+                    <span className="flex-1 text-left leading-snug">
+                      <span className="tabular mr-1 font-mono text-2xs text-ink-low">{t}</span>
+                      {typologyName(t)}
+                    </span>
+                    <span className="tabular mt-[2px] flex-none self-start font-mono text-2xs text-ink-low">{n}</span>
                   </button>
                 ))}
               </div>
@@ -502,7 +532,11 @@ export function WorldPage() {
                       { l: "Điểm rủi ro", v: String(selected.risk_score), t: getRiskTone(selected.risk_score) },
                       { l: "Cảnh báo", v: String(selected.alert_count), t: "risk" as Tone },
                       { l: "Kênh", v: CHANNEL_LABEL[selected.channel], t: "info" as Tone },
-                      { l: "Nhóm hành vi", v: selected.typology_hint ?? "—", t: "neutral" as Tone },
+                      {
+                        l: "Nhóm hành vi",
+                        v: selected.typology_hint ? typologyLabel(selected.typology_hint) : "—",
+                        t: "neutral" as Tone,
+                      },
                     ]
                   : [
                       { l: "Hoạt động", v: int(selectedHub!.inbound + selectedHub!.outbound), t: "neutral" as Tone },

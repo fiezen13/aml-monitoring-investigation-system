@@ -24,7 +24,6 @@ from sqlalchemy import text
 
 from src.config import get_settings
 from src.db.session import get_session
-from src.domain import next_state, state_label
 from src.investigation.repository import InvestigationRepository
 from src.investigation.workflow import InvestigationWorkflow
 from src.observability.context import bind_context
@@ -136,53 +135,11 @@ def requeue_orphans() -> int:
     return len(ids)
 
 
-def handle_investigate_case(payload: dict[str, Any]) -> None:
-    """Chạy một bước điều tra: đẩy vụ việc sang trạng thái kế tiếp.
-
-    Bước kế tiếp do src.domain.next_state quyết định, nên worker đi đúng
-    chuỗi ở Hình 4 chứ không nhảy cóc. Chuỗi dừng ở ChoNguoiPheDuyet: không
-    có nhánh nào ở đây đi tới XuatHoSo — lối vào duy nhất của XuatHoSo là
-    một quyết định phê duyệt có người ký tên (NT3).
-    """
-    case_id = payload["case_id"]
-    with get_session() as session:
-        # Khoá dòng để hai lượt điều tra chạy song song không cùng đọc một
-        # trạng thái rồi cùng ghi đè: nếu không, hai lần bấm nút gần nhau chỉ
-        # tiến được một bước và một dòng nhật ký nói dối về trạng thái trước.
-        current = session.execute(
-            text("SELECT state FROM aml_case WHERE case_id = :case_id FOR UPDATE"),
-            {"case_id": case_id},
-        ).scalar_one_or_none()
-        if current is None:
-            logger.warning("Không tìm thấy vụ việc %s — bỏ qua", case_id)
-            return
-
-        target = next_state(current)
-        if target is None:
-            logger.info(
-                "Vụ việc %s đang ở '%s' — cần quyết định của người phê duyệt, worker dừng",
-                case_id,
-                state_label(current),
-            )
-            return
-
-        session.execute(
-            text("UPDATE aml_case SET state = :target, updated_at = now() WHERE case_id = :case_id"),
-            {"case_id": case_id, "target": target},
-        )
-        session.execute(
-            text(
-                """
-                INSERT INTO audit_log (case_id, event_type, actor, actor_role, payload)
-                VALUES (:case_id, 'case_state_changed', 'worker', 'system', :payload)
-                """
-            ),
-            {
-                "case_id": case_id,
-                "payload": json.dumps({"from": current, "to": target}),
-            },
-        )
-    logger.info("Vụ việc %s chuyển %s → %s", case_id, current, target)
+# handle_investigate_case đã gỡ ngày 27/08/2026 cùng endpoint gọi nó.
+#
+# Nó đẩy vụ việc đi từng bước qua sáu trạng thái trung gian. Không giao diện
+# nào từng gọi tới, nên sáu trạng thái ấy chưa có vụ nào đi qua. Quy trình
+# thật do người bấm: chuyên viên kết luận và soạn hồ sơ, quản lý phê duyệt.
 
 
 def handle_ping(payload: dict[str, Any]) -> None:
@@ -277,7 +234,6 @@ def handle_investigate_alert(payload: dict[str, Any]) -> None:
 
 
 HANDLERS = {
-    "investigate_case": handle_investigate_case,
     "investigate_alert": handle_investigate_alert,
     "ping": handle_ping,
 }

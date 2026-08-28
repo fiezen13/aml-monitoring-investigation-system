@@ -36,7 +36,11 @@ async def test_dashboard_counts_come_from_the_database(client, li_small_loaded):
     body = response.json()
 
     assert body["open_alerts"] <= li_small_loaded["alerts"]
+    assert body["alerts_without_case"] + body["alerts_linked_to_case"] == body["open_alerts"]
+    assert body["alerts_without_case"] == 0
+    assert body["batch_cases_created"] == body["batch_alerts_created"]
     assert body["cases_investigating"] <= li_small_loaded["cases"]
+    assert body["cases_investigating"] == body["cases_total"]
     assert 0 <= body["avg_risk_score"] <= 100
     assert body["typology_distribution"], "phải có ít nhất một typology"
     assert len(body["top_alerts"]) <= 5
@@ -111,6 +115,19 @@ async def test_case_detail_timeline_covers_the_whole_chain(client, li_small_load
     # Các bước đã qua phải đứng trước bước hiện tại, không xen kẽ.
     statuses = [step["status"] for step in detail["timeline"]]
     assert statuses == sorted(statuses, key=["done", "active", "pending"].index)
+
+
+@pytest.mark.asyncio
+async def test_case_page_reports_total_and_uses_server_pagination(client, li_small_loaded):
+    first = (await client.get("/api/v1/cases/page?page=1&page_size=10")).json()
+    second = (await client.get("/api/v1/cases/page?page=2&page_size=10")).json()
+
+    assert first["total"] >= len(first["rows"])
+    assert first["page"] == 1
+    assert first["pageSize"] == 10
+    assert {row["case_id"] for row in first["rows"]}.isdisjoint(
+        {row["case_id"] for row in second["rows"]}
+    )
 
 
 @pytest.mark.asyncio

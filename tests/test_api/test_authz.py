@@ -89,6 +89,11 @@ async def test_dang_nhap_va_health_khong_can_token(raw_client) -> None:
         # Quản trị user/hệ thống là thẩm quyền KỸ THUẬT — chỉ ADMIN.
         ("manager", "/api/v1/users"),
         ("manager", "/api/v1/settings"),
+        # Bảng nhân sự "ai đang gánh bao nhiêu" là công cụ CHIA VIỆC. Chuyên
+        # viên không phân công cho ai, và không cần thấy khối lượng việc của
+        # đồng nghiệp; số liệu của chính mình lấy ở "/my-work".
+        ("analyst", "/api/v1/workload"),
+        ("admin", "/api/v1/workload"),
     ],
 )
 async def test_vai_tro_bi_chan(raw_client, as_role, role: str, path: str) -> None:
@@ -115,7 +120,8 @@ async def test_chi_quan_ly_ra_quyet_dinh_phe_duyet(raw_client, as_role, role: st
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("path", ["/api/v1/alerts/A-1/investigate", "/api/v1/cases/C-1/investigate"])
+# "/cases/{id}/investigate" đã gỡ 27/08/2026 cùng chuỗi trạng thái trung gian.
+@pytest.mark.parametrize("path", ["/api/v1/alerts/A-1/investigate"])
 async def test_admin_khong_duoc_dieu_tra(raw_client, as_role, path: str) -> None:
     """Admin (quản trị hệ thống) KHÔNG khởi chạy điều tra — không đọc hồ sơ khách hàng."""
     as_role("admin")
@@ -144,6 +150,14 @@ async def test_admin_khong_duoc_dieu_tra(raw_client, as_role, path: str) -> None
         ("admin", "/api/v1/fc/data-quality"),
         ("admin", "/api/v1/fc/benchmarks"),
         ("admin", "/api/v1/fc/agent-runs"),
+        # Số liệu công việc của CHÍNH mình: cả hai vai nghiệp vụ đều cần.
+        ("analyst", "/api/v1/my-work"),
+        ("manager", "/api/v1/my-work"),
+        ("manager", "/api/v1/workload"),
+        # Quản lý vẫn phải ĐỌC được hồ sơ và xuất bản đã duyệt — không đọc được
+        # thì không phê duyệt được.
+        ("manager", "/api/v1/sars"),
+        ("manager", "/api/v1/approvals/close-requests"),
     ],
 )
 async def test_vai_tro_duoc_qua_cong(raw_client, as_role, role: str, path: str) -> None:
@@ -154,4 +168,68 @@ async def test_vai_tro_duoc_qua_cong(raw_client, as_role, role: str, path: str) 
     """
     as_role(role)
     response = await raw_client.get(path, headers={"Authorization": "Bearer x"})
+    assert response.status_code not in (401, 403), response.text
+
+
+def test_chuyen_vien_duoc_ghi_ket_luan_dieu_tra() -> None:
+    """Cổng phân quyền phải cho CHUYÊN VIÊN ghi kết luận điều tra.
+
+    Quy trình hai vai đặt việc kết luận ở chuyên viên và việc chốt ở quản lý.
+    Cổng này từng sót lại `{MANAGER}` của mô hình cũ trong khi thân hàm đã mở cho
+    analyst: chuyên viên bị 403, không vụ nào sang được "Soạn hồ sơ nghi vấn",
+    và cả quy trình kẹt ngay bước đầu (phát hiện khi chạy thử luồng trên
+    production 2026-08-27).
+    """
+    from src.api.authz import POLICY
+
+    assert "analyst" in POLICY["/investigations/{investigation_id}/review"]
+    # Quyết định PHÊ DUYỆT thì ngược lại: chỉ quản lý.
+    assert "analyst" not in POLICY["/approvals/{approval_id}/decision"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        # PHÂN TÁCH NHIỆM VỤ: Quản lý CHỐT hồ sơ, không lập hồ sơ. Cho họ soạn
+        # thì người phê duyệt và người lập là cùng một VAI, và nguyên tắc bốn
+        # mắt chỉ còn chặn được đúng cá nhân đó chứ không chặn được vai trò —
+        # đã xảy ra thật: một Quản lý trình hồ sơ rồi thấy nó trong hàng đợi
+        # chờ chính mình duyệt.
+        ("POST", "/api/v1/cases/CASE-X/sar"),
+        ("PUT", "/api/v1/sars/SAR-X/narrative"),
+        ("PUT", "/api/v1/sars/SAR-X/preparer"),
+        ("POST", "/api/v1/sars/SAR-X/validate"),
+        ("POST", "/api/v1/sars/SAR-X/submit"),
+        # Kết luận một phiên điều tra cũng là bước của Chuyên viên: nó đẩy vụ
+        # sang "Soạn hồ sơ nghi vấn" hoặc sinh đề nghị đóng vụ.
+        ("POST", "/api/v1/investigations/INV-X/review"),
+    ],
+)
+async def test_quan_ly_khong_lap_ho_so(raw_client, as_role, method: str, path: str) -> None:
+    """Quản lý chỉ chốt, không soạn/nộp hồ sơ.
+
+    Dùng ĐÚNG phương thức của route: các đường này chỉ nhận POST/PUT, gọi bằng
+    GET thì nhận 405 và test sẽ xanh vì lý do sai.
+    """
+    as_role("manager")
+    response = await raw_client.request(method, path, headers={"Authorization": "Bearer x"}, json={})
+    assert response.status_code == 403, response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("POST", "/api/v1/cases/CASE-X/sar"),
+        ("POST", "/api/v1/sars/SAR-X/validate"),
+        ("POST", "/api/v1/sars/SAR-X/submit"),
+        ("POST", "/api/v1/investigations/INV-X/review"),
+    ],
+)
+async def test_chuyen_vien_van_lap_duoc_ho_so(raw_client, as_role, method: str, path: str) -> None:
+    """Mặt còn lại của cùng một luật: siết Quản lý mà chặn nhầm Chuyên viên thì
+    không ai lập được hồ sơ nữa."""
+    as_role("analyst")
+    response = await raw_client.request(method, path, headers={"Authorization": "Bearer x"}, json={})
     assert response.status_code not in (401, 403), response.text

@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from src.bitcoin_aml.risk_reasons import build_risk_reasons
 from src.db.session import get_session
 from src.investigation.graph_narrative import narrate, read_neighbourhood
+from src.investigation.repository import snapshot_time
 from src.models.fc_schemas import (
     AgentRunDetailOut,
     AgentRunListOut,
@@ -58,7 +59,6 @@ from src.models.fc_schemas import (
     ObservationOut,
     OperatingPointOut,
     PatternHopOut,
-    ProjectOut,
     SearchHitOut,
     SourceOut,
     TxPageOut,
@@ -104,8 +104,10 @@ def _current_simulation(session) -> dict[str, Any] | None:
 
 
 @router.get("/nav-counts", response_model=NavCountsOut)
-def nav_counts() -> NavCountsOut:
-    """Số việc tồn đọng hiển thị trên badge sidebar."""
+def nav_counts(
+    dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
+) -> NavCountsOut:
+    """Số việc tồn đọng hiển thị trên badge sidebar, theo bộ dữ liệu đang chọn."""
     with get_session() as session:
         row = (
             session.execute(
@@ -114,18 +116,34 @@ def nav_counts() -> NavCountsOut:
                     # release, mà nhánh rule và nhánh anomaly chấm điểm ở cấp tài khoản
                     # nên `alert.transaction_id` là NULL — badge hiện 0 trong khi hàng
                     # đợi có hai vạn cảnh báo.
+                    # Lọc theo BỘ DỮ LIỆU đang chọn. Không lọc thì badge sidebar
+                    # cộng cảnh báo IBM với SAML-D thành một số không thuộc về bộ
+                    # nào, và dải ngày lấy min của bộ này ghép max của bộ kia —
+                    # "14/09/2022 – 23/08/2023" không mô tả đúng bộ nào cả.
                     """SELECT
-                         (SELECT count(*) FROM alert WHERE status <> 'closed')        AS alerts,
+                         (SELECT count(*) FROM alert
+                           WHERE status <> 'closed'
+                             AND (CAST(:dataset AS text) IS NULL
+                                  OR dataset = CAST(:dataset AS text)))               AS alerts,
                          (SELECT count(*) FROM approval ap
                            JOIN sar_draft sd USING (sar_draft_id)
                            WHERE ap.decision = 'pending')                             AS approvals,
                          (SELECT count(*) FROM alert
-                           WHERE status <> 'closed' AND risk_score >= 80)             AS critical,
-                         -- min/max đi qua transaction_time_idx nên gần như tức thì,
-                         -- không phải quét 6,1 triệu dòng.
-                         (SELECT min(occurred_at)::date FROM transaction)             AS data_period_start,
-                         (SELECT max(occurred_at)::date FROM transaction)             AS data_period_end"""
-                )
+                           WHERE status <> 'closed' AND risk_score >= 80
+                             AND (CAST(:dataset AS text) IS NULL
+                                  OR dataset = CAST(:dataset AS text)))               AS critical,
+                         -- min/max đi qua transaction_dataset_time_idx nên vẫn
+                         -- gần như tức thì dù đã thêm điều kiện bộ dữ liệu.
+                         (SELECT min(occurred_at)::date FROM transaction
+                           WHERE (CAST(:dataset AS text) IS NULL
+                                  OR (CAST(:dataset AS text) = 'ibm_hi_medium' AND source_dataset ILIKE '%IBM%')
+                                  OR (CAST(:dataset AS text) = 'saml_d' AND source_dataset ILIKE '%SAML%'))) AS data_period_start,
+                         (SELECT max(occurred_at)::date FROM transaction
+                           WHERE (CAST(:dataset AS text) IS NULL
+                                  OR (CAST(:dataset AS text) = 'ibm_hi_medium' AND source_dataset ILIKE '%IBM%')
+                                  OR (CAST(:dataset AS text) = 'saml_d' AND source_dataset ILIKE '%SAML%'))) AS data_period_end"""
+                ),
+                {"dataset": dataset},
             )
             .mappings()
             .one()
@@ -200,26 +218,32 @@ class _Geography(NamedTuple):
 _MAX_FLOWS = 300
 
 
-def _operational_geography(session: Any) -> _Geography:
+def _operational_geography(session: Any, dataset: str | None = None) -> _Geography:
     """Hub và hành lang dòng tiền dựng từ dữ liệu vận hành thật.
 
     Trả về bản đồ rỗng nếu chưa chạy `scripts/load_bank_geography.py` — không
     dựng bản đồ nửa vời từ dữ liệu chưa nạp.
+
+    ``dataset`` chọn ĐÚNG bản đồ của bộ đang xem. Không truyền thì lấy bản mới
+    nhất, giữ nguyên hành vi cũ cho lời gọi chưa cập nhật.
     """
-    # Bản rollup địa lý KHÔNG tra theo release đang hoạt động.
+    # Chọn rollup theo BỘ DỮ LIỆU, không theo trạng thái release.
     #
-    # Bộ IBM AML không mang quốc gia — nó phải suy từ tên ngân hàng, và bước ấy
-    # chưa chạy được, nên trang này trống suốt. SAML-D thì có sẵn vị trí ngân
-    # hàng trên từng giao dịch, và bản rollup dựng từ đó mang một release riêng
-    # trạng thái 'reference': nó cung cấp bản đồ chứ không chấm điểm cạnh, nên
-    # không được chiếm chỗ release đang phục vụ ba trang khác.
+    # Bản trước khoá cứng `status='reference'` vì lúc đó bộ IBM không có quốc gia
+    # (phải suy từ tên ngân hàng, bước ấy chưa chạy được) nên bản đồ chỉ có thể
+    # vẽ bằng SAML-D. Giả định ấy hết đúng từ 27/08/2026: IBM HI-Medium đã có
+    # rollup riêng, và nó nằm ở release ĐANG HOẠT ĐỘNG. Giữ điều kiện cũ thì
+    # người xem bộ IBM lại thấy hành lang SAML-D — trộn hai vũ trụ trên cùng một
+    # màn hình, đúng thứ cột `dataset` sinh ra để tránh.
+    where = "release_id IN (SELECT release_id FROM edge_country_hub)"
+    params: dict[str, Any] = {}
+    if dataset == "ibm_hi_medium":
+        where += " AND dataset ILIKE '%IBM%'"
+    elif dataset == "saml_d":
+        where += " AND dataset ILIKE '%SAML%'"
     release_id = session.execute(
-        text(
-            """SELECT release_id FROM edge_model_release
-                WHERE status = 'reference'
-                  AND release_id IN (SELECT release_id FROM edge_country_hub)
-                ORDER BY trained_at DESC LIMIT 1"""
-        )
+        text(f"SELECT release_id FROM edge_model_release WHERE {where} ORDER BY trained_at DESC LIMIT 1"),
+        params,
     ).scalar_one_or_none()
     if release_id is None:
         return _Geography(
@@ -346,7 +370,10 @@ def _operational_geography(session: Any) -> _Geography:
             tlon=coords[row["dst"]][1],
             channel=row["channel"],
             currency=row["currency"],
-            amount_native=float(row["amount_native"]),
+            # Làm tròn tới đơn vị tiền: tổng của hàng nghìn giao dịch qua phép
+            # cộng dấu chấm động cho ra "673710308.9111353", một cái đuôi không
+            # mang thông tin nào.
+            amount_native=round(float(row["amount_native"]), 2),
             volume_usd=0,
             txn_count=int(row["txn_count"]),
             risk_score=int(row["risk_score"]),
@@ -371,29 +398,38 @@ def _operational_geography(session: Any) -> _Geography:
 
 
 @router.get("/world", response_model=WorldOut)
-def world() -> WorldOut:
+def world(
+    dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
+) -> WorldOut:
     """Bản đồ hành lang dòng tiền, dựng từ bộ dữ liệu có sẵn quốc gia.
 
-    Nhãn nguồn phải lấy từ CHÍNH release dựng nên bản đồ. Lấy từ release đang
-    hoạt động thì trang ghi "Dữ liệu IBM AML HI-Medium" ngay trên một bản đồ vẽ
-    bằng SAML-D — sai nguồn là lỗi nặng hơn thiếu nhãn.
+    Nhãn nguồn phải lấy từ CHÍNH release dựng nên bản đồ — không phải từ release
+    đang hoạt động. Ghi "IBM AML HI-Medium" lên một bản đồ vẽ bằng SAML-D là lỗi
+    nặng hơn thiếu nhãn, nên nhãn và dữ liệu luôn đọc từ cùng một dòng release.
+
+    ``dataset`` để hai bộ không đè lên nhau: bảng hành lang trên trang Tổng quan
+    phải theo đúng bộ người dùng đang chọn.
     """
+    where = "release_id IN (SELECT release_id FROM edge_country_hub)"
+    if dataset == "ibm_hi_medium":
+        where += " AND dataset ILIKE '%IBM%'"
+    elif dataset == "saml_d":
+        where += " AND dataset ILIKE '%SAML%'"
     with get_session() as session:
         batch = (
             session.execute(
                 text(
-                    """SELECT release_id AS batch_id, dataset AS source_name,
-                              transaction_rows AS transaction_count
-                         FROM edge_model_release
-                        WHERE status = 'reference'
-                          AND release_id IN (SELECT release_id FROM edge_country_hub)
-                        ORDER BY trained_at DESC LIMIT 1"""
+                    f"""SELECT release_id AS batch_id, dataset AS source_name,
+                               transaction_rows AS transaction_count
+                          FROM edge_model_release
+                         WHERE {where}
+                         ORDER BY trained_at DESC LIMIT 1"""
                 )
             )
             .mappings()
             .first()
         )
-        geography = _operational_geography(session)
+        geography = _operational_geography(session, dataset)
     return WorldOut(
         hubs=geography.hubs,
         flows=geography.flows,
@@ -1501,44 +1537,6 @@ def bitcoin_queue(
     )
 
 
-@router.get("/fc/projects", response_model=list[ProjectOut])
-def projects() -> list[ProjectOut]:
-    with get_session() as session:
-        rows = (
-            session.execute(
-                text(
-                    """SELECT project_id, name, symbol, chain, contract_address, deployer_address,
-                              launched_at, holder_gini, liquidity_usd, liquidity_removed_pct,
-                              privileged_functions, kol_channels, domain_age_days, risk_score, status
-                         FROM fc.token_project
-                        ORDER BY risk_score DESC"""
-                )
-            )
-            .mappings()
-            .all()
-        )
-    return [
-        ProjectOut(
-            id=r["project_id"],
-            name=r["name"],
-            symbol=r["symbol"],
-            chain=r["chain"],
-            contract_address=r["contract_address"],
-            deployer_address=r["deployer_address"],
-            launched_at=r["launched_at"],
-            holder_gini=_f(r["holder_gini"]) if r["holder_gini"] is not None else None,
-            liquidity_usd=_f(r["liquidity_usd"]),
-            liquidity_removed_pct=_f(r["liquidity_removed_pct"]) if r["liquidity_removed_pct"] is not None else None,
-            privileged_functions=list(r["privileged_functions"]),
-            kol_channels=r["kol_channels"],
-            domain_age_days=r["domain_age_days"],
-            risk_score=r["risk_score"],
-            status=r["status"],
-        )
-        for r in rows
-    ]
-
-
 # ---------------------------------------------------------------------
 # Tác tử AI
 #
@@ -2448,6 +2446,7 @@ def detected_patterns(
 async def graph_narrative(
     account_key: str = Query(min_length=3, max_length=128),
     window_days: int = Query(default=30, ge=1, le=90),
+    case_id: str | None = Query(default=None, description="Neo cửa sổ theo mốc của vụ việc"),
 ) -> GraphNarrativeOut:
     """Đọc hộ chuyên viên vùng đồ thị quanh một tài khoản.
 
@@ -2461,13 +2460,26 @@ async def graph_narrative(
     giao dịch cuối cùng và mọi phép đo trả về 0.
     """
     with get_session() as session:
-        as_of = session.execute(
-            text(
-                """SELECT max(occurred_at) FROM transaction
-                    WHERE from_account_key = :account OR to_account_key = :account"""
-            ),
-            {"account": account_key},
-        ).scalar_one_or_none()
+        # Mở từ TRANG VỤ VIỆC thì neo đúng mốc mà phiên điều tra dùng.
+        #
+        # Không có bước này, hai khối trên cùng một màn hình đo trên hai cửa sổ
+        # 30 ngày lệch nhau — "tiền vào từ đâu" nói 13 979.96 còn bản giải thích
+        # nói 12 068.26 — và người đọc không biết tin bên nào.
+        alert_at = None
+        if case_id:
+            alert_at = session.execute(
+                text("SELECT min(created_at) FROM alert WHERE case_id = :c"), {"c": case_id}
+            ).scalar_one_or_none()
+        if alert_at is not None:
+            as_of = snapshot_time(session, account_key, alert_at)
+        else:
+            as_of = session.execute(
+                text(
+                    """SELECT max(occurred_at) FROM transaction
+                        WHERE from_account_key = :account OR to_account_key = :account"""
+                ),
+                {"account": account_key},
+            ).scalar_one_or_none()
         if as_of is None:
             raise HTTPException(status_code=404, detail=f"Không có giao dịch nào của tài khoản {account_key}")
         reading = read_neighbourhood(session, account_key, as_of=as_of, window_days=window_days)

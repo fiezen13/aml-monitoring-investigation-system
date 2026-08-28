@@ -200,24 +200,6 @@ class CryptoOut(BaseModel):
     source_mode: Literal["on_chain", "ledger"] = "on_chain"
 
 
-class ProjectOut(BaseModel):
-    id: str
-    name: str
-    symbol: str
-    chain: str
-    contract_address: str
-    deployer_address: str
-    launched_at: datetime
-    holder_gini: float | None
-    liquidity_usd: float
-    liquidity_removed_pct: float | None
-    privileged_functions: list[str]
-    kol_channels: int
-    domain_age_days: int | None
-    risk_score: int
-    status: str
-
-
 # ---------------------------------------------------------------------
 # Agent
 # ---------------------------------------------------------------------

@@ -104,7 +104,11 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             P.INVESTIGATE_CASE,
             P.ESCALATE_CASE,
             P.APPROVE_CASE,
-            P.PREPARE_SAR,
+            # KHÔNG có PREPARE_SAR. Quản lý CHỐT, không soạn: cho họ soạn thì
+            # cùng một người vừa lập hồ sơ vừa nằm trong nhóm phê duyệt, và
+            # nguyên tắc bốn mắt chỉ còn chặn được đúng cá nhân đó chứ không
+            # chặn được vai trò. Đã xảy ra thật trên production — một Quản lý
+            # trình hồ sơ rồi thấy chính nó trong hàng đợi chờ mình duyệt.
             P.DECIDE_SAR,
             P.VIEW_TRANSACTIONS,
             P.VIEW_ENTITY_GRAPH,
@@ -135,8 +139,14 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
 }
 
 #: Phạm vi dữ liệu mặc định của mỗi vai trò.
+#
+# ANALYST = ALL: chuyên viên thấy CẢ hàng đợi vụ việc, nhất quán với việc họ đã
+# thấy mọi cảnh báo để phân loại. Trước đây là ASSIGNED (chỉ vụ được giao) nhưng
+# hệ thống chưa có luồng giao việc → mọi vụ việc đều assigned_to=NULL nên chuyên
+# viên thấy TRỐNG, trông như hỏng. Quyền GHI vẫn do permission_codes kiểm soát
+# riêng, không phải data-scope, nên mở phạm vi đọc không nới quyền hành động.
 ROLE_DATA_SCOPE: dict[Role, DataScope] = {
-    Role.ANALYST: DataScope.ASSIGNED,
+    Role.ANALYST: DataScope.ALL,
     Role.MANAGER: DataScope.ALL,
     Role.ADMIN: DataScope.SYSTEM,
 }

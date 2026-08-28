@@ -66,6 +66,12 @@ class RiskComponent(BaseModel):
 class RiskBreakdown(BaseModel):
     alert_id: str
     final_risk_score: float = Field(ge=0, le=1)
+    #: CÙNG một điểm, theo thang 0-100 mà console hiển thị. Không phải số thừa:
+    #: bộ kiểm chứng tất định đối chiếu từng con số trong câu với con số có trong
+    #: bằng chứng, nên câu viết "97 điểm" mà bằng chứng chỉ có 0,97 sẽ bị đánh
+    #: trượt là bịa đặt. Giá trị lấy thẳng từ `alert.risk_score` (vốn đã 0-100),
+    #: không phải phép nhân suy ra.
+    final_risk_score_100: float = Field(ge=0, le=100)
     score_scale: Literal["0-1"] = "0-1"
     fusion_available: bool
     components: dict[str, RiskComponent]
@@ -369,10 +375,15 @@ class InvestigationStartOut(BaseModel):
 
 
 class ReviewRequest(BaseModel):
+    #: KHÔNG có "ESCALATE_TO_L2": hệ thống chỉ có ba vai (chuyên viên/quản lý/
+    #: quản trị) và chính ô rà soát này đã chỉ quản lý dùng được, nên "chuyển lên
+    #: cấp rà soát 2" là chuyển lên một cấp không tồn tại. Nó vẫn còn trong
+    #: `Explanation.recommended_action` — đó là enum của AI, không phải của người,
+    #: và 17 bản giải thích đã lưu mang giá trị ấy sẽ vỡ khi đọc lại nếu bỏ đi
+    #: (repository.get_explanation() có model_validate).
     decision: Literal[
         "CONTINUE_MONITORING",
         "REQUEST_MORE_INFORMATION",
-        "ESCALATE_TO_L2",
         "REVIEW_FOR_SAR_STR",
         "CLOSE_AS_LIKELY_FALSE_POSITIVE",
     ]

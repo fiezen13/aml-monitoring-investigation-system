@@ -102,6 +102,11 @@ export function formatFeature(value: unknown, format: FeatureFormat): string {
       if (value < 48) return `${value.toFixed(1)} giờ`;
       return `${(value / 24).toFixed(1)} ngày`;
     default:
-      return String(value);
+      // Đặc trưng chưa khai định dạng vẫn KHÔNG được đổ nguyên số máy.
+      // "-10.302149" hay "0.9999987" chỉ làm cột số dài ra; hai chữ số thập
+      // phân đủ để so sánh, và số nguyên thì không cần phần thập phân nào.
+      return Number.isInteger(value)
+        ? value.toLocaleString("vi-VN")
+        : value.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
   }
 }

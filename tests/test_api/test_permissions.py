@@ -41,7 +41,10 @@ def test_vai_tro_la_tu_choi_toan_bo() -> None:
         ("analyst", P.VIEW_AUDIT_LOG, False),
         # Quản lý: toàn quyền nghiệp vụ AML — soạn + quyết định SAR + phê duyệt +
         # nhật ký kiểm toán. Nhưng KHÔNG tab kỹ thuật, KHÔNG quản trị hệ thống.
-        ("manager", P.PREPARE_SAR, True),
+        # PHÂN TÁCH NHIỆM VỤ: Quản lý CHỐT hồ sơ, không lập hồ sơ. Người phê
+        # duyệt và người lập phải khác VAI, không chỉ khác người — nếu cùng vai
+        # thì nguyên tắc bốn mắt chỉ chặn được đúng cá nhân đó.
+        ("manager", P.PREPARE_SAR, False),
         ("manager", P.DECIDE_SAR, True),
         ("manager", P.APPROVE_CASE, True),
         ("manager", P.INVESTIGATE_ALERT, True),
@@ -90,8 +93,13 @@ def test_tab_ky_thuat_chi_admin() -> None:
 
 
 def test_pham_vi_du_lieu() -> None:
-    assert data_scope_for("analyst") == DataScope.ASSIGNED
-    assert scope_own_records("analyst") is True  # analyst chỉ thấy được giao
+    # analyst = ALL, KHÔNG phải ASSIGNED: hệ thống chưa có luồng giao việc nên
+    # mọi vụ việc đều assigned_to=NULL, để ASSIGNED thì chuyên viên mở hàng đợi
+    # ra thấy trống và tưởng hỏng. Quyền GHI vẫn do permission_codes chặn riêng
+    # nên nới phạm vi ĐỌC không nới quyền hành động. Xem ROLE_DATA_SCOPE.
+    # Khi nào có luồng giao việc thì đổi lại ASSIGNED cùng lúc ở cả hai nơi.
+    assert data_scope_for("analyst") == DataScope.ALL
+    assert scope_own_records("analyst") is False
     assert data_scope_for("manager") == DataScope.ALL
     assert scope_own_records("manager") is False
     assert data_scope_for("admin") == DataScope.SYSTEM

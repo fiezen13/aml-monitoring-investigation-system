@@ -53,7 +53,15 @@ def risk_evidence(detector: str) -> EvidenceEnvelope:
     }
     return evidence(
         EvidenceType.RISK_BREAKDOWN,
-        {"alert_id": "ALT-1", "final_risk_score": 0.96, "fusion_available": False, "components": components},
+        {
+            "alert_id": "ALT-1",
+            "final_risk_score": 0.96,
+            # Cùng một điểm theo thang console. Bản giải thích trích số này chứ
+            # không tự nhân 0,96 lên, để bộ kiểm chứng tìm thấy nó trong bằng chứng.
+            "final_risk_score_100": 96.0,
+            "fusion_available": False,
+            "components": components,
+        },
     )
 
 
@@ -221,9 +229,13 @@ def test_explanation_describes_money_movement_not_pipeline_mechanics():
     explanation = ExplanationAgent._deterministic(alert("ml"), [risk_evidence("ml"), behavior_evidence()])
     facts = " ".join(claim.claim for claim in explanation.claims if claim.claim_type == "FACT")
 
-    assert "41000.50" in facts and "39900.25" in facts
+    # Số tiền có dấu tách hàng nghìn để đọc được bằng mắt; bộ kiểm số chuẩn hoá
+    # lại trước khi đối chiếu với bằng chứng.
+    assert "41\u202f000.50" in facts and "39\u202f900.25" in facts
     assert "6 đối tác" in facts and "8 đối tác" in facts
-    assert "92.73" in facts and "2 giờ" in facts
+    # Tỉ lệ làm tròn tới phần trăm nguyên: cùng một phép đo phải hiện MỘT con số
+    # ở mọi chỗ, không phải "93%" ở tóm tắt và "92.73%" ở dữ kiện.
+    assert "93% tổng tiền ra" in facts and "2 giờ" in facts
     # The old wording reported tool plumbing instead of account behaviour.
     assert "bản ghi để rà soát" not in facts
 
@@ -671,7 +683,10 @@ def test_the_summary_says_what_the_account_did_with_the_money():
     funnel = _behavior(incoming=1, outgoing=1)
     funnel.payload["observed"].update(
         {
-            "unique_in_counterparties": 3,
+            # 6 nguồn: vượt NGƯỠNG DUY NHẤT của chữ "nhiều" (FAN_COUNTERPARTIES).
+            # Trước đây văn xuôi dùng ngưỡng riêng là 3, nên cùng một trang vừa
+            # gọi "nhiều nguồn" vừa ghi "chưa đạt ngưỡng ≥ 5".
+            "unique_in_counterparties": 6,
             "unique_out_counterparties": 1,
             "inflow_amount": 19967.46,
             "outflow_amount": 712081.05,
@@ -812,3 +827,307 @@ def test_critic_objection_about_a_transaction_id_in_the_ledger_is_refuted():
         requires_human_review=True,
     )
     assert EvidenceCriticAgent._is_refuted(issue, explanation, [page]) is True
+
+
+@pytest.mark.asyncio
+async def test_critic_still_rejects_an_invented_count_when_the_ledger_is_complete():
+    """Luật cắt-ngắn KHÔNG được nới cho hồ sơ có bằng chứng đầy đủ.
+
+    Đây là vế chặn của bài kiểm dưới: nếu bỏ điều kiện "đã tự khai bị cắt" thì
+    mọi phép đếm bịa đều lọt, và bộ kiểm tất định mất tác dụng với đúng loại
+    sai sót nó sinh ra để bắt.
+    """
+    risk = risk_evidence("rule")
+    explanation = Explanation(
+        summary="Review required",
+        risk_drivers=[],
+        claims=[
+            Claim(
+                claim_id="CLM-1",
+                claim="Tài khoản thực hiện 999 giao dịch xuyên biên giới.",
+                claim_type="FACT",
+                evidence_refs=[risk.evidence_id],
+                confidence=1,
+            )
+        ],
+        facts=[],
+        inferences=[],
+        missing_information=[],  # KHÔNG khai bị cắt ngắn
+        typologies=[],
+        confidence=0.8,
+        recommended_action="REQUEST_MORE_INFORMATION",
+    )
+    agent = EvidenceCriticAgent(MagicMock(), FakeGeminiService(), "INV-1")
+    result = (await agent.validate(explanation, [risk])).output
+    assert result.status == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_critic_excuses_a_count_dispute_when_the_ledger_was_truncated():
+    """Sổ giao dịch bị cắt thì phép đếm KHÔNG BÊN NÀO kiểm chứng được.
+
+    Hồ sơ thật: bản giải thích tự khai "Chỉ trích xuất được 50 giao dịch đầu
+    tiên" rồi nói "15 giao dịch xuyên biên giới". Tác tử phản biện đếm trên đúng
+    50 dòng ấy và phản đối — vòng 2 bảo có 17, vòng 3 bảo chỉ có 12. Ba con số
+    cho cùng một câu hỏi, vì cả ba cùng đếm trên một sổ đã bị cắt. Đứng trên
+    khiếu nại ấy để đánh trượt là buộc tội bịa đặt trong khi cả hai phía cùng mù.
+    """
+    risk = risk_evidence("rule")
+    explanation = Explanation(
+        summary="Review required",
+        risk_drivers=[],
+        claims=[
+            Claim(
+                claim_id="CLM-1",
+                claim="Giao dịch đi qua hành lang UK → Morocco (15 giao dịch xuyên biên giới).",
+                claim_type="FACT",
+                evidence_refs=[risk.evidence_id],
+                confidence=1,
+            )
+        ],
+        facts=[],
+        inferences=[],
+        missing_information=[
+            "Chỉ trích xuất được 50 giao dịch đầu tiên; tài khoản còn giao dịch chưa "
+            "được đưa vào bằng chứng."
+        ],
+        typologies=[],
+        confidence=0.8,
+        recommended_action="REQUEST_MORE_INFORMATION",
+    )
+    agent = EvidenceCriticAgent(MagicMock(), FakeGeminiService(), "INV-1")
+    result = (await agent.validate(explanation, [risk])).output
+    assert result.status == "PASS", [i.detail for i in result.issues]
+
+
+def test_prose_scrubber_removes_internal_codes_and_denominators():
+    """Sửa khuôn mẫu tất định là chưa đủ — mô hình tự viết phần tóm tắt.
+
+    Đo trên 30 phiên thật: bản tóm tắt Gemini viết ra câu "dựa trên mô hình phân
+    tích mạng lưới giao dịch (mega_pna) với mức điểm rủi ro tối đa là 100/100",
+    vừa lộ mã nhánh vừa dính lại đúng mẫu số đã bỏ khỏi khuôn mẫu. Đây là bộ lọc
+    tất định ở đầu ra, không phải một câu nhắc trong prompt.
+    """
+    out = ExplanationAgent._scrub_prose(
+        "dựa trên mô hình phân tích mạng lưới giao dịch (mega_pna) "
+        "với mức điểm rủi ro tối đa là 100/100"
+    )
+    assert "mega_pna" not in out
+    assert "100/100" not in out
+    assert "100 điểm" in out
+
+
+def test_prose_scrubber_keeps_machine_keys_and_long_numbers():
+    """`source` là khoá tra nhãn, không phải câu chữ — đổi nó là làm hỏng phép tra.
+
+    Và số tiền dài không được đụng tới: "906271514968" không phải điểm số.
+    """
+    tree = ExplanationAgent._scrub_tree(
+        {"source": "mega_pna", "reason": "nhánh mega_pna là nguồn điểm",
+         "facts": ["Tổng 906271514968 trên các giao dịch bị gắn cờ"]}
+    )
+    assert tree["source"] == "mega_pna"
+    assert "mega_pna" not in tree["reason"]
+    assert "906271514968" in tree["facts"][0]
+
+
+# --- Nhấn mạnh đúng chiều đo của từng nhóm hành vi ---------------------------
+
+
+def _typology(code: str, name_vi: str, required: list[str], supporting: list[str]) -> EvidenceEnvelope:
+    labels = {
+        "fan_in": "nhiều nguồn dồn vào",
+        "fan_out": "phân tán ra nhiều đích",
+        "short_dwell_time": "tiền nằm lại rất ngắn",
+        "rapid_outflow": "chuyển đi ngay sau khi nhận",
+        "network_flow": "tiền đi qua tài khoản",
+        "value_retention": "giữ lại rất ít",
+        "new_counterparties": "đối tác mới",
+    }
+    return evidence(
+        EvidenceType.TYPOLOGY_MAPPING,
+        {
+            "typology_code": code,
+            "name": code,
+            "name_vi": name_vi,
+            "description_vi": f"Mô tả của {name_vi}.",
+            "required_signals": required,
+            "supporting_signals": supporting,
+            "signal_labels_vi": labels,
+            "version": "v1",
+        },
+        source="typology_registry",
+    )
+
+
+def _narrative(
+    code: str,
+    name_vi: str,
+    required: list[str],
+    supporting: list[str],
+    *,
+    observed_overrides: dict | None = None,
+) -> str:
+    explanation = ExplanationAgent._deterministic(
+        alert("ml"),
+        [
+            risk_evidence("ml"),
+            behavior_evidence(**(observed_overrides or {})),
+            _typology(code, name_vi, required, supporting),
+        ],
+    )
+    return explanation.summary + " " + " ".join(explanation.inferences)
+
+
+def test_dau_hieu_da_khop_phai_kem_so_do_khong_chi_ten():
+    """"Khớp 3 trong 3 dấu hiệu" mà không có số là một câu rỗng.
+
+    Chuyên viên đọc để biết bao nhiêu nguồn, bao nhiêu đích, nằm lại bao lâu —
+    kèm ngưỡng để tự thấy nó vượt bao xa.
+    """
+    text = _narrative("T04", "Gom vào rồi toả ra bất thường", ["fan_in", "fan_out"], ["short_dwell_time"])
+
+    assert "6 đối tác gửi" in text and "8 đối tác nhận" in text
+    assert "ngưỡng ≥ 5" in text  # FAN_COUNTERPARTIES đi kèm ngay sau số đo
+
+
+def test_moi_nhom_hanh_vi_nhan_manh_mot_chieu_do_khac_nhau():
+    """Cùng một tài khoản, hai nhóm hành vi phải được kể theo hai chiều khác nhau."""
+    fan = _narrative("T04", "Gom vào rồi toả ra bất thường", ["fan_in", "fan_out"], ["short_dwell_time"])
+    speed = _narrative("T05", "Luân chuyển tiền tốc độ cao", ["rapid_outflow"], ["short_dwell_time"])
+
+    # Nhóm gom–toả: nhấn SỐ LƯỢNG đầu vào/đầu ra.
+    assert "số lượng nguồn dồn vào và số đích toả ra" in fan
+    assert "6 đối tác gửi" in fan and "8 đối tác nhận" in fan
+
+    # Nhóm luân chuyển nhanh: nhấn THỜI GIAN, và nêu tiền nằm lại bao lâu.
+    assert "tốc độ" in speed
+    assert "1.2 giờ" in speed and "93% tiền ra đi nhanh" in speed
+    # Chiều đo của nhóm kia không được chiếm chỗ câu nhấn mạnh của nhóm này.
+    assert "số lượng nguồn dồn vào" not in speed
+
+
+def test_nhom_trung_chuyen_neu_ro_ty_le_tien_di_qua():
+    text = _narrative(
+        "T02", "Mạng lưới tài khoản trung chuyển", ["network_flow"], ["rapid_outflow", "new_counterparties"]
+    )
+    assert "vai trò trung chuyển" in text
+    # 39900.25 / 41000.50 ≈ 97% số tiền NHẬN ĐƯỢC đã đi tiếp
+    assert "97% số tiền nhận được đã đi tiếp" in text
+
+
+def test_ty_le_tien_di_qua_khong_vuot_100_phan_tram():
+    """Tài khoản chuyển đi nhiều hơn số nhận trong cửa sổ không thành "811%".
+
+    Phần chênh đến từ tiền vào TRƯỚC cửa sổ; một tỉ lệ "đi qua" vượt 100% không
+    có nghĩa nào, và đó là con số đã lọt ra bản giải thích thật trên production.
+    """
+    text = _narrative(
+        "T02",
+        "Mạng lưới tài khoản trung chuyển",
+        ["network_flow"],
+        ["rapid_outflow"],
+        observed_overrides={"inflow_amount": 32920.87, "outflow_amount": 266894.95},
+    )
+    assert "100% số tiền nhận được đã đi tiếp" in text
+    assert "chênh do tiền vào trước cửa sổ" in text
+    assert "811" not in text
+
+
+def test_cau_tom_tat_mang_theo_so_do_quyet_dinh():
+    """Số quan trọng nhất phải nằm ở đoạn đầu, không bắt người đọc lần xuống dưới."""
+    explanation = ExplanationAgent._deterministic(
+        alert("ml"),
+        [
+            risk_evidence("ml"),
+            behavior_evidence(),
+            _typology("T05", "Luân chuyển tiền tốc độ cao", ["rapid_outflow"], ["short_dwell_time"]),
+        ],
+    )
+    assert "1.2 giờ" in explanation.summary
+
+
+def test_nhan_bang_chung_co_dau_tach_hang_nghin_van_che_duoc_cau():
+    """Chuẩn hoá dấu tách phải áp cho CẢ câu lẫn bằng chứng.
+
+    Nhãn yếu tố trong cơ sở dữ liệu nay là "Tổng 9 294 trên các giao dịch bị gắn
+    cờ" (dấu cách mảnh). Câu diễn giải chép lại nhãn ấy; bộ kiểm bỏ dấu tách ở
+    câu rồi so với bằng chứng còn nguyên dấu — hai chuỗi không bằng nhau, nhãn
+    không che được câu, và con số trong nhãn bị đòi bằng chứng số học. Đo trên
+    bản chạy lại 27/08/2026: đánh trượt 100% số phiên của hai lô liên tiếp.
+    """
+    label = "Tổng 9 294 trên các giao dịch bị gắn cờ, cộng thô theo nguyên tệ (chưa quy đổi)"
+    rule = evidence(
+        EvidenceType.RULE_TRIGGER,
+        {"triggered_rules": [{"factor_code": "MP_FLAGGED_AMOUNT", "factor_label": label,
+                              "contribution": "0.00", "weight": "0.00"}]},
+        source="mega_pna_engine",
+    )
+    explanation = Explanation(
+        summary="thử", risk_drivers=[], facts=[label + "."], inferences=[], missing_information=[],
+        typologies=[], confidence=0.5, recommended_action="REQUEST_MORE_INFORMATION", requires_human_review=True,
+        claims=[Claim(claim_id="C1", claim=label + ".", claim_type="FACT",
+                      evidence_refs=[rule.evidence_id], confidence=1.0)],
+    )
+    critic = EvidenceCriticAgent.__new__(EvidenceCriticAgent)
+    result = critic._deterministic_validate(explanation, [rule])
+
+    assert result.status == "PASS", [i.detail for i in result.issues]
+
+
+def test_so_co_dau_cach_thuong_van_kiem_chung_duoc():
+    """Mô hình diễn đạt lại thường đổi dấu cách mảnh thành dấu cách thường.
+
+    "5 155.25 Euro" khi ấy bị đọc thành hai số 5 và 155,25 — không số nào có
+    trong bằng chứng — và một câu hoàn toàn đúng bị đánh trượt UNSUPPORTED_CLAIM.
+    Đo trên bản chạy lại 27/08/2026: 3 trong 4 lỗi còn lại là do đúng chuyện này.
+    """
+    behaviour = evidence(
+        EvidenceType.BEHAVIOR_FEATURE,
+        {"observed": {"inflow_amount": 5155.25, "outflow_amount": 0.0, "incoming_count": 1,
+                      "outgoing_count": 0, "unique_in_counterparties": 1, "unique_out_counterparties": 0,
+                      "new_counterparties": 0, "rapid_outflow_percent": 0.0, "rapid_outflow_amount": 0.0,
+                      "rapid_window_hours": 2, "median_dwell_hours": None, "active_days": 1,
+                      "window_start": "2022-08-15T00:00:00Z", "window_end": "2022-09-14T00:00:00Z",
+                      "window_days": 30, "currency": "Euro", "largest_amount": 5155.25}},
+        source="feature_service",
+    )
+    claim_text = "Tài khoản nhận 5 155.25 Euro trong cửa sổ."  # dấu cách THƯỜNG
+    explanation = Explanation(
+        summary="thử", risk_drivers=[], facts=[claim_text], inferences=[], missing_information=[],
+        typologies=[], confidence=0.5, recommended_action="REQUEST_MORE_INFORMATION", requires_human_review=True,
+        claims=[Claim(claim_id="C1", claim=claim_text, claim_type="FACT",
+                      evidence_refs=[behaviour.evidence_id], confidence=1.0)],
+    )
+    critic = EvidenceCriticAgent.__new__(EvidenceCriticAgent)
+
+    assert critic._deterministic_validate(explanation, [behaviour]).status == "PASS"
+
+
+def test_so_trong_nhan_yeu_to_duoc_tach_thanh_gia_tri_kiem_chung_duoc():
+    """Số chỉ nằm trong chuỗi nhãn thì mọi cách diễn đạt lại đều làm nó mất kiểm chứng."""
+    from src.investigation.tools import _label_numbers
+
+    assert _label_numbers("Tổng 14 983 trên các giao dịch bị gắn cờ") == [14983.0]
+    assert _label_numbers("0 giao dịch tiền mặt") == [0.0]
+
+
+def test_ten_kenh_thanh_toan_doc_duoc_va_hop_nhat_hai_bo_du_lieu() -> None:
+    """Câu dữ kiện phải đọc lên được, và hai bộ dữ liệu phải kể giống nhau.
+
+    IBM ghi ``CREDIT_CARD``, SAML-D ghi ``Credit card``; nếu đưa thẳng vào câu
+    thì cùng một hành vi lại hiện hai kiểu, và cả hai kiểu đều là mã máy.
+    """
+    from src.investigation.agents import _channel
+
+    assert _channel("CREDIT_CARD") == _channel("Credit card") == "thẻ tín dụng"
+    assert _channel("Cash Withdrawal") == "rút tiền mặt"
+    assert _channel("Cross-border") == "chuyển tiền quốc tế"
+
+
+def test_kenh_la_thi_giu_nguyen_chu_khong_doan() -> None:
+    """Nạp thêm một bộ dữ liệu mới không được làm câu dữ kiện nói sai."""
+    from src.investigation.agents import _channel
+
+    assert _channel("SEPA_INSTANT") == "SEPA_INSTANT"
+    assert _channel(None) == "không rõ"
