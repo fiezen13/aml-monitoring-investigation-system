@@ -1,0 +1,35 @@
+# Cấu hình huấn luyện nhánh SAML-D (Multi-PNA + Edge Updates).
+# Kiến trúc tái dùng src.mega_pna.model.MegaPna; các khoá dưới đây ánh xạ thẳng
+# vào MegaPnaConfig. hidden_channels phải chia hết cho 5 (số tower PNA).
+model:
+  hidden_channels: 20
+  num_layers: 2
+  dropout: 0.28
+  edge_updates: true          # "+EU" — cập nhật đặc trưng cạnh mỗi lớp
+  reverse_message_passing: true
+  ego_ids: true
+
+training:
+  batch_size: 8192
+  num_neighbors: [25, 25]   # một giá trị / lớp GNN
+  learning_rate: 0.0008
+  epochs: 30
+  patience: 6                 # dừng sớm theo validation F1
+  num_workers: 4
+  train_neg_ratio: 20   # lấy mẫu cạnh giám sát: toàn bộ dương + 20× âm (train+val); test đầy đủ              # 0 khi chạy CPU cục bộ; 6 trên GPU 8 nhân
+
+loss:
+  # Mất cân bằng nặng (0,1% dương) → trọng số lớp dương cao.
+  class_weight_clean: 1.0
+  class_weight_laundering: 7.0
+
+split:
+  type: temporal              # KHÔNG random làm mặc định
+  train_fraction: 0.70
+  val_fraction: 0.15
+
+threshold:
+  strategy: f1                # chọn ngưỡng trên VALIDATION (f1 | f2 | recall_target)
+  recall_target: 0.90
+
+seeds: [42, 1337, 2026]       # benchmark nhiều seed
