@@ -13,7 +13,17 @@ import pytest
 
 from src.bitcoin_aml.risk_reasons import build_risk_reasons
 
-_DIST = json.loads(Path("data/models/bitcoin_elliptic/feature_distribution.json").read_text(encoding="utf-8"))
+# Bảng phân phối đặc trưng là ARTEFACT huấn luyện, không nằm trong git (nặng và
+# dựng lại được). Thiếu nó thì bỏ qua cả nhóm — cùng cách `db_engine` bỏ qua khi
+# không có PostgreSQL — thay vì làm hỏng bước thu thập của TOÀN BỘ bộ kiểm thử.
+_DIST_PATH = Path("data/models/bitcoin_elliptic/feature_distribution.json")
+if not _DIST_PATH.exists():
+    pytest.skip(
+        "Thiếu data/models/bitcoin_elliptic/feature_distribution.json — chạy lại đường ống "
+        "Bitcoin để dựng artefact này.",
+        allow_module_level=True,
+    )
+_DIST = json.loads(_DIST_PATH.read_text(encoding="utf-8"))
 
 # Đặc trưng theo DFRWS index: feature_N = model_index N.
 DOWNSTREAM_TX = {"name": "feature_133", "label": "Std deviation of value of output txs", "meaningful": True, "value": 2.5, "contribution": 0.4}

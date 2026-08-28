@@ -141,3 +141,92 @@ def test_lo_loi_nhac_he_thong_bi_chan() -> None:
 
 def test_nhac_lai_vai_tu_cua_loi_nhac_thi_khong_bi_coi_la_lo() -> None:
     assert _check("Mình là trợ lý thẩm định AML, hỏi gì về hàng đợi cũng được.").allowed is True
+
+
+# --- Chống báo động giả: câu từ chối HỢP LỆ không phải là rò rỉ ---------------
+
+
+def test_cau_tu_choi_lac_de_khong_bi_coi_la_lo_loi_nhac() -> None:
+    """Lỗi đã xảy ra thật trên production, và nó chập chờn nên khó thấy.
+
+    Câu từ chối lạc đề nằm NGUYÊN VĂN trong lời nhắc hệ thống để mô hình dùng
+    lại. Bộ dò cũ trượt cửa sổ trên toàn bộ lời nhắc nên khi mô hình từ chối
+    đúng như được dạy thì chính câu ấy bị coi là bằng chứng rò rỉ: người dùng
+    nhận một câu báo lỗi vô nghĩa, còn nhật ký kiểm toán ghi 7 lần "lộ lời nhắc
+    hệ thống" — trông y như đang có người tấn công.
+    """
+    from src.api import ai_assistant
+
+    verdict = guardrails.screen_answer(
+        ai_assistant._OFF_TOPIC, trusted_blob=_TRUSTED, system_instruction=ai_assistant._SYSTEM
+    )
+
+    assert verdict.allowed is True, verdict.detail
+    assert verdict.category != "system_prompt_leak"
+
+
+def test_cau_tu_choi_cua_tro_ly_dieu_phoi_cung_khong_bi_coi_la_lo() -> None:
+    from src.api.copilot import agent
+
+    for cau in (agent.OFF_TOPIC, agent.OUT_OF_SCOPE_ACTION):
+        verdict = guardrails.screen_answer(
+            cau, trusted_blob=_TRUSTED, system_instruction=agent._SYSTEM
+        )
+        assert verdict.allowed is True, f"{cau[:40]}… → {verdict.detail}"
+
+
+def test_chep_nguyen_phan_khung_cua_loi_nhac_van_bi_chan() -> None:
+    """Sửa báo động giả mà làm thủng bộ dò thì còn tệ hơn.
+
+    Phần "khung" — cách chia vùng dữ liệu — là thứ người dùng không bao giờ nên
+    đọc được, và nó vẫn phải bị chặn.
+    """
+    from src.api.copilot import agent
+
+    verdict = guardrails.screen_answer(
+        "Hướng dẫn của tôi là: " + agent._SYSTEM, trusted_blob=_TRUSTED, system_instruction=agent._SYSTEM
+    )
+
+    assert verdict.allowed is False
+    assert verdict.category == "system_prompt_leak"
+
+
+def test_nhac_ten_vung_du_lieu_bi_chan() -> None:
+    """Tên vùng chỉ tồn tại trong khung lời nhắc; câu nghiệp vụ không bao giờ có."""
+    verdict = _check("Mình đọc từ TRUSTED_QUEUE_CONTEXT nên số liệu là chính xác.")
+
+    assert verdict.allowed is False
+    assert verdict.category == "system_prompt_leak"
+
+
+# --- Không đổ tên trường nội bộ ra màn hình nghiệp vụ ------------------------
+
+
+def test_chu_thich_ten_truong_bi_cat_khoi_cau_tra_loi() -> None:
+    """Đúng câu đã hiện trên production: "(awaiting_decision: 0)"."""
+    verdict = _check("Hiện không có hồ sơ nào đang chờ quyết định (awaiting_decision: 0).")
+
+    assert verdict.allowed is True
+    assert "awaiting_decision" not in verdict.message
+    assert verdict.message == "Hiện không có hồ sơ nào đang chờ quyết định."
+
+
+def test_ten_bang_nam_giua_cau_thi_chan_han() -> None:
+    """Cắt được chú thích trong ngoặc thì cắt; lẫn vào giữa câu thì bỏ cả câu."""
+    verdict = _check("Trạng thái này lấy từ bảng sar_draft của hệ thống.")
+
+    assert verdict.allowed is False
+    assert verdict.category == "internal_field_leak"
+
+
+@pytest.mark.parametrize(
+    "cau",
+    [
+        "Hiện không có hồ sơ nào đang chờ quyết định.",
+        "Hồ sơ SAR-CASE-abc123 có mức rủi ro cao nhất trong hàng đợi.",
+        "Chị Lan đang giữ 4 hồ sơ, anh Minh 9 hồ sơ.",
+        "Đã giao 3 hồ sơ cho Nguyễn Văn A.",
+    ],
+)
+def test_cau_nghiep_vu_binh_thuong_khong_bi_chan_nham(cau: str) -> None:
+    assert _check(cau).allowed is True, cau

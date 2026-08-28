@@ -152,6 +152,70 @@ BLOCKED_ANSWER_MESSAGE = (
 )
 
 
+#: Câu từ chối mà mô hình ĐƯỢC DẠY nói ra.
+#:
+#: Đây là gốc của một lỗi đã xảy ra thật: các câu này nằm nguyên văn trong lời
+#: nhắc hệ thống để mô hình dùng lại. Bộ dò "lộ lời nhắc" trượt cửa sổ trên
+#: TOÀN BỘ lời nhắc, nên khi mô hình từ chối ĐÚNG như được dạy thì chính câu
+#: từ chối ấy bị coi là bằng chứng rò rỉ — người dùng nhận một câu báo lỗi khó
+#: hiểu, còn nhật ký kiểm toán ghi nhầm là có người đang tấn công.
+_SAFE_REFUSALS: list[str] = []
+
+
+def register_safe_refusal(*texts: str) -> None:
+    """Khai báo câu từ chối hợp lệ để bộ dò rò rỉ bỏ qua chúng."""
+    for text in texts:
+        cleaned = " ".join((text or "").split())
+        if cleaned and cleaned not in _SAFE_REFUSALS:
+            _SAFE_REFUSALS.append(cleaned)
+
+
+def internal_material(system_instruction: str) -> str:
+    """Phần lời nhắc hệ thống mà người dùng KHÔNG bao giờ nên đọc được.
+
+    Bằng lời nhắc trừ đi mọi câu từ chối đã đăng ký. Chỉ phần còn lại — cách
+    chia vùng, luật rào chắn, hướng dẫn nội bộ — mới đáng coi là bí mật.
+    """
+    material = " ".join((system_instruction or "").split())
+    for safe in _SAFE_REFUSALS:
+        material = material.replace(safe, " ")
+    return material
+
+
+#: Từ khoá CẤU TRÚC chỉ xuất hiện trong khung lời nhắc, không bao giờ trong một
+#: câu trả lời nghiệp vụ. Đây là dấu hiệu rò rỉ chính xác hơn nhiều so với đo
+#: độ giống nhau, và không bao giờ báo nhầm một câu từ chối hợp lệ.
+_SCAFFOLD_MARKERS = re.compile(
+    r"TRUSTED_QUEUE_CONTEXT|TRUSTED_CONTEXT|UNTRUSTED_TEXT|USER_QUESTION|CONVERSATION_HISTORY"
+    r"|system[ _]instruction|lời nhắc hệ thống|prompt hệ thống|RÀO CHẮN BẮT BUỘC|GUARDRAIL",
+    re.I,
+)
+
+#: Tên trường/khái niệm KỸ THUẬT không được lọt ra màn hình nghiệp vụ.
+_INTERNAL_TOKENS = re.compile(
+    r"\b(awaiting_decision|sar_draft(_id)?|approval_id|case_pk|case_ids?|assignee_id|employee_id"
+    r"|uncited_statements?|risk_score|due_at|action_type|action_id|tool_call|function_call"
+    r"|sar_status|assigned_to|payload|schema|endpoint)\b"
+    r"|\b(JSON|SQL|Gemini|LLM)\b",
+    re.I,
+)
+
+#: Chú thích kỹ thuật dạng "(tên_trường: giá trị)" mà mô hình hay chèn thêm.
+_FIELD_ANNOTATION = re.compile(r"\s*[(\[]\s*[a-z_]+[a-z0-9_]*\s*[:=]\s*[^)\]]{0,40}[)\]]", re.I)
+
+
+def sanitize_answer(answer: str) -> str:
+    """Bỏ chú thích kỹ thuật mô hình chèn thêm vào câu trả lời nghiệp vụ.
+
+    Chỉ cắt phần chú thích trong ngoặc — "(awaiting_decision: 0)" — chứ không
+    viết lại câu. Cắt được thì câu vẫn đọc trôi; không cắt được thì
+    ``screen_answer`` chặn hẳn, vì thà không trả lời còn hơn đổ tên bảng ra màn
+    hình của chuyên viên.
+    """
+    cleaned = _FIELD_ANNOTATION.sub("", answer or "")
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+
+
 def detect_injection(text: str) -> tuple[str, ...]:
     """Tên các mẫu tiêm lời nhắc bắt được trong ``text`` (rỗng nghĩa là không thấy)."""
     found = [name for name, pattern in _INJECTION_PATTERNS if pattern.search(text or "")]
@@ -224,7 +288,9 @@ def sanitize_history(history: list[dict[str, Any]] | None, *, max_turns: int = 6
     return safe
 
 
-def screen_answer(answer: str, *, trusted_blob: str, system_instruction: str) -> GuardrailVerdict:
+def screen_answer(
+    answer: str, *, trusted_blob: str, system_instruction: str | None = None
+) -> GuardrailVerdict:
     """Kiểm câu trả lời TRƯỚC khi trả cho người dùng.
 
     Bốn điều kiện, xếp theo mức nghiêm trọng:
@@ -235,11 +301,29 @@ def screen_answer(answer: str, *, trusted_blob: str, system_instruction: str) ->
     4. **Mã hồ sơ không có trong ngữ cảnh** — dấu hiệu bịa; đây là phép kiểm
        quy kết (attribution) rẻ nhất mà vẫn bắt được lỗi hay gặp nhất.
     """
-    text = (answer or "").strip()
+    text = sanitize_answer(answer)
     if not text:
         return GuardrailVerdict(allowed=False, category="empty", message="Không có nội dung trả về.")
 
-    if _leaks_system_prompt(text, system_instruction):
+    if _SCAFFOLD_MARKERS.search(text):
+        return GuardrailVerdict(
+            allowed=False,
+            category="system_prompt_leak",
+            detail="Câu trả lời nhắc tới cấu trúc nội bộ của lời nhắc hệ thống.",
+            message=BLOCKED_ANSWER_MESSAGE,
+        )
+    leaked = _INTERNAL_TOKENS.search(text)
+    if leaked:
+        return GuardrailVerdict(
+            allowed=False,
+            category="internal_field_leak",
+            detail=f"Câu trả lời chứa tên kỹ thuật: {leaked.group(0)}",
+            message=(
+                "Mình vừa soạn một câu trả lời có lẫn chi tiết kỹ thuật nên đã bỏ đi. "
+                "Bạn hỏi lại giúp mình nhé."
+            ),
+        )
+    if system_instruction and _leaks_system_prompt(text, internal_material(system_instruction)):
         return GuardrailVerdict(
             allowed=False,
             category="system_prompt_leak",
@@ -277,14 +361,14 @@ def screen_answer(answer: str, *, trusted_blob: str, system_instruction: str) ->
     return GuardrailVerdict(allowed=True, message=text)
 
 
-def _leaks_system_prompt(answer: str, system_instruction: str, *, window: int = 60) -> bool:
+def _leaks_system_prompt(answer: str, internal_text: str, *, window: int = 80) -> bool:
     """True nếu câu trả lời chứa một đoạn dài nguyên văn của lời nhắc hệ thống.
 
     So khớp theo cửa sổ trượt trên chuỗi đã chuẩn hoá khoảng trắng: nhắc lại vài
     từ là bình thường, chép nguyên một đoạn dài thì không.
     """
     haystack = " ".join(answer.split()).lower()
-    needle_source = " ".join(system_instruction.split()).lower()
+    needle_source = " ".join((internal_text or "").split()).lower()
     if len(needle_source) < window:
         return False
     return any(

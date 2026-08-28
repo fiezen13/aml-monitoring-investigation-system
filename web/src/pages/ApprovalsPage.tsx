@@ -27,6 +27,8 @@ import { Panel } from "../components/common/Panel";
 import { Tabs } from "../components/common/Tabs";
 import { DataTable, type Column } from "../components/tables/DataTable";
 import { api } from "../api/client";
+import type { ApiCopilotAction } from "../api/client";
+import { ActionCard } from "../components/copilot/ActionCard";
 import { useApi } from "../api/useApi";
 import { useApp } from "../context/AppContext";
 import type { Approval } from "../types";
@@ -39,6 +41,19 @@ const SLA_BAR: Record<Approval["slaTone"], string> = {
 };
 
 /** Hàng đợi phê duyệt SAR — góc nhìn MLRO, khớp screenshot cùng tên. */
+/** Một lượt trong khung trò chuyện; lượt của trợ lý có thể kèm một đề xuất. */
+interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+  action?: ApiCopilotAction | null;
+}
+
+/** Kết cục của một đề xuất trên màn hình này. */
+interface ActionState {
+  status: "pending" | "busy" | "done" | "cancelled" | "failed";
+  message?: string;
+}
+
 export function ApprovalsPage() {
   const navigate = useNavigate();
   const { pushToast } = useApp();
@@ -49,26 +64,56 @@ export function ApprovalsPage() {
   // rủi ro nên phải qua quản lý. Không nằm trong `sars()` vì không có bản nháp.
   const closeReqs = useApi(() => api.closeRequests(), []);
 
-  // Trợ lý AI thật (Gemini) hỏi–đáp về hàng đợi SAR — chỉ tư vấn, không tự quyết.
+  // Trợ lý AI (Gemini). Với Quản lý nó là trợ lý ĐIỀU PHỐI: ngoài hỏi–đáp, nó
+  // soạn được đề xuất giao việc. Đề xuất thôi — không có đường nào để trợ lý tự
+  // ghi dữ liệu; mọi thay đổi phải qua một lần bấm xác nhận ở thẻ bên dưới.
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatMsgs, setChatMsgs] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
+  const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
+  const [actionState, setActionState] = useState<Record<string, ActionState>>({});
 
   async function sendChat() {
     const q = chatInput.trim();
     if (!q || chatSending) return;
-    const history = chatMsgs.slice(-6);
+    // Chỉ gửi lên phần CHỮ của hội thoại; đề xuất cũ không phải ngữ cảnh để
+    // trợ lý dựa vào mà sinh hành động mới.
+    const history = chatMsgs.slice(-6).map((m) => ({ role: m.role, text: m.text }));
     setChatMsgs((m) => [...m, { role: "user", text: q }]);
     setChatInput("");
     setChatSending(true);
     try {
       const res = await api.sarAiChat(q, history);
-      setChatMsgs((m) => [...m, { role: "assistant", text: res.answer }]);
+      setChatMsgs((m) => [...m, { role: "assistant", text: res.answer, action: res.action ?? null }]);
     } catch {
       setChatMsgs((m) => [...m, { role: "assistant", text: "Không gọi được trợ lý AI. Thử lại sau." }]);
     } finally {
       setChatSending(false);
+    }
+  }
+
+  async function decideAction(actionId: string, confirm: boolean) {
+    setActionState((s) => ({ ...s, [actionId]: { status: "busy" } }));
+    try {
+      const res = confirm
+        ? await api.confirmCopilotAction(actionId)
+        : await api.cancelCopilotAction(actionId);
+      const status =
+        res.status === "executed" ? "done" : res.status === "cancelled" ? "cancelled" : "failed";
+      setActionState((s) => ({ ...s, [actionId]: { status, message: res.message } }));
+      if (res.status === "executed") {
+        // Hàng đợi vừa đổi chủ — nạp lại để màn hình khớp dữ liệu.
+        sars.reload();
+        closeReqs.reload();
+      }
+    } catch (cause) {
+      setActionState((s) => ({
+        ...s,
+        [actionId]: {
+          status: "failed",
+          message: cause instanceof Error ? cause.message : "Không thực hiện được, thử lại sau.",
+        },
+      }));
     }
   }
 
@@ -489,20 +534,31 @@ export function ApprovalsPage() {
             <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3 text-2xs">
               {chatMsgs.length === 0 && (
                 <div className="rounded-control border border-line bg-elev p-3 text-ink-mid">
-                  Hỏi về hàng đợi phê duyệt SAR — ví dụ: “hồ sơ nào rủi ro cao nhất và vì sao”, “còn bao nhiêu vụ chờ
-                  quyết định”, “hồ sơ nào còn câu chưa dẫn bằng chứng”. Trợ lý dựa trên dữ liệu thật, chỉ tư vấn — quyết
-                  định duyệt/từ chối vẫn là của bạn.
+                  Hỏi về hàng đợi và điều phối công việc — ví dụ: “hồ sơ nào rủi ro cao nhất”, “ai đang ít việc
+                  nhất”, “hồ sơ nào chưa có người xử lý”, hoặc “giao 3 hồ sơ rủi ro cao nhất cho Lan, hạn 4 giờ chiều
+                  mai”. Trợ lý dựa trên dữ liệu thật và chỉ ĐỀ XUẤT — mọi thay đổi cần bạn bấm xác nhận. Việc phê duyệt
+                  hay từ chối hồ sơ vẫn làm trên màn hình phê duyệt, không làm qua trò chuyện.
                 </div>
               )}
               {chatMsgs.map((m, i) => (
-                <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-                  <div
-                    className={`max-w-[85%] whitespace-pre-wrap rounded-control px-3 py-2 leading-relaxed ${
-                      m.role === "user" ? "bg-primary text-app" : "border border-line bg-elev text-ink-hi"
-                    }`}
-                  >
-                    {m.text}
+                <div key={i} className="space-y-2">
+                  <div className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+                    <div
+                      className={`max-w-[85%] whitespace-pre-wrap rounded-control px-3 py-2 leading-relaxed ${
+                        m.role === "user" ? "bg-primary text-app" : "border border-line bg-elev text-ink-hi"
+                      }`}
+                    >
+                      {m.text}
+                    </div>
                   </div>
+                  {m.action && (
+                    <ActionCard
+                      action={m.action}
+                      state={actionState[m.action.action_id] ?? { status: "pending" }}
+                      onConfirm={() => void decideAction(m.action!.action_id, true)}
+                      onCancel={() => void decideAction(m.action!.action_id, false)}
+                    />
+                  )}
                 </div>
               ))}
               {chatSending && <div className="text-ink-low">Trợ lý đang trả lời…</div>}

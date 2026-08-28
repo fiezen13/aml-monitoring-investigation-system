@@ -64,6 +64,12 @@ _SYSTEM = (
 )
 
 
+# Câu từ chối lạc đề nằm NGUYÊN VĂN trong lời nhắc hệ thống để mô hình dùng lại.
+# Khai báo ở đây để bộ dò rò rỉ biết đó là câu được phép nói, chứ không phải dấu
+# hiệu lời nhắc bị lộ.
+guardrails.register_safe_refusal(_OFF_TOPIC)
+
+
 def _get_client(settings: Settings) -> genai.Client:
     global _client
     if _client is None:

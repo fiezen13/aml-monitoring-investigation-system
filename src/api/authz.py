@@ -116,6 +116,11 @@ POLICY: dict[str, frozenset[str]] = {
     # của Quản lý. Chuyên viên xem số liệu việc của chính mình qua "/my-work".
     "/workload": frozenset({MANAGER}),
     "/my-work": INVESTIGATION_READ,
+    # Xác nhận / huỷ một đề xuất của trợ lý điều phối. Cổng ở đây chỉ chặn theo
+    # vai; QUYỀN cho từng loại hành động được kiểm lại trong `copilot.policy`,
+    # vì một endpoint phục vụ sáu hành động có mức thẩm quyền khác nhau.
+    "/actions/{action_id}/confirm": INVESTIGATION,
+    "/actions/{action_id}/cancel": INVESTIGATION,
     # --- Phiên điều tra của tác tử ---
     "/investigations/{investigation_id}": INVESTIGATION_READ,
     "/investigations/{investigation_id}/evidence": INVESTIGATION_READ,

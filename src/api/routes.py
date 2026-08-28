@@ -11,8 +11,14 @@ from fastapi.responses import Response
 from opentelemetry import trace
 from sqlalchemy import text
 
-from src.api import ai_assistant, authz
-from src.api.permissions import data_scope_for, permission_codes, scope_own_records
+from src.api import ai_assistant, authz, copilot
+from src.api.permissions import (
+    Permission,
+    data_scope_for,
+    has_permission,
+    permission_codes,
+    scope_own_records,
+)
 from src.api.sar_drafter import draft_sar
 from src.api.sar_pdf import build_sar_pdf
 from src.config import get_settings
@@ -2395,16 +2401,146 @@ def _sar_queue_context(session: Any) -> tuple[dict[str, Any], list[dict[str, Any
     return trusted, untrusted
 
 
+def _copilot_audit(
+    session: Any,
+    *,
+    event_type: str,
+    user: dict[str, Any],
+    action_id: str,
+    action_type: str,
+    case_ids: list[str] | None = None,
+    assignee_id: str | None = None,
+    policy_result: str = "ok",
+    confirmation_state: str = "",
+) -> None:
+    """Một mốc trong vòng đời đề xuất.
+
+    Cố ý KHÔNG ghi lời nhắc hệ thống, câu hỏi gốc hay bất kỳ bí mật nào — vết
+    kiểm toán cần trả lời "ai làm gì với hồ sơ nào", không cần chép lại nội dung
+    hội thoại.
+    """
+    session.execute(
+        text(
+            """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
+               VALUES (NULL, :event_type, :actor, :role, CAST(:payload AS jsonb))"""
+        ),
+        {
+            "event_type": event_type,
+            "actor": user["user_id"],
+            "role": _audit_role(user["role"]),
+            "payload": json.dumps(
+                {
+                    "source": copilot.tools.AUDIT_SOURCE,
+                    "action_id": action_id,
+                    "action_type": action_type,
+                    "target_case_ids": case_ids or [],
+                    "assignee_id": assignee_id,
+                    "policy_result": policy_result,
+                    "confirmation_state": confirmation_state,
+                },
+                ensure_ascii=False,
+            ),
+        },
+    )
+
+
+def _copilot_turn(user: dict[str, Any], request: SarChatRequest) -> dict[str, Any]:
+    """Một lượt của trợ lý ĐIỀU PHỐI (Quản lý).
+
+    Mô hình chỉ soạn đề xuất; đối chiếu định danh, kiểm chính sách và lưu tham
+    số đều nằm ở đây, trong phiên cơ sở dữ liệu của máy chủ.
+    """
+    now = copilot.schemas.utcnow()
+    with get_session() as session:
+        trusted, untrusted = copilot.agent.build_context(session, now=now)
+    history = [{"role": m.role, "text": m.text} for m in request.history]
+    reply, raw_action = copilot.agent.ask(request.question, trusted, untrusted, history)
+
+    body: dict[str, Any] = {
+        "answer": reply.answer,
+        "grounded_on": trusted["summary"],
+        "blocked": reply.blocked,
+        "guardrail": reply.category or None,
+        "action": None,
+    }
+    if reply.blocked or not raw_action:
+        return body
+
+    action_id = copilot.store.new_action_id()
+    with get_session() as session:
+        proposal, why = copilot.agent.build_proposal(session, raw_action, action_id=action_id, trusted=trusted)
+        if proposal is None:
+            # Mô hình vừa nhắc tới một định danh không đối chiếu được. Không sửa
+            # "cho gần đúng" — giao nhầm hồ sơ còn tệ hơn không giao.
+            _copilot_audit(
+                session,
+                event_type="action_rejected_by_policy",
+                user=user,
+                action_id=action_id,
+                action_type=str(raw_action.get("action_type") or "UNKNOWN"),
+                policy_result=f"unresolved: {why}",
+            )
+            body["answer"] = (
+                "Mình chưa lập được đề xuất vì không đối chiếu được đầy đủ hồ sơ hoặc người nhận việc "
+                "với dữ liệu hiện có. Bạn nêu rõ mã hồ sơ và tên chuyên viên giúp mình."
+            )
+            return body
+
+        verdict = copilot.policy.screen_action(
+            proposal,
+            trusted_case_ids={c["case_id"] for c in proposal.cases},
+            trusted_employee_ids={w["employee_id"] for w in trusted["team_workload"]},
+            role=user["role"],
+            now=now,
+        )
+        if not verdict.allowed:
+            _copilot_audit(
+                session,
+                event_type="action_rejected_by_policy",
+                user=user,
+                action_id=action_id,
+                action_type=proposal.action_type.value,
+                case_ids=list(proposal.case_ids),
+                assignee_id=proposal.assignee_id,
+                policy_result=verdict.code,
+            )
+            body["answer"] = verdict.message
+            return body
+
+        copilot.store.save_proposal(
+            session, proposal, requested_by=user["user_id"], requested_role=user["role"], now=now
+        )
+        _copilot_audit(
+            session,
+            event_type="action_proposed",
+            user=user,
+            action_id=action_id,
+            action_type=proposal.action_type.value,
+            case_ids=list(proposal.case_ids),
+            assignee_id=proposal.assignee_id,
+            confirmation_state="pending",
+        )
+    body["action"] = proposal.to_card()
+    return body
+
+
 @router.post("/sars/ai-chat")
 def sar_ai_chat(request: SarChatRequest, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    """Trợ lý AI (Gemini) hỏi–đáp về hàng đợi SAR, có nền dữ liệu thật, chỉ tư vấn.
+    """Trợ lý AI trên trang phê duyệt. Hai hình thái theo VAI TRÒ.
 
-    Không tự quyết định duyệt/từ chối (NT3). Trả lời dựa trên ngữ cảnh hàng đợi
-    được dựng server-side; văn bản tự do được cách ly (RK2).
+    * **Quản lý** — trợ lý ĐIỀU PHỐI: hỏi–đáp và đề xuất giao việc/hạn xử lý/
+      ưu tiên/nhắc việc. Đề xuất thôi: mọi thay đổi phải qua một lần xác nhận.
+    * **Chuyên viên, Quản trị** — trợ lý CHỈ ĐỌC như trước.
+
+    Phân nhánh theo QUYỀN chứ không theo chuỗi vai trò: một tài khoản không có
+    quyền điều phối sẽ nhận đúng trợ lý chỉ đọc, kể cả khi vai trò của nó được
+    đổi tên trong tương lai.
     """
     user = _require_user(authorization)
     if user["role"] not in {"analyst", "manager", "admin"}:
         raise HTTPException(status_code=403, detail="Vai trò hiện tại không dùng được trợ lý")
+    if has_permission(user["role"], Permission.SAR_ASSIGN):
+        return _copilot_turn(user, request)
     with get_session() as session:
         trusted, untrusted = _sar_queue_context(session)
     history = [{"role": m.role, "text": m.text} for m in request.history]
@@ -2437,7 +2573,191 @@ def sar_ai_chat(request: SarChatRequest, authorization: str | None = Header(defa
         "grounded_on": trusted["summary"],
         "blocked": reply.blocked,
         "guardrail": reply.category or None,
+        # Nhánh chỉ đọc không bao giờ có đề xuất; trả khoá rỗng để giao diện chỉ
+        # cần một cách đọc duy nhất cho cả hai vai.
+        "action": None,
     }
+
+
+def _load_action(session: Any, action_id: str, user: dict[str, Any], now: Any) -> dict[str, Any]:
+    """Đọc, khoá và kiểm lại một đề xuất. Ném HTTPException nếu không dùng được."""
+    row = copilot.store.load_for_update(session, action_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy đề xuất này")
+    # Chỉ CHÍNH người đề xuất được chấp thuận. Người khác bấm được nghĩa là một
+    # đề xuất soạn cho người này lại thành quyết định của người kia.
+    if row["requested_by"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Đề xuất này không thuộc phiên làm việc của bạn")
+    return row
+
+
+@router.post("/actions/{action_id}/confirm")
+def confirm_action(action_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    """Người dùng chấp thuận một đề xuất; máy chủ thực thi bằng mã tất định.
+
+    Mọi tham số đọc lại từ bản ghi đã lưu — không đọc lại câu tiếng Việt sinh ra
+    nó, và không nhận tham số từ thân yêu cầu. Toàn bộ phép kiểm chạy LẠI ở đây
+    vì thế giới đã đổi kể từ lúc đề xuất được soạn: hồ sơ có thể đã có người
+    nhận, chuyên viên có thể đã bị khoá, quyền có thể đã bị thu hồi.
+    """
+    user = _require_user(authorization)
+    now = copilot.schemas.utcnow()
+    with get_session() as session:
+        row = _load_action(session, action_id, user, now)
+
+        # Bấm hai lần: lần sau thấy trạng thái đã xong và trả lại đúng kết quả cũ.
+        if row["status"] == "executed":
+            return {"status": "executed", "already_done": True, "result": row["result"] or {}, "message": "Thao tác này đã được thực hiện."}
+        if row["status"] != "proposed":
+            raise HTTPException(status_code=409, detail="Đề xuất này không còn hiệu lực")
+        if row["expires_at"] <= now:
+            copilot.store.mark(session, action_id, "expired")
+            _copilot_audit(
+                session,
+                event_type="action_expired",
+                user=user,
+                action_id=action_id,
+                action_type=row["action_type"],
+                policy_result="expired",
+            )
+            # Chốt giao dịch TRƯỚC khi ném: `get_session` rollback trên đường
+            # ngoại lệ, nên không có dòng này thì chính vết kiểm toán vừa ghi
+            # cũng biến mất — mất đúng bằng chứng cần giữ.
+            session.commit()
+            raise HTTPException(status_code=409, detail="Đề xuất đã quá hạn, bạn soạn lại yêu cầu giúp mình")
+
+        payload = row["payload"]
+        if copilot.store.payload_hash(payload) != row["payload_hash"]:
+            copilot.store.mark(session, action_id, "rejected")
+            _copilot_audit(
+                session,
+                event_type="action_rejected_by_policy",
+                user=user,
+                action_id=action_id,
+                action_type=row["action_type"],
+                policy_result="payload_tampered",
+            )
+            session.commit()
+            raise HTTPException(status_code=409, detail="Nội dung đề xuất đã bị thay đổi, không thực hiện được")
+
+        action_type = copilot.store.action_type_of(row)
+        case_ids = list(payload.get("case_ids") or [])
+        assignee_id = payload.get("assignee_id")
+
+        _copilot_audit(
+            session,
+            event_type="action_confirmed",
+            user=user,
+            action_id=action_id,
+            action_type=action_type.value,
+            case_ids=case_ids,
+            assignee_id=assignee_id,
+            confirmation_state="confirmed",
+        )
+
+        # --- Kiểm lại lần hai, trên dữ liệu VỪA đọc ---
+        cases = copilot.tools.get_case_summary(session, case_ids)
+        # Tra lại TÊN người nhận để câu báo kết quả đọc được: "Đã giao 2 hồ sơ cho
+        # Vũ Thị Hồng Nhung", không phải "Đã giao 2 hồ sơ."
+        assignee_name = None
+        if assignee_id:
+            person = copilot.tools.resolve_employee(session, assignee_id)
+            assignee_name = person["name"] if person else None
+        proposal = copilot.ActionProposal(
+            action_id=action_id,
+            action_type=action_type,
+            case_ids=tuple(case_ids),
+            cases=tuple(cases),
+            assignee_id=assignee_id,
+            assignee_display_name=assignee_name,
+            priority=payload.get("priority"),
+            due_at=copilot.agent._parse_due(payload.get("due_at")),
+            instruction=payload.get("instruction"),
+        )
+        roster = copilot.tools.get_specialist_workload(session, now=now)
+        verdict = copilot.policy.screen_action(
+            proposal,
+            trusted_case_ids={c["case_id"] for c in cases},
+            trusted_employee_ids={w["employee_id"] for w in roster},
+            role=user["role"],
+            now=now,
+        )
+        if verdict.allowed:
+            verdict = copilot.policy.screen_case_states(cases, action_type)
+        if not verdict.allowed:
+            copilot.store.mark(session, action_id, "rejected", result={"code": verdict.code})
+            _copilot_audit(
+                session,
+                event_type="action_rejected_by_policy",
+                user=user,
+                action_id=action_id,
+                action_type=action_type.value,
+                case_ids=case_ids,
+                assignee_id=assignee_id,
+                policy_result=verdict.code,
+                confirmation_state="confirmed",
+            )
+            return {"status": "rejected", "code": verdict.code, "message": verdict.message}
+
+        result = copilot.tools.execute_action(
+            session,
+            action_type=action_type,
+            payload=payload,
+            actor=user["user_id"],
+            actor_role=_audit_role(user["role"]),
+        )
+        copilot.store.mark(session, action_id, "executed", result=result)
+        _copilot_audit(
+            session,
+            event_type="action_executed",
+            user=user,
+            action_id=action_id,
+            action_type=action_type.value,
+            case_ids=case_ids,
+            assignee_id=assignee_id,
+            confirmation_state="executed",
+        )
+    return {"status": "executed", "already_done": False, "result": result, "message": _executed_message(action_type, result, proposal)}
+
+
+@router.post("/actions/{action_id}/cancel")
+def cancel_action(action_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    """Người dùng bỏ một đề xuất. Không thực thi gì, nhưng vẫn để lại vết."""
+    user = _require_user(authorization)
+    now = copilot.schemas.utcnow()
+    with get_session() as session:
+        row = _load_action(session, action_id, user, now)
+        if row["status"] != "proposed":
+            raise HTTPException(status_code=409, detail="Đề xuất này không còn ở trạng thái chờ")
+        copilot.store.mark(session, action_id, "cancelled")
+        _copilot_audit(
+            session,
+            event_type="action_cancelled",
+            user=user,
+            action_id=action_id,
+            action_type=row["action_type"],
+            case_ids=list((row["payload"] or {}).get("case_ids") or []),
+            confirmation_state="cancelled",
+        )
+    return {"status": "cancelled", "message": "Đã huỷ đề xuất, chưa có thay đổi nào được ghi."}
+
+
+def _executed_message(action_type: Any, result: dict[str, Any], proposal: Any) -> str:
+    """Câu báo kết quả bằng ngôn ngữ nghiệp vụ.
+
+    Chỉ nói "đã xong" ở ĐÂY — sau khi máy chủ thực thi thật. Mô hình không bao
+    giờ được phép tự tuyên bố một việc đã hoàn thành.
+    """
+    n = len(result.get("assigned") or result.get("cases") or [])
+    who = proposal.assignee_display_name or ""
+    return {
+        copilot.ActionType.ASSIGN_TASK: f"Đã giao {n} hồ sơ" + (f" cho {who}." if who else "."),
+        copilot.ActionType.REASSIGN_TASK: f"Đã chuyển {n} hồ sơ" + (f" sang {who}." if who else "."),
+        copilot.ActionType.UPDATE_DEADLINE: f"Đã đặt hạn xử lý cho {n} hồ sơ.",
+        copilot.ActionType.UPDATE_PRIORITY: f"Đã đổi mức ưu tiên cho {n} hồ sơ.",
+        copilot.ActionType.SEND_REMINDER: f"Đã gửi nhắc việc cho {n} hồ sơ.",
+        copilot.ActionType.ADD_INSTRUCTION: f"Đã thêm chỉ dẫn cho {n} hồ sơ.",
+    }.get(action_type, f"Đã thực hiện trên {n} hồ sơ.")
 
 
 @router.post(

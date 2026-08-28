@@ -313,6 +313,48 @@ export interface ApiSar extends SarDraft {
 
 /** Khối lượng công việc của một người xử lý — đếm thẳng trên vụ việc/nhật ký. */
 /** Số liệu công việc của CHÍNH người đang đăng nhập (xem `MyWorkOut` phía API). */
+/**
+ * Đề xuất hành động của trợ lý điều phối.
+ *
+ * Giao diện dựng thẻ xác nhận từ CẤU TRÚC này, không phải từ Markdown trong câu
+ * trả lời: nút bấm vẽ bằng chữ thì người dùng không phân biệt được đâu là hành
+ * động thật, và mọi tham số đã nằm sẵn ở máy chủ dưới `action_id`.
+ */
+export interface ApiCopilotAction {
+  action_id: string;
+  action_type:
+    | "ASSIGN_TASK"
+    | "REASSIGN_TASK"
+    | "UPDATE_DEADLINE"
+    | "UPDATE_PRIORITY"
+    | "SEND_REMINDER"
+    | "ADD_INSTRUCTION";
+  case_ids: string[];
+  cases: {
+    case_id: string;
+    title: string | null;
+    risk_score: number;
+    priority: string;
+    state: string;
+    assignee_name: string | null;
+  }[];
+  assignee_id: string | null;
+  assignee_display_name: string | null;
+  current_assignee_name: string | null;
+  priority: string | null;
+  due_at: string | null;
+  instruction: string | null;
+  reason: string;
+  requires_confirmation: boolean;
+}
+
+export interface ApiCopilotReply {
+  answer: string;
+  blocked?: boolean;
+  guardrail?: string | null;
+  action: ApiCopilotAction | null;
+}
+
 export interface ApiMyWork {
   role: string;
   assigned_open: number;
@@ -1165,10 +1207,24 @@ export const api = {
   sars: () => request<ApiSar[]>("/sars"),
 
   sarAiChat: (question: string, history: { role: "user" | "assistant"; text: string }[] = []) =>
-    request<{ answer: string; grounded_on: Record<string, number> }>("/sars/ai-chat", {
+    request<ApiCopilotReply>("/sars/ai-chat", {
       method: "POST",
       body: JSON.stringify({ question, history }),
     }),
+
+  // Xác nhận / huỷ một đề xuất. Chỉ gửi `action_id`: tham số nằm ở máy chủ, nên
+  // không có đường nào để trình duyệt sửa nội dung việc sắp làm.
+  confirmCopilotAction: (actionId: string) =>
+    request<{ status: string; already_done?: boolean; code?: string; message: string }>(
+      `/actions/${encodeURIComponent(actionId)}/confirm`,
+      { method: "POST" },
+    ),
+
+  cancelCopilotAction: (actionId: string) =>
+    request<{ status: string; message: string }>(
+      `/actions/${encodeURIComponent(actionId)}/cancel`,
+      { method: "POST" },
+    ),
 
   sar: (sarId: string) => request<ApiSar>(`/sars/${encodeURIComponent(sarId)}`),
 

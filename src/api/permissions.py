@@ -64,6 +64,19 @@ class Permission(str, Enum):  # noqa: UP042 — giữ str Enum cho Python 3.10
     # Báo cáo
     VIEW_REPORTS = "view_reports"
     EXPORT_REPORT = "export_report"
+    # --- Điều phối công việc qua trợ lý (AML Operations Copilot) ---
+    #
+    # Tách riêng khỏi các quyền nghiệp vụ ở trên, và cố ý ĐỦ NHỎ: mỗi hành động
+    # ghi mà trợ lý được đề xuất phải có một quyền tương ứng, để chính sách kiểm
+    # theo hành động chứ không kiểm theo chuỗi `role == "manager"`. Vai trò là
+    # thứ đổi được; danh sách quyền thì nói rõ ai làm được đúng việc gì.
+    SAR_READ = "sar.read"
+    SAR_ASSIGN = "sar.assign"
+    SAR_REASSIGN = "sar.reassign"
+    TASK_PRIORITY_UPDATE = "task.priority.update"
+    TASK_DEADLINE_UPDATE = "task.deadline.update"
+    TASK_REMIND = "task.remind"
+    TEAM_WORKLOAD_READ = "team.workload.read"
     # Kiểm toán
     VIEW_AUDIT_LOG = "view_audit_log"
     # Quản trị hệ thống
@@ -86,6 +99,9 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             P.INVESTIGATE_CASE,
             P.ESCALATE_CASE,
             P.PREPARE_SAR,  # Chuyên viên soạn & nộp SAR; Quản lý mới phê duyệt.
+            # Đọc hàng đợi hồ sơ. KHÔNG có quyền điều phối nào: chuyên viên hỏi
+            # được về việc của mình, nhưng không giao việc cho người khác.
+            P.SAR_READ,
             P.VIEW_TRANSACTIONS,
             P.VIEW_ENTITY_GRAPH,
             P.VIEW_CRYPTO,
@@ -110,6 +126,16 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             # chặn được vai trò. Đã xảy ra thật trên production — một Quản lý
             # trình hồ sơ rồi thấy chính nó trong hàng đợi chờ mình duyệt.
             P.DECIDE_SAR,
+            # Điều phối công việc: giao, chuyển giao, đặt hạn, đổi ưu tiên, nhắc
+            # việc, xem khối lượng của cả nhóm. KHÔNG bao gồm phê duyệt/từ chối
+            # hồ sơ — việc đó chỉ đi qua màn hình phê duyệt chính thức.
+            P.SAR_READ,
+            P.SAR_ASSIGN,
+            P.SAR_REASSIGN,
+            P.TASK_PRIORITY_UPDATE,
+            P.TASK_DEADLINE_UPDATE,
+            P.TASK_REMIND,
+            P.TEAM_WORKLOAD_READ,
             P.VIEW_TRANSACTIONS,
             P.VIEW_ENTITY_GRAPH,
             P.VIEW_CRYPTO,
