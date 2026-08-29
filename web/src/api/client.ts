@@ -340,6 +340,8 @@ export interface ApiCopilotAction {
   }[];
   assignee_id: string | null;
   assignee_display_name: string | null;
+  /** Tải công việc hiện có của người nhận; null khi hệ thống chưa đo được. */
+  assignee_workload: { open_cases: number; overdue_cases: number } | null;
   current_assignee_name: string | null;
   priority: string | null;
   due_at: string | null;

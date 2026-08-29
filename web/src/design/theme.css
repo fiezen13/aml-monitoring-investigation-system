@@ -100,3 +100,33 @@
   position: relative;
   z-index: 1;
 }
+
+/* Thanh cuộn mảnh cho ngăn kéo trợ lý.
+ *
+ * Thanh cuộn mặc định của trình duyệt dày và sáng hơn mọi đường kẻ khác trong
+ * console, nên nó thành đường đậm nhất màn hình cho một thứ chỉ là cơ chế điều
+ * hướng. Ở đây: mảnh, chìm, và chỉ rõ lên khi con trỏ đi qua. */
+.copilot-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(133, 173, 209, 0.18) transparent;
+}
+
+.copilot-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.copilot-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.copilot-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background-clip: content-box;
+  background-color: rgba(133, 173, 209, 0.18);
+  border-radius: 999px;
+}
+
+.copilot-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(133, 173, 209, 0.32);
+}

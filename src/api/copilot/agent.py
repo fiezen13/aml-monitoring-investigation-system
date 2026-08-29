@@ -94,6 +94,10 @@ _SYSTEM = (
     "NGÔN NGỮ: tiếng Việt nghiệp vụ. TUYỆT ĐỐI không hiện tên trường dữ liệu, tên bảng, JSON, tên "
     "công cụ, tên mô hình, hay bất kỳ chi tiết kỹ thuật nào. Ví dụ sai: 'awaiting_decision = 0'. "
     "Ví dụ đúng: 'Hiện không có hồ sơ nào đang chờ quyết định.'\n"
+    "KHI ĐỀ XUẤT HÀNH ĐỘNG: phần 'answer' chỉ được là MỘT câu dẫn ngắn, ví dụ 'Mình đã chuẩn bị "
+    "phương án giao việc.' TUYỆT ĐỐI không liệt kê mã hồ sơ, tên người nhận, hạn xử lý hay lý do "
+    "trong câu đó — giao diện đã hiện đầy đủ trong thẻ xác nhận, nhắc lại là bắt người đọc đọc hai "
+    "lần cùng một thứ.\n"
     "Trả lời ngắn gọn, đi thẳng vào việc."
 )
 
@@ -216,11 +220,20 @@ def build_proposal(
 
     assignee_id: str | None = None
     assignee_name: str | None = None
+    assignee_workload: dict[str, int] | None = None
     if raw.get("assignee"):
         person = tools.resolve_employee(session, str(raw["assignee"]))
         if person is None:
             return None, "Không xác định được chuyên viên nhận việc."
         assignee_id, assignee_name = person["employee_id"], person["name"]
+        workload = next(
+            (w for w in (trusted.get("team_workload") or []) if w["employee_id"] == assignee_id), None
+        )
+        if workload:
+            assignee_workload = {
+                "open_cases": workload["open_cases"],
+                "overdue_cases": workload["overdue_cases"],
+            }
 
     order = {case_id: i for i, case_id in enumerate(case_ids)}
     cases_sorted = sorted(cases, key=lambda c: order[c["case_id"]])
@@ -233,6 +246,7 @@ def build_proposal(
         cases=tuple(cases_sorted),
         assignee_id=assignee_id,
         assignee_display_name=assignee_name,
+        assignee_workload=assignee_workload,
         current_assignee_name=current_holder,
         priority=str(raw["priority"]) if raw.get("priority") else None,
         due_at=_parse_due(raw.get("due_at")),

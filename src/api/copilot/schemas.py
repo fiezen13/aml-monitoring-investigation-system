@@ -88,6 +88,9 @@ class ActionProposal:
     cases: tuple[dict[str, Any], ...] = ()
     assignee_id: str | None = None
     assignee_display_name: str | None = None
+    #: Khối lượng việc HIỆN CÓ của người nhận, để người duyệt thấy mình đang
+    #: chất thêm lên ai. None khi chưa đo được — giao diện bỏ trống chứ không đoán.
+    assignee_workload: dict[str, int] | None = None
     #: Người đang giữ vụ, chỉ có nghĩa với REASSIGN_TASK.
     current_assignee_name: str | None = None
     priority: str | None = None
@@ -120,6 +123,7 @@ class ActionProposal:
             "cases": [dict(c) for c in self.cases],
             "assignee_id": self.assignee_id,
             "assignee_display_name": self.assignee_display_name,
+            "assignee_workload": self.assignee_workload,
             "current_assignee_name": self.current_assignee_name,
             "priority": self.priority,
             "due_at": self.due_at.isoformat() if self.due_at else None,
