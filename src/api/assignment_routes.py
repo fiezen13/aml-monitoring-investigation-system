@@ -81,6 +81,7 @@ def _row(r: Any, now: datetime) -> AssignmentRowOut:
         assignee_id=r["assigned_to"],
         assignee_name=r["assignee_name"],
         assigned_at=r["assigned_at"],
+        assigned_by_id=r["assigned_by"],
         assigned_by_name=r["assigned_by_name"],
         source=r["assignment_source"],
         due_at=r["due_at"],
@@ -146,7 +147,7 @@ def list_assignments(
 
     clause = " AND ".join(where)
     sql = f"""SELECT c.case_id, c.title, c.risk_score, c.priority, c.state, c.assigned_to,
-                     c.assigned_at, c.assignment_source, c.due_at,
+                     c.assigned_at, c.assigned_by, c.assignment_source, c.due_at,
                      u.name AS assignee_name, b.name AS assigned_by_name
                 FROM aml_case c
                 LEFT JOIN app_user u ON u.user_id = c.assigned_to
@@ -266,7 +267,7 @@ def assignment_detail(case_id: str, authorization: str | None = Header(default=N
             session.execute(
                 text(
                     """SELECT c.case_id, c.title, c.risk_score, c.priority, c.state, c.assigned_to,
-                              c.assigned_at, c.assignment_source, c.due_at,
+                              c.assigned_at, c.assigned_by, c.assignment_source, c.due_at,
                               u.name AS assignee_name, b.name AS assigned_by_name
                          FROM aml_case c
                          LEFT JOIN app_user u ON u.user_id = c.assigned_to

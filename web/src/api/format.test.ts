@@ -16,6 +16,7 @@ import {
   assignmentStatusLabel,
   assignmentSourceLabel,
   assignmentChannelLabel,
+  assignmentOriginLabel,
 } from "./format";
 
 describe("định dạng bằng chứng cho chuyên viên", () => {
@@ -225,5 +226,26 @@ describe("trách nhiệm của một lượt phân công", () => {
 
   it("chưa giao thì không nói gì về đường đi", () => {
     expect(assignmentChannelLabel(null)).toBe("");
+  });
+});
+
+describe("việc tới tay người xử lý bằng cách nào", () => {
+  it("chuyên viên tự nhận thì nói đúng là tự nhận", () => {
+    // `assigned_by` chính là người xử lý — không ai giao cả. Gọi đó là "giao
+    // trực tiếp" ngụ ý có người thứ hai đã quyết định, và đó là kể sai.
+    expect(assignmentOriginLabel("manual", "U-006", "U-006")).toBe("tự nhận vụ việc");
+  });
+
+  it("quản lý giao cho người khác thì vẫn là giao", () => {
+    expect(assignmentOriginLabel("manual", "U-002", "U-006")).toBe("giao trực tiếp");
+    expect(assignmentOriginLabel("ai_copilot", "U-002", "U-006")).toBe("qua Trợ lý AI");
+  });
+
+  it("so theo MÃ chứ không theo tên — hai người trùng tên là chuyện có thật", () => {
+    expect(assignmentOriginLabel("manual", "U-006", "U-007")).toBe("giao trực tiếp");
+  });
+
+  it("chưa giao thì không nói gì", () => {
+    expect(assignmentOriginLabel(null, null, null)).toBe("");
   });
 });

@@ -651,6 +651,23 @@ export function assignmentChannelLabel(source: string | null | undefined): strin
 }
 
 /**
+ * Việc này tới tay người xử lý bằng cách nào.
+ *
+ * Chuyên viên bấm "Nhận vụ" thì `assigned_by` chính là họ — không ai giao cả.
+ * Gọi đó là "giao trực tiếp" là kể sai: nó ngụ ý có một người thứ hai đã quyết
+ * định, trong khi đây là người tự nhận việc về mình. So theo MÃ chứ không theo
+ * tên, vì hai người trùng tên là chuyện có thật.
+ */
+export function assignmentOriginLabel(
+  source: string | null | undefined,
+  assignedById: string | null | undefined,
+  assigneeId: string | null | undefined,
+): string {
+  if (assignedById && assigneeId && assignedById === assigneeId) return "tự nhận vụ việc";
+  return assignmentChannelLabel(source);
+}
+
+/**
  * Hạn xử lý, kể bằng lời chứ không chỉ bằng màu.
  *
  * "Còn 5 giờ" đọc được ngay; một chấm vàng thì phải học mới hiểu, và người mù

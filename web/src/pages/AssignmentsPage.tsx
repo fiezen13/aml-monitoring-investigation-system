@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { ApiAssignmentDetail, ApiAssignmentRow } from "../api/client";
 import {
-  assignmentChannelLabel,
+  assignmentOriginLabel,
   assignmentStatusLabel,
   deadlineText,
   formatDateTime,
@@ -170,13 +170,17 @@ export function AssignmentsPage() {
           <span
             className="block"
             title={
-              r.source === "ai_copilot"
-                ? `Được đề xuất qua Trợ lý AI và xác nhận bởi ${r.assigned_by_name}.`
-                : `Giao trực tiếp bởi ${r.assigned_by_name}.`
+              r.assigned_by_id === r.assignee_id
+                ? `${r.assigned_by_name} tự nhận vụ việc này.`
+                : r.source === "ai_copilot"
+                  ? `Được đề xuất qua Trợ lý AI và xác nhận bởi ${r.assigned_by_name}.`
+                  : `Giao trực tiếp bởi ${r.assigned_by_name}.`
             }
           >
             <span className="block text-ink-hi">{r.assigned_by_name}</span>
-            <span className="block text-meta text-ink-dim">{assignmentChannelLabel(r.source)}</span>
+            <span className="block text-meta text-ink-dim">
+              {assignmentOriginLabel(r.source, r.assigned_by_id, r.assignee_id)}
+            </span>
           </span>
         ) : (
           <span className="text-ink-dim">—</span>

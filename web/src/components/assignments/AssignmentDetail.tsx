@@ -4,6 +4,7 @@ import { api } from "../../api/client";
 import type { ApiAssignmentDetail } from "../../api/client";
 import {
   assignmentChannelLabel,
+  assignmentOriginLabel,
   assignmentStatusLabel,
   deadlineText,
   formatDateTime,
@@ -125,7 +126,7 @@ export function AssignmentDetail({
                     <>
                       {d.row.assigned_by_name}
                       <div className="text-data text-ink-dim">
-                        {assignmentChannelLabel(d.row.source)}
+                        {assignmentOriginLabel(d.row.source, d.row.assigned_by_id, d.row.assignee_id)}
                       </div>
                     </>
                   ) : (

@@ -27,7 +27,9 @@ class AssignmentRowOut(BaseModel):
     assignee_id: str | None = None
     assignee_name: str | None = None
     assigned_at: datetime | None = None
-    #: Người BẤM NÚT giao việc — kể cả khi phương án do trợ lý soạn.
+    #: Người BẤM NÚT giao việc — kể cả khi phương án do trợ lý soạn. Trùng với
+    #: `assignee_id` nghĩa là chuyên viên TỰ NHẬN, không ai giao cho họ cả.
+    assigned_by_id: str | None = None
     assigned_by_name: str | None = None
     #: 'manual' | 'ai_copilot' | None (chưa giao).
     source: str | None = None

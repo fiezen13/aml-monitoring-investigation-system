@@ -368,7 +368,8 @@ export interface ApiAssignmentRow {
   assignee_id: string | null;
   assignee_name: string | null;
   assigned_at: string | null;
-  /** Người BẤM NÚT giao việc — kể cả khi phương án do trợ lý soạn. */
+  /** Người BẤM NÚT giao việc. Trùng `assignee_id` nghĩa là chuyên viên tự nhận. */
+  assigned_by_id: string | null;
   assigned_by_name: string | null;
   source: "manual" | "ai_copilot" | null;
   due_at: string | null;
