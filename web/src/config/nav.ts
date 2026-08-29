@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Blocks,
   ClipboardCheck,
   Coins,
   Database,
@@ -77,8 +76,6 @@ export const NAV: NavItem[] = [
     roles: ["analyst", "manager"],
   },
 
-  { to: "/projects", label: "Rủi ro dự án", icon: Blocks, roles: ["analyst", "manager"] },
-
   // Tab KỸ THUẬT — chỉ Quản trị hệ thống (admin). Chuyên viên và Quản lý không thấy.
   {
     section: "Kỹ thuật · Mô hình",
@@ -140,7 +137,6 @@ export const ROUTE_ROLES: [string, string[]][] = [
   ["/network", ["analyst", "manager"]],
   ["/transactions", ["analyst", "manager"]],
   ["/crypto", ["analyst", "manager"]],
-  ["/projects", ["analyst", "manager"]],
   ["/agents", ["admin"]],
   ["/benchmarks", ["admin"]],
   ["/models", ["admin"]],
@@ -177,7 +173,6 @@ export const ROUTE_TITLES: [string, string][] = [
   ["/network", "Đồ thị mạng lưới"],
   ["/transactions", "Tra cứu giao dịch"],
   ["/crypto", "Truy vết tài sản mã hoá · mô phỏng ABM"],
-  ["/projects", "Rủi ro dự án · mô phỏng ABM"],
   ["/agents/", "Bảng lượt chạy tác tử · mô phỏng ABM"],
   ["/agents", "Lượt chạy tác tử AI · mô phỏng ABM"],
   ["/benchmarks", "Đánh giá chuẩn · mô phỏng ABM"],

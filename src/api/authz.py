@@ -172,8 +172,6 @@ POLICY: dict[str, frozenset[str]] = {
     "/fc/graph/edges/{edge_id}/transactions": INVESTIGATION_READ,
     "/fc/graph/nodes/{node_id}/transactions": INVESTIGATION_READ,
     "/fc/crypto": INVESTIGATION,
-    # Màn "Rủi ro dự án" — cùng nhóm tài sản mã hoá với /fc/crypto.
-    "/fc/projects": INVESTIGATION_READ,
     # Giải thích Gemini on-demand cho một giao dịch Bitcoin — cùng quyền điều tra.
     "/fc/bitcoin/{tx_id}/explain": INVESTIGATION,
     "/fc/bitcoin": INVESTIGATION_READ,

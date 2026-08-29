@@ -14,7 +14,6 @@ export const NAV_PERMISSION: Record<string, Permission> = {
   "/network": PERMISSIONS.VIEW_ENTITY_GRAPH,
   "/transactions": PERMISSIONS.VIEW_TRANSACTIONS,
   "/crypto": PERMISSIONS.VIEW_CRYPTO,
-  "/projects": PERMISSIONS.VIEW_CRYPTO,
   "/agents": PERMISSIONS.VIEW_MODEL_QUALITY,
   "/benchmarks": PERMISSIONS.VIEW_MODEL_QUALITY,
   "/models": PERMISSIONS.VIEW_MODEL_QUALITY,

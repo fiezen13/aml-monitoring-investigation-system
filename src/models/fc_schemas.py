@@ -193,31 +193,6 @@ class ExposureOut(BaseModel):
     known_from: datetime
 
 
-class ProjectOut(BaseModel):
-    """Một dự án token trên màn "Rủi ro dự án".
-
-    Chỉ đặc trưng QUAN SÁT ĐƯỢC công khai — mức tập trung nắm giữ, thanh khoản,
-    quyền đặc biệt trong hợp đồng, tuổi tên miền. Dùng để xếp thứ tự rà soát,
-    không phải để kết luận dự án gian lận.
-    """
-
-    id: str
-    name: str
-    symbol: str
-    chain: str
-    contract_address: str
-    deployer_address: str
-    launched_at: datetime
-    holder_gini: float | None = None
-    liquidity_usd: float = 0.0
-    liquidity_removed_pct: float | None = None
-    privileged_functions: list[str] = Field(default_factory=list)
-    kol_channels: int = 0
-    domain_age_days: int | None = None
-    risk_score: int = 0
-    status: str = "unknown"
-
-
 class CryptoOut(BaseModel):
     transfers: list[CryptoTransferOut]
     exposures: list[ExposureOut]
