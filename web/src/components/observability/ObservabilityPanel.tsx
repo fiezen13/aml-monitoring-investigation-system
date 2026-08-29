@@ -24,8 +24,27 @@ import { C } from "../../design/palette";
  * investigation_tool_call) nên luôn chạy, không phụ thuộc stack Loki/Jaeger.
  */
 
-const GRAFANA_OVERVIEW =
-  "/grafana/d/fin07-observability/fin-07-observability?orgId=1&from=now-6h&to=now&refresh=30s&theme=dark&kiosk=tv";
+const GRAFANA_ARGS = "orgId=1&from=now-6h&to=now&refresh=30s&theme=dark&kiosk=tv";
+
+/**
+ * Hai bảng, hai câu hỏi.
+ *
+ * Trước đây chỉ có bảng tác tử, nên tab Chỉ số trả lời được "gọi Gemini tốn bao
+ * nhiêu" mà không trả lời được "hệ thống phản hồi nhanh hay chậm" — dù độ trễ
+ * HTTP vẫn được đo và vẫn có cảnh báo dựa trên nó. Bảng Hệ thống đứng trước vì
+ * đó là câu hỏi người trực hỏi đầu tiên.
+ */
+const GRAFANA_BOARDS = [
+  { id: "system", label: "Hệ thống", uid: "fin07-system", slug: "fin-07-he-thong" },
+  { id: "agent", label: "Tác tử AI", uid: "fin07-observability", slug: "fin-07-observability" },
+] as const;
+
+type BoardId = (typeof GRAFANA_BOARDS)[number]["id"];
+
+function boardUrl(id: BoardId): string {
+  const board = GRAFANA_BOARDS.find((b) => b.id === id) ?? GRAFANA_BOARDS[0];
+  return `/grafana/d/${board.uid}/${board.slug}?${GRAFANA_ARGS}`;
+}
 
 type Tab = "metrics" | "logs" | "traces";
 type Availability = "checking" | "ready" | "unauthorized" | "unavailable";
@@ -248,6 +267,8 @@ function TracesView() {
 function MetricsView() {
   const [availability, setAvailability] = useState<Availability>("checking");
   const [reloadKey, setReloadKey] = useState(0);
+  const [board, setBoard] = useState<BoardId>("system");
+  const boardHref = boardUrl(board);
 
   const probe = useCallback(async () => {
     setAvailability("checking");
@@ -268,11 +289,29 @@ function MetricsView() {
   return (
     <div>
       <div className="flex items-center gap-2 border-b border-line px-4 py-2 text-2xs text-ink-low">
+        <div className="flex items-center gap-1" role="tablist" aria-label="Chọn bảng số liệu">
+          {GRAFANA_BOARDS.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              role="tab"
+              aria-selected={board === b.id}
+              onClick={() => setBoard(b.id)}
+              className={`h-7 rounded-control px-2.5 text-2xs ${
+                board === b.id
+                  ? "border border-accent-line bg-raised text-ink-hi"
+                  : "border border-transparent text-ink-low hover:text-ink-mid"
+              }`}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
         <span>Grafana chỉ để trực quan hoá số liệu (Prometheus) — logs/traces ở tab riêng.</span>
         <button type="button" className="fc-btn ml-auto h-7" onClick={() => setReloadKey((v) => v + 1)}>
           <RefreshCw size={12} aria-hidden /> Tải lại
         </button>
-        <a className="fc-btn h-7" href={GRAFANA_OVERVIEW} target="_blank" rel="noreferrer">
+        <a className="fc-btn h-7" href={boardHref} target="_blank" rel="noreferrer">
           Mở Grafana <ExternalLink size={12} aria-hidden />
         </a>
       </div>
@@ -292,9 +331,9 @@ function MetricsView() {
       )}
       {availability === "ready" && (
         <iframe
-          key={reloadKey}
+          key={`${board}-${reloadKey}`}
           className="block h-[820px] w-full border-0 bg-app"
-          src={GRAFANA_OVERVIEW}
+          src={boardHref}
           title="FIN-07 · Grafana metrics"
           loading="eager"
         />

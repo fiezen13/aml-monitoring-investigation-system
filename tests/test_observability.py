@@ -70,28 +70,103 @@ def test_collector_has_separate_signal_pipelines_and_redaction() -> None:
     assert pipelines["traces"]["exporters"] == ["otlp_grpc/jaeger"]
 
 
-def test_single_dashboard_is_correlated_and_question_driven() -> None:
+DASHBOARD_ROWS = {
+    "fin07-observability.json": (
+        "fin07-observability",
+        ["Latency", "Traffic", "Error", "Cost", "Tokens", "Quality"],
+    ),
+    "fin07-system.json": (
+        "fin07-system",
+        [
+            "Sức khoẻ",
+            "Độ trễ API",
+            "Lưu lượng và lỗi",
+            "Hàng đợi và worker",
+            "Điều tra đầu-cuối",
+            "Hạ tầng",
+        ],
+    ),
+}
+
+
+def _dashboards() -> dict:
     import json
 
-    paths = list((ROOT / "monitoring/grafana/dashboards").glob("*.json"))
-    assert [path.name for path in paths] == ["fin07-observability.json"]
-    dashboard = json.loads(paths[0].read_text(encoding="utf-8"))
-    assert dashboard["uid"] == "fin07-observability"
-    # Sáu nhóm chỉ số theo đặc tả: mỗi nhóm là một hàng, không hơn không kém.
-    rows = [panel for panel in dashboard["panels"] if panel["type"] == "row"]
-    assert [row["title"].split(" · ")[1] for row in rows] == [
-        "Latency",
-        "Traffic",
-        "Error",
-        "Cost",
-        "Tokens",
-        "Quality",
-    ]
-    charts = [panel for panel in dashboard["panels"] if panel["type"] != "row"]
-    assert {panel["datasource"]["type"] for panel in charts} == {"prometheus"}
-    for panel in charts:
-        assert panel.get("description"), f"panel {panel.get('title')} has no operational question"
-        assert panel.get("targets"), f"panel {panel.get('title')} has no query"
+    return {
+        path.name: json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted((ROOT / "monitoring/grafana/dashboards").glob("*.json"))
+    }
+
+
+def test_dashboards_are_correlated_and_question_driven() -> None:
+    boards = _dashboards()
+    assert sorted(boards) == sorted(DASHBOARD_ROWS)
+    for name, document in boards.items():
+        uid, expected_rows = DASHBOARD_ROWS[name]
+        assert document["uid"] == uid
+        # Mỗi nhóm là một hàng, không hơn không kém.
+        rows = [panel for panel in document["panels"] if panel["type"] == "row"]
+        assert [row["title"].split(" · ")[1] for row in rows] == expected_rows, name
+        charts = [panel for panel in document["panels"] if panel["type"] != "row"]
+        assert {panel["datasource"]["type"] for panel in charts} == {"prometheus"}, name
+        for panel in charts:
+            assert panel.get("description"), f"{name}: panel {panel.get('title')} has no operational question"
+            assert panel.get("targets"), f"{name}: panel {panel.get('title')} has no query"
+
+
+def test_system_dashboard_shows_real_system_latency_not_only_agent_metrics() -> None:
+    """Bảng Hệ thống phải vẽ độ trễ CỦA HỆ THỐNG, không phải độ trễ gọi mô hình.
+
+    Trước đây chỉ có bảng tác tử: hàng tên là "Latency" nhưng mọi truy vấn đều
+    hỏi `fin07_gemini_*`, nên nhìn vào không biết API nhanh hay chậm. Test này
+    khoá lại đúng điều đó — độ trễ HTTP, hàng đợi worker và thời gian điều tra
+    đầu-cuối đều phải có mặt, và không được lẫn chỉ số Gemini vào.
+    """
+    document = _dashboards()["fin07-system.json"]
+    exprs = " ".join(target.get("expr", "") for panel in document["panels"] for target in panel.get("targets", []))
+    for metric in (
+        "fin07_http_request_duration_seconds_bucket",  # độ trễ API thật
+        "fin07_http_requests_total",
+        "fin07_worker_queue_wait_seconds_bucket",  # chờ hàng đợi
+        "fin07_worker_job_duration_seconds_bucket",
+        "fin07_investigation_duration_seconds_bucket",  # đầu-cuối nghiệp vụ
+    ):
+        assert metric in exprs, f"bảng Hệ thống không vẽ {metric}"
+    assert "fin07_gemini" not in exprs, "chỉ số Gemini thuộc bảng Tác tử, không phải bảng Hệ thống"
+
+    # Nhãn `job` của worker bị Prometheus đổi tên vì trùng nhãn scrape. Gom theo
+    # `job` sẽ ra tên scrape chứ không phải loại tác vụ — sai âm thầm.
+    assert "exported_job" in exprs
+
+
+def test_dashboard_queries_only_use_metrics_the_code_emits() -> None:
+    """Không panel nào được hỏi một chỉ số fin07_* mà mã không hề tạo ra.
+
+    Panel trỏ sai tên không báo lỗi, nó chỉ hiện đường trống — và người xem hiểu
+    nhầm là hệ thống đang im. Danh sách chỉ số lấy thẳng từ nơi khai báo.
+    """
+    import re
+
+    source = (ROOT / "src/observability/metrics.py").read_text(encoding="utf-8")
+    declared = {name.replace(".", "_") for name in re.findall(r'create_\w+\(\s*"([^"]+)"', source)}
+    assert declared, "không đọc được chỉ số nào từ src/observability/metrics.py"
+
+    used = set()
+    for document in _dashboards().values():
+        for panel in document["panels"]:
+            for target in panel.get("targets", []):
+                used |= set(re.findall(r"\bfin07_[a-z0-9_]+", target.get("expr", "")))
+
+    unknown = set()
+    for name in used:
+        base = name
+        for suffix in ("_bucket", "_sum", "_count", "_total"):
+            if base.endswith(suffix):
+                base = base[: -len(suffix)]
+                break
+        if base not in declared and name not in declared:
+            unknown.add(name)
+    assert not unknown, f"biểu đồ hỏi chỉ số không tồn tại: {sorted(unknown)}"
 
     # Kiến trúc trình bày MỚI: Grafana CHỈ để trực quan hoá metrics; Logs và
     # Traces là giao diện GỐC đọc thẳng lượt chạy tác tử (không nhúng Grafana
@@ -99,5 +174,5 @@ def test_single_dashboard_is_correlated_and_question_driven() -> None:
     # Jaeger, kiểm ở test phía trên).
     panel = (ROOT / "web/src/components/observability/ObservabilityPanel.tsx").read_text(encoding="utf-8")
     assert 'type Tab = "metrics" | "logs" | "traces"' in panel
-    assert "GRAFANA_OVERVIEW" in panel  # Grafana chỉ cho tab metrics
+    assert "GRAFANA_BOARDS" in panel  # tab metrics chuyển được giữa bảng Hệ thống và bảng Tác tử
     assert "api.agentRuns" in panel  # logs/traces gốc, đọc lượt chạy tác tử

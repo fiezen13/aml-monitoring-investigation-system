@@ -22,6 +22,33 @@ Chỉ số, SLO và toàn bộ runbook xử lý cảnh báo. Mỗi cảnh báo t
 
 This implementation observes the existing topology rather than replacing its business audit trail. `investigation_trace` remains the user-facing evidence/decision record; OpenTelemetry traces are short-lived operational diagnostics. Loki is not an audit store.
 
+### Hai bảng điều khiển, hai câu hỏi
+
+Grafana có **hai** bảng, và tab Chỉ số trong console chuyển qua lại được:
+
+| Bảng | UID | Trả lời câu hỏi | Nguồn số liệu |
+|---|---|---|---|
+| **Hệ thống** | `fin07-system` | Hệ thống chạy nhanh hay chậm, có nghẽn ở đâu không | `fin07_http_*`, `fin07_worker_*`, `fin07_investigation_*`, cadvisor, postgres-exporter |
+| **Tác tử AI** | `fin07-observability` | Gọi mô hình tốn bao nhiêu, chất lượng ra sao | `fin07_gemini_*`, `fin07_quality_score` |
+
+Tách làm hai là có chủ đích. Ban đầu chỉ có bảng Tác tử; hàng đầu tiên của nó
+tên là *Latency* nhưng mọi truy vấn đều hỏi `fin07_gemini_request_duration_seconds`
+— tức là độ trễ **gọi Gemini**, không phải độ trễ **của hệ thống**. Độ trễ HTTP
+vẫn được đo suốt (middleware ở `src/observability/http.py`, kèm nhãn `route`,
+`method`, `status_class`) và cảnh báo `HighApiLatency` vẫn dựa vào nó, nhưng
+không bảng nào vẽ ra, nên nhìn vào console không thể biết API nhanh hay chậm.
+
+Một bẫy khi tự viết truy vấn cho worker: worker gắn nhãn `job` cho loại tác vụ,
+mà Prometheus cũng dùng `job` cho tên scrape. Không bật `honor_labels`, nên nhãn
+của ứng dụng bị đổi thành `exported_job`. Gom theo `job` sẽ ra `fin07-worker`
+chứ không phải tên tác vụ — sai mà không báo lỗi.
+
+`scripts/validate_observability.py` khoá cả hai bảng: đúng sáu nhóm mỗi bảng,
+mọi biểu đồ phải nêu câu hỏi vận hành nó trả lời, và mọi chỉ số `fin07_*` được
+vẽ phải thật sự tồn tại trong `src/observability/metrics.py` — panel trỏ sai tên
+không báo lỗi, nó chỉ hiện đường trống và người xem tưởng hệ thống đang im.
+
+
 ### Repository audit and integration map
 
 | Concern | Discovered implementation | Integration |
