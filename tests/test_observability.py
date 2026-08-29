@@ -86,6 +86,16 @@ DASHBOARD_ROWS = {
             "Hạ tầng",
         ],
     ),
+    "fin07-tong-quan.json": (
+        "fin07-tong-quan",
+        [
+            "Tình trạng chung",
+            "Lưu lượng người dùng (đo tại Caddy)",
+            "Máy chủ",
+            "Tải máy chủ và đĩa",
+            "Hàng đợi tác vụ và Cloud SQL",
+        ],
+    ),
 }
 
 
@@ -106,7 +116,8 @@ def test_dashboards_are_correlated_and_question_driven() -> None:
         assert document["uid"] == uid
         # Mỗi nhóm là một hàng, không hơn không kém.
         rows = [panel for panel in document["panels"] if panel["type"] == "row"]
-        assert [row["title"].split(" · ")[1] for row in rows] == expected_rows, name
+        actual = [row["title"].split(" · ")[-1].strip() for row in rows]
+        assert actual == expected_rows, name
         charts = [panel for panel in document["panels"] if panel["type"] != "row"]
         assert {panel["datasource"]["type"] for panel in charts} == {"prometheus"}, name
         for panel in charts:

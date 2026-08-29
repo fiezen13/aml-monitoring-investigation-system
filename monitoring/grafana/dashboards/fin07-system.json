@@ -526,8 +526,8 @@
     },
     {
       "type": "timeseries",
-      "title": "CPU theo container",
-      "description": "Số lõi mỗi container đang dùng (cadvisor). Chạm trần là lúc độ trễ bắt đầu xấu đi.",
+      "title": "CPU và RAM máy chủ",
+      "description": "Phần trăm CPU đang bận và lượng RAM đang dùng của VM. Không dùng cadvisor: Docker trên VM này chạy storage driver `overlayfs` (containerd snapshotter) nên cadvisor không dựng được handler cho từng container — nó chỉ thấy systemd slice. Đã thử cả --docker_only lẫn --containerd, đều không ra. Vì vậy chỉ số ở đây lấy từ node-exporter và redis-exporter, là thứ chắc chắn có số liệu.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -544,22 +544,27 @@
             "lineWidth": 2,
             "fillOpacity": 8
           },
-          "unit": "short"
+          "unit": "percent"
         },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
-          "legendFormat": "{{name}}",
-          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name!=\"\"}[5m]))"
+          "legendFormat": "CPU bận %",
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "RAM đã dùng %",
+          "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "RAM theo container",
-      "description": "Bộ nhớ thực đang giữ (working set). Sát giới hạn là sắp bị OOM kill.",
+      "title": "Redis — bộ nhớ và khoá hàng đợi",
+      "description": "Redis là nơi hàng đợi tác vụ nằm. Bộ nhớ tăng không tụt, hoặc số khoá dồn lại, đều là dấu hiệu worker không tiêu thụ kịp.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -576,15 +581,20 @@
             "lineWidth": 2,
             "fillOpacity": 8
           },
-          "unit": "bytes"
+          "unit": "short"
         },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
-          "legendFormat": "{{name}}",
-          "expr": "sum by (name) (container_memory_working_set_bytes{name!=\"\"})"
+          "legendFormat": "khoá",
+          "expr": "sum(redis_db_keys)"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "bộ nhớ (MB)",
+          "expr": "redis_memory_used_bytes / 1024 / 1024"
         }
       ]
     },

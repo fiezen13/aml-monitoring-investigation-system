@@ -103,6 +103,24 @@ def _current_simulation(session) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------
 
 
+#: Mã bộ dữ liệu trên giao diện → giá trị thật trong cột `transaction.source_dataset`.
+#: Phải là giá trị CHÍNH XÁC: chỉ đẳng thức mới cho Postgres dùng
+#: transaction_dataset_time_idx để lấy min/max bằng một lần dò index.
+_DATASET_SOURCE = {"ibm_hi_medium": "IBM AML HI-Medium", "saml_d": "SAML-D"}
+
+
+def _source_dataset_of(dataset: str | None) -> str | None:
+    """None nghĩa là "mọi bộ dữ liệu".
+
+    Mã lạ thì trả về chính nó — không khớp source_dataset nào, nên khoảng thời
+    gian ra rỗng, đúng như bản dùng ILIKE trước đây. Trả None ở đây sẽ âm thầm
+    biến một mã sai thành "toàn bộ dữ liệu".
+    """
+    if dataset is None:
+        return None
+    return _DATASET_SOURCE.get(dataset, dataset)
+
+
 @router.get("/nav-counts", response_model=NavCountsOut)
 def nav_counts(
     dataset: str | None = Query(default=None, description="ibm_hi_medium | saml_d"),
@@ -132,18 +150,18 @@ def nav_counts(
                            WHERE status <> 'closed' AND risk_score >= 80
                              AND (CAST(:dataset AS text) IS NULL
                                   OR dataset = CAST(:dataset AS text)))               AS critical,
-                         -- min/max đi qua transaction_dataset_time_idx nên vẫn
-                         -- gần như tức thì dù đã thêm điều kiện bộ dữ liệu.
+                         -- So BẰNG NHAU chứ không ILIKE. Postgres chỉ đổi min/max
+                         -- thành một lần dò index khi điều kiện là đẳng thức; với
+                         -- ILIKE '%...%' nó quét toàn bộ 16 triệu dòng. Đo trên
+                         -- production: 116s cho cả câu, còn bản này 3ms.
                          (SELECT min(occurred_at)::date FROM transaction
-                           WHERE (CAST(:dataset AS text) IS NULL
-                                  OR (CAST(:dataset AS text) = 'ibm_hi_medium' AND source_dataset ILIKE '%IBM%')
-                                  OR (CAST(:dataset AS text) = 'saml_d' AND source_dataset ILIKE '%SAML%'))) AS data_period_start,
+                           WHERE (CAST(:source_dataset AS text) IS NULL
+                                  OR source_dataset = CAST(:source_dataset AS text))) AS data_period_start,
                          (SELECT max(occurred_at)::date FROM transaction
-                           WHERE (CAST(:dataset AS text) IS NULL
-                                  OR (CAST(:dataset AS text) = 'ibm_hi_medium' AND source_dataset ILIKE '%IBM%')
-                                  OR (CAST(:dataset AS text) = 'saml_d' AND source_dataset ILIKE '%SAML%'))) AS data_period_end"""
+                           WHERE (CAST(:source_dataset AS text) IS NULL
+                                  OR source_dataset = CAST(:source_dataset AS text))) AS data_period_end"""
                 ),
-                {"dataset": dataset},
+                {"dataset": dataset, "source_dataset": _source_dataset_of(dataset)},
             )
             .mappings()
             .one()

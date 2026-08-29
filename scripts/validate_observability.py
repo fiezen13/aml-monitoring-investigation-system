@@ -79,6 +79,19 @@ def main() -> int:
                 "Hạ tầng",
             ],
         ),
+        # Bảng này từng chỉ tồn tại trên VM, không có trong repo: deploy lại một
+        # lần nữa là mất trắng. Đưa vào đây để nó được phiên bản hoá như mọi thứ
+        # khác, và để CI giữ đúng năm nhóm của nó.
+        "fin07-tong-quan.json": (
+            "fin07-tong-quan",
+            [
+                "Tình trạng chung",
+                "Lưu lượng người dùng (đo tại Caddy)",
+                "Máy chủ",
+                "Tải máy chủ và đĩa",
+                "Hàng đợi tác vụ và Cloud SQL",
+            ],
+        ),
     }
     dashboards = sorted((ROOT / "monitoring/grafana/dashboards").glob("*.json"))
     found = [path.name for path in dashboards]

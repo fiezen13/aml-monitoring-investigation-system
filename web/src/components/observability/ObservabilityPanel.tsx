@@ -27,16 +27,24 @@ import { C } from "../../design/palette";
 const GRAFANA_ARGS = "orgId=1&from=now-6h&to=now&refresh=30s&theme=dark&kiosk=tv";
 
 /**
- * Hai bảng, hai câu hỏi.
+ * Ba bảng, ba câu hỏi.
  *
- * Trước đây chỉ có bảng tác tử, nên tab Chỉ số trả lời được "gọi Gemini tốn bao
- * nhiêu" mà không trả lời được "hệ thống phản hồi nhanh hay chậm" — dù độ trễ
- * HTTP vẫn được đo và vẫn có cảnh báo dựa trên nó. Bảng Hệ thống đứng trước vì
- * đó là câu hỏi người trực hỏi đầu tiên.
+ *   • Tổng quan → hạ tầng: CPU/RAM/đĩa/mạng máy chủ, độ trễ đo tại Caddy.
+ *   • Ứng dụng  → độ trễ API theo từng route, hàng đợi worker, điều tra đầu-cuối.
+ *   • Tác tử AI → chi phí, token và chất lượng của các lượt gọi Gemini.
+ *
+ * Trước đây tab này nhúng CỨNG mỗi bảng tác tử, nên nó trả lời được "gọi Gemini
+ * tốn bao nhiêu" mà không trả lời được "hệ thống nhanh hay chậm" — dù độ trễ
+ * HTTP vẫn luôn được đo và vẫn có cảnh báo dựa trên nó. Bảng Tổng quan mở mặc
+ * định vì đó là câu hỏi người trực hỏi trước nhất.
  */
+// Slug lấy từ chính Grafana (/api/search), không tự đặt: Grafana mã hoá ký tự
+// không phải ASCII trong tiêu đề — "·" thành c2b7, "—" thành e28094. Sai slug
+// vẫn vào được nhờ redirect theo uid, nhưng trong iframe thì thừa một chặng.
 const GRAFANA_BOARDS = [
-  { id: "system", label: "Hệ thống", uid: "fin07-system", slug: "fin-07-he-thong" },
-  { id: "agent", label: "Tác tử AI", uid: "fin07-observability", slug: "fin-07-observability" },
+  { id: "overview", label: "Tổng quan", uid: "fin07-tong-quan", slug: "fin-07-e28094-tong-quan-he-thong" },
+  { id: "app", label: "Ứng dụng", uid: "fin07-system", slug: "fin-07-c2b7-he-thong" },
+  { id: "agent", label: "Tác tử AI", uid: "fin07-observability", slug: "fin-07-e28094-sau-nhom-chi-so" },
 ] as const;
 
 type BoardId = (typeof GRAFANA_BOARDS)[number]["id"];
@@ -267,7 +275,7 @@ function TracesView() {
 function MetricsView() {
   const [availability, setAvailability] = useState<Availability>("checking");
   const [reloadKey, setReloadKey] = useState(0);
-  const [board, setBoard] = useState<BoardId>("system");
+  const [board, setBoard] = useState<BoardId>("overview");
   const boardHref = boardUrl(board);
 
   const probe = useCallback(async () => {
