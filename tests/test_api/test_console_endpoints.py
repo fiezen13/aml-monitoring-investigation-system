@@ -125,9 +125,7 @@ async def test_case_page_reports_total_and_uses_server_pagination(client, li_sma
     assert first["total"] >= len(first["rows"])
     assert first["page"] == 1
     assert first["pageSize"] == 10
-    assert {row["case_id"] for row in first["rows"]}.isdisjoint(
-        {row["case_id"] for row in second["rows"]}
-    )
+    assert {row["case_id"] for row in first["rows"]}.isdisjoint({row["case_id"] for row in second["rows"]})
 
 
 @pytest.mark.asyncio

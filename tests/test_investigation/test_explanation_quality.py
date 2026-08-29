@@ -39,7 +39,7 @@ def _all_prose(explanation) -> str:
 
 
 def test_khong_con_ngay_dinh_dang_may() -> None:
-    """"2022-09-16" là định dạng máy; người Việt đọc "16/09/2022"."""
+    """ "2022-09-16" là định dạng máy; người Việt đọc "16/09/2022"."""
     prose = _all_prose(_explain())
 
     assert not re.search(r"\b\d{4}-\d{2}-\d{2}\b", prose), "còn ngày ISO trong câu chữ"
@@ -47,7 +47,7 @@ def test_khong_con_ngay_dinh_dang_may() -> None:
 
 
 def test_so_tien_co_tach_hang_nghin() -> None:
-    """"41000.50" là chín ký tự phải đếm bằng mắt mới biết là bao nhiêu."""
+    """ "41000.50" là chín ký tự phải đếm bằng mắt mới biết là bao nhiêu."""
     prose = _all_prose(_explain())
 
     assert "41 000.50" in prose
@@ -134,7 +134,7 @@ def test_khong_co_du_kien_trung_lap() -> None:
 
 
 def test_khong_noi_hai_lan_cung_mot_con_so() -> None:
-    """"đạt 92 điểm — yếu tố này đóng góp 91.76 điểm" là một câu nói hai lần."""
+    """ "đạt 92 điểm — yếu tố này đóng góp 91.76 điểm" là một câu nói hai lần."""
     from src.investigation.agents import _label_already_states
 
     assert _label_already_states("Giao dịch rủi ro nhất trong kỳ đạt 92 điểm rủi ro", 91.76) is True
@@ -172,7 +172,7 @@ def test_cau_khong_dai_qua_muc_doc_duoc() -> None:
 
 
 def test_ty_le_khac_khong_khong_bi_lam_tron_thanh_khong() -> None:
-    """"332.79 được chuyển đi… chiếm 0% tổng tiền ra" là câu tự mâu thuẫn."""
+    """ "332.79 được chuyển đi… chiếm 0% tổng tiền ra" là câu tự mâu thuẫn."""
     from src.investigation.agents import _percent
 
     assert _percent(0.34) == "dưới 1"
@@ -192,7 +192,7 @@ def test_yeu_to_dem_bang_khong_viet_thanh_cau_tieng_viet() -> None:
 
 
 def test_ve_dong_tien_rong_khong_viet_thanh_khong_phay_khong() -> None:
-    """"nhận 0.00 US Dollar từ 0 đối tác" là cách máy nói, không phải tiếng Việt."""
+    """ "nhận 0.00 US Dollar từ 0 đối tác" là cách máy nói, không phải tiếng Việt."""
     explanation = _explain(inflow_amount=0.0, incoming_count=0, unique_in_counterparties=0, rapid_outflow_amount=0.0)
 
     assert "không nhận giao dịch nào" in explanation.summary
@@ -207,12 +207,10 @@ def test_moi_phep_do_phai_neu_ro_pham_vi_cua_no() -> None:
     còn phần phân rã điểm ghi hành lang UK → Albania của ô chấm điểm. Tác tử
     phản biện thấy hai câu đá nhau và đánh trượt — nó bắt đúng.
     """
-    from src.investigation.agents import _absence_wording
-
     # Câu về sổ giao dịch phải tự nói rõ nó là quan sát trên sổ.
     import inspect
 
-    from src.investigation.agents import ExplanationAgent
+    from src.investigation.agents import ExplanationAgent, _absence_wording
 
     source = inspect.getsource(ExplanationAgent._deterministic)
     assert "Trong sổ giao dịch đính kèm" in source

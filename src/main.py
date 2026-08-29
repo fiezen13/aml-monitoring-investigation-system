@@ -7,8 +7,8 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from src.api.assignment_routes import router as assignment_router
-from src.api.crypto_review import router as crypto_review_router
 from src.api.authz import enforce_policy
+from src.api.crypto_review import router as crypto_review_router
 from src.api.fc_routes import router as fc_router
 from src.api.routes import router
 from src.config import get_settings

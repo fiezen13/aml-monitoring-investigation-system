@@ -603,9 +603,12 @@ class InvestigationRepository:
         # KHÔNG kéo ngược một vụ đã kết thúc hoặc đang chờ phê duyệt: hồ sơ đã
         # xuất và hồ sơ nằm trong hàng đợi phê duyệt đều do luồng khác làm chủ,
         # một lượt rà soát muộn không được giành lại quyền ấy.
-        if self.session.execute(
-            text("SELECT state FROM aml_case WHERE case_id = :c"), {"c": state.case_id}
-        ).scalar_one_or_none() == "ChoNguoiPheDuyet":
+        if (
+            self.session.execute(
+                text("SELECT state FROM aml_case WHERE case_id = :c"), {"c": state.case_id}
+            ).scalar_one_or_none()
+            == "ChoNguoiPheDuyet"
+        ):
             # Vụ đang nằm trong hàng đợi phê duyệt thì quản lý làm chủ nó; một
             # kết luận muộn của chuyên viên không được giành lại quyền ấy.
             return

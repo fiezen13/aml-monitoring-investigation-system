@@ -32,9 +32,7 @@ def spare_case():
             )
             if row is None:
                 pytest.skip("Không có vụ việc đang mở để thử giao việc")
-            conn.execute(
-                text("UPDATE aml_case SET assigned_to = NULL WHERE case_id = :c"), {"c": row["case_id"]}
-            )
+            conn.execute(text("UPDATE aml_case SET assigned_to = NULL WHERE case_id = :c"), {"c": row["case_id"]})
     except SQLAlchemyError as exc:
         pytest.skip(f"Không nối được PostgreSQL: {exc}")
     yield row["case_id"]
@@ -166,7 +164,7 @@ async def test_thong_ke_khoi_luong_dem_dung_vu_vua_giao(client, spare_case):
 
 @pytest.mark.asyncio
 async def test_my_work_dem_dung_viec_cua_nguoi_dang_dang_nhap(client, monkeypatch, spare_case) -> None:
-    """"Việc của tôi" phải là của TÔI, không phải tổng của cả đội.
+    """ "Việc của tôi" phải là của TÔI, không phải tổng của cả đội.
 
     Bảng ``/workload`` đếm mọi người; endpoint này chỉ được đếm những vụ giao
     cho chính người gọi. Giao một vụ cho một người rồi hỏi bằng hai danh tính
@@ -189,9 +187,7 @@ async def test_my_work_dem_dung_viec_cua_nguoi_dang_dang_nhap(client, monkeypatc
     other_before = (await client.get("/api/v1/my-work")).json()["assigned_open"]
 
     with get_engine().begin() as conn:
-        conn.execute(
-            text("UPDATE aml_case SET assigned_to = 'U-002' WHERE case_id = :c"), {"c": spare_case}
-        )
+        conn.execute(text("UPDATE aml_case SET assigned_to = 'U-002' WHERE case_id = :c"), {"c": spare_case})
 
     _as("U-002")
     mine_after = (await client.get("/api/v1/my-work")).json()["assigned_open"]
@@ -226,7 +222,7 @@ async def test_chuyen_vien_khong_nhan_so_lieu_dieu_hanh(client, monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_khong_dem_ho_so_do_chinh_minh_trinh(client, monkeypatch) -> None:
-    """"Chờ TÔI duyệt" phải trừ hồ sơ do chính tôi trình.
+    """ "Chờ TÔI duyệt" phải trừ hồ sơ do chính tôi trình.
 
     Nguyên tắc bốn mắt chặn người trình tự phê duyệt (403 ở cổng quyết định).
     Nếu thẻ vẫn đếm hồ sơ đó, Quản lý thấy "1 hồ sơ chờ tôi duyệt", bấm vào rồi

@@ -15,7 +15,6 @@ Chia hai nhóm rạch ròi:
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -114,14 +113,18 @@ def count_open_work(session: Any) -> dict[str, int]:
     chưa phân công" trong khi thật ra có 14.258 — một câu sai sự thật nói bằng
     giọng chắc chắn. Đưa kèm tổng số để nó phân biệt "toàn bộ" với "đang xem".
     """
-    row = session.execute(
-        text(
-            f"""SELECT count(*) FILTER (WHERE state NOT IN ({_CLOSED_SQL})) AS mo,
+    row = (
+        session.execute(
+            text(
+                f"""SELECT count(*) FILTER (WHERE state NOT IN ({_CLOSED_SQL})) AS mo,
                        count(*) FILTER (WHERE state NOT IN ({_CLOSED_SQL})
                                           AND assigned_to IS NULL) AS chua_giao
                   FROM aml_case"""
+            )
         )
-    ).mappings().one()
+        .mappings()
+        .one()
+    )
     return {"total_open_cases": int(row["mo"]), "total_unassigned_cases": int(row["chua_giao"])}
 
 
@@ -276,19 +279,27 @@ def untrusted_case_text(session: Any, case_ids: list[str] | None = None, *, limi
     dữ liệu để đọc.
     """
     if case_ids:
-        rows = session.execute(
-            text("SELECT case_id, title FROM aml_case WHERE case_id = ANY(:ids)"),
-            {"ids": list(case_ids)},
-        ).mappings().all()
+        rows = (
+            session.execute(
+                text("SELECT case_id, title FROM aml_case WHERE case_id = ANY(:ids)"),
+                {"ids": list(case_ids)},
+            )
+            .mappings()
+            .all()
+        )
     else:
-        rows = session.execute(
-            text(
-                f"""SELECT case_id, title FROM aml_case
+        rows = (
+            session.execute(
+                text(
+                    f"""SELECT case_id, title FROM aml_case
                      WHERE state NOT IN ({_CLOSED_SQL})
                      ORDER BY risk_score DESC LIMIT :n"""
-            ),
-            {"n": limit},
-        ).mappings().all()
+                ),
+                {"n": limit},
+            )
+            .mappings()
+            .all()
+        )
     return [{"case_id": r["case_id"], "title": r["title"]} for r in rows]
 
 

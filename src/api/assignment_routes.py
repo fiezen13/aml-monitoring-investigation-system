@@ -93,8 +93,9 @@ def _row(r: Any, now: datetime) -> AssignmentRowOut:
 def list_assignments(
     q: str | None = Query(default=None, description="Tìm theo mã hồ sơ"),
     assignee: str | None = Query(default=None, description="Mã chuyên viên, hoặc 'unassigned'"),
-    status: Literal["unassigned", "in_progress", "needs_info", "due_soon", "overdue", "completed"]
-    | None = Query(default=None),
+    status: Literal["unassigned", "in_progress", "needs_info", "due_soon", "overdue", "completed"] | None = Query(
+        default=None
+    ),
     priority: str | None = Query(default=None),
     source: Literal["manual", "ai_copilot"] | None = Query(default=None),
     page: int = Query(default=1, ge=1),
@@ -135,9 +136,7 @@ def list_assignments(
     elif status == "overdue":
         where.append("c.assigned_to IS NOT NULL AND c.due_at IS NOT NULL AND c.due_at < :now")
     elif status == "due_soon":
-        where.append(
-            "c.assigned_to IS NOT NULL AND c.due_at IS NOT NULL AND c.due_at >= :now AND c.due_at <= :soon"
-        )
+        where.append("c.assigned_to IS NOT NULL AND c.due_at IS NOT NULL AND c.due_at >= :now AND c.due_at <= :soon")
     elif status == "needs_info":
         where.append("c.assigned_to IS NOT NULL AND c.state = 'DieuTraBoSung'")
     elif status == "in_progress":
@@ -156,17 +155,13 @@ def list_assignments(
                ORDER BY (c.due_at IS NULL), c.due_at ASC, c.risk_score DESC
                LIMIT :limit OFFSET :offset"""
     with get_session() as session:
-        total = session.execute(
-            text(f"SELECT count(*) FROM aml_case c WHERE {clause}"), params
-        ).scalar_one()
+        total = session.execute(text(f"SELECT count(*) FROM aml_case c WHERE {clause}"), params).scalar_one()
         rows = (
             session.execute(text(sql), {**params, "limit": page_size, "offset": (page - 1) * page_size})
             .mappings()
             .all()
         )
-    return AssignmentPageOut(
-        rows=[_row(r, now) for r in rows], total=int(total), page=page, page_size=page_size
-    )
+    return AssignmentPageOut(rows=[_row(r, now) for r in rows], total=int(total), page=page, page_size=page_size)
 
 
 @router.get("/assignments/overview", response_model=OverviewOut)
@@ -281,9 +276,7 @@ def assignment_detail(case_id: str, authorization: str | None = Header(default=N
         )
         if row is None:
             raise HTTPException(status_code=404, detail=f"Không tìm thấy hồ sơ {case_id}")
-        if not has_permission(user["role"], Permission.TEAM_WORKLOAD_READ) and row["assigned_to"] != user[
-            "user_id"
-        ]:
+        if not has_permission(user["role"], Permission.TEAM_WORKLOAD_READ) and row["assigned_to"] != user["user_id"]:
             raise HTTPException(status_code=403, detail="Hồ sơ này không thuộc phần việc của bạn")
 
         events = (
@@ -327,7 +320,7 @@ def assignment_detail(case_id: str, authorization: str | None = Header(default=N
                 "actor_name": e["actor_name"],
                 "source": (e["payload"] or {}).get("source"),
                 "field": (e["payload"] or {}).get("field"),
-                "before": _label(( e["payload"] or {}).get("before"), names),
+                "before": _label((e["payload"] or {}).get("before"), names),
                 "after": _label((e["payload"] or {}).get("after"), names),
                 "reason": (e["payload"] or {}).get("reason"),
             }
@@ -348,9 +341,7 @@ def _label(value: Any, names: dict[str, str]) -> Any:
 
 
 @router.post("/assignments/assign")
-def bulk_assign(
-    request: BulkAssignRequest, authorization: str | None = Header(default=None)
-) -> dict[str, Any]:
+def bulk_assign(request: BulkAssignRequest, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     """Giao một hoặc nhiều hồ sơ cho một chuyên viên.
 
     Cùng dịch vụ mà trợ lý dùng, nên một lượt giao thủ công và một lượt giao qua

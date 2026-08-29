@@ -169,9 +169,7 @@ def test_cau_tu_choi_cua_tro_ly_dieu_phoi_cung_khong_bi_coi_la_lo() -> None:
     from src.api.copilot import agent
 
     for cau in (agent.OFF_TOPIC, agent.OUT_OF_SCOPE_ACTION):
-        verdict = guardrails.screen_answer(
-            cau, trusted_blob=_TRUSTED, system_instruction=agent._SYSTEM
-        )
+        verdict = guardrails.screen_answer(cau, trusted_blob=_TRUSTED, system_instruction=agent._SYSTEM)
         assert verdict.allowed is True, f"{cau[:40]}… → {verdict.detail}"
 
 

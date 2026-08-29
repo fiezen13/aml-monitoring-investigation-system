@@ -4,6 +4,7 @@ Không dùng matplotlib (chỉ có ở môi trường dev): tự tính bố cụ
 ở giữa, đối tác quanh vòng) rồi vẽ đường (line) + nút (ellipse) + nhãn. Đầu ra là
 đồ thị vector, sắc nét, tự chứa — hợp với luồng xuất PDF từ server.
 """
+
 from __future__ import annotations
 
 import math

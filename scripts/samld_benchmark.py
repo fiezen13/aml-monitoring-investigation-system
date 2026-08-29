@@ -238,6 +238,10 @@ def run(
     # Giải phóng bundle chính (đồ thị ~15GB) trước khi dựng bundle ablation —
     # nếu không, hai bundle cùng lúc vượt 30GB RAM và OOM. Đã trích xong mọi thứ
     # cần từ bundle (predictions đã lưu, tabular arrays đã dùng).
+    #
+    # Giữ lại số đặc trưng cạnh TRƯỚC khi giải phóng: khối `overall` ở cuối hàm
+    # còn cần nó, và đọc `bundle` sau `del` là NameError khi chạy thật.
+    edge_feature_count = int(bundle.edge_features)
     del bundle
     gc.collect()
     for arm in run_arms:
@@ -300,7 +304,7 @@ def run(
         "operating_points": best["operational_budget"],
         "region_rows": int(main_metrics["rows"]),
         "positive_rows": int(main_metrics["positives"]),
-        "edge_features": int(bundle.edge_features),
+        "edge_features": edge_feature_count,
         "config": mega_cfg.to_dict(),
         "data_profile": data_profile(df),
     }

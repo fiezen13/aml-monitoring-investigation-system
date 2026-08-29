@@ -16,6 +16,7 @@ Chi tiết khớp lược đồ nghiệp vụ:
   * detector='mega_pna', dataset='saml_d', risk_score = điểm×100;
   * vụ mới state='TiepNhanCanhBao' (đầu máy trạng thái 12 bước).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -32,10 +33,24 @@ DATASET = "saml_d"
 #: Tên quốc gia SAML-D → ISO 3166-1 alpha-2 (khớp scripts/load_saml_d.py). Khoá tài
 #: khoản phải là ISO để trùng bảng `account` (FK của alert/aml_case).
 ISO2 = {
-    "UK": "GB", "USA": "US", "UAE": "AE", "Turkey": "TR", "Switzerland": "CH",
-    "Pakistan": "PK", "Nigeria": "NG", "Spain": "ES", "Germany": "DE", "Italy": "IT",
-    "France": "FR", "Japan": "JP", "Morocco": "MA", "Austria": "AT", "Mexico": "MX",
-    "Albania": "AL", "India": "IN", "Netherlands": "NL",
+    "UK": "GB",
+    "USA": "US",
+    "UAE": "AE",
+    "Turkey": "TR",
+    "Switzerland": "CH",
+    "Pakistan": "PK",
+    "Nigeria": "NG",
+    "Spain": "ES",
+    "Germany": "DE",
+    "Italy": "IT",
+    "France": "FR",
+    "Japan": "JP",
+    "Morocco": "MA",
+    "Austria": "AT",
+    "Mexico": "MX",
+    "Albania": "AL",
+    "India": "IN",
+    "Netherlands": "NL",
 }
 
 
@@ -70,8 +85,9 @@ def _priority(risk: float) -> str:
 
 
 def _case_of(session: Any, account: str) -> str | None:
-    r = session.execute(text("SELECT case_id FROM stream_case_membership WHERE account_key = :a"),
-                        {"a": account}).first()
+    r = session.execute(
+        text("SELECT case_id FROM stream_case_membership WHERE account_key = :a"), {"a": account}
+    ).first()
     return r[0] if r else None
 
 
@@ -82,10 +98,18 @@ def _exists(session: Any, account: str) -> bool:
 
 def _new_case(session: Any, case_id: str, subject: str, risk: float, occurred_at) -> None:
     session.execute(
-        text("INSERT INTO aml_case (case_id, subject_account_key, title, state, risk_score, priority, created_at, updated_at) "
-             "VALUES (:cid, :subj, :title, 'TiepNhanCanhBao', :risk, :prio, :ts, :ts) ON CONFLICT (case_id) DO NOTHING"),
-        {"cid": case_id, "subj": subject, "title": f"Vụ streaming quanh {subject}", "risk": risk,
-         "prio": _priority(risk), "ts": occurred_at},
+        text(
+            "INSERT INTO aml_case (case_id, subject_account_key, title, state, risk_score, priority, created_at, updated_at) "
+            "VALUES (:cid, :subj, :title, 'TiepNhanCanhBao', :risk, :prio, :ts, :ts) ON CONFLICT (case_id) DO NOTHING"
+        ),
+        {
+            "cid": case_id,
+            "subj": subject,
+            "title": f"Vụ streaming quanh {subject}",
+            "risk": risk,
+            "prio": _priority(risk),
+            "ts": occurred_at,
+        },
     )
 
 
@@ -103,13 +127,16 @@ def _merge(session: Any, keep: str, drop: str) -> str:
 
 def _refresh_case(session: Any, case_id: str) -> None:
     """Cập nhật điểm + tài khoản chủ thể của vụ từ các cảnh báo của nó."""
-    session.execute(text(
-        "UPDATE aml_case c SET risk_score = a.mx, priority = CASE "
-        "  WHEN a.mx>=90 THEN 'critical' WHEN a.mx>=75 THEN 'high' WHEN a.mx>=50 THEN 'medium' ELSE 'low' END, "
-        "  subject_account_key = a.subj, updated_at = now() "
-        "FROM (SELECT max(risk_score) mx, (array_agg(account_key ORDER BY risk_score DESC))[1] subj "
-        "      FROM alert WHERE case_id = :c) a WHERE c.case_id = :c"),
-        {"c": case_id})
+    session.execute(
+        text(
+            "UPDATE aml_case c SET risk_score = a.mx, priority = CASE "
+            "  WHEN a.mx>=90 THEN 'critical' WHEN a.mx>=75 THEN 'high' WHEN a.mx>=50 THEN 'medium' ELSE 'low' END, "
+            "  subject_account_key = a.subj, updated_at = now() "
+            "FROM (SELECT max(risk_score) mx, (array_agg(account_key ORDER BY risk_score DESC))[1] subj "
+            "      FROM alert WHERE case_id = :c) a WHERE c.case_id = :c"
+        ),
+        {"c": case_id},
+    )
 
 
 def accumulate(session: Any, scored_edges: Any, dataset: str = DATASET) -> tuple[int, int]:
@@ -148,15 +175,30 @@ def accumulate(session: Any, scored_edges: Any, dataset: str = DATASET) -> tuple
             case_id = "CASE-STREAM-" + hashlib.sha1(str(e.source_id).encode()).hexdigest()[:12]
             _new_case(session, case_id, subject, risk, e.occurred_at)
         for acct in endpoints:
-            session.execute(text("INSERT INTO stream_case_membership (account_key, case_id) VALUES (:a,:c) "
-                                 "ON CONFLICT (account_key) DO NOTHING"), {"a": acct, "c": case_id})
+            session.execute(
+                text(
+                    "INSERT INTO stream_case_membership (account_key, case_id) VALUES (:a,:c) "
+                    "ON CONFLICT (account_key) DO NOTHING"
+                ),
+                {"a": acct, "c": case_id},
+            )
         typ, _ = _typology_for(inc, outc, inc + outc)
         session.execute(
-            text("INSERT INTO alert (alert_id, account_key, transaction_id, typology_code, detector, "
-                 "risk_score, status, case_id, dataset) "
-                 "VALUES (:aid, :acct, NULL, :typ, :det, :risk, 'open', :cid, :ds) "
-                 "ON CONFLICT (alert_id) DO NOTHING"),
-            {"aid": alert_id, "acct": subject, "typ": typ, "det": DETECTOR, "risk": risk, "cid": case_id, "ds": dataset},
+            text(
+                "INSERT INTO alert (alert_id, account_key, transaction_id, typology_code, detector, "
+                "risk_score, status, case_id, dataset) "
+                "VALUES (:aid, :acct, NULL, :typ, :det, :risk, 'open', :cid, :ds) "
+                "ON CONFLICT (alert_id) DO NOTHING"
+            ),
+            {
+                "aid": alert_id,
+                "acct": subject,
+                "typ": typ,
+                "det": DETECTOR,
+                "risk": risk,
+                "cid": case_id,
+                "ds": dataset,
+            },
         )
         created += 1
         touched.add(case_id)

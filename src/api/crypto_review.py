@@ -51,9 +51,7 @@ def _user(authorization: str | None) -> dict[str, Any]:
     return _require_user(authorization)
 
 
-def _audit(
-    session: Any, *, event_type: str, actor: str, actor_role: str, payload: dict[str, Any]
-) -> None:
+def _audit(session: Any, *, event_type: str, actor: str, actor_role: str, payload: dict[str, Any]) -> None:
     """Vết đi chung ``audit_log``; ``case_id`` để trống vì đây không phải vụ việc."""
     session.execute(
         text(
@@ -220,9 +218,7 @@ def assign_review(
                 raise HTTPException(status_code=403, detail="Chỉ trả lại được lượt của chính mình")
         if assignee:
             target = (
-                session.execute(
-                    text("SELECT role, active FROM app_user WHERE user_id = :u"), {"u": assignee}
-                )
+                session.execute(text("SELECT role, active FROM app_user WHERE user_id = :u"), {"u": assignee})
                 .mappings()
                 .first()
             )
@@ -282,12 +278,8 @@ def conclude_review(
             raise HTTPException(status_code=404, detail="Không tìm thấy lượt rà soát")
         if row["state"] == "KetLuan":
             raise HTTPException(status_code=409, detail="Lượt rà soát này đã kết luận")
-        if row["assigned_to"] != user["user_id"] and not has_permission(
-            user["role"], Permission.SAR_ASSIGN
-        ):
-            raise HTTPException(
-                status_code=403, detail="Chỉ người đang rà soát mới ghi được kết luận"
-            )
+        if row["assigned_to"] != user["user_id"] and not has_permission(user["role"], Permission.SAR_ASSIGN):
+            raise HTTPException(status_code=403, detail="Chỉ người đang rà soát mới ghi được kết luận")
 
         session.execute(
             text(

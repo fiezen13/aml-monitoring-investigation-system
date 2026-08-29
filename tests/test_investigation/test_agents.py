@@ -888,8 +888,7 @@ async def test_critic_excuses_a_count_dispute_when_the_ledger_was_truncated():
         facts=[],
         inferences=[],
         missing_information=[
-            "Chỉ trích xuất được 50 giao dịch đầu tiên; tài khoản còn giao dịch chưa "
-            "được đưa vào bằng chứng."
+            "Chỉ trích xuất được 50 giao dịch đầu tiên; tài khoản còn giao dịch chưa được đưa vào bằng chứng."
         ],
         typologies=[],
         confidence=0.8,
@@ -909,8 +908,7 @@ def test_prose_scrubber_removes_internal_codes_and_denominators():
     tất định ở đầu ra, không phải một câu nhắc trong prompt.
     """
     out = ExplanationAgent._scrub_prose(
-        "dựa trên mô hình phân tích mạng lưới giao dịch (mega_pna) "
-        "với mức điểm rủi ro tối đa là 100/100"
+        "dựa trên mô hình phân tích mạng lưới giao dịch (mega_pna) với mức điểm rủi ro tối đa là 100/100"
     )
     assert "mega_pna" not in out
     assert "100/100" not in out
@@ -923,8 +921,11 @@ def test_prose_scrubber_keeps_machine_keys_and_long_numbers():
     Và số tiền dài không được đụng tới: "906271514968" không phải điểm số.
     """
     tree = ExplanationAgent._scrub_tree(
-        {"source": "mega_pna", "reason": "nhánh mega_pna là nguồn điểm",
-         "facts": ["Tổng 906271514968 trên các giao dịch bị gắn cờ"]}
+        {
+            "source": "mega_pna",
+            "reason": "nhánh mega_pna là nguồn điểm",
+            "facts": ["Tổng 906271514968 trên các giao dịch bị gắn cờ"],
+        }
     )
     assert tree["source"] == "mega_pna"
     assert "mega_pna" not in tree["reason"]
@@ -980,7 +981,7 @@ def _narrative(
 
 
 def test_dau_hieu_da_khop_phai_kem_so_do_khong_chi_ten():
-    """"Khớp 3 trong 3 dấu hiệu" mà không có số là một câu rỗng.
+    """ "Khớp 3 trong 3 dấu hiệu" mà không có số là một câu rỗng.
 
     Chuyên viên đọc để biết bao nhiêu nguồn, bao nhiêu đích, nằm lại bao lâu —
     kèm ngưỡng để tự thấy nó vượt bao xa.
@@ -1059,15 +1060,26 @@ def test_nhan_bang_chung_co_dau_tach_hang_nghin_van_che_duoc_cau():
     label = "Tổng 9 294 trên các giao dịch bị gắn cờ, cộng thô theo nguyên tệ (chưa quy đổi)"
     rule = evidence(
         EvidenceType.RULE_TRIGGER,
-        {"triggered_rules": [{"factor_code": "MP_FLAGGED_AMOUNT", "factor_label": label,
-                              "contribution": "0.00", "weight": "0.00"}]},
+        {
+            "triggered_rules": [
+                {"factor_code": "MP_FLAGGED_AMOUNT", "factor_label": label, "contribution": "0.00", "weight": "0.00"}
+            ]
+        },
         source="mega_pna_engine",
     )
     explanation = Explanation(
-        summary="thử", risk_drivers=[], facts=[label + "."], inferences=[], missing_information=[],
-        typologies=[], confidence=0.5, recommended_action="REQUEST_MORE_INFORMATION", requires_human_review=True,
-        claims=[Claim(claim_id="C1", claim=label + ".", claim_type="FACT",
-                      evidence_refs=[rule.evidence_id], confidence=1.0)],
+        summary="thử",
+        risk_drivers=[],
+        facts=[label + "."],
+        inferences=[],
+        missing_information=[],
+        typologies=[],
+        confidence=0.5,
+        recommended_action="REQUEST_MORE_INFORMATION",
+        requires_human_review=True,
+        claims=[
+            Claim(claim_id="C1", claim=label + ".", claim_type="FACT", evidence_refs=[rule.evidence_id], confidence=1.0)
+        ],
     )
     critic = EvidenceCriticAgent.__new__(EvidenceCriticAgent)
     result = critic._deterministic_validate(explanation, [rule])
@@ -1084,20 +1096,49 @@ def test_so_co_dau_cach_thuong_van_kiem_chung_duoc():
     """
     behaviour = evidence(
         EvidenceType.BEHAVIOR_FEATURE,
-        {"observed": {"inflow_amount": 5155.25, "outflow_amount": 0.0, "incoming_count": 1,
-                      "outgoing_count": 0, "unique_in_counterparties": 1, "unique_out_counterparties": 0,
-                      "new_counterparties": 0, "rapid_outflow_percent": 0.0, "rapid_outflow_amount": 0.0,
-                      "rapid_window_hours": 2, "median_dwell_hours": None, "active_days": 1,
-                      "window_start": "2022-08-15T00:00:00Z", "window_end": "2022-09-14T00:00:00Z",
-                      "window_days": 30, "currency": "Euro", "largest_amount": 5155.25}},
+        {
+            "observed": {
+                "inflow_amount": 5155.25,
+                "outflow_amount": 0.0,
+                "incoming_count": 1,
+                "outgoing_count": 0,
+                "unique_in_counterparties": 1,
+                "unique_out_counterparties": 0,
+                "new_counterparties": 0,
+                "rapid_outflow_percent": 0.0,
+                "rapid_outflow_amount": 0.0,
+                "rapid_window_hours": 2,
+                "median_dwell_hours": None,
+                "active_days": 1,
+                "window_start": "2022-08-15T00:00:00Z",
+                "window_end": "2022-09-14T00:00:00Z",
+                "window_days": 30,
+                "currency": "Euro",
+                "largest_amount": 5155.25,
+            }
+        },
         source="feature_service",
     )
     claim_text = "Tài khoản nhận 5 155.25 Euro trong cửa sổ."  # dấu cách THƯỜNG
     explanation = Explanation(
-        summary="thử", risk_drivers=[], facts=[claim_text], inferences=[], missing_information=[],
-        typologies=[], confidence=0.5, recommended_action="REQUEST_MORE_INFORMATION", requires_human_review=True,
-        claims=[Claim(claim_id="C1", claim=claim_text, claim_type="FACT",
-                      evidence_refs=[behaviour.evidence_id], confidence=1.0)],
+        summary="thử",
+        risk_drivers=[],
+        facts=[claim_text],
+        inferences=[],
+        missing_information=[],
+        typologies=[],
+        confidence=0.5,
+        recommended_action="REQUEST_MORE_INFORMATION",
+        requires_human_review=True,
+        claims=[
+            Claim(
+                claim_id="C1",
+                claim=claim_text,
+                claim_type="FACT",
+                evidence_refs=[behaviour.evidence_id],
+                confidence=1.0,
+            )
+        ],
     )
     critic = EvidenceCriticAgent.__new__(EvidenceCriticAgent)
 

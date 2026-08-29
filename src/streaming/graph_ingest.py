@@ -160,7 +160,14 @@ def run() -> int:
         }
     )
     consumer.subscribe([TOPIC])
-    logger.info("Graph-ingest ⟵ %s @ %s (group=%s), lô %d / timeout %.1fs", TOPIC, BOOTSTRAP, GROUP_ID, BATCH_SIZE, BATCH_TIMEOUT_S)
+    logger.info(
+        "Graph-ingest ⟵ %s @ %s (group=%s), lô %d / timeout %.1fs",
+        TOPIC,
+        BOOTSTRAP,
+        GROUP_ID,
+        BATCH_SIZE,
+        BATCH_TIMEOUT_S,
+    )
 
     stop = {"flag": False}
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__("flag", True))

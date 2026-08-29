@@ -116,7 +116,7 @@ def _fmt_money(value: Any) -> str:
 
 
 def _split_amount(raw: Any) -> tuple[float | None, str, str]:
-    """"12345.67 US Dollar" → (12345.67, "12 345.67", "US Dollar")."""
+    """ "12345.67 US Dollar" → (12345.67, "12 345.67", "US Dollar")."""
     m = _AMOUNT_CCY.match(str(raw or ""))
     if not m:
         return None, _s(raw), ""
@@ -206,12 +206,14 @@ class _SarPdf(FPDF):
         top = self.get_y()
         self.set_font("DejaVu", "B", 10)
         self.set_text_color(*_INK)
-        self.multi_cell(104, 5, str(self.institution.get("name") or ""), align=Align.L,
-                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.multi_cell(
+            104, 5, str(self.institution.get("name") or ""), align=Align.L, new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
         self.set_font("DejaVu", "", 8.5)
         self.set_text_color(*_MUTED)
-        self.multi_cell(104, 4.4, str(self.institution.get("unit") or ""), align=Align.L,
-                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.multi_cell(
+            104, 4.4, str(self.institution.get("unit") or ""), align=Align.L, new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
         left_bottom = self.get_y()
 
         self.set_xy(122, top)
@@ -359,7 +361,7 @@ class _SarPdf(FPDF):
         self.set_text_color(*_INK)
 
 
-def _currency_totals(transactions: list[dict[str, Any]]) -> "OrderedDict[str, dict[str, float]]":
+def _currency_totals(transactions: list[dict[str, Any]]) -> OrderedDict[str, dict[str, float]]:
     """Tổng tiền vào/ra THEO TỪNG LOẠI TIỀN.
 
     Bản cũ cộng thẳng Yên + Euro + Rupee thành một con số duy nhất; con số đó
@@ -376,9 +378,7 @@ def _currency_totals(transactions: list[dict[str, Any]]) -> "OrderedDict[str, di
     return OrderedDict(sorted(totals.items(), key=lambda kv: -(kv[1]["in"] + kv[1]["out"])))
 
 
-def build_sar_pdf(
-    payload: dict[str, Any], *, exported_by: str, exported_at: datetime, draft: bool = False
-) -> bytes:
+def build_sar_pdf(payload: dict[str, Any], *, exported_by: str, exported_at: datetime, draft: bool = False) -> bytes:
     """Dựng và trả về bytes PDF cho một SAR (payload từ ``_sar_payload``).
 
     ``draft=True`` (hồ sơ chưa phê duyệt) đóng dấu "BẢN NHÁP" để chuyên viên đọc
@@ -487,9 +487,7 @@ def build_sar_pdf(
                 r.cell(_fmt_money(agg["in"]))
                 r.cell(_fmt_money(agg["out"]))
         pdf.ln(1)
-        pdf.note(
-            "Tổng hợp theo từng loại tiền tệ; không quy đổi và không cộng gộp các loại tiền khác nhau."
-        )
+        pdf.note("Tổng hợp theo từng loại tiền tệ; không quy đổi và không cộng gộp các loại tiền khác nhau.")
 
     # IV. Nhận định & bằng chứng
     statements = payload.get("statements") or []
@@ -598,7 +596,9 @@ def build_sar_pdf(
         )
         pdf.set_font("DejaVu", "", 9)
         pdf.set_text_color(*_INK)
-        pdf.multi_cell(0, 5, f"Ý kiến: {_s(approval.get('reason'))}", align=Align.J, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.multi_cell(
+            0, 5, f"Ý kiến: {_s(approval.get('reason'))}", align=Align.J, new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
 
     # VIII. Phương pháp & giới hạn — minh bạch về cách dựng báo cáo.
     pdf.h_section("VIII. Phương pháp và giới hạn")

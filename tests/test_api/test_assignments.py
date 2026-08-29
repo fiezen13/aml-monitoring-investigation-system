@@ -281,9 +281,7 @@ async def test_nguoi_khac_vua_giao_thi_bao_xung_dot_khong_ghi_de(client, team, a
 
     assert response.status_code == 409
     with get_engine().begin() as conn:
-        holder = conn.execute(
-            text("SELECT assigned_to FROM aml_case WHERE case_id = :c"), {"c": case_id}
-        ).scalar_one()
+        holder = conn.execute(text("SELECT assigned_to FROM aml_case WHERE case_id = :c"), {"c": case_id}).scalar_one()
     assert holder == team["duc"], "không được ghi đè người vừa nhận"
 
 

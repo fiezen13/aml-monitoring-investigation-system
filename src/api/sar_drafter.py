@@ -13,6 +13,7 @@ Rào chắn nghiêm ngặt:
 * Hỏng / chưa cấu hình key / rào chắn không đạt → trả None để caller tự dùng
   template tất định, không làm sập việc tạo SAR.
 """
+
 from __future__ import annotations
 
 import json

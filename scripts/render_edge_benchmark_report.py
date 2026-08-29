@@ -13,7 +13,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = ROOT / "reports/edge-benchmark/li_small_currency_native_policy_v1.json"
 DEFAULT_BASELINE = ROOT / "reports/edge-benchmark/li_small.json"
-DEFAULT_OUTPUT = ROOT / "reports/edge-benchmark/li_small_currency_native_policy_v1.md"
+# Tên file phải khớp NỘI DUNG: báo cáo này là của release HI-Medium, nhưng file
+# mang tên `li_small_*` từ thời release cũ, và README trỏ tới tên đúng nên liên
+# kết bị chết.
+DEFAULT_OUTPUT = ROOT / "reports/edge-benchmark/hi_medium_currency_native_policy_v1.md"
 EXPECTED_SCHEMA = "fin07.currency_native_edge.benchmark.v1"
 T_CRITICAL_95_DF4 = 2.7764451051977987
 

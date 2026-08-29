@@ -191,6 +191,34 @@ Password: demo-password
 > Con số trên hai môi trường vì vậy không khớp nhau, và điều đó là bình thường.
 > Cấu trúc, quy trình và mọi màn hình thì giống hệt.
 
+## Console: màn hình nào cho vai nào
+
+Phân quyền cưỡng chế ở tầng API (`src/api/authz.py` + `src/api/permissions.py`);
+menu chỉ phản chiếu lại nó. Ba vai, không chồng lấn:
+
+| Màn hình | Đường dẫn | Chuyên viên | Quản lý | Quản trị |
+|---|---|:--:|:--:|:--:|
+| Tổng quan, Giám sát địa lý | `/dashboard`, `/world` | ✓ | ✓ | |
+| Vụ việc, Tra cứu giao dịch | `/cases`, `/transactions` | ✓ | ✓ | |
+| Phân công & tải công việc | `/assignments` | việc của mình | toàn nhóm | |
+| Báo cáo của tôi | `/my-reports` | ✓ | | |
+| Truy vết tài sản mã hoá | `/crypto` | ✓ | ✓ | |
+| Phê duyệt SAR | `/approvals` | | ✓ | |
+| Nhật ký kiểm toán | `/audit` | | ✓ | ✓ |
+| Tab kỹ thuật (mô hình, chất lượng dữ liệu, lượt chạy tác tử) | `/models`, `/data-quality`, `/agents` | | | ✓ |
+
+**Phân tách nhiệm vụ.** Chuyên viên điều tra, lập và trình hồ sơ nghi vấn. Quản
+lý chốt hồ sơ và điều phối công việc — *không* lập hồ sơ, vì người lập và người
+duyệt phải khác vai chứ không chỉ khác người. Quản trị hệ thống có thẩm quyền
+kỹ thuật, không có quyền nghiệp vụ AML.
+
+**Trợ lý AI** (`src/api/copilot/`) có ở mọi màn nghiệp vụ. Với Quản lý nó đề
+xuất được thao tác điều phối (giao việc, chuyển giao, đặt hạn, đổi ưu tiên,
+nhắc việc); mô hình chỉ *soạn đề xuất*, người dùng xác nhận rồi máy chủ mới
+thực thi bằng mã tất định — xem `docs/architecture/PRODUCTION_ARCHITECTURE.md`.
+Với Chuyên viên, ngữ cảnh bị giới hạn về hồ sơ của chính họ và không có công cụ
+điều phối nào.
+
 ## Dữ liệu hiển thị trên console
 
 Sau khi restore đúng dump, các màn chính có dữ liệu:
@@ -249,26 +277,26 @@ TOKEN=$(curl -s -X POST "$BASE/api/v1/auth/login" \
 # 2. Ba cảnh báo rủi ro cao nhất đang mở
 curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts?limit=3" \
   | jq -r '.[] | "\(.alert_id)  \(.risk_score)  \(.typology_code)"'
-#   ALT-IF-2f9a70d0e19b21f2  100.00  T05
-#   ALT-IF-a91a8104f979eaf7  100.00  T05
-#   ALT-RULE-f7304166d3c80b3b  100.00  T08
+#   ALT-GEO-5cced52c7a5e3033  100.00  T06
+#   ALT-GEO-baebd8d73c9d308c  100.00  T06
+#   ALT-MP-3cc22b5e5c7272e6   100.00  T02
 
 # 3. Vì sao cảnh báo đó được sinh ra (NT7: luôn ≥ 3 yếu tố đóng góp)
-curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts/ALT-IF-2f9a70d0e19b21f2" \
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts/ALT-GEO-5cced52c7a5e3033" \
   | jq '{alert_id, risk_score, so_yeu_to: (.reasons | length)}'
 
 # 4. Giao cho tầng tác tử điều tra — đây là user flow chính
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/v1/alerts/ALT-IF-2f9a70d0e19b21f2/investigate" | jq
+  "$BASE/api/v1/alerts/ALT-GEO-5cced52c7a5e3033/investigate" | jq
 
 # 5. Theo dõi tới khi có kết luận (khoảng 40–90 giây, tuỳ kích thước tài khoản)
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/v1/alerts/ALT-IF-2f9a70d0e19b21f2/investigation" \
+  "$BASE/api/v1/alerts/ALT-GEO-5cced52c7a5e3033/investigation" \
   | jq '{status, workflow_state, iteration, tool_call_count, failure_reason}'
 
 # 6. Đọc bản giải thích và dấu vết từng bước tác tử đã đi
 INV=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/v1/alerts/ALT-IF-2f9a70d0e19b21f2/investigation" | jq -r .investigation_id)
+  "$BASE/api/v1/alerts/ALT-GEO-5cced52c7a5e3033/investigation" | jq -r .investigation_id)
 curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/investigations/$INV/explanation" | jq
 curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/investigations/$INV/trace"       | jq
 ```
@@ -461,6 +489,12 @@ Chi tiết ở [`docs/operations/CICD.md`](docs/operations/CICD.md).
 | [`docs/architecture/PRODUCTION_ARCHITECTURE.md`](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Kiến trúc triển khai production |
 | [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Vận hành và xử lý sự cố |
 | [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai VM |
+| [`docs/SO_DO_TRIEN_KHAI_PRODUCTION.md`](docs/SO_DO_TRIEN_KHAI_PRODUCTION.md) | Hạ tầng đang chạy, số liệu thật và giới hạn đã biết |
+| [`docs/KIEN_TRUC_THEO_DU_LIEU.md`](docs/KIEN_TRUC_THEO_DU_LIEU.md) | Vì sao sơ đồ được vẽ lại theo cột dữ liệu có thật |
+| [`docs/KIEN_TRUC_HUONG_B.md`](docs/KIEN_TRUC_HUONG_B.md) | Vì sao MEGA-PNA là một nhánh, không thay cả hệ |
+| [`MODELS.md`](MODELS.md) | Bản đồ model: file nào ở đâu, nhánh nào đang phục vụ |
+| [`docs/RBAC.md`](docs/RBAC.md) | Ma trận phân quyền theo vai |
+| [`docs/QA_QC_REPORT.md`](docs/QA_QC_REPORT.md) | Kết quả rà soát chất lượng trên bản đang chạy |
 | [`docs/operations/CICD.md`](docs/operations/CICD.md) | CI/CD, cổng chặn merge và tự động triển khai |
 | [`docs/eval/GATE2_EVAL_EVIDENCE.md`](docs/eval/GATE2_EVAL_EVIDENCE.md) | Năm ca đánh giá thủ công với output Gemini thật |
 | [`docs/ml/CURRENCY_NATIVE_EDGE_MVP.md`](docs/ml/CURRENCY_NATIVE_EDGE_MVP.md) | Release đang phục vụ UI |

@@ -8,17 +8,20 @@ việc, nhật ký) — không giữ giao dịch thô.
 
 Đồ thị GNN dựng in-memory TỪ Bronze; chỉ cạnh gắn cờ mới thành alert/case xuống PG.
 """
+
 from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import pandas as pd
 
 BRONZE_ROOT = Path(os.getenv("BRONZE_ROOT", "data/lake/bronze/transactions"))
+
 
 def _partition(event_time: str) -> tuple[str, str]:
     """(event_date, event_hour) từ event_time ISO — để phân vùng như HDFS Bronze."""

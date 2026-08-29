@@ -74,4 +74,3 @@ async def test_jurisdiction_risk_is_not_invented_for_operational_data(client, lo
     chính sách và theo fc.hub thì phải có ngày hiệu lực."""
     body = (await client.get("/api/v1/world", params={"mode": "operational"})).json()
     assert {hub["jurisdiction_risk"] for hub in body["hubs"]} == {"unknown"}
-

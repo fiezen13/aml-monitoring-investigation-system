@@ -45,8 +45,6 @@ from src.models.fc_schemas import (
     EdgeModelReleaseOut,
     EvidenceReasonOut,
     ExposureOut,
-    RiskReasonOut,
-    RiskReasonReference,
     FlowOut,
     GraphEdgeOut,
     GraphNarrativeOut,
@@ -59,6 +57,8 @@ from src.models.fc_schemas import (
     ObservationOut,
     OperatingPointOut,
     PatternHopOut,
+    RiskReasonOut,
+    RiskReasonReference,
     SearchHitOut,
     SourceOut,
     TxPageOut,
@@ -606,12 +606,10 @@ def _operational_transaction_graph(
         # Đồ thị GẮN THEO MỘT VỤ: gieo mầm đúng bằng tài khoản chủ thể của vụ,
         # rồi nở ra vùng lân cận của nó. Nhờ vậy giao diện đồ thị giàu (Cytoscape)
         # vẽ đúng mạng lưới quanh vụ đang xem, thay vì toàn bộ release.
-        risk = (
-            session.execute(
-                text("SELECT max(risk_score) FROM alert WHERE account_key = :a"),
-                {"a": seed_account},
-            ).scalar()
-        )
+        risk = session.execute(
+            text("SELECT max(risk_score) FROM alert WHERE account_key = :a"),
+            {"a": seed_account},
+        ).scalar()
         seeds = [seed_account]
         seed_risk = {seed_account: int(round(_f(risk))) if risk is not None else 80}
     else:
@@ -1511,9 +1509,7 @@ def bitcoin_queue(
                         title=rr["title"],
                         side=rr["side"],
                         feature_ids=rr["feature_ids"],
-                        reference=(
-                            RiskReasonReference(**rr["reference"]) if rr.get("reference") else None
-                        ),
+                        reference=(RiskReasonReference(**rr["reference"]) if rr.get("reference") else None),
                         shap_direction=rr["shap_direction"],
                         contribution=rr["contribution"],
                         contribution_label=rr["contribution_label"],
@@ -1659,15 +1655,19 @@ def agent_runs(limit: int = Query(default=200, ge=1, le=1000)) -> AgentRunListOu
             .mappings()
             .all()
         )
-        summary = session.execute(
-            text(
-                """SELECT count(*) AS total,
+        summary = (
+            session.execute(
+                text(
+                    """SELECT count(*) AS total,
                           count(*) FILTER (WHERE agent_name = 'evidence_critic') AS critic,
                           count(*) FILTER (WHERE status IN ('failed', 'timeout')) AS failed,
                           coalesce(sum(total_token_count), 0) AS tokens
                      FROM investigation_agent_run"""
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
     return AgentRunListOut(
         rows=[_agent_run_out(row) for row in rows],
         total=int(summary["total"]),

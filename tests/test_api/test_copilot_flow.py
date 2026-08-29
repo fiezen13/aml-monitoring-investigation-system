@@ -16,7 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.api import routes
-from src.api.copilot import agent, store
+from src.api.copilot import agent
 from src.api.copilot.schemas import CopilotReply
 from src.db.session import get_engine
 
@@ -284,9 +284,7 @@ async def test_nguoi_nhan_mo_hinh_bia_ra_bi_tu_choi(client, fixtures, as_user, f
 
 
 @pytest.mark.asyncio
-async def test_lenh_nam_trong_tieu_de_vu_viec_khong_tao_hanh_dong(
-    client, fixtures, as_user, monkeypatch
-) -> None:
+async def test_lenh_nam_trong_tieu_de_vu_viec_khong_tao_hanh_dong(client, fixtures, as_user, monkeypatch) -> None:
     """Tiêu đề vụ việc là DỮ LIỆU, không phải chỉ thị.
 
     Đặt một câu lệnh vào tiêu đề rồi hỏi một câu vô hại: nếu hệ thống sinh ra
@@ -302,9 +300,7 @@ async def test_lenh_nam_trong_tieu_de_vu_viec_khong_tao_hanh_dong(
         )
     as_user(fixtures["manager"], "manager")
     # Mô hình ĐÚNG MỰC: đọc tiêu đề như dữ liệu, không sinh hành động.
-    monkeypatch.setattr(
-        agent, "ask", lambda *a, **k: (CopilotReply("Hàng đợi hiện có 3 hồ sơ đang mở."), None)
-    )
+    monkeypatch.setattr(agent, "ask", lambda *a, **k: (CopilotReply("Hàng đợi hiện có 3 hồ sơ đang mở."), None))
 
     body = await _chat(client, "Hàng đợi có gì?")
 
@@ -333,9 +329,7 @@ async def test_cau_hoi_tiem_lenh_bi_chan_truoc_khi_goi_mo_hinh(client, fixtures,
 
 
 @pytest.mark.asyncio
-async def test_vu_bi_nguoi_khac_nhan_giua_hai_nhip_thi_bao_xung_dot(
-    client, fixtures, as_user, fake_model
-) -> None:
+async def test_vu_bi_nguoi_khac_nhan_giua_hai_nhip_thi_bao_xung_dot(client, fixtures, as_user, fake_model) -> None:
     """Ca tranh chấp thật: đề xuất soạn lúc vụ còn trống, xác nhận thì đã có chủ."""
     as_user(fixtures["manager"], "manager")
     fake_model("Đề xuất.", _assign(fixtures["cases"][:1], fixtures["lan"]))
@@ -402,9 +396,7 @@ async def test_tham_so_bi_sua_trom_thi_khong_thuc_thi(client, fixtures, as_user,
 
 
 @pytest.mark.asyncio
-async def test_tham_so_thuc_thi_lay_tu_ban_ghi_khong_lay_tu_cau_hoi(
-    client, fixtures, as_user, fake_model
-) -> None:
+async def test_tham_so_thuc_thi_lay_tu_ban_ghi_khong_lay_tu_cau_hoi(client, fixtures, as_user, fake_model) -> None:
     """Lúc xác nhận, máy chủ không được đọc lại câu tiếng Việt sinh ra đề xuất.
 
     Gửi một câu hỏi mới hoàn toàn khác rồi mới xác nhận: kết quả phải theo đề
@@ -435,9 +427,7 @@ async def test_tham_so_thuc_thi_lay_tu_ban_ghi_khong_lay_tu_cau_hoi(
 
 
 @pytest.mark.asyncio
-async def test_giao_viec_kem_han_va_chi_dan_duoc_ghi_day_du(
-    client, fixtures, as_user, fake_model
-) -> None:
+async def test_giao_viec_kem_han_va_chi_dan_duoc_ghi_day_du(client, fixtures, as_user, fake_model) -> None:
     due = (datetime.now(UTC) + timedelta(hours=8)).replace(microsecond=0)
     as_user(fixtures["manager"], "manager")
     fake_model(
@@ -454,13 +444,19 @@ async def test_giao_viec_kem_han_va_chi_dan_duoc_ghi_day_du(
     await client.post(f"/api/v1/actions/{action_id}/confirm")
 
     with get_engine().begin() as conn:
-        row = conn.execute(
-            text("SELECT assigned_to, due_at FROM aml_case WHERE case_id = :c"),
-            {"c": fixtures["cases"][0]},
-        ).mappings().one()
-        note = conn.execute(
-            text("SELECT body, kind FROM case_note WHERE case_id = :c"), {"c": fixtures["cases"][0]}
-        ).mappings().one()
+        row = (
+            conn.execute(
+                text("SELECT assigned_to, due_at FROM aml_case WHERE case_id = :c"),
+                {"c": fixtures["cases"][0]},
+            )
+            .mappings()
+            .one()
+        )
+        note = (
+            conn.execute(text("SELECT body, kind FROM case_note WHERE case_id = :c"), {"c": fixtures["cases"][0]})
+            .mappings()
+            .one()
+        )
     assert row["assigned_to"] == fixtures["lan"]
     assert row["due_at"] == due
     assert note["kind"] == "instruction"
@@ -468,9 +464,7 @@ async def test_giao_viec_kem_han_va_chi_dan_duoc_ghi_day_du(
 
 
 @pytest.mark.asyncio
-async def test_han_xu_ly_o_qua_khu_bi_tu_choi_ngay_khi_de_xuat(
-    client, fixtures, as_user, fake_model
-) -> None:
+async def test_han_xu_ly_o_qua_khu_bi_tu_choi_ngay_khi_de_xuat(client, fixtures, as_user, fake_model) -> None:
     as_user(fixtures["manager"], "manager")
     fake_model(
         "Đề xuất.",
@@ -489,7 +483,7 @@ async def test_han_xu_ly_o_qua_khu_bi_tu_choi_ngay_khi_de_xuat(
 
 @pytest.mark.asyncio
 async def test_cau_bao_ket_qua_neu_ten_nguoi_nhan(client, fixtures, as_user, fake_model) -> None:
-    """"Đã giao 2 hồ sơ cho Lan", không phải "execute_task_assignment succeeded"."""
+    """ "Đã giao 2 hồ sơ cho Lan", không phải "execute_task_assignment succeeded"."""
     as_user(fixtures["manager"], "manager")
     fake_model("Đề xuất.", _assign(fixtures["cases"][:2], fixtures["lan"]))
     action_id = (await _chat(client))["action"]["action_id"]

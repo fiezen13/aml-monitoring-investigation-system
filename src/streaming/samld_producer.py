@@ -20,12 +20,14 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 
-logging.basicConfig(level=os.getenv("STREAM_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.basicConfig(
+    level=os.getenv("STREAM_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s"
+)
 logger = logging.getLogger("fin07.streaming.samld_producer")
 
 BOOTSTRAP = os.getenv("STREAM_KAFKA_BOOTSTRAP", os.getenv("AML_KAFKA_BOOTSTRAP_SERVERS", "localhost:29092"))
@@ -34,23 +36,32 @@ CSV_PATH = Path(os.getenv("SAMLD_RAW_CSV", "data/raw/saml-d/SAML-D.csv"))
 
 #: Cột SAML-D thô → chỉ đọc những cột này.
 COLS = [
-    "Time", "Date", "Sender_account", "Receiver_account", "Amount",
-    "Payment_currency", "Received_currency", "Sender_bank_location",
-    "Receiver_bank_location", "Payment_type", "Is_laundering",
+    "Time",
+    "Date",
+    "Sender_account",
+    "Receiver_account",
+    "Amount",
+    "Payment_currency",
+    "Received_currency",
+    "Sender_bank_location",
+    "Receiver_bank_location",
+    "Payment_type",
+    "Is_laundering",
 ]
 
 
 def _stable_id(row: dict, idx: int) -> str:
-    material = "|".join(
-        str(row.get(k, "")) for k in ("Date", "Time", "Sender_account", "Receiver_account", "Amount")
-    ) + f"|{idx}"
+    material = (
+        "|".join(str(row.get(k, "")) for k in ("Date", "Time", "Sender_account", "Receiver_account", "Amount"))
+        + f"|{idx}"
+    )
     return "SAMLD-" + hashlib.sha1(material.encode("utf-8")).hexdigest()[:20]
 
 
 def _epoch_ms(date: str, tm: str) -> tuple[str, int]:
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M"):
         try:
-            dt = datetime.strptime(f"{date} {tm}".strip(), fmt).replace(tzinfo=timezone.utc)
+            dt = datetime.strptime(f"{date} {tm}".strip(), fmt).replace(tzinfo=UTC)
             return dt.isoformat(), int(dt.timestamp() * 1000)
         except ValueError:
             continue
@@ -88,8 +99,12 @@ def produce(args: argparse.Namespace) -> int:
     n = args.max_records or None
     skip = range(1, args.skip + 1) if args.skip else None  # bỏ qua N dòng đầu (giữ header)
     df = pd.read_csv(CSV_PATH, usecols=lambda c: c in COLS, skiprows=skip, nrows=n)
-    producer = Producer({"bootstrap.servers": BOOTSTRAP, "enable.idempotence": True, "compression.type": "lz4", "linger.ms": 20})
-    logger.info("Producer SAML-D → %s @ %s: %d giao dịch, lô %d, nhịp %.2fs", TOPIC, BOOTSTRAP, len(df), args.batch, args.rate)
+    producer = Producer(
+        {"bootstrap.servers": BOOTSTRAP, "enable.idempotence": True, "compression.type": "lz4", "linger.ms": 20}
+    )
+    logger.info(
+        "Producer SAML-D → %s @ %s: %d giao dịch, lô %d, nhịp %.2fs", TOPIC, BOOTSTRAP, len(df), args.batch, args.rate
+    )
     sent = 0
     for start in range(0, len(df), args.batch):
         for idx, row in df.iloc[start : start + args.batch].iterrows():

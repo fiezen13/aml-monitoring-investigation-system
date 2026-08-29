@@ -9,6 +9,7 @@ Nguyên tắc (audit §4/§5/§6/§7/§8/§20):
   `after_transaction` — không phải thông tin có tại thời điểm giao dịch.
 * Enrich ở READ-TIME (không re-score): chỉ cần drivers đã lưu + registry + dist.
 """
+
 from __future__ import annotations
 
 import bisect
@@ -21,13 +22,41 @@ from src.bitcoin_aml.elliptic_registry import registry_by_model_index
 # side: dùng để (a) chặn khi count=0, (b) highlight đồ thị. temporal: available_at_transaction_time
 # | after_transaction. Address-history dựng từ ảnh chụp chuỗi khối → ghi chú snapshot.
 _CATEGORY_META: dict[str, dict[str, str]] = {
-    "TRANSACTION_INTRINSIC": {"title": "Đặc điểm nội tại của giao dịch", "side": "local", "temporal": "available_at_transaction_time"},
-    "INPUT_VALUE_STATS": {"title": "Cách hình thành nguồn tiền đầu vào", "side": "local", "temporal": "available_at_transaction_time"},
-    "OUTPUT_VALUE_STATS": {"title": "Cách phân bổ giá trị ở các đầu nhận", "side": "local", "temporal": "available_at_transaction_time"},
-    "INPUT_ADDRESS_HISTORY": {"title": "Hoạt động của các địa chỉ gửi tiền", "side": "upstream", "temporal": "available_at_transaction_time"},
-    "OUTPUT_ADDRESS_HISTORY": {"title": "Hoạt động của các địa chỉ nhận tiền", "side": "downstream", "temporal": "available_at_transaction_time"},
-    "UPSTREAM_TRANSACTION_AGGREGATE": {"title": "Đặc điểm của các giao dịch nguồn", "side": "upstream_tx", "temporal": "available_at_transaction_time"},
-    "DOWNSTREAM_TRANSACTION_AGGREGATE": {"title": "Đặc điểm của các giao dịch tiếp theo", "side": "downstream_tx", "temporal": "after_transaction"},
+    "TRANSACTION_INTRINSIC": {
+        "title": "Đặc điểm nội tại của giao dịch",
+        "side": "local",
+        "temporal": "available_at_transaction_time",
+    },
+    "INPUT_VALUE_STATS": {
+        "title": "Cách hình thành nguồn tiền đầu vào",
+        "side": "local",
+        "temporal": "available_at_transaction_time",
+    },
+    "OUTPUT_VALUE_STATS": {
+        "title": "Cách phân bổ giá trị ở các đầu nhận",
+        "side": "local",
+        "temporal": "available_at_transaction_time",
+    },
+    "INPUT_ADDRESS_HISTORY": {
+        "title": "Hoạt động của các địa chỉ gửi tiền",
+        "side": "upstream",
+        "temporal": "available_at_transaction_time",
+    },
+    "OUTPUT_ADDRESS_HISTORY": {
+        "title": "Hoạt động của các địa chỉ nhận tiền",
+        "side": "downstream",
+        "temporal": "available_at_transaction_time",
+    },
+    "UPSTREAM_TRANSACTION_AGGREGATE": {
+        "title": "Đặc điểm của các giao dịch nguồn",
+        "side": "upstream_tx",
+        "temporal": "available_at_transaction_time",
+    },
+    "DOWNSTREAM_TRANSACTION_AGGREGATE": {
+        "title": "Đặc điểm của các giao dịch tiếp theo",
+        "side": "downstream_tx",
+        "temporal": "after_transaction",
+    },
 }
 # TIME / UNRESOLVED → bỏ khỏi lý do nghiệp vụ.
 

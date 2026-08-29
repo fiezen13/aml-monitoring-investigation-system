@@ -9,18 +9,19 @@ timestep:
 
 Chạy: PYTHONPATH=. python scripts/streaming/pump_bitcoin.py --from-timestep 35
 """
+
 from __future__ import annotations
 
 import argparse
 import time
 
 import pandas as pd
+from sqlalchemy import text
 
-from src.bitcoin_aml.scoring import BitcoinScoringContext, DATA, FEATURE_COLUMNS
+from src.bitcoin_aml.scoring import DATA, FEATURE_COLUMNS, BitcoinScoringContext
 from src.bitcoin_aml.stream import RELEASE_ID, _ensure_release, _write_batch
 from src.db.session import get_engine, get_session
 from src.streaming import bronze
-from sqlalchemy import text
 
 
 def main() -> int:
@@ -53,15 +54,22 @@ def main() -> int:
         scored, flagged = _write_batch(ctx, rows)
         total_scored += scored
         total_illicit += flagged
-        print(f"{ts:>8} {total_bronze:>8,} {total_scored:>8,} {total_illicit:>8,} {time.time()-t0:>6.1f}")
+        print(f"{ts:>8} {total_bronze:>8,} {total_scored:>8,} {total_illicit:>8,} {time.time() - t0:>6.1f}")
         if args.rate > 0:
             time.sleep(args.rate)
 
     with get_engine().connect() as c:
-        pg = c.execute(text("SELECT count(*) n, count(*) FILTER (WHERE predicted_label='illicit') ill "
-                            "FROM bitcoin_scored_tx")).mappings().first()
+        pg = (
+            c.execute(
+                text("SELECT count(*) n, count(*) FILTER (WHERE predicted_label='illicit') ill FROM bitcoin_scored_tx")
+            )
+            .mappings()
+            .first()
+        )
     print(f"\nTổng: Bronze {total_bronze:,} giao dịch · bitcoin_scored_tx {pg['n']:,} (illicit {pg['ill']:,})")
-    print(f"Bronze Bitcoin: {bronze.count('bitcoin'):,} · Postgres CHỈ giữ điểm/giải thích, KHÔNG giữ 166 đặc trưng thô.")
+    print(
+        f"Bronze Bitcoin: {bronze.count('bitcoin'):,} · Postgres CHỈ giữ điểm/giải thích, KHÔNG giữ 166 đặc trưng thô."
+    )
     return 0
 
 

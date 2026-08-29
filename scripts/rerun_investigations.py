@@ -123,12 +123,20 @@ def quality_report(sample: int = 40) -> dict[str, int]:
     iso_date = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
     flaws: Counter = Counter()
     with get_session() as session:
-        rows = session.execute(
-            text("SELECT explanation FROM case_explanation ORDER BY created_at DESC LIMIT :n"), {"n": sample}
-        ).scalars().all()
+        rows = (
+            session.execute(
+                text("SELECT explanation FROM case_explanation ORDER BY created_at DESC LIMIT :n"), {"n": sample}
+            )
+            .scalars()
+            .all()
+        )
     for explanation in rows:
         prose = " ".join(
-            [explanation.get("summary") or "", *(explanation.get("facts") or []), *(explanation.get("inferences") or [])]
+            [
+                explanation.get("summary") or "",
+                *(explanation.get("facts") or []),
+                *(explanation.get("inferences") or []),
+            ]
         )
         depth = maximum = 0
         for char in prose:

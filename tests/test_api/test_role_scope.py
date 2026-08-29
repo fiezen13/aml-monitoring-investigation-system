@@ -94,8 +94,7 @@ def two_specialists():
         conn.execute(text("SET LOCAL session_replication_role = 'replica'"))
         cases = [ids["case_an"], ids["case_binh"]]
         conn.execute(text("DELETE FROM approval WHERE case_id = ANY(:c)"), {"c": cases})
-        conn.execute(text("DELETE FROM sar_statement WHERE sar_draft_id = ANY(:s)"),
-                     {"s": [f"SAR-{c}" for c in cases]})
+        conn.execute(text("DELETE FROM sar_statement WHERE sar_draft_id = ANY(:s)"), {"s": [f"SAR-{c}" for c in cases]})
         conn.execute(text("DELETE FROM sar_draft WHERE case_id = ANY(:c)"), {"c": cases})
         conn.execute(text("DELETE FROM audit_log WHERE case_id = ANY(:c)"), {"c": cases})
         conn.execute(text("DELETE FROM aml_case WHERE case_id = ANY(:c)"), {"c": cases})

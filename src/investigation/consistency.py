@@ -137,9 +137,7 @@ def _check_flow_direction(claim: str, observed: dict[str, Any] | None) -> list[C
     return found
 
 
-def _check_transaction_direction(
-    claim: str, records: list[dict[str, Any]], account_key: str
-) -> list[ConsistencyIssue]:
+def _check_transaction_direction(claim: str, records: list[dict[str, Any]], account_key: str) -> list[ConsistencyIssue]:
     """Câu kể sai CHIỀU của đúng giao dịch mà nó dẫn.
 
     Đây là lỗi đọc ngược hay gặp nhất: sổ giao dịch ghi ``source``/``destination``
@@ -195,9 +193,7 @@ def _check_superlative(claim: str, records: list[dict[str, Any]]) -> list[Consis
     return []
 
 
-def _check_fan_claims(
-    claim: str, observed: dict[str, Any] | None, fan_threshold: int
-) -> list[ConsistencyIssue]:
+def _check_fan_claims(claim: str, observed: dict[str, Any] | None, fan_threshold: int) -> list[ConsistencyIssue]:
     """Khẳng định "nhiều nguồn"/"nhiều đích" trong khi số đo dưới ngưỡng.
 
     Đây là mâu thuẫn mà người dùng nhìn thấy trên màn hình thật: câu chữ nói gom

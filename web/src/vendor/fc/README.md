@@ -1,15 +1,11 @@
 # Vendored — engine đồ hoạ của prototype "Financial City AML"
 
-Năm file `.js` trong thư mục này được **sao chép nguyên trạng** từ
+File `.js` trong thư mục này được **sao chép nguyên trạng** từ
 `docs/design/prototype/`. Không sửa chúng tại đây.
 
 | File           | Custom element   | Vai trò                                                    |
 | -------------- | ---------------- | ---------------------------------------------------------- |
 | `charts.js`    | `<fc-chart>`     | 12 loại biểu đồ trên canvas, có tooltip/zoom/brush          |
-| `chartcard.js` | `<fc-chart-card>`| Khung thẻ quanh biểu đồ: tiêu đề, nút xem dữ liệu, tải về   |
-| `worldmap.js`  | `<fc-worldmap>`  | Bản đồ thế giới 2D, cung dòng tiền có hạt chuyển động       |
-| `netgraph.js`  | `<fc-graph>`     | Đồ thị lực, gom cụm cộng đồng, lọc theo thời gian           |
-| `globe3d.js`   | `<fc-globe3d>`   | Quả cầu 3D, cùng dữ liệu với `fc-worldmap`                  |
 
 ## Vì sao vendor thay vì viết lại
 

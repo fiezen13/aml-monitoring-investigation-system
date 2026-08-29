@@ -30,7 +30,9 @@ from sqlalchemy import text
 
 from src.db.session import get_session
 
-logging.basicConfig(level=os.getenv("STREAM_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.basicConfig(
+    level=os.getenv("STREAM_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s"
+)
 logger = logging.getLogger("fin07.streaming.bitcoin_graph_ingest")
 
 BOOTSTRAP = os.getenv("STREAM_KAFKA_BOOTSTRAP", os.getenv("AML_KAFKA_BOOTSTRAP_SERVERS", "localhost:29092"))
@@ -41,12 +43,9 @@ BATCH_TIMEOUT_S = float(os.getenv("BTC_GRAPH_BATCH_TIMEOUT", "2.0"))
 EDGELIST = Path(os.getenv("BTC_EDGELIST", "data/raw/elliptic/elliptic_txs_edgelist.csv"))
 
 _INSERT_NODE = text(
-    "INSERT INTO stream_bitcoin_tx (tx_id, timestep) VALUES (:tx, :ts) "
-    "ON CONFLICT (tx_id) DO NOTHING RETURNING tx_id"
+    "INSERT INTO stream_bitcoin_tx (tx_id, timestep) VALUES (:tx, :ts) ON CONFLICT (tx_id) DO NOTHING RETURNING tx_id"
 )
-_INSERT_EDGE = text(
-    "INSERT INTO stream_bitcoin_edge (src_tx, dst_tx) VALUES (:s, :d) ON CONFLICT DO NOTHING"
-)
+_INSERT_EDGE = text("INSERT INTO stream_bitcoin_edge (src_tx, dst_tx) VALUES (:s, :d) ON CONFLICT DO NOTHING")
 _ARRIVED = text("SELECT 1 FROM stream_bitcoin_tx WHERE tx_id = :tx")
 
 
@@ -79,11 +78,13 @@ def handle_events(session: Any, events: list[dict[str, Any]], succ: dict, pred: 
         # Cạnh xuôi dòng tx→n: chỉ nối nếu n đã tới.
         for n in succ.get(tx, []):
             if session.execute(_ARRIVED, {"tx": n}).first():
-                session.execute(_INSERT_EDGE, {"s": tx, "d": n}); new_edges += 1
+                session.execute(_INSERT_EDGE, {"s": tx, "d": n})
+                new_edges += 1
         # Cạnh ngược dòng p→tx: chỉ nối nếu p đã tới.
         for p in pred.get(tx, []):
             if session.execute(_ARRIVED, {"tx": p}).first():
-                session.execute(_INSERT_EDGE, {"s": p, "d": tx}); new_edges += 1
+                session.execute(_INSERT_EDGE, {"s": p, "d": tx})
+                new_edges += 1
     return new_nodes, new_edges
 
 

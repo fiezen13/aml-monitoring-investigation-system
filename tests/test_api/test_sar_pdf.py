@@ -152,7 +152,7 @@ def test_gop_theo_loai_tien_khong_bi_vo_boi_dau_tach_hang_nghin():
 
 
 def test_khong_lam_vo_so_viet_kieu_viet_nam():
-    """"97.103,33 USD" từng bị cắt thành "97.10,33 USD" ngay trên bản chính thức.
+    """ "97.103,33 USD" từng bị cắt thành "97.10,33 USD" ngay trên bản chính thức.
 
     Nhóm hàng nghìn luôn đúng ba chữ số, nên chỉ đuôi từ bốn chữ số trở lên mới
     là số thập phân dài của kiểu NUMERIC.

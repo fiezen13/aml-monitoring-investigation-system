@@ -226,9 +226,7 @@ def build_proposal(
         if person is None:
             return None, "Không xác định được chuyên viên nhận việc."
         assignee_id, assignee_name = person["employee_id"], person["name"]
-        workload = next(
-            (w for w in (trusted.get("team_workload") or []) if w["employee_id"] == assignee_id), None
-        )
+        workload = next((w for w in (trusted.get("team_workload") or []) if w["employee_id"] == assignee_id), None)
         if workload:
             assignee_workload = {
                 "open_cases": workload["open_cases"],
@@ -321,9 +319,7 @@ def ask(
         answer = str(data.get("answer") or "").strip()
         checked = guardrails.screen_answer(answer, trusted_blob=trusted_blob)
         if not checked.allowed:
-            METRICS.gemini_requests.add(
-                1, attrs(agent=_AGENT, model=settings.gemini_model, status="blocked_output")
-            )
+            METRICS.gemini_requests.add(1, attrs(agent=_AGENT, model=settings.gemini_model, status="blocked_output"))
             return (
                 CopilotReply(checked.message, blocked=True, category=checked.category, detail=checked.detail),
                 None,

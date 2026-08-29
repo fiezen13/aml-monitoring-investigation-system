@@ -288,9 +288,7 @@ def sanitize_history(history: list[dict[str, Any]] | None, *, max_turns: int = 6
     return safe
 
 
-def screen_answer(
-    answer: str, *, trusted_blob: str, system_instruction: str | None = None
-) -> GuardrailVerdict:
+def screen_answer(answer: str, *, trusted_blob: str, system_instruction: str | None = None) -> GuardrailVerdict:
     """Kiểm câu trả lời TRƯỚC khi trả cho người dùng.
 
     Bốn điều kiện, xếp theo mức nghiêm trọng:
@@ -318,10 +316,7 @@ def screen_answer(
             allowed=False,
             category="internal_field_leak",
             detail=f"Câu trả lời chứa tên kỹ thuật: {leaked.group(0)}",
-            message=(
-                "Mình vừa soạn một câu trả lời có lẫn chi tiết kỹ thuật nên đã bỏ đi. "
-                "Bạn hỏi lại giúp mình nhé."
-            ),
+            message=("Mình vừa soạn một câu trả lời có lẫn chi tiết kỹ thuật nên đã bỏ đi. Bạn hỏi lại giúp mình nhé."),
         )
     if system_instruction and _leaks_system_prompt(text, internal_material(system_instruction)):
         return GuardrailVerdict(
@@ -371,6 +366,4 @@ def _leaks_system_prompt(answer: str, internal_text: str, *, window: int = 80) -
     needle_source = " ".join((internal_text or "").split()).lower()
     if len(needle_source) < window:
         return False
-    return any(
-        needle_source[i : i + window] in haystack for i in range(0, len(needle_source) - window, window // 2)
-    )
+    return any(needle_source[i : i + window] in haystack for i in range(0, len(needle_source) - window, window // 2))

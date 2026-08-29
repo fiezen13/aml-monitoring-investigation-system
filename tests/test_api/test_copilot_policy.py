@@ -122,7 +122,7 @@ def test_giao_viec_ma_khong_ro_nguoi_nhan_thi_bo() -> None:
 
 
 def test_giao_tat_ca_ho_so_bi_chan_boi_tran_so_luong() -> None:
-    """"Giao tất cả hồ sơ cho Lan" là câu hợp ngữ pháp và mô hình soạn được.
+    """ "Giao tất cả hồ sơ cho Lan" là câu hợp ngữ pháp và mô hình soạn được.
 
     Không có trần thì một câu nói đổi chủ hàng nghìn vụ việc mà không ai kiểm
     được — trần biến nó thành một lỗi rõ ràng, buộc người dùng thu hẹp yêu cầu.

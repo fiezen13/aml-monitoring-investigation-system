@@ -10,6 +10,7 @@ z-norm trên cửa sổ hiện tại. Nút = TÀI KHOẢN thật (From Bank:Acco
 Nguồn Bronze cho IBM: hàng đã format (EdgeID + 4 đặc trưng đã mã hoá, để khớp đúng
 encoding checkpoint) + khoá tài khoản lấy từ CSV thô (căn theo EdgeID = số dòng).
 """
+
 from __future__ import annotations
 
 import json
@@ -27,7 +28,9 @@ from src.mega_pna.model import MegaPna
 from src.mega_pna.training import _loader, evaluate, resolve_device
 from src.streaming.samld_score import ScoredEdge
 
-logging.basicConfig(level=os.getenv("STREAM_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.basicConfig(
+    level=os.getenv("STREAM_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s"
+)
 logger = logging.getLogger("fin07.streaming.ibm_score")
 
 MODEL_VERSION = "ibm-mega-pna-hi-medium-v1"
@@ -80,12 +83,16 @@ class IBMStreamScorer:
         self.out_deg: dict[int, int] = {}
         self._src: list[int] = []
         self._dst: list[int] = []
-        self._attr: list[list[float]] = []   # 4 đặc trưng THÔ (chưa z-norm)
+        self._attr: list[list[float]] = []  # 4 đặc trưng THÔ (chưa z-norm)
         self._y: list[int] = []
-        self._meta: list[dict] = []           # source_id, from_key, to_key, occurred_at
+        self._meta: list[dict] = []  # source_id, from_key, to_key, occurred_at
         self._provisional: set[int] = set()
-        logger.info("IBM scorer in-mem · num_neighbors=%s · ngưỡng %.4f · warm_degree %d",
-                    self.config.num_neighbors, self.threshold, self.warm_degree)
+        logger.info(
+            "IBM scorer in-mem · num_neighbors=%s · ngưỡng %.4f · warm_degree %d",
+            self.config.num_neighbors,
+            self.threshold,
+            self.warm_degree,
+        )
 
     def _node(self, key: str) -> int:
         idx = self.node_index.get(key)
@@ -105,13 +112,22 @@ class IBMStreamScorer:
                 continue
             s, d = self._node(fk), self._node(tk)
             p = len(self._src)
-            self._src.append(s); self._dst.append(d)
-            self._attr.append([float(e["f_timestamp"]), float(e["f_amount_received"]),
-                               float(e["f_received_currency"]), float(e["f_payment_format"])])
+            self._src.append(s)
+            self._dst.append(d)
+            self._attr.append(
+                [
+                    float(e["f_timestamp"]),
+                    float(e["f_amount_received"]),
+                    float(e["f_received_currency"]),
+                    float(e["f_payment_format"]),
+                ]
+            )
             self._y.append(int(e.get("is_laundering", 0) or 0))
-            self._meta.append({"source_id": str(e["source_id"]), "from_key": fk, "to_key": tk,
-                               "occurred_at": e.get("occurred_at")})
-            self.out_deg[s] += 1; self.in_deg[d] += 1
+            self._meta.append(
+                {"source_id": str(e["source_id"]), "from_key": fk, "to_key": tk, "occurred_at": e.get("occurred_at")}
+            )
+            self.out_deg[s] += 1
+            self.in_deg[d] += 1
             positions.append(p)
         return self._score(np.array(positions, dtype=np.int64)) if positions else []
 
@@ -119,13 +135,19 @@ class IBMStreamScorer:
     def _score(self, positions: np.ndarray) -> list[ScoredEdge]:
         n = len(self._src)
         edge_index = torch.tensor([self._src, self._dst], dtype=torch.long)
-        edge_attr = torch.tensor(self._attr, dtype=torch.float32)   # _graph sẽ z-norm
+        edge_attr = torch.tensor(self._attr, dtype=torch.float32)  # _graph sẽ z-norm
         labels = torch.tensor(self._y, dtype=torch.long)
         ts = edge_attr[:, 0].clone()
         data = _graph(edge_index, edge_attr, labels, ts, end=n, num_nodes=len(self.node_index))
         pt = torch.as_tensor(positions, dtype=torch.long)
-        out = evaluate(self.model, _loader(data, pt, self.config, shuffle=False), pt,
-                       self.device, ego_ids=self.ego_ids, threshold=self.threshold)
+        out = evaluate(
+            self.model,
+            _loader(data, pt, self.config, shuffle=False),
+            pt,
+            self.device,
+            ego_ids=self.ego_ids,
+            threshold=self.threshold,
+        )
         id2s = {int(i): float(s) for i, s in zip(out.edge_ids, out.scores)}
         result = []
         for p in positions:
@@ -136,20 +158,42 @@ class IBMStreamScorer:
             warm = min(fi + fo, ti + to) >= self.warm_degree
             (self._provisional.discard if warm else self._provisional.add)(p)
             sc = id2s.get(p, 0.0)
-            result.append(ScoredEdge(
-                source_id=m["source_id"], from_account=m["from_key"], to_account=m["to_key"],
-                amount=float(self._attr[p][1]), payment_currency="", receiving_currency="",
-                payment_format="", occurred_at=str(m["occurred_at"]), is_laundering=int(self._y[p]),
-                score=sc, triggered=bool(warm and sc >= self.threshold), warm=warm,
-                from_in=fi, from_out=fo, to_in=ti, to_out=to))
+            result.append(
+                ScoredEdge(
+                    source_id=m["source_id"],
+                    from_account=m["from_key"],
+                    to_account=m["to_key"],
+                    amount=float(self._attr[p][1]),
+                    payment_currency="",
+                    receiving_currency="",
+                    payment_format="",
+                    occurred_at=str(m["occurred_at"]),
+                    is_laundering=int(self._y[p]),
+                    score=sc,
+                    triggered=bool(warm and sc >= self.threshold),
+                    warm=warm,
+                    from_in=fi,
+                    from_out=fo,
+                    to_in=ti,
+                    to_out=to,
+                )
+            )
         return result
 
     @torch.no_grad()
     def rescore_warmed(self) -> list[ScoredEdge]:
-        cand = np.array([p for p in self._provisional
-                         if min(self.in_deg[self._src[p]] + self.out_deg[self._src[p]],
-                                self.in_deg[self._dst[p]] + self.out_deg[self._dst[p]]) >= self.warm_degree],
-                        dtype=np.int64)
+        cand = np.array(
+            [
+                p
+                for p in self._provisional
+                if min(
+                    self.in_deg[self._src[p]] + self.out_deg[self._src[p]],
+                    self.in_deg[self._dst[p]] + self.out_deg[self._dst[p]],
+                )
+                >= self.warm_degree
+            ],
+            dtype=np.int64,
+        )
         return self._score(cand) if len(cand) else []
 
     @property

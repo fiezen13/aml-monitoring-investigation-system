@@ -134,8 +134,18 @@ def reasons_for(row: dict[str, Any]) -> list[tuple[str, str, float, float]]:
     # trượt vì đúng một mẫu số. Bỏ mẫu số đi thì con số duy nhất trong câu chính
     # là `contribution` nằm ngay bên cạnh nó.
     return [
-        ("MP_SCORE_MAX", f"Giao dịch rủi ro nhất trong kỳ đạt {score * 100:.0f} điểm rủi ro", round(score * 100, 2), 1.0),
-        ("MP_SCORE_TOP5", f"Trung bình 5 giao dịch rủi ro nhất đạt {top5 * 100:.0f} điểm rủi ro", round(top5 * 100, 2), 0.0),
+        (
+            "MP_SCORE_MAX",
+            f"Giao dịch rủi ro nhất trong kỳ đạt {score * 100:.0f} điểm rủi ro",
+            round(score * 100, 2),
+            1.0,
+        ),
+        (
+            "MP_SCORE_TOP5",
+            f"Trung bình 5 giao dịch rủi ro nhất đạt {top5 * 100:.0f} điểm rủi ro",
+            round(top5 * 100, 2),
+            0.0,
+        ),
         ("MP_EDGES_OVER", f"{over} giao dịch vượt ngưỡng cảnh báo", 0.0, 0.0),
         # Tách hàng nghìn bằng DẤU CÁCH MẢNH (U+202F), không phải dấu phẩy.
         #

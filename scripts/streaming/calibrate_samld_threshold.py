@@ -11,6 +11,7 @@ Chạy: PYTHONPATH=. python scripts/streaming/calibrate_samld_threshold.py \
         --offset 8600000 --context 500000 --measure 100000 --k 2
 Ghi: artifacts/streaming/thresholds.json (khoá "samld").
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,8 +30,19 @@ from src.streaming.samld_score import load_model, reconstruct_samld_df
 
 CSV = Path("data/raw/saml-d/SAML-D.csv")
 ORIGIN = datetime.fromisoformat("2022-10-07T10:35:19")
-COLS = ["Time", "Date", "Sender_account", "Receiver_account", "Amount", "Payment_currency",
-        "Received_currency", "Sender_bank_location", "Receiver_bank_location", "Payment_type", "Is_laundering"]
+COLS = [
+    "Time",
+    "Date",
+    "Sender_account",
+    "Receiver_account",
+    "Amount",
+    "Payment_currency",
+    "Received_currency",
+    "Sender_bank_location",
+    "Receiver_bank_location",
+    "Payment_type",
+    "Is_laundering",
+]
 OUT = Path("artifacts/streaming/thresholds.json")
 
 
@@ -74,53 +86,77 @@ def main() -> int:
     args = ap.parse_args()
 
     ctx = load_model()
-    G = IncrementalGraph(feature_dim=ctx.encoder.num_features)
+    graph = IncrementalGraph(feature_dim=ctx.encoder.num_features)
     total = args.context + args.measure
     raw = pd.read_csv(CSV, usecols=lambda c: c in COLS, skiprows=range(1, args.offset + 1), nrows=total)
     rows = to_stream_rows(raw, args.offset)
     print(f"Đọc {len(rows):,} cạnh @ offset {args.offset:,} · dương {int(rows['is_laundering'].sum())}")
 
-    S, Y, MD = [], [], []
+    scores, labels, min_degrees = [], [], []
     for start in range(0, len(rows), args.batch):
-        ch = rows.iloc[start:start + args.batch].reset_index(drop=True)
+        ch = rows.iloc[start : start + args.batch].reset_index(drop=True)
         df = reconstruct_samld_df(ch, ORIGIN)
         attr = ctx.encoder.transform(df).astype(np.float32)
-        pos = G.add(ch["stream_txn_id"].to_numpy(), ch["from_account_key"].tolist(),
-                    ch["to_account_key"].tolist(), attr, ch["is_laundering"].to_numpy(),
-                    df["elapsed_days"].to_numpy())
+        pos = graph.add(
+            ch["stream_txn_id"].to_numpy(),
+            ch["from_account_key"].tolist(),
+            ch["to_account_key"].tolist(),
+            attr,
+            ch["is_laundering"].to_numpy(),
+            df["elapsed_days"].to_numpy(),
+        )
         if len(pos) == 0 or start < args.context:  # phần đầu chỉ tích ngữ cảnh
             continue
-        data = G.hetero()
+        data = graph.hetero()
         pt = torch.as_tensor(pos, dtype=torch.long)
-        out = evaluate(ctx.model, _loader(data, pt, ctx.config, shuffle=False), pt, ctx.device,
-                       ego_ids=ctx.ego_ids, threshold=ctx.threshold)
+        out = evaluate(
+            ctx.model,
+            _loader(data, pt, ctx.config, shuffle=False),
+            pt,
+            ctx.device,
+            ego_ids=ctx.ego_ids,
+            threshold=ctx.threshold,
+        )
         id2s = {int(i): float(x) for i, x in zip(out.edge_ids, out.scores)}
-        S.append(np.array([id2s.get(int(p), 0.0) for p in pos]))
-        Y.append(ch["is_laundering"].to_numpy())
-        MD.append(G.endpoint_min_degree(pos))
-    s = np.concatenate(S); y = np.concatenate(Y).astype(int); md = np.concatenate(MD)
+        scores.append(np.array([id2s.get(int(p), 0.0) for p in pos]))
+        labels.append(ch["is_laundering"].to_numpy())
+        min_degrees.append(graph.endpoint_min_degree(pos))
+    s = np.concatenate(scores)
+    y = np.concatenate(labels).astype(int)
+    md = np.concatenate(min_degrees)
     warm = md >= args.k
-    print(f"Đo {len(s):,} cạnh · nodes={G.num_nodes:,} edges={G.num_edges:,} · dương {int(y.sum())} "
-          f"· PR-AUC={average_precision_score(y, s):.4f}")
-    print(f"warm(min_deg≥{args.k})={int(warm.sum()):,} dương={int(y[warm].sum())} · "
-          f"cold={int((~warm).sum()):,} dương={int(y[~warm].sum())}")
+    print(
+        f"Đo {len(s):,} cạnh · nodes={graph.num_nodes:,} edges={graph.num_edges:,} · dương {int(y.sum())} "
+        f"· PR-AUC={average_precision_score(y, s):.4f}"
+    )
+    print(
+        f"warm(min_deg≥{args.k})={int(warm.sum()):,} dương={int(y[warm].sum())} · "
+        f"cold={int((~warm).sum()):,} dương={int(y[~warm].sum())}"
+    )
 
     (wf, wt, wp, wr), whip = pick(y[warm], s[warm])
-    print(f"WARM  F1-best thr={wt:.4f} P={wp:.3f} R={wr:.3f} F1={wf:.3f}"
-          + (f" · P≥0.5 thr={whip[0]:.4f} P={whip[1]:.3f} R={whip[2]:.3f}" if whip else ""))
+    print(
+        f"WARM  F1-best thr={wt:.4f} P={wp:.3f} R={wr:.3f} F1={wf:.3f}"
+        + (f" · P≥0.5 thr={whip[0]:.4f} P={whip[1]:.3f} R={whip[2]:.3f}" if whip else "")
+    )
 
     payload = {}
     if OUT.exists():
         payload = json.loads(OUT.read_text(encoding="utf-8"))
     payload["samld"] = {
         "warm_degree": args.k,
-        "stream_threshold": round(wt, 5),           # ngưỡng cho cạnh WARM (F1-best)
+        "stream_threshold": round(wt, 5),  # ngưỡng cho cạnh WARM (F1-best)
         "high_precision_threshold": round(whip[0], 5) if whip else round(wt, 5),
         "batch_threshold": round(ctx.threshold, 5),
-        "measured": {"pr_auc": round(float(average_precision_score(y, s)), 4),
-                     "warm_precision": round(wp, 3), "warm_recall": round(wr, 3),
-                     "n": int(len(s)), "pos": int(y.sum()),
-                     "context_edges": args.context, "offset": args.offset},
+        "measured": {
+            "pr_auc": round(float(average_precision_score(y, s)), 4),
+            "warm_precision": round(wp, 3),
+            "warm_recall": round(wr, 3),
+            "n": int(len(s)),
+            "pos": int(y.sum()),
+            "context_edges": args.context,
+            "offset": args.offset,
+        },
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")

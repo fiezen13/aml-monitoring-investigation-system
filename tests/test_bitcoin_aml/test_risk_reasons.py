@@ -4,6 +4,7 @@ Bảy ca kiểm thử bắt buộc từ yêu cầu audit. Ca 4/5 (external intel
 tầng UI/disclaimer — ở backend ta kiểm risk_reasons KHÔNG bịa external intel và
 KHÔNG chứa từ overclaim.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,8 +27,20 @@ if not _DIST_PATH.exists():
 _DIST = json.loads(_DIST_PATH.read_text(encoding="utf-8"))
 
 # Đặc trưng theo DFRWS index: feature_N = model_index N.
-DOWNSTREAM_TX = {"name": "feature_133", "label": "Std deviation of value of output txs", "meaningful": True, "value": 2.5, "contribution": 0.4}
-UPSTREAM_TX = {"name": "feature_95", "label": "Minimum value of input txs", "meaningful": True, "value": 0.9, "contribution": 0.3}
+DOWNSTREAM_TX = {
+    "name": "feature_133",
+    "label": "Std deviation of value of output txs",
+    "meaningful": True,
+    "value": 2.5,
+    "contribution": 0.4,
+}
+UPSTREAM_TX = {
+    "name": "feature_95",
+    "label": "Minimum value of input txs",
+    "meaningful": True,
+    "value": 0.9,
+    "contribution": 0.3,
+}
 LOCAL_OUT = {"name": "feature_6", "label": "Number of outputs", "meaningful": True, "value": 1.2, "contribution": 0.35}
 UNRESOLVED = {"name": "feature_4", "label": None, "meaningful": False, "value": 3.0, "contribution": 0.5}
 
@@ -41,13 +54,17 @@ def _all_text(reasons):
 
 def test_case1_downstream_zero_suppresses_downstream_reason():
     """upstream>0, downstream=0 → KHÔNG có reason về 'giao dịch tiếp theo'."""
-    rr = build_risk_reasons([DOWNSTREAM_TX, UPSTREAM_TX, LOCAL_OUT], graph_in_degree=1, graph_out_degree=0, distribution=_DIST)
+    rr = build_risk_reasons(
+        [DOWNSTREAM_TX, UPSTREAM_TX, LOCAL_OUT], graph_in_degree=1, graph_out_degree=0, distribution=_DIST
+    )
     assert all(r["category"] != "DOWNSTREAM_TRANSACTION_AGGREGATE" for r in rr)
     assert all(r["side"] != "downstream_tx" for r in rr)
 
 
 def test_case1b_upstream_zero_suppresses_upstream_reason():
-    rr = build_risk_reasons([DOWNSTREAM_TX, UPSTREAM_TX, LOCAL_OUT], graph_in_degree=0, graph_out_degree=3, distribution=_DIST)
+    rr = build_risk_reasons(
+        [DOWNSTREAM_TX, UPSTREAM_TX, LOCAL_OUT], graph_in_degree=0, graph_out_degree=3, distribution=_DIST
+    )
     assert all(r["category"] != "UPSTREAM_TRANSACTION_AGGREGATE" for r in rr)
 
 
@@ -69,7 +86,9 @@ def test_case3_percentile_present_grounds_text():
 
 def test_case4_never_invents_external_intelligence():
     """risk_reasons KHÔNG bịa sàn/mixer/sanctions."""
-    rr = build_risk_reasons([DOWNSTREAM_TX, UPSTREAM_TX, LOCAL_OUT], graph_in_degree=2, graph_out_degree=2, distribution=_DIST)
+    rr = build_risk_reasons(
+        [DOWNSTREAM_TX, UPSTREAM_TX, LOCAL_OUT], graph_in_degree=2, graph_out_degree=2, distribution=_DIST
+    )
     txt = _all_text(rr)
     assert not any(w in txt for w in _INVENTED_INTEL)
 

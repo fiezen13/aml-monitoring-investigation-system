@@ -9,6 +9,7 @@ giữ output). Bản này:
   * warm-up: cạnh cold → provisional, chấm lại khi endpoint đủ dày (in-mem);
   * trả `ScoredEdge` cho tầng bồi tụ vụ việc — KHÔNG tự ghi Postgres.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,7 +32,9 @@ from src.samld.encoders import EdgeEncoder
 from src.samld.schema import COLS
 from src.streaming.incremental_graph import IncrementalGraph
 
-logging.basicConfig(level=os.getenv("STREAM_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.basicConfig(
+    level=os.getenv("STREAM_LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s"
+)
 logger = logging.getLogger("fin07.streaming.samld_score")
 
 MODEL_VERSION = "samld-multi-pna-eu-v1"
@@ -52,6 +55,7 @@ class ModelCtx:
 @dataclass
 class ScoredEdge:
     """Kết quả chấm một cạnh — đủ để tầng bồi tụ dựng alert/case (không cần DB raw)."""
+
     source_id: str
     from_account: str
     to_account: str
@@ -110,26 +114,30 @@ def load_thresholds(batch_default: float) -> tuple[int, float]:
         return wd, float(st)
     if THRESHOLDS_FILE.exists():
         cfg = json.loads(THRESHOLDS_FILE.read_text(encoding="utf-8")).get("samld", {})
-        return (wd or int(cfg.get("warm_degree", 2))), (float(st) if st else float(cfg.get("stream_threshold", batch_default)))
+        return (wd or int(cfg.get("warm_degree", 2))), (
+            float(st) if st else float(cfg.get("stream_threshold", batch_default))
+        )
     logger.warning("Chưa có %s — dùng ngưỡng batch %.4f.", THRESHOLDS_FILE, batch_default)
     return (wd or 2), batch_default
 
 
 def _rows_from_events(events: list[dict], base_key: int) -> pd.DataFrame:
     """Sự kiện canonical → khung cột mà reconstruct_samld_df cần (bỏ self-loop)."""
-    df = pd.DataFrame({
-        "stream_txn_id": np.arange(base_key, base_key + len(events)),
-        "source_transaction_id": [e.get("transaction_id") or e.get("source_transaction_id") for e in events],
-        "from_account_key": [f"{e['from_bank']}:{e['from_account']}" for e in events],
-        "to_account_key": [f"{e['to_bank']}:{e['to_account']}" for e in events],
-        "occurred_at": [e.get("event_time") for e in events],
-        "amount_paid": [float(e.get("amount_paid", 0) or 0) for e in events],
-        "payment_currency": [e.get("payment_currency", "") for e in events],
-        "amount_received": [float(e.get("amount_received", 0) or 0) for e in events],
-        "receiving_currency": [e.get("receiving_currency", "") for e in events],
-        "payment_format": [e.get("payment_format", "") for e in events],
-        "is_laundering": [int(e.get("is_laundering", 0) or 0) for e in events],
-    })
+    df = pd.DataFrame(
+        {
+            "stream_txn_id": np.arange(base_key, base_key + len(events)),
+            "source_transaction_id": [e.get("transaction_id") or e.get("source_transaction_id") for e in events],
+            "from_account_key": [f"{e['from_bank']}:{e['from_account']}" for e in events],
+            "to_account_key": [f"{e['to_bank']}:{e['to_account']}" for e in events],
+            "occurred_at": [e.get("event_time") for e in events],
+            "amount_paid": [float(e.get("amount_paid", 0) or 0) for e in events],
+            "payment_currency": [e.get("payment_currency", "") for e in events],
+            "amount_received": [float(e.get("amount_received", 0) or 0) for e in events],
+            "receiving_currency": [e.get("receiving_currency", "") for e in events],
+            "payment_format": [e.get("payment_format", "") for e in events],
+            "is_laundering": [int(e.get("is_laundering", 0) or 0) for e in events],
+        }
+    )
     return df[df["from_account_key"] != df["to_account_key"]].reset_index(drop=True)
 
 
@@ -154,7 +162,9 @@ def reconstruct_samld_df(rows: pd.DataFrame, origin: datetime) -> pd.DataFrame:
     df["hour"] = ts.dt.hour.fillna(0).astype("float32").to_numpy()
     df["day_of_week"] = ts.dt.dayofweek.fillna(0).astype("float32").to_numpy()
     df["day_of_month"] = ts.dt.day.fillna(1).astype("float32").to_numpy()
-    df["elapsed_days"] = ((ts - pd.Timestamp(origin)).dt.total_seconds() / 86400.0).fillna(0).astype("float32").to_numpy()
+    df["elapsed_days"] = (
+        ((ts - pd.Timestamp(origin)).dt.total_seconds() / 86400.0).fillna(0).astype("float32").to_numpy()
+    )
     df["cross_border"] = (df[COLS.sender_country] != df[COLS.receiver_country]).astype("float32")
     df["currency_mismatch"] = (df[COLS.payment_currency] != df[COLS.received_currency]).astype("float32")
     return df
@@ -169,7 +179,7 @@ class BronzeStreamScorer:
         self.warm_degree, self.stream_threshold = load_thresholds(self.ctx.threshold)
         self.G = IncrementalGraph(feature_dim=self.ctx.encoder.num_features)
         self._next = 0
-        self._meta: dict[int, dict] = {}     # position -> raw fields (cho re-score)
+        self._meta: dict[int, dict] = {}  # position -> raw fields (cho re-score)
         self._provisional: set[int] = set()  # position cold, chờ warm
         logger.info("Scorer in-mem · ngưỡng streaming %.5f · warm_degree %d", self.stream_threshold, self.warm_degree)
 
@@ -177,8 +187,14 @@ class BronzeStreamScorer:
         df = reconstruct_samld_df(rows, self.origin)
         attr = self.ctx.encoder.transform(df).astype(np.float32)
         keys = rows["stream_txn_id"].to_numpy()
-        pos = self.G.add(keys, rows["from_account_key"].tolist(), rows["to_account_key"].tolist(),
-                         attr, rows["is_laundering"].to_numpy(), df["elapsed_days"].to_numpy())
+        pos = self.G.add(
+            keys,
+            rows["from_account_key"].tolist(),
+            rows["to_account_key"].tolist(),
+            attr,
+            rows["is_laundering"].to_numpy(),
+            df["elapsed_days"].to_numpy(),
+        )
         # lưu raw theo position để bồi tụ + re-score
         for p, (_, r) in zip(pos, rows.iterrows()):
             self._meta[int(p)] = r.to_dict()
@@ -189,8 +205,14 @@ class BronzeStreamScorer:
             return {}
         data = self.G.hetero()
         pt = torch.as_tensor(positions, dtype=torch.long)
-        out = evaluate(self.ctx.model, _loader(data, pt, self.ctx.config, shuffle=False), pt,
-                       self.ctx.device, ego_ids=self.ctx.ego_ids, threshold=self.stream_threshold)
+        out = evaluate(
+            self.ctx.model,
+            _loader(data, pt, self.ctx.config, shuffle=False),
+            pt,
+            self.ctx.device,
+            ego_ids=self.ctx.ego_ids,
+            threshold=self.stream_threshold,
+        )
         return {int(i): float(s) for i, s in zip(out.edge_ids, out.scores)}
 
     def _to_scored(self, positions: np.ndarray, id2s: dict[int, float]) -> list[ScoredEdge]:
@@ -206,14 +228,26 @@ class BronzeStreamScorer:
                 self._provisional.add(p)
             else:
                 self._provisional.discard(p)
-            out.append(ScoredEdge(
-                source_id=str(m.get("source_transaction_id") or m["stream_txn_id"]),
-                from_account=m["from_account_key"], to_account=m["to_account_key"],
-                amount=float(m["amount_paid"]), payment_currency=str(m["payment_currency"]),
-                receiving_currency=str(m["receiving_currency"]), payment_format=str(m["payment_format"]),
-                occurred_at=str(m["occurred_at"]), is_laundering=int(m["is_laundering"]),
-                score=sc, triggered=bool(warm and sc >= self.stream_threshold), warm=warm,
-                from_in=fi, from_out=fo, to_in=ti, to_out=to))
+            out.append(
+                ScoredEdge(
+                    source_id=str(m.get("source_transaction_id") or m["stream_txn_id"]),
+                    from_account=m["from_account_key"],
+                    to_account=m["to_account_key"],
+                    amount=float(m["amount_paid"]),
+                    payment_currency=str(m["payment_currency"]),
+                    receiving_currency=str(m["receiving_currency"]),
+                    payment_format=str(m["payment_format"]),
+                    occurred_at=str(m["occurred_at"]),
+                    is_laundering=int(m["is_laundering"]),
+                    score=sc,
+                    triggered=bool(warm and sc >= self.stream_threshold),
+                    warm=warm,
+                    from_in=fi,
+                    from_out=fo,
+                    to_in=ti,
+                    to_out=to,
+                )
+            )
         return out
 
     @torch.no_grad()
@@ -231,10 +265,18 @@ class BronzeStreamScorer:
     @torch.no_grad()
     def rescore_warmed(self) -> list[ScoredEdge]:
         """Chấm lại cạnh provisional mà endpoint nay đã warm (đồ thị dày thêm)."""
-        cand = np.array([p for p in self._provisional
-                         if min(sum(self.G.degrees_of(self._meta[p]["from_account_key"])),
-                                sum(self.G.degrees_of(self._meta[p]["to_account_key"]))) >= self.warm_degree],
-                        dtype=np.int64)
+        cand = np.array(
+            [
+                p
+                for p in self._provisional
+                if min(
+                    sum(self.G.degrees_of(self._meta[p]["from_account_key"])),
+                    sum(self.G.degrees_of(self._meta[p]["to_account_key"])),
+                )
+                >= self.warm_degree
+            ],
+            dtype=np.int64,
+        )
         if len(cand) == 0:
             return []
         return self._to_scored(cand, self._score(cand))

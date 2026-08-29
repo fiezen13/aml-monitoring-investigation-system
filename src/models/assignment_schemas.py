@@ -13,9 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 #: Trạng thái nghiệp vụ của một dòng phân công. Suy tại thời điểm hỏi, không lưu.
-AssignmentStatus = Literal[
-    "unassigned", "in_progress", "needs_info", "due_soon", "overdue", "completed"
-]
+AssignmentStatus = Literal["unassigned", "in_progress", "needs_info", "due_soon", "overdue", "completed"]
 
 
 class AssignmentRowOut(BaseModel):

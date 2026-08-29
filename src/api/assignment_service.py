@@ -209,9 +209,7 @@ def update_deadline(
     if case.state in CLOSED_CASE_STATES:
         raise AssignmentError("case_closed", "Hồ sơ đã kết thúc, không đổi hạn được nữa")
     session.execute(
-        text(
-            "UPDATE aml_case SET due_at = CAST(:d AS timestamptz), updated_at = now() WHERE case_id = :c"
-        ),
+        text("UPDATE aml_case SET due_at = CAST(:d AS timestamptz), updated_at = now() WHERE case_id = :c"),
         {"d": due_at, "c": case_id},
     )
     _audit(

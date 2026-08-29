@@ -69,14 +69,14 @@ def fixtures():
 
     with get_engine().begin() as conn:
         conn.execute(text("SET LOCAL session_replication_role = 'replica'"))
-        conn.execute(text("DELETE FROM crypto_review WHERE tx_id = ANY(:t)"),
-                     {"t": [ids["tx_hi"], ids["tx_lo"]]})
-        conn.execute(text("DELETE FROM audit_log WHERE actor = ANY(:u)"),
-                     {"u": [ids["lan"], ids["duc"], ids["manager"]]})
-        conn.execute(text("DELETE FROM bitcoin_scored_tx WHERE tx_id = ANY(:t)"),
-                     {"t": [ids["tx_hi"], ids["tx_lo"]]})
-        conn.execute(text("DELETE FROM app_user WHERE user_id = ANY(:u)"),
-                     {"u": [ids["lan"], ids["duc"], ids["manager"]]})
+        conn.execute(text("DELETE FROM crypto_review WHERE tx_id = ANY(:t)"), {"t": [ids["tx_hi"], ids["tx_lo"]]})
+        conn.execute(
+            text("DELETE FROM audit_log WHERE actor = ANY(:u)"), {"u": [ids["lan"], ids["duc"], ids["manager"]]}
+        )
+        conn.execute(text("DELETE FROM bitcoin_scored_tx WHERE tx_id = ANY(:t)"), {"t": [ids["tx_hi"], ids["tx_lo"]]})
+        conn.execute(
+            text("DELETE FROM app_user WHERE user_id = ANY(:u)"), {"u": [ids["lan"], ids["duc"], ids["manager"]]}
+        )
 
 
 @pytest.fixture
@@ -159,9 +159,7 @@ async def test_nhan_luot_roi_ket_luan(client, fixtures, as_user) -> None:
     as_user(fixtures["lan"], "analyst")
     review_id = (await _open(client, fixtures["tx_hi"])).json()["review_id"]
 
-    await client.post(
-        f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["lan"]}
-    )
+    await client.post(f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["lan"]})
     body = (
         await client.post(
             f"/api/v1/fc/crypto-reviews/{review_id}/conclude",
@@ -179,9 +177,7 @@ async def test_ket_luan_bat_buoc_neu_ly_do(client, fixtures, as_user) -> None:
     """Kết luận không nói vì sao thì sáu tháng sau không ai dựng lại được."""
     as_user(fixtures["lan"], "analyst")
     review_id = (await _open(client, fixtures["tx_hi"])).json()["review_id"]
-    await client.post(
-        f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["lan"]}
-    )
+    await client.post(f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["lan"]})
 
     response = await client.post(
         f"/api/v1/fc/crypto-reviews/{review_id}/conclude", json={"conclusion": "dang_ngo", "note": ""}
@@ -194,9 +190,7 @@ async def test_ket_luan_bat_buoc_neu_ly_do(client, fixtures, as_user) -> None:
 async def test_da_ket_luan_thi_khong_ket_luan_lai(client, fixtures, as_user) -> None:
     as_user(fixtures["lan"], "analyst")
     review_id = (await _open(client, fixtures["tx_hi"])).json()["review_id"]
-    await client.post(
-        f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["lan"]}
-    )
+    await client.post(f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["lan"]})
     payload = {"conclusion": "khong_dang_ngo", "note": "Không thấy dấu hiệu bất thường."}
     await client.post(f"/api/v1/fc/crypto-reviews/{review_id}/conclude", json=payload)
 
@@ -232,9 +226,7 @@ async def test_chuyen_vien_khong_giao_luot_cho_nguoi_khac(client, fixtures, as_u
     as_user(fixtures["lan"], "analyst")
     review_id = (await _open(client, fixtures["tx_hi"])).json()["review_id"]
 
-    response = await client.post(
-        f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["duc"]}
-    )
+    response = await client.post(f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["duc"]})
 
     assert response.status_code == 403
 
@@ -246,9 +238,7 @@ async def test_quan_ly_giao_duoc_cho_chuyen_vien(client, fixtures, as_user) -> N
     as_user(fixtures["manager"], "manager")
 
     body = (
-        await client.post(
-            f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["duc"]}
-        )
+        await client.post(f"/api/v1/fc/crypto-reviews/{review_id}/assign", json={"assignee_id": fixtures["duc"]})
     ).json()
 
     assert body["assignee_id"] == fixtures["duc"]

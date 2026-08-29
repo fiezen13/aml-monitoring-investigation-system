@@ -21,5 +21,5 @@ def test_cau_goi_dung_ten_loai_tien_thi_qua() -> None:
 
 
 def test_khong_bat_nham_don_vi_khong_phai_tien() -> None:
-    """"Đơn vị tính là ngày" nói về đơn vị đo, không phải tiền."""
+    """ "Đơn vị tính là ngày" nói về đơn vị đo, không phải tiền."""
     assert not _hides_currency("Đơn vị tính là ngày.")

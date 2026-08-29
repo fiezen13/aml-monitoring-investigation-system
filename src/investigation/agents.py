@@ -555,11 +555,11 @@ _FEW = 2  # bao nhiêu trở xuống thì gọi là "rất ít"
 #: này đã làm gì với tiền" trước, còn "hệ thống cộng điểm thế nào" là thứ đọc
 #: sau khi đã hiểu câu chuyện.
 _FACT_ORDER: tuple[tuple[int, str], ...] = (
-    (10, "Trong khoảng "),           # dòng tiền của cả cửa sổ
+    (10, "Trong khoảng "),  # dòng tiền của cả cửa sổ
     (20, "được chuyển đi trong vòng"),  # tốc độ
     (21, "Thời gian giữ tiền"),
     (30, "chưa từng giao dịch với tài khoản này"),  # đối tác mới
-    (40, "Ngày "),                   # từng giao dịch dẫn chứng
+    (40, "Ngày "),  # từng giao dịch dẫn chứng
     (50, "So với các tài khoản hoạt động"),  # đặc trưng hành vi
     (55, "Bộ phát hiện đồ thị"),
     (60, "hành lang"),
@@ -612,7 +612,7 @@ def _percent(value: float, *, of_nonzero: bool = False) -> str:
 
 
 def _absence_wording(label: str) -> str:
-    """"0 giao dịch tiền mặt" → "Kỳ chấm điểm không ghi nhận giao dịch tiền mặt".
+    """ "0 giao dịch tiền mặt" → "Kỳ chấm điểm không ghi nhận giao dịch tiền mặt".
 
     Phải nêu rõ PHẠM VI. Yếu tố chấm điểm đo trên cửa sổ của ô chấm điểm, còn sổ
     giao dịch đính kèm là các dòng gần nhất — hai khoảng khác nhau. Viết trống
@@ -761,12 +761,18 @@ def _summary(
         if observed.get("currency"):
             unit = f" {observed['currency']}"
             received = _side(
-                observed["inflow_amount"], observed["incoming_count"],
-                observed["unique_in_counterparties"], unit, verb="nhận",
+                observed["inflow_amount"],
+                observed["incoming_count"],
+                observed["unique_in_counterparties"],
+                unit,
+                verb="nhận",
             )
             sent = _side(
-                observed["outflow_amount"], observed["outgoing_count"],
-                observed["unique_out_counterparties"], unit, verb="chuyển đi",
+                observed["outflow_amount"],
+                observed["outgoing_count"],
+                observed["unique_out_counterparties"],
+                unit,
+                verb="chuyển đi",
             )
             headline = f"Trong cửa sổ 30 ngày ({window_text}), tài khoản {received} và {sent}."
         else:
@@ -980,9 +986,7 @@ def _transaction_facts(evidence: list[EvidenceEnvelope]) -> dict[str, Any]:
         "available": True,
         "transactions_in_evidence": len(rows),
         "cross_border_transactions": cross_border,
-        "transactions_by_destination_country": dict(
-            sorted(by_destination.items(), key=lambda kv: (-kv[1], kv[0]))
-        ),
+        "transactions_by_destination_country": dict(sorted(by_destination.items(), key=lambda kv: (-kv[1], kv[0]))),
         "ledger_truncated": truncated,
         "how_to_use": (
             "Đây là phép đếm do hệ thống tính trên chính sổ giao dịch đã thu, không phải "
@@ -1556,8 +1560,7 @@ class ExplanationAgent:
                 # phép đo, hai con số. Người đọc không biết mình đang nhìn hai
                 # thứ khác nhau hay một thứ bị ghi sai, và mất tin ở cả hai.
                 dwell_text = (
-                    f" Thời gian giữ tiền trung vị giữa lúc nhận và lần chuyển đi kế tiếp là "
-                    f"{float(dwell):.1f} giờ."
+                    f" Thời gian giữ tiền trung vị giữa lúc nhận và lần chuyển đi kế tiếp là {float(dwell):.1f} giờ."
                     if dwell is not None
                     else ""
                 )
@@ -1813,14 +1816,11 @@ class ExplanationAgent:
                 # Dùng gạch ngang thay ngoặc: bản trước ghép "nhãn (số đo)" rồi
                 # bọc cả danh sách trong một cặp ngoặc nữa, mà số đo lại có chú
                 # thích trong ngoặc — thành ba tầng ngoặc trong một câu.
-                status = (
-                    f"khớp {len(matched)} trong {len(expected)} dấu hiệu đặc trưng của kiểu này: "
-                    + "; ".join(
-                        f"{labels.get(name, name)} — {measurements[name]}"
-                        if measurements.get(name)
-                        else labels.get(name, name)
-                        for name in ordered_matched
-                    )
+                status = f"khớp {len(matched)} trong {len(expected)} dấu hiệu đặc trưng của kiểu này: " + "; ".join(
+                    f"{labels.get(name, name)} — {measurements[name]}"
+                    if measurements.get(name)
+                    else labels.get(name, name)
+                    for name in ordered_matched
                 )
             else:
                 status = "chưa khớp dấu hiệu đặc trưng nào của kiểu này"
@@ -2127,9 +2127,7 @@ class EvidenceCriticAgent:
         # KHÔNG BÊN NÀO kiểm chứng được. Đứng trên nó để đánh trượt là buộc tội
         # bịa đặt trong khi cả hai phía cùng mù. Hạn chế đã công bố ở mục "thông
         # tin còn thiếu" là chỗ chuyên viên đọc để tự trừ hao.
-        if _is_counting_claim(issue) and any(
-            _TRUNCATION_RE.search(note) for note in explanation.missing_information
-        ):
+        if _is_counting_claim(issue) and any(_TRUNCATION_RE.search(note) for note in explanation.missing_information):
             return True
 
         # Cáo buộc "mã chứng cứ này không tồn tại" là mệnh đề về sổ bằng chứng,
@@ -2233,11 +2231,7 @@ class EvidenceCriticAgent:
                 # đọc nhận một đối tác không tồn tại trong hồ sơ. Đây là phép
                 # kiểm quy kết ở mức định danh (Rashkin và cộng sự 2021).
                 cited_strings = {value for item in cited for value in _string_values(item.payload)}
-                invented = [
-                    token
-                    for token in set(_IDENTIFIER_RE.findall(claim.claim))
-                    if token not in cited_strings
-                ]
+                invented = [token for token in set(_IDENTIFIER_RE.findall(claim.claim)) if token not in cited_strings]
                 if invented:
                     issues.append(
                         ValidationIssue(

@@ -44,7 +44,6 @@ from src.investigation.schemas import (
     WorkflowState,
 )
 from src.models.schemas import (
-    CaseAssignRequest,
     AlertDetailOut,
     AlertOut,
     AlertPageOut,
@@ -53,6 +52,7 @@ from src.models.schemas import (
     ApprovalDecisionRequest,
     AuditEventOut,
     CaseAgeOut,
+    CaseAssignRequest,
     CaseBandOut,
     CaseDetailOut,
     CaseOut,
@@ -62,22 +62,21 @@ from src.models.schemas import (
     DashboardOut,
     InternalAlertCreate,
     InternalAlertCreateOut,
-    InvestigateOut,
     LoginOut,
     LoginRequest,
+    MyWorkOut,
     QueueStatsOut,
     SarActionRequest,
     SarChatRequest,
     SarNarrativeRequest,
     SarPreparerRequest,
-    MyWorkOut,
-    WorkloadOut,
-    WorkloadRowOut,
     SettingUpdateRequest,
     TransactionOut,
     TypologyShareOut,
     UserOut,
     UserUpdateRequest,
+    WorkloadOut,
+    WorkloadRowOut,
 )
 from src.services import queue
 from src.services.if_alert_publish import insert_ml_alert, stable_alert_id
@@ -367,7 +366,11 @@ def list_cases_page(
         total = session.execute(text("SELECT count(*) FROM aml_case c " + where), params).scalar_one()
         rows = (
             session.execute(
-                text(select + where + " ORDER BY c.risk_score DESC, (SELECT max(a.flagged_amount) FROM alert a WHERE a.case_id = c.case_id) DESC NULLS LAST, c.created_at DESC LIMIT :limit OFFSET :offset"),
+                text(
+                    select
+                    + where
+                    + " ORDER BY c.risk_score DESC, (SELECT max(a.flagged_amount) FROM alert a WHERE a.case_id = c.case_id) DESC NULLS LAST, c.created_at DESC LIMIT :limit OFFSET :offset"
+                ),
                 params,
             )
             .mappings()
@@ -509,7 +512,6 @@ def _build_timeline(current: str, reached_at: dict[str, object]) -> list[CaseTim
 # nơi dùng), nên sáu trạng thái ấy chưa từng có vụ nào đi qua — nhưng vẫn
 # hiện trong nhật ký kiểm toán như những giai đoạn đã xảy ra. Quy trình thật
 # đi qua tầng SAR và tầng phê duyệt, cả hai đều do người bấm.
-
 
 
 # ---------------------------------------------------------------------
@@ -865,9 +867,7 @@ _AUDIT_MILESTONES: tuple[tuple[str, str, frozenset[str]], ...] = (
     ("phe_duyet", "Trình phê duyệt", frozenset({"ChoNguoiPheDuyet"})),
     ("ket_thuc", "Kết thúc hồ sơ", frozenset({"XuatHoSo", "DongKhongBaoCao"})),
 )
-_STATE_TO_MILESTONE: dict[str, int] = {
-    st: idx for idx, (_, _, states) in enumerate(_AUDIT_MILESTONES) for st in states
-}
+_STATE_TO_MILESTONE: dict[str, int] = {st: idx for idx, (_, _, states) in enumerate(_AUDIT_MILESTONES) for st in states}
 _TERMINAL_STATES = frozenset({"XuatHoSo", "DongKhongBaoCao"})
 
 
@@ -896,8 +896,7 @@ def audit_by_case(limit: int = Query(default=40, ge=1, le=100)) -> list[dict[str
     """
     with get_session() as session:
         names = {
-            r["user_id"]: r["name"]
-            for r in session.execute(text("SELECT user_id, name FROM app_user")).mappings()
+            r["user_id"]: r["name"] for r in session.execute(text("SELECT user_id, name FROM app_user")).mappings()
         }
         cases = (
             session.execute(
@@ -961,9 +960,7 @@ def audit_by_case(limit: int = Query(default=40, ge=1, le=100)) -> list[dict[str
                     lbl = "Đóng — không báo cáo"
                 elif key == "ket_thuc" and c["state"] == "XuatHoSo":
                     lbl = "Đã xuất hồ sơ SAR"
-                milestones.append(
-                    {"key": key, "label": lbl, "status": status, "reached_at": reached.get(idx)}
-                )
+                milestones.append({"key": key, "label": lbl, "status": status, "reached_at": reached.get(idx)})
 
             out.append(
                 {
@@ -1274,9 +1271,7 @@ def dashboard(
         cases_unassigned=case_totals["unassigned"],
         cases_total=case_totals["total"],
         cases_awaiting_review=case_totals["awaiting_review"],
-        alert_trend=[
-            AlertTrendPointOut(week=r["week"], total=r["total"], high=r["high"]) for r in alert_trend
-        ],
+        alert_trend=[AlertTrendPointOut(week=r["week"], total=r["total"], high=r["high"]) for r in alert_trend],
     )
 
 
@@ -2044,7 +2039,9 @@ def create_sar(case_id: str, authorization: str | None = Header(default=None)) -
             )
             for evid in evids:
                 session.execute(
-                    text("INSERT INTO sar_statement_evidence(statement_id, evidence_id) VALUES (:statement, :evidence)"),
+                    text(
+                        "INSERT INTO sar_statement_evidence(statement_id, evidence_id) VALUES (:statement, :evidence)"
+                    ),
                     {"statement": statement_id, "evidence": evid},
                 )
         session.execute(
@@ -2102,9 +2099,7 @@ def update_sar_narrative(
                 {"b": f.text.strip(), "s": sar_id, "id": f.id},
             )
         # Sửa xong → về drafting để kiểm chứng lại trước khi gửi.
-        session.execute(
-            text("UPDATE sar_draft SET status = 'drafting' WHERE sar_draft_id = :id"), {"id": sar_id}
-        )
+        session.execute(text("UPDATE sar_draft SET status = 'drafting' WHERE sar_draft_id = :id"), {"id": sar_id})
         session.execute(
             text(
                 """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
@@ -2274,9 +2269,7 @@ def decide_approval(
             raise HTTPException(status_code=404, detail=f"Không tìm thấy phê duyệt {approval_id}")
         if approval["decision"] != "pending":
             raise HTTPException(status_code=409, detail="Quyết định đã được ghi và không thể sửa")
-        submitter = session.execute(
-            text(_LATEST_SUBMITTER), {"case_id": approval["case_id"]}
-        ).scalar_one_or_none()
+        submitter = session.execute(text(_LATEST_SUBMITTER), {"case_id": approval["case_id"]}).scalar_one_or_none()
         if submitter == user["user_id"]:
             raise HTTPException(status_code=403, detail="Người gửi không được tự phê duyệt hồ sơ")
         event = {"approved": "approved", "rejected": "rejected", "more_info": "more_info_requested"}[request.decision]
@@ -2356,9 +2349,7 @@ _SAR_STATUS_VI = {
 }
 
 
-def _sar_queue_context(
-    session: Any, *, own_only_for: str | None = None
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _sar_queue_context(session: Any, *, own_only_for: str | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Dựng NGỮ CẢNH THẬT cho trợ lý từ bảng sar_draft/approval/aml_case.
 
     ``own_only_for`` giới hạn về hồ sơ của MỘT người: chuyên viên hỏi trợ lý thì
@@ -2391,7 +2382,7 @@ def _sar_queue_context(
                      LEFT JOIN approval a ON a.sar_draft_id = d.sar_draft_id AND a.decision = 'pending'
                     WHERE TRUE{scope}
                     ORDER BY (a.decision = 'pending') DESC NULLS LAST, c.risk_score DESC
-                    LIMIT 25""" 
+                    LIMIT 25"""
             ),
             params,
         )
@@ -2651,7 +2642,12 @@ def confirm_action(action_id: str, authorization: str | None = Header(default=No
 
         # Bấm hai lần: lần sau thấy trạng thái đã xong và trả lại đúng kết quả cũ.
         if row["status"] == "executed":
-            return {"status": "executed", "already_done": True, "result": row["result"] or {}, "message": "Thao tác này đã được thực hiện."}
+            return {
+                "status": "executed",
+                "already_done": True,
+                "result": row["result"] or {},
+                "message": "Thao tác này đã được thực hiện.",
+            }
         if row["status"] != "proposed":
             raise HTTPException(status_code=409, detail="Đề xuất này không còn hiệu lực")
         if row["expires_at"] <= now:
@@ -2761,7 +2757,12 @@ def confirm_action(action_id: str, authorization: str | None = Header(default=No
             assignee_id=assignee_id,
             confirmation_state="executed",
         )
-    return {"status": "executed", "already_done": False, "result": result, "message": _executed_message(action_type, result, proposal)}
+    return {
+        "status": "executed",
+        "already_done": False,
+        "result": result,
+        "message": _executed_message(action_type, result, proposal),
+    }
 
 
 @router.post("/actions/{action_id}/cancel")
@@ -2987,9 +2988,7 @@ def workload(authorization: str | None = Header(default=None)) -> WorkloadOut:
         unassigned = session.execute(
             text(f"SELECT count(*) FROM aml_case WHERE assigned_to IS NULL AND state NOT IN ({closed})")
         ).scalar_one()
-        total_open = session.execute(
-            text(f"SELECT count(*) FROM aml_case WHERE state NOT IN ({closed})")
-        ).scalar_one()
+        total_open = session.execute(text(f"SELECT count(*) FROM aml_case WHERE state NOT IN ({closed})")).scalar_one()
 
     by_person: dict[str, dict[str, int]] = {}
     for row in open_rows:
@@ -3144,7 +3143,7 @@ def my_work(authorization: str | None = Header(default=None)) -> MyWorkOut:
                 text(
                     f"""SELECT count(*) FROM approval ap
                          WHERE ap.decision = 'pending'
-                           AND ({_LATEST_SUBMITTER.replace(':case_id', 'ap.case_id')})
+                           AND ({_LATEST_SUBMITTER.replace(":case_id", "ap.case_id")})
                                IS DISTINCT FROM :me"""
                 ),
                 {"me": me},

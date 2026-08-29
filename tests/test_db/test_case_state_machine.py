@@ -17,7 +17,6 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-
 pytestmark = pytest.mark.integration
 
 
@@ -76,9 +75,6 @@ def case_in_state(db_engine):
 def _state_of(db_engine, case_id: str) -> str:
     with db_engine.connect() as conn:
         return conn.execute(text("SELECT state FROM aml_case WHERE case_id = :c"), {"c": case_id}).scalar_one()
-
-
-
 
 
 def test_unknown_state_is_rejected_by_the_database(db_engine, case_in_state):

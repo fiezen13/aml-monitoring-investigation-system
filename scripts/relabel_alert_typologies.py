@@ -170,9 +170,7 @@ def relabel(detector: str, *, apply: bool, batch: int = 500, limit: int | None =
                 if match.typology_code != before:
                     updates.append({"id": row["alert_id"], "code": match.typology_code})
             if apply and updates:
-                session.execute(
-                    text("UPDATE alert SET typology_code = :code WHERE alert_id = :id"), updates
-                )
+                session.execute(text("UPDATE alert SET typology_code = :code WHERE alert_id = :id"), updates)
         print(f"  ... {min(start + batch, len(ids))}/{len(ids)}", flush=True)
     return moves
 
