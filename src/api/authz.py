@@ -183,6 +183,12 @@ POLICY: dict[str, frozenset[str]] = {
     "/fc/graph/edges/{edge_id}/transactions": INVESTIGATION_READ,
     "/fc/graph/nodes/{node_id}/transactions": INVESTIGATION_READ,
     "/fc/crypto": INVESTIGATION,
+    # Hàng đợi rà soát tiền mã hoá. Thao tác ghi kiểm quyền trong handler vì
+    # một endpoint phục vụ cả tự nhận lẫn giao cho người khác.
+    "/fc/crypto-reviews": INVESTIGATION_READ,
+    "/fc/bitcoin/{tx_id}/review": INVESTIGATION,
+    "/fc/crypto-reviews/{review_id}/assign": INVESTIGATION,
+    "/fc/crypto-reviews/{review_id}/conclude": INVESTIGATION,
     # Giải thích Gemini on-demand cho một giao dịch Bitcoin — cùng quyền điều tra.
     "/fc/bitcoin/{tx_id}/explain": INVESTIGATION,
     "/fc/bitcoin": INVESTIGATION_READ,

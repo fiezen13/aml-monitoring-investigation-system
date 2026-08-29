@@ -80,6 +80,9 @@ describe("nhãn cho màn hình nghiệp vụ", () => {
     "file_exported", "case_viewed", "user_login", "setting_changed", "user_changed",
     "sar_updated", "validation_run", "investigation_started", "investigation_completed",
     "investigation_failed", "investigation_reviewed",
+    "action_proposed", "action_confirmed", "action_executed",
+    "action_cancelled", "action_rejected_by_policy", "action_expired",
+    "crypto_review_opened", "crypto_review_assigned", "crypto_review_concluded",
   ];
 
   it.each(EVENT_TYPES)("mã sự kiện %s có nhãn tiếng Việt", (eventType) => {

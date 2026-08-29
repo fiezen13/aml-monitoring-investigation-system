@@ -1,13 +1,15 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { api } from "../api/client";
-import type { FcBitcoinExplanation, FcBitcoinRow } from "../api/client";
+import type { ApiCryptoReview, FcBitcoinExplanation, FcBitcoinRow } from "../api/client";
 import { int } from "../api/fcFormat";
 import { useApi } from "../api/useApi";
 import { ErrorState, PageShell } from "../components/ui";
 import { Chip, Empty, KpiCard, Panel, ProgressBar, ScreenTitle, Skeleton } from "../components/fc/primitives";
 import { C } from "../design/palette";
 import { businessReasons } from "./crypto/businessLanguage";
+import { useApp } from "../context/AppContext";
+import { ReviewChip, ReviewControls } from "../components/crypto/ReviewControls";
 import { useRbac } from "../rbac/useRbac";
 import { PERMISSIONS } from "../rbac/permissions";
 
@@ -497,7 +499,17 @@ function TxDetail({ row }: { row: FcBitcoinRow }) {
 }
 
 /** Hàng trong hàng đợi — gọn, ngôn ngữ nghiệp vụ (không nhãn dataset, không ML). */
-function QueueRow({ row }: { row: FcBitcoinRow }) {
+function QueueRow({
+  row,
+  review,
+  currentUserId,
+  onReviewChanged,
+}: {
+  row: FcBitcoinRow;
+  review: ApiCryptoReview | undefined;
+  currentUserId: string | undefined;
+  onReviewChanged: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const level = LEVEL_META[row.risk_level] ?? LEVEL_META.LOW;
   const score = Math.round(row.illicit_prob * 100);
@@ -508,12 +520,17 @@ function QueueRow({ row }: { row: FcBitcoinRow }) {
         <span className="tabular font-mono text-2xl font-semibold tabular-nums" style={{ color: level.color }}>{score}</span>
         <span className="text-2xs text-ink-low">/100 · ưu tiên</span>
         <Chip color={level.color}>{level.label}</Chip>
-        <span className="rounded-control px-1.5 py-0.5 text-3xs font-medium text-ink-soft" style={{ background: `${C.inkSoft}14` }}>
-          Chưa rà soát
-        </span>
+        <ReviewChip review={review} />
         <span className="font-mono text-2xs text-ink-low" title={row.tx_id}>mã {row.tx_id}</span>
         <span className="ml-auto text-2xs text-primary">{open ? "Thu gọn ▲" : "Xem hồ sơ ▼"}</span>
       </button>
+
+      <ReviewControls
+        txId={row.tx_id}
+        review={review}
+        currentUserId={currentUserId}
+        onChanged={onReviewChanged}
+      />
 
       {!open && (
         <p className="mt-1.5 text-sm leading-relaxed text-ink-hi">
@@ -527,6 +544,18 @@ function QueueRow({ row }: { row: FcBitcoinRow }) {
 
 export function CryptoPage() {
   const [view, setView] = useState<string>("flagged");
+  const { currentUser } = useApp();
+  // Hàng đợi rà soát nạp riêng và ghép theo mã giao dịch: bảng chấm điểm là dữ
+  // liệu mô hình, hàng đợi là công việc của người — hai vòng đời khác nhau.
+  const reviews = useApi(() => api.cryptoReviews({}), []);
+  const reviewByTx = useMemo(() => {
+    const map: Record<string, ApiCryptoReview> = {};
+    for (const r of reviews.data ?? []) {
+      // Một giao dịch mở lại nhiều lượt: lấy lượt MỚI NHẤT làm trạng thái hiện tại.
+      if (!map[r.tx_id] || r.opened_at > map[r.tx_id].opened_at) map[r.tx_id] = r;
+    }
+    return map;
+  }, [reviews.data]);
   const [page, setPage] = useState(1);
   const pageSize = 50;
   const data = useApi(
@@ -650,7 +679,13 @@ export function CryptoPage() {
 
             <div className="flex flex-col divide-y divide-line-faint">
               {rows.map((r) => (
-                <QueueRow key={r.tx_id} row={r} />
+                <QueueRow
+                  key={r.tx_id}
+                  row={r}
+                  review={reviewByTx[r.tx_id]}
+                  currentUserId={currentUser?.id}
+                  onReviewChanged={() => reviews.reload()}
+                />
               ))}
             </div>
 

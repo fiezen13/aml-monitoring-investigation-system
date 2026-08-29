@@ -336,6 +336,29 @@ export interface ApiMySar {
   reason: string | null;
 }
 
+/**
+ * Một lượt rà soát giao dịch tiền mã hoá.
+ *
+ * KHÔNG phải vụ việc ngân hàng: dữ liệu Elliptic đã ẩn danh nên không có tài
+ * khoản chủ thể để gắn vào `aml_case`. Đây là hàng đợi riêng, trung thực với
+ * dữ liệu đang có.
+ */
+export interface ApiCryptoReview {
+  review_id: string;
+  tx_id: string;
+  state: "TiepNhan" | "DangRaSoat" | "KetLuan";
+  risk_level: string | null;
+  illicit_prob: number | null;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  opened_by_name: string | null;
+  opened_at: string;
+  conclusion: "dang_ngo" | "khong_dang_ngo" | null;
+  conclusion_note: string | null;
+  concluded_by_name: string | null;
+  concluded_at: string | null;
+}
+
 export interface ApiAssignmentRow {
   case_id: string;
   title: string | null;
@@ -1254,6 +1277,28 @@ export const api = {
   myWork: () => request<ApiMyWork>("/my-work"),
 
   mySars: () => request<ApiMySar[]>("/my-sars"),
+
+  // --- Hàng đợi rà soát tiền mã hoá ---
+  cryptoReviews: (params: { state?: string; mine?: boolean } = {}) =>
+    request<ApiCryptoReview[]>(`/fc/crypto-reviews${query(params)}`),
+
+  openCryptoReview: (txId: string) =>
+    request<ApiCryptoReview>(`/fc/bitcoin/${encodeURIComponent(txId)}/review`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  assignCryptoReview: (reviewId: string, assigneeId: string | null) =>
+    request<ApiCryptoReview>(`/fc/crypto-reviews/${encodeURIComponent(reviewId)}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ assignee_id: assigneeId }),
+    }),
+
+  concludeCryptoReview: (reviewId: string, conclusion: string, note: string) =>
+    request<ApiCryptoReview>(`/fc/crypto-reviews/${encodeURIComponent(reviewId)}/conclude`, {
+      method: "POST",
+      body: JSON.stringify({ conclusion, note }),
+    }),
 
   // --- Phân công & tải công việc ---
   assignments: (params: {

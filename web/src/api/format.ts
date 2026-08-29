@@ -158,6 +158,17 @@ const AUDIT_EVENT_LABELS: Record<string, string> = {
   investigation_completed: "Điều tra xong",
   investigation_failed: "Điều tra dừng giữa chừng",
   investigation_reviewed: "Chuyên viên kết luận điều tra",
+  // Vòng đời đề xuất của trợ lý điều phối.
+  action_proposed: "Trợ lý đề xuất thao tác",
+  action_confirmed: "Quản lý xác nhận thao tác",
+  action_executed: "Đã thực hiện thao tác",
+  action_cancelled: "Đã huỷ đề xuất",
+  action_rejected_by_policy: "Đề xuất bị chính sách từ chối",
+  action_expired: "Đề xuất hết hạn",
+  // Hàng đợi rà soát tiền mã hoá.
+  crypto_review_opened: "Đưa giao dịch vào rà soát",
+  crypto_review_assigned: "Giao lượt rà soát",
+  crypto_review_concluded: "Kết luận rà soát",
   case_assigned: "Đổi người phụ trách",
 };
 

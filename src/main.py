@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from src.api.assignment_routes import router as assignment_router
+from src.api.crypto_review import router as crypto_review_router
 from src.api.authz import enforce_policy
 from src.api.fc_routes import router as fc_router
 from src.api.routes import router
@@ -61,6 +62,9 @@ app.include_router(fc_router, prefix="/api/v1", dependencies=_authz)
 # Màn "Phân công & tải công việc" — nơi duy nhất trả lời hồ sơ đang ở đâu.
 # Ghi qua cùng dịch vụ mà trợ lý dùng, nên hai lối vào không lệch luật.
 app.include_router(assignment_router, prefix="/api/v1", dependencies=_authz)
+# Hàng đợi rà soát tiền mã hoá — tách khỏi vụ việc ngân hàng vì dữ liệu
+# Elliptic đã ẩn danh, không có tài khoản chủ thể để gắn vào.
+app.include_router(crypto_review_router, prefix="/api/v1", dependencies=_authz)
 
 
 @app.get("/health", response_model=HealthOut)
