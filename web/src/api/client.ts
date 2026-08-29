@@ -321,6 +321,21 @@ export interface ApiSar extends SarDraft {
  * động thật, và mọi tham số đã nằm sẵn ở máy chủ dưới `action_id`.
  */
 /** Một dòng trên màn "Phân công & tải công việc". */
+/** Một hồ sơ chuyên viên đã trình, kèm quyết định của quản lý. */
+export interface ApiMySar {
+  sar_id: string;
+  case_id: string;
+  risk_score: number;
+  priority: string;
+  status: string;
+  decision: "pending" | "approved" | "rejected" | "more_info" | null;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  submitted_at: string | null;
+  /** Ý kiến của quản lý khi trả lại — thứ chuyên viên cần nhất. */
+  reason: string | null;
+}
+
 export interface ApiAssignmentRow {
   case_id: string;
   title: string | null;
@@ -1237,6 +1252,8 @@ export const api = {
   workload: () => request<ApiWorkload>("/workload"),
 
   myWork: () => request<ApiMyWork>("/my-work"),
+
+  mySars: () => request<ApiMySar[]>("/my-sars"),
 
   // --- Phân công & tải công việc ---
   assignments: (params: {

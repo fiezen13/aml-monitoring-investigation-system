@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../api/client";
 import type { ApiCopilotAction } from "../../api/client";
+import { useApp } from "../../context/AppContext";
+import { PERMISSIONS } from "../../rbac/permissions";
 import { transitions, useReduced } from "../../design/motion";
 import { ActionProposalCard } from "./ActionProposalCard";
 import { ActionReceipt } from "./ActionReceipt";
@@ -36,18 +38,37 @@ interface ActionState {
   at?: string;
 }
 
-/** Gợi ý mở đầu — để Quản lý dùng được ngay mà không phải nhớ cách hỏi. */
-const QUICK_ACTIONS = [
+/**
+ * Gợi ý mở đầu, KHÁC NHAU theo vai.
+ *
+ * Đưa "giao 3 hồ sơ cho Lan" cho một chuyên viên là mời họ làm việc mà máy chủ
+ * sẽ từ chối, và bảo họ hỏi "ai đang ít việc nhất" là mời hỏi thứ trợ lý không
+ * có dữ liệu để trả lời — ngữ cảnh của họ chỉ chứa hồ sơ của chính họ.
+ */
+const QUICK_ACTIONS_MANAGER = [
   { label: "Hồ sơ cần ưu tiên", prompt: "Hồ sơ nào cần ưu tiên xử lý trước?" },
   { label: "Chưa phân công", prompt: "Hồ sơ nào chưa có người xử lý?" },
   { label: "Quá hạn", prompt: "Hồ sơ nào đã quá hạn hoặc sắp tới hạn?" },
   { label: "Tải công việc nhóm", prompt: "Khối lượng công việc của từng chuyên viên hiện ra sao?" },
 ];
 
-const EXAMPLES = [
+const QUICK_ACTIONS_SPECIALIST = [
+  { label: "Hồ sơ của tôi", prompt: "Tôi đang có những hồ sơ nào?" },
+  { label: "Đang chờ duyệt", prompt: "Hồ sơ nào tôi đã trình và đang chờ quản lý quyết định?" },
+  { label: "Cần bổ sung", prompt: "Hồ sơ nào của tôi bị trả lại và cần bổ sung gì?" },
+  { label: "Thiếu bằng chứng", prompt: "Hồ sơ nào của tôi còn câu chưa dẫn bằng chứng?" },
+];
+
+const EXAMPLES_MANAGER = [
   "Giao 3 hồ sơ ưu tiên cao nhất cho Lan",
   "Ai đang có ít hồ sơ nhất?",
   "Hồ sơ nào sắp quá hạn?",
+];
+
+const EXAMPLES_SPECIALIST = [
+  "Hồ sơ nào tôi đã trình còn đang chờ duyệt?",
+  "Hồ sơ nào của tôi bị trả lại?",
+  "Hồ sơ nào của tôi còn thiếu bằng chứng?",
 ];
 
 export function SarCopilotDrawer({
@@ -61,6 +82,12 @@ export function SarCopilotDrawer({
   onExecuted: () => void;
 }) {
   const reduced = useReduced();
+  const { currentUser } = useApp();
+  // Phân nhánh theo QUYỀN, không theo chuỗi vai trò — máy chủ cũng quyết định
+  // như vậy, nên hai bên không thể lệch.
+  const canCoordinate = currentUser?.permissions?.includes(PERMISSIONS.SAR_ASSIGN) ?? false;
+  const quickActions = canCoordinate ? QUICK_ACTIONS_MANAGER : QUICK_ACTIONS_SPECIALIST;
+  const examples = canCoordinate ? EXAMPLES_MANAGER : EXAMPLES_SPECIALIST;
   const [expanded, setExpanded] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -167,8 +194,14 @@ export function SarCopilotDrawer({
             <header className="flex flex-none items-start gap-3 border-b border-line px-5 py-3.5">
               <Sparkles size={16} className="mt-0.5 flex-none text-primary" aria-hidden />
               <div className="min-w-0 flex-1">
-                <h2 className="text-h3 font-semibold text-ink-hi">Trợ lý phê duyệt SAR</h2>
-                <p className="mt-0.5 text-data text-ink-low">Hỗ trợ tra cứu và điều phối công việc</p>
+                <h2 className="text-h3 font-semibold text-ink-hi">
+                  {canCoordinate ? "Trợ lý phê duyệt SAR" : "Trợ lý công việc của bạn"}
+                </h2>
+                <p className="mt-0.5 text-data text-ink-low">
+                  {canCoordinate
+                    ? "Hỗ trợ tra cứu và điều phối công việc"
+                    : "Hỗ trợ tra cứu phần việc của bạn"}
+                </p>
               </div>
               <span className="mt-1 hidden items-center gap-1.5 text-data text-ink-low sm:flex">
                 <span className="h-1.5 w-1.5 rounded-full bg-ok" aria-hidden />
@@ -194,7 +227,7 @@ export function SarCopilotDrawer({
 
             {/* Gợi ý nhanh — cuộn ngang khi hẹp, không xuống dòng thành hai hàng. */}
             <div className="copilot-scroll flex flex-none gap-2 overflow-x-auto border-b border-line-faint px-5 py-2.5">
-              {QUICK_ACTIONS.map((q) => (
+              {quickActions.map((q) => (
                 <button
                   key={q.label}
                   type="button"
@@ -211,13 +244,16 @@ export function SarCopilotDrawer({
               {messages.length === 0 && !sending && (
                 <div className="flex flex-col items-center px-6 py-14 text-center">
                   <Sparkles size={20} className="text-primary" aria-hidden />
-                  <h3 className="mt-3 text-h3 font-semibold text-ink-hi">Trợ lý phê duyệt SAR</h3>
+                  <h3 className="mt-3 text-h3 font-semibold text-ink-hi">
+                    {canCoordinate ? "Trợ lý phê duyệt SAR" : "Trợ lý công việc của bạn"}
+                  </h3>
                   <p className="mt-1.5 max-w-sm text-body leading-relaxed text-ink-low">
-                    Tra cứu hàng đợi, kiểm tra tải công việc và chuẩn bị giao việc cho chuyên viên. Mọi
-                    thay đổi đều cần bạn xác nhận.
+                    {canCoordinate
+                      ? "Tra cứu hàng đợi, kiểm tra tải công việc và chuẩn bị giao việc cho chuyên viên. Mọi thay đổi đều cần bạn xác nhận."
+                      : "Tra cứu hồ sơ bạn đang giữ và hồ sơ đã trình lên quản lý. Trợ lý chỉ đọc dữ liệu phần việc của bạn."}
                   </p>
                   <ul className="mt-5 space-y-1.5">
-                    {EXAMPLES.map((e) => (
+                    {examples.map((e) => (
                       <li key={e}>
                         <button
                           type="button"

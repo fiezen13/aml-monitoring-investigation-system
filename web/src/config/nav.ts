@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   ClipboardCheck,
+  FileText,
   ClipboardList,
   Coins,
   Database,
@@ -61,6 +62,14 @@ export const NAV: NavItem[] = [
     label: "Vụ việc",
     icon: ClipboardCheck,
     roles: ["analyst", "manager"],
+  },
+  // Chỉ CHUYÊN VIÊN: theo dõi hồ sơ mình đã trình lên quản lý. Quản lý có màn
+  // Phê duyệt SAR cho cùng việc ấy ở chiều ngược lại.
+  {
+    to: "/my-reports",
+    label: "Báo cáo của tôi",
+    icon: FileText,
+    roles: ["analyst"],
   },
   {
     to: "/assignments",
@@ -140,6 +149,7 @@ export const NAV: NavItem[] = [
 // chỉ dành cho admin. Nhật ký kiểm toán: Quản lý + admin.
 export const ROUTE_ROLES: [string, string[]][] = [
   ["/alerts", ["analyst", "manager"]],
+  ["/my-reports", ["analyst"]],
   ["/assignments", ["analyst", "manager"]],
   ["/cases", ["analyst", "manager"]],
   ["/network", ["analyst", "manager"]],
@@ -177,6 +187,7 @@ export const ROUTE_TITLES: [string, string][] = [
   ["/alerts/", "Chi tiết cảnh báo"],
   ["/alerts", "Trung tâm cảnh báo"],
   ["/cases/", "Không gian vụ việc"],
+  ["/my-reports", "Báo cáo của tôi"],
   ["/assignments", "Phân công & tải công việc"],
   ["/cases", "Điều tra vụ việc"],
   ["/network", "Đồ thị mạng lưới"],

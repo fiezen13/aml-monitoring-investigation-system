@@ -1835,9 +1835,30 @@ def _sar_payload(sar_id: str) -> dict[str, Any]:
 
 
 @router.get("/sars")
-def list_sars() -> list[dict[str, Any]]:
+def list_sars(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
+    """Danh sách hồ sơ SAR, GIỚI HẠN theo vai.
+
+    Quản lý thấy toàn hàng đợi vì đó là việc của họ. Chuyên viên chỉ thấy hồ sơ
+    của chính mình — hồ sơ họ đang giữ hoặc đã trình. Trước đây endpoint không
+    lọc gì, nên một chuyên viên đọc được cả hồ sơ đồng nghiệp vừa nộp, kèm mức
+    rủi ro và quyết định của quản lý.
+    """
+    user = _require_user(authorization)
+    if has_permission(user["role"], Permission.TEAM_WORKLOAD_READ):
+        sql = "SELECT sar_draft_id FROM sar_draft ORDER BY created_at DESC"
+        params: dict[str, Any] = {}
+    else:
+        sql = """SELECT d.sar_draft_id FROM sar_draft d
+                   JOIN aml_case c USING (case_id)
+                  WHERE c.assigned_to = :me
+                     OR EXISTS (SELECT 1 FROM audit_log l
+                                 WHERE l.case_id = d.case_id
+                                   AND l.event_type = 'submitted_for_approval'
+                                   AND l.actor = :me)
+                  ORDER BY d.created_at DESC"""
+        params = {"me": user["user_id"]}
     with get_session() as session:
-        ids = session.execute(text("SELECT sar_draft_id FROM sar_draft ORDER BY created_at DESC")).scalars().all()
+        ids = session.execute(text(sql), params).scalars().all()
     return [_sar_payload(sar_id) for sar_id in ids]
 
 
@@ -2335,25 +2356,44 @@ _SAR_STATUS_VI = {
 }
 
 
-def _sar_queue_context(session: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _sar_queue_context(
+    session: Any, *, own_only_for: str | None = None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Dựng NGỮ CẢNH THẬT cho trợ lý từ bảng sar_draft/approval/aml_case.
 
-    Trả (trusted, untrusted): trusted là số liệu/định danh do hệ tính; untrusted là
-    văn bản tự do (tiêu đề vụ) — đánh dấu để mô hình không làm theo chỉ thị trong đó.
+    ``own_only_for`` giới hạn về hồ sơ của MỘT người: chuyên viên hỏi trợ lý thì
+    chỉ được nghe về việc của chính mình. Không có tham số này, một chuyên viên
+    hỏi "hồ sơ nào đang chờ duyệt" sẽ nhận cả hàng đợi — kể cả hồ sơ đồng nghiệp
+    vừa trình, kèm mức rủi ro và trạng thái phê duyệt của nó.
+
+    Khoá của khối tin cậy viết bằng TIẾNG VIỆT. Mô hình đọc lại nguyên văn thứ
+    nó được đưa; đưa `awaiting_decision` thì câu trả lời hiện ra tên trường, và
+    rào chắn đầu ra phải chặn cả một câu vốn đúng nội dung.
     """
+    scope = ""
+    params: dict[str, Any] = {}
+    if own_only_for:
+        scope = """ AND (c.assigned_to = :me OR EXISTS (
+                        SELECT 1 FROM audit_log l
+                         WHERE l.case_id = d.case_id
+                           AND l.event_type = 'submitted_for_approval'
+                           AND l.actor = :me))"""
+        params["me"] = own_only_for
     rows = (
         session.execute(
             text(
-                """SELECT d.sar_draft_id, d.case_id, d.status AS sar_status,
+                f"""SELECT d.sar_draft_id, d.case_id, d.status AS sar_status,
                           c.risk_score, c.priority, c.state, c.subject_account_key, c.title,
                           (a.decision = 'pending') AS awaiting_decision,
                           (SELECT count(*) FROM uncited_statement u WHERE u.sar_draft_id = d.sar_draft_id) AS uncited
                      FROM sar_draft d
                      JOIN aml_case c USING (case_id)
                      LEFT JOIN approval a ON a.sar_draft_id = d.sar_draft_id AND a.decision = 'pending'
+                    WHERE TRUE{scope}
                     ORDER BY (a.decision = 'pending') DESC NULLS LAST, c.risk_score DESC
-                    LIMIT 25"""
-            )
+                    LIMIT 25""" 
+            ),
+            params,
         )
         .mappings()
         .all()
@@ -2377,26 +2417,27 @@ def _sar_queue_context(session: Any) -> tuple[dict[str, Any], list[dict[str, Any
                 # Trợ lý đọc lại nguyên văn thứ nó được đưa: để `sar_status` thô
                 # thì câu trả lời hiện ra "Trạng thái: submitted_for_approval" —
                 # mã nội bộ lọt thẳng lên màn hình nghiệp vụ.
-                "sar_status": _SAR_STATUS_VI.get(r["sar_status"], r["sar_status"]),
-                "awaiting_decision": bool(r["awaiting_decision"]),
-                "risk_score": risk,
-                "priority": r["priority"],
-                "case_state": state_label(r["state"]),
-                "subject_account": r["subject_account_key"],
-                "uncited_statements": int(r["uncited"] or 0),
+                "trang_thai_ho_so": _SAR_STATUS_VI.get(r["sar_status"], r["sar_status"]),
+                "dang_cho_quyet_dinh": bool(r["awaiting_decision"]),
+                "diem_rui_ro": risk,
+                "muc_uu_tien": r["priority"],
+                "buoc_hien_tai": state_label(r["state"]),
+                "tai_khoan_chu_the": r["subject_account_key"],
+                "so_cau_chua_dan_bang_chung": int(r["uncited"] or 0),
             }
         )
         if r["title"]:
             untrusted.append({"sar_id": r["sar_draft_id"], "case_title_raw": r["title"]})
     trusted = {
-        "queue_name": "Hàng đợi phê duyệt SAR",
-        "summary": {
-            "total_drafts_shown": len(trusted_items),
-            "awaiting_decision": pending,
-            "high_risk_ge_80": high_risk,
+        "ten_hang_doi": "Hàng đợi phê duyệt SAR",
+        # Khoá tiếng Việt cả ở khối tổng hợp. Chính `awaiting_decision` ở đây là
+        # thứ mô hình đọc lại thành "(awaiting_decision: 0)" trên màn hình.
+        "tong_hop": {
+            "so_ho_so_dang_xem": len(trusted_items),
+            "dang_cho_quyet_dinh": pending,
+            "rui_ro_tu_80_tro_len": high_risk,
         },
-        "drafts": trusted_items,
-        "notes": "Số liệu tổng hợp trực tiếp từ bảng sar_draft/approval/aml_case tại thời điểm hỏi.",
+        "danh_sach_ho_so": trusted_items,
     }
     return trusted, untrusted
 
@@ -2458,7 +2499,7 @@ def _copilot_turn(user: dict[str, Any], request: SarChatRequest) -> dict[str, An
 
     body: dict[str, Any] = {
         "answer": reply.answer,
-        "grounded_on": trusted["summary"],
+        "grounded_on": trusted.get("tong_hop") or trusted.get("summary") or {},
         "blocked": reply.blocked,
         "guardrail": reply.category or None,
         "action": None,
@@ -2541,10 +2582,13 @@ def sar_ai_chat(request: SarChatRequest, authorization: str | None = Header(defa
         raise HTTPException(status_code=403, detail="Vai trò hiện tại không dùng được trợ lý")
     if has_permission(user["role"], Permission.SAR_ASSIGN):
         return _copilot_turn(user, request)
+    # Chuyên viên chỉ được nghe về việc của CHÍNH MÌNH; Quản trị hệ thống không
+    # có phần việc AML nào nên cũng không được đọc hàng đợi qua trợ lý.
+    scope_own = None if has_permission(user["role"], Permission.TEAM_WORKLOAD_READ) else user["user_id"]
     with get_session() as session:
-        trusted, untrusted = _sar_queue_context(session)
+        trusted, untrusted = _sar_queue_context(session, own_only_for=scope_own)
     history = [{"role": m.role, "text": m.text} for m in request.history]
-    reply = ai_assistant.ask(request.question, trusted, untrusted, history)
+    reply = ai_assistant.ask(request.question, trusted, untrusted, history, own_scope=scope_own is not None)
     # Lượt bị rào chắn chặn phải ĐỂ LẠI VẾT: đó vừa là dấu hiệu có người đang thử
     # tiêm lời nhắc, vừa là bằng chứng cho thấy rào chắn đang chạy thật.
     if reply.blocked:
@@ -2570,7 +2614,7 @@ def sar_ai_chat(request: SarChatRequest, authorization: str | None = Header(defa
             )
     return {
         "answer": reply.answer,
-        "grounded_on": trusted["summary"],
+        "grounded_on": trusted.get("tong_hop") or trusted.get("summary") or {},
         "blocked": reply.blocked,
         "guardrail": reply.category or None,
         # Nhánh chỉ đọc không bao giờ có đề xuất; trả khoá rỗng để giao diện chỉ
@@ -2973,6 +3017,75 @@ def workload(authorization: str | None = Header(default=None)) -> WorkloadOut:
 _LATEST_SUBMITTER = """SELECT actor FROM audit_log
      WHERE case_id = :case_id AND event_type = 'submitted_for_approval'
      ORDER BY occurred_at DESC LIMIT 1"""
+
+
+@router.get("/my-sars")
+def my_sars(authorization: str | None = Header(default=None)) -> list[dict[str, Any]]:
+    """Hồ sơ CHUYÊN VIÊN đã trình, kèm quyết định của Quản lý.
+
+    Trước đây chuyên viên nộp hồ sơ xong là mất dấu: không màn hình nào cho biết
+    quản lý đã duyệt chưa, từ chối vì lý do gì, hay đang còn chờ. Họ phải hỏi
+    miệng, hoặc mở lại từng hồ sơ một.
+
+    Chỉ trả về hồ sơ do CHÍNH họ trình — đọc từ nhật ký kiểm toán, nguồn duy
+    nhất biết ai đã bấm nút gửi.
+    """
+    user = _require_user(authorization)
+    with get_session() as session:
+        rows = (
+            session.execute(
+                text(
+                    """SELECT d.sar_draft_id, d.case_id, d.status,
+                              c.risk_score, c.priority, c.state, c.title,
+                              ap.decision, ap.reason, ap.decided_at, ap.requested_at,
+                              u.name AS decided_by_name,
+                              (SELECT max(l.occurred_at) FROM audit_log l
+                                WHERE l.case_id = d.case_id
+                                  AND l.event_type = 'submitted_for_approval'
+                                  AND l.actor = :me) AS submitted_at
+                         FROM sar_draft d
+                         JOIN aml_case c USING (case_id)
+                         -- Một hồ sơ trả lại rồi trình lại có NHIỀU bản ghi phê
+                         -- duyệt. Danh sách này nói "hồ sơ đang ở đâu", nên chỉ
+                         -- lấy quyết định MỚI NHẤT; nếu không, cùng một hồ sơ
+                         -- hiện hai dòng với hai kết quả trái nhau.
+                         LEFT JOIN LATERAL (
+                             SELECT a2.decision, a2.reason, a2.decided_at,
+                                    a2.requested_at, a2.decided_by
+                               FROM approval a2
+                              WHERE a2.sar_draft_id = d.sar_draft_id
+                              ORDER BY a2.decided_at DESC NULLS FIRST, a2.requested_at DESC
+                              LIMIT 1
+                         ) ap ON TRUE
+                         LEFT JOIN app_user u ON u.user_id = ap.decided_by
+                        WHERE EXISTS (SELECT 1 FROM audit_log l
+                                       WHERE l.case_id = d.case_id
+                                         AND l.event_type = 'submitted_for_approval'
+                                         AND l.actor = :me)
+                        ORDER BY ap.decided_at DESC NULLS FIRST, d.created_at DESC"""
+                ),
+                {"me": user["user_id"]},
+            )
+            .mappings()
+            .all()
+        )
+    return [
+        {
+            "sar_id": r["sar_draft_id"],
+            "case_id": r["case_id"],
+            "risk_score": round(float(r["risk_score"] or 0), 1),
+            "priority": r["priority"],
+            "status": _sar_display_status(r["status"], r["decision"]),
+            "decision": r["decision"],
+            "decided_by_name": r["decided_by_name"],
+            "decided_at": r["decided_at"],
+            "submitted_at": r["submitted_at"] or r["requested_at"],
+            # Lý do từ chối / yêu cầu bổ sung — thứ chuyên viên cần nhất khi hồ
+            # sơ quay về, và cũng là thứ trước đây họ không thấy ở đâu cả.
+            "reason": r["reason"],
+        }
+        for r in rows
+    ]
 
 
 @router.get("/my-work", response_model=MyWorkOut)

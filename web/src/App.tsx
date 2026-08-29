@@ -22,6 +22,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { ModelsPage } from "./pages/ModelsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { AssignmentsPage } from "./pages/AssignmentsPage";
+import { MyReportsPage } from "./pages/MyReportsPage";
 import { SarEditPage } from "./pages/SarEditPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
@@ -133,6 +134,7 @@ export default function App() {
               {/* Quản trị */}
               <Route path="/sar/:sarId/edit" element={<RequirePermission permission={PERM.PREPARE_SAR}><SarEditPage /></RequirePermission>} />
               <Route path="/approvals" element={<RequirePermission permission={PERM.APPROVE_CASE}><ApprovalsPage /></RequirePermission>} />
+              <Route path="/my-reports" element={<RequirePermission permission={PERM.PREPARE_SAR}><MyReportsPage /></RequirePermission>} />
               <Route path="/assignments" element={<RequirePermission permission={PERM.VIEW_CASES}><AssignmentsPage /></RequirePermission>} />
               <Route path="/approvals/:sarId" element={<RequirePermission permission={PERM.APPROVE_CASE}><ApprovalDetailPage /></RequirePermission>} />
               <Route path="/audit" element={<RequirePermission permission={PERM.VIEW_AUDIT_LOG}><AuditPage /></RequirePermission>} />
