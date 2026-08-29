@@ -15,6 +15,7 @@ import {
   deadlineText,
   assignmentStatusLabel,
   assignmentSourceLabel,
+  assignmentChannelLabel,
 } from "./format";
 
 describe("định dạng bằng chứng cho chuyên viên", () => {
@@ -208,5 +209,18 @@ describe("nhãn của màn phân công", () => {
     expect(assignmentSourceLabel("ai_copilot")).toBe("Trợ lý AI");
     expect(assignmentSourceLabel("manual")).toBe("Thủ công");
     expect(assignmentSourceLabel(null)).toBe("—");
+  });
+});
+
+describe("trách nhiệm của một lượt phân công", () => {
+  it("đường giao kể kèm giới từ để tên người đứng trước", () => {
+    // Cột chỉ ghi "Trợ lý AI" đọc ra thành "AI đã giao hồ sơ này" — sai về
+    // trách nhiệm. Trợ lý soạn đề xuất; quản lý bấm xác nhận mới là người giao.
+    expect(assignmentChannelLabel("ai_copilot")).toBe("qua Trợ lý AI");
+    expect(assignmentChannelLabel("manual")).toBe("giao trực tiếp");
+  });
+
+  it("chưa giao thì không nói gì về đường đi", () => {
+    expect(assignmentChannelLabel(null)).toBe("");
   });
 });

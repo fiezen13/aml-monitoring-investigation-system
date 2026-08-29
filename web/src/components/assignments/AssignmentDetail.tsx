@@ -3,7 +3,7 @@ import { ArrowRight, X } from "lucide-react";
 import { api } from "../../api/client";
 import type { ApiAssignmentDetail } from "../../api/client";
 import {
-  assignmentSourceLabel,
+  assignmentChannelLabel,
   assignmentStatusLabel,
   deadlineText,
   formatDateTime,
@@ -114,11 +114,24 @@ export function AssignmentDetail({
                 </Field>
                 <Field label="Trạng thái">{assignmentStatusLabel(d.row.status)}</Field>
                 <Field label="Người xử lý">{d.row.assignee_name ?? "Chưa phân công"}</Field>
-                <Field label="Nguồn phân công">{assignmentSourceLabel(d.row.source)}</Field>
                 <Field label="Được giao">
                   {d.row.assigned_at ? formatDateTime(d.row.assigned_at) : "—"}
                 </Field>
-                <Field label="Người giao">{d.row.assigned_by_name ?? "—"}</Field>
+                {/* NGƯỜI giao và ĐƯỜNG giao trong cùng một ô. Tách ra hai ô
+                    cách nhau thì "Nguồn: Trợ lý AI" đọc riêng ra thành "AI giao
+                    hồ sơ này" — sai về trách nhiệm nghiệp vụ. */}
+                <Field label="Người giao">
+                  {d.row.assigned_by_name ? (
+                    <>
+                      {d.row.assigned_by_name}
+                      <div className="text-data text-ink-dim">
+                        {assignmentChannelLabel(d.row.source)}
+                      </div>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </Field>
                 <Field label="Hạn xử lý">
                   {d.row.due_at ? (
                     <>
@@ -161,7 +174,7 @@ export function AssignmentDetail({
                       <div className="text-body text-ink-hi">{historyLine(h)}</div>
                       <div className="mt-0.5 text-data text-ink-dim">
                         {formatDateTime(h.at)}
-                        {h.source && ` · ${assignmentSourceLabel(h.source)}`}
+                        {h.source && ` · ${assignmentChannelLabel(h.source)}`}
                       </div>
                       {h.reason && <div className="mt-0.5 text-data text-ink-low">“{h.reason}”</div>}
                     </li>

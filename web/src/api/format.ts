@@ -627,6 +627,19 @@ export function assignmentSourceLabel(source: string | null | undefined): string
 }
 
 /**
+ * Cách nói KÈM TÊN NGƯỜI: "qua Trợ lý AI" chứ không phải "Trợ lý AI".
+ *
+ * Cột chỉ ghi "Trợ lý AI" đọc ra thành "AI đã giao hồ sơ này" — sai về trách
+ * nhiệm nghiệp vụ. Trợ lý chỉ soạn đề xuất; người bấm xác nhận mới là người
+ * giao, và tên họ phải đứng trước. Ô này chỉ nói việc ấy tới bằng đường nào.
+ */
+export function assignmentChannelLabel(source: string | null | undefined): string {
+  if (source === "ai_copilot") return "qua Trợ lý AI";
+  if (source === "manual") return "giao trực tiếp";
+  return "";
+}
+
+/**
  * Hạn xử lý, kể bằng lời chứ không chỉ bằng màu.
  *
  * "Còn 5 giờ" đọc được ngay; một chấm vàng thì phải học mới hiểu, và người mù

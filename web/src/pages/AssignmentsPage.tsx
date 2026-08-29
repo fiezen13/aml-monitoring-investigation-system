@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { ApiAssignmentDetail, ApiAssignmentRow } from "../api/client";
 import {
-  assignmentSourceLabel,
+  assignmentChannelLabel,
   assignmentStatusLabel,
   deadlineText,
   formatDateTime,
@@ -158,22 +158,29 @@ export function AssignmentsPage() {
         ),
     },
     {
+      // NGƯỜI giao đứng trước, đường đi đứng sau.
+      //
+      // Cột này từng chỉ ghi "Trợ lý AI", đọc ra thành "AI đã giao hồ sơ này".
+      // Trợ lý chỉ soạn đề xuất; quản lý bấm xác nhận mới là người chịu trách
+      // nhiệm, và một màn hình kiểm soát công việc phải nói đúng điều đó.
       key: "source",
-      header: "Nguồn phân công",
-      render: (r) => (
-        <span
-          className="text-ink-mid"
-          title={
-            r.source === "ai_copilot" && r.assigned_by_name
-              ? `Được đề xuất qua Trợ lý AI và xác nhận bởi ${r.assigned_by_name}.`
-              : r.assigned_by_name
-                ? `Giao bởi ${r.assigned_by_name}.`
-                : undefined
-          }
-        >
-          {assignmentSourceLabel(r.source)}
-        </span>
-      ),
+      header: "Người giao",
+      render: (r) =>
+        r.assigned_by_name ? (
+          <span
+            className="block"
+            title={
+              r.source === "ai_copilot"
+                ? `Được đề xuất qua Trợ lý AI và xác nhận bởi ${r.assigned_by_name}.`
+                : `Giao trực tiếp bởi ${r.assigned_by_name}.`
+            }
+          >
+            <span className="block text-ink-hi">{r.assigned_by_name}</span>
+            <span className="block text-meta text-ink-dim">{assignmentChannelLabel(r.source)}</span>
+          </span>
+        ) : (
+          <span className="text-ink-dim">—</span>
+        ),
     },
   ];
 
