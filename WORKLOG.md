@@ -14,7 +14,7 @@
 | Bảo | Script dữ liệu mẫu (lịch sử, đã loại bỏ) | 🗑 Removed | Thay bằng batch IBM AML LI-Small | — |
 | Bảo | CI chặn merge trên mọi pull request | ✅ Done | `.github/workflows/ci.yml`, ~4–5 phút | 2h |
 | Bảo | Pipeline CD đầy đủ bằng Jenkins | ✅ Done | `Jenkinsfile`, `ci/`, `deploy/`, `jenkins/` | 3h |
-| Bảo | Tài liệu vận hành và bàn giao | ✅ Done | `docs/operations/RUNBOOK.md`, `docs/operations/CICD.md` | — |
+| Bảo | Tài liệu vận hành và bàn giao | ✅ Done | `docs/operations/README.md#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân`, `docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng` | — |
 
 **Tổng kết ngày (đã cập nhật):** Hạ tầng chạy bằng Docker; dữ liệu demo ban đầu
 đã được loại bỏ sau khi batch IBM AML LI-Small hoàn thành. Máy mới cần nạp
@@ -41,7 +41,7 @@ Xong. Mở:
 Stack không tự tạo dữ liệu nghiệp vụ. Nạp batch IBM AML LI-Small theo runbook
 trước khi kiểm tra các màn hình.
 
-Đọc tiếp: [docs/operations/RUNBOOK.md](docs/operations/RUNBOOK.md).
+Đọc tiếp: [Runbook — dựng và vận hành FIN-07 trên máy cá nhân](docs/operations/README.md#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân).
 
 ## 2. Ai sở hữu cái gì
 
@@ -148,7 +148,7 @@ chúng thì **hỏi trước**, đừng gỡ ràng buộc:
 
 | Việc | Ai | Ghi chú |
 |---|---|---|
-| Bật branch protection cho `main` và `develop` | Bảo | **Chưa làm.** CI đỏ vẫn merge được cho tới khi bật. [docs/operations/CICD.md](docs/operations/CICD.md) mục 5 |
+| Bật branch protection cho `main` và `develop` | Bảo | **Chưa làm.** CI đỏ vẫn merge được cho tới khi bật. [CI/CD — cổng chặn merge và pipeline giao hàng](docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) mục 5 |
 | Thuê VPS và mua tên miền cho staging / production-like | Bảo | Pipeline triển khai đã có, máy chủ thì chưa. Dựng bằng tay, không dùng Terraform |
 | Cắm kênh thông báo khi build hỏng | Bảo | Khối `post { failure }` trong `Jenkinsfile` đang để trống |
 | Quét bảo mật image (Trivy/Grype) | Bảo | Nên có trước khi bàn giao |
@@ -159,11 +159,11 @@ chúng thì **hỏi trước**, đừng gỡ ràng buộc:
 
 | Tài liệu | Khi nào cần |
 |---|---|
-| [docs/operations/RUNBOOK.md](docs/operations/RUNBOOK.md) | Dựng, vận hành, xử lý sự cố |
+| [Runbook — dựng và vận hành FIN-07 trên máy cá nhân](docs/operations/README.md#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân) | Dựng, vận hành, xử lý sự cố |
 | [.env.example](.env.example) | Mọi biến môi trường |
-| [docs/operations/CICD.md](docs/operations/CICD.md) | Cổng chặn merge, luồng giao hàng, ba môi trường, quay lui |
+| [CI/CD — cổng chặn merge và pipeline giao hàng](docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) | Cổng chặn merge, luồng giao hàng, ba môi trường, quay lui |
 | [contracts/ingestion/README.md](contracts/ingestion/README.md) | Đường ống nạp dữ liệu: contract, lệnh, ba giao diện, bẫy khi chạy local |
-| [docs/architecture/PRODUCTION_ARCHITECTURE.md](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Từ máy cá nhân tới production: hiện trạng, kiến trúc đích, khoảng cách |
+| [Kiến trúc production — FIN-07 AML Level 1](docs/architecture/README.md#kiến-trúc-production-fin-07-aml-level-1) | Từ máy cá nhân tới production: hiện trạng, kiến trúc đích, khoảng cách |
 | FIN-07-ARC-001 | Kiến trúc, quyết định thiết kế |
 | FIN-07-DAT-001 | Nguồn dữ liệu, danh mục nhãn |
 | FIN-07-BUS-001 | Nghiệp vụ AML, danh mục typology T01–T10 |

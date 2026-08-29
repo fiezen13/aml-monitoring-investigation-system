@@ -55,10 +55,10 @@ nạp dữ liệu tham chiếu. Xoá sẽ gãy runbook hoặc đụng phần c�
 
 | Thư mục / file | Là gì | Vì sao GIỮ |
 |---|---|---|
-| `src/fusion/` + `models/fin07_if_graph_fusion_v1/v2.joblib`, `fin07_if_7d_v2.joblib`, `fin07_graph_7d_v2.joblib`, `configs/fusion/`, `reports/fusion*`, `scripts/{train_fusion_v2,build_fusion_release,load_fusion_release,…}` | Nhánh **IF + Graph fusion CŨ** (tiền thân của IBM edge) | `scripts/load_edge_scores.py`, `load_graph_evidence.py`, `services/typology_assignment.py` **đều tham chiếu `load_fusion_release.py`** → nằm trong **chuỗi nạp dữ liệu prod**. Xoá = phá runbook nạp lại DB. |
+| `src/fusion/` + `models/fin07_if_graph_fusion_v1/v2.joblib`, `fin07_if_7d_v2.joblib`, `fin07_graph_7d_v2.joblib`, `configs/fusion/`, `reports/fusion*`, `scripts/{train_fusion_v2,build_fusion_release,load_fusion_release,…}` | Nhánh **IF + Graph fusion CŨ** (tiền thân của IBM edge) | `scripts/load_edge_scores.py`, `load_graph_evidence.py`, `src/services/typology_assignment.py` **đều tham chiếu `load_fusion_release.py`** → nằm trong **chuỗi nạp dữ liệu prod**. Xoá = phá runbook nạp lại DB. |
 | `graph_handoff/graph_histgb_v1.joblib` | Model graph bàn giao | `src/detection/graph_loader.py` dùng — **phần detection của đồng đội**, không tự đụng. |
 | `if_handoff/` | Model Isolation Forest bàn giao cũ | Runbook (`LI_SMALL_E2E_RUNBOOK.md`) đánh dấu "đừng đọc model cũ từ đây" — mốc lịch sử có tài liệu. |
-| `models/mega-pna/…/seed_42.pt` | Checkpoint **bàn giao MEGA-PNA** (paper) | Tài liệu ở `docs/MEGA_PNA_BAN_GIAO.md`, `docs/ml/MEGA_PNA_RUNBOOK.md`; `build_mega_pna_release.py` dùng đường dẫn này. MEGA-PNA là kiến trúc SAML-D dùng. |
+| `models/mega-pna/…/seed_42.pt` | Checkpoint **bàn giao MEGA-PNA** (paper) | Tài liệu ở `docs/ml/README.md#mega-pna-mô-hình-phát-hiện-rửa-tiền-của-fin-07`, `docs/ml/README.md#fin-07-runbook-mega-pna`; `build_mega_pna_release.py` dùng đường dẫn này. MEGA-PNA là kiến trúc SAML-D dùng. |
 | `data/processed/behavior-7d/` | Isolation Forest rolling 7 ngày (nhánh behavior cũ) | Không track git; `make behavior-train` tái tạo. |
 
 **Muốn dọn thật sự** các phần legacy: phải (1) xác nhận prod đã nạp dữ liệu qua đường nào

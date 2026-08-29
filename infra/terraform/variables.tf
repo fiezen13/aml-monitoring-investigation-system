@@ -35,7 +35,7 @@ variable "db_tier" {
   description = <<-EOT
     Cấu hình máy của Cloud SQL. db-f1-micro là bậc chia sẻ CPU, rẻ nhất, đủ cho
     dữ liệu vụ việc và cảnh báo — thứ nằm ở đây tính bằng nghìn dòng, không phải
-    triệu. Giao dịch thô KHÔNG lưu ở đây (xem docs/architecture/PRODUCTION_ARCHITECTURE.md
+    triệu. Giao dịch thô KHÔNG lưu ở đây (xem docs/architecture/README.md#kiến-trúc-production-fin-07-aml-level-1
     mục 8), nên đừng chọn bậc lớn vì sợ dữ liệu nhiều.
   EOT
   type        = string

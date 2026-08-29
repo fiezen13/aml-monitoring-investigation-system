@@ -4,7 +4,7 @@ name: CI
 # request, và là status check mà branch protection kiểm.
 #
 # Phần giao hàng — triển khai staging, phê duyệt, triển khai production-like,
-# quay lui — nằm ở Jenkinsfile. Xem docs/operations/CICD.md để hiểu vì sao tách làm hai.
+# quay lui — nằm ở Jenkinsfile. Xem docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng để hiểu vì sao tách làm hai.
 #
 # Mọi bước ở đây đều gọi script trong ci/. Cùng bộ script mà Jenkins gọi, và
 # cũng là bộ script chạy được trên máy cá nhân. Không có logic CI nào viết

@@ -6,7 +6,7 @@ Nó **không** tạo và không xoá VM. VM đang chạy có dữ liệu trong v
 vòng đời của nó nghĩa là một lần `destroy` lỡ tay sẽ xoá cả cơ sở dữ liệu lẫn máy. VM được tra cứu
 bằng `data source`, chỉ đọc.
 
-Trạng thái trước khi có thư mục này được ghi trong [`docs/operations/CICD.md`](../../docs/operations/CICD.md)
+Trạng thái trước khi có thư mục này được ghi trong [CI/CD — cổng chặn merge và pipeline giao hàng](../../docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng)
 mục 10: *"Không có hạ tầng dưới dạng mã. VPS thuê ngoài, dựng bằng tay."* Đây là bước vá điều đó,
 làm từng phần chứ không một lần.
 
@@ -64,7 +64,7 @@ state đang lệch với thực tế.
 
 ### Nếu tường lửa `fin07-web` đã tồn tại
 
-[`DEPLOY_VM.md`](../../docs/operations/DEPLOY_VM.md) có bước tạo nó bằng tay. Đã tạo rồi thì Terraform
+[DEPLOY_VM](../../docs/operations/README.md#triển-khai-lên-vm-gcp-httpsamlmonitoringsite) có bước tạo nó bằng tay. Đã tạo rồi thì Terraform
 sẽ báo lỗi "already exists". Đưa nó vào quản lý thay vì xoá đi tạo lại:
 
 ```bash

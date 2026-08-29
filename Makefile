@@ -199,7 +199,7 @@ aml-smoke:  ## Kiểm tra khói đầu–cuối bằng file mẫu
 # --- Observability correlated (OTel + Prometheus + Loki + Jaeger) -----
 #
 # Profile `obs`, không chạy cùng `make up`. Cổng bind vào 127.0.0.1 nên
-# không ra Internet. Hướng dẫn đầy đủ: docs/operations/MONITORING.md
+# không ra Internet. Hướng dẫn đầy đủ: docs/operations/README.md#giám-sát-prometheus-và-grafana
 
 OBS := $(COMPOSE) --profile obs
 

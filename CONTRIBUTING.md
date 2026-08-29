@@ -60,8 +60,8 @@ hiện không đồng bộ tự động, đổi một nơi mà quên hai nơi ki
 
 ## Đọc thêm
 
-- [docs/operations/RUNBOOK.md](docs/operations/RUNBOOK.md) — dựng và vận hành
+- [Runbook — dựng và vận hành FIN-07 trên máy cá nhân](docs/operations/README.md#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân) — dựng và vận hành
 - [.env.example](.env.example) — mọi biến môi trường
-- [docs/operations/CICD.md](docs/operations/CICD.md) — cổng chặn merge chạy gì
-- [docs/operations/CICD.md](docs/operations/CICD.md) — luồng giao hàng đầy đủ
+- [CI/CD — cổng chặn merge và pipeline giao hàng](docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) — cổng chặn merge chạy gì
+- [CI/CD — cổng chặn merge và pipeline giao hàng](docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) — luồng giao hàng đầy đủ
 - [docs/architecture/](docs/architecture/) — kiến trúc hệ thống

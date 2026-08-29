@@ -694,7 +694,7 @@ services:
   # thống vẫn chạy y nguyên.
   #
   # Cổng của Grafana và Prometheus bind vào 127.0.0.1, KHÔNG ra Internet.
-  # Trên VM, xem bằng đường hầm SSH — chi tiết ở docs/operations/MONITORING.md.
+  # Trên VM, xem bằng đường hầm SSH — chi tiết ở docs/operations/README.md#giám-sát-prometheus-và-grafana.
   # ===================================================================
 
   prometheus:

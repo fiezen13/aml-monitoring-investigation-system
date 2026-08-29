@@ -267,7 +267,7 @@ Học không giám sát trên đặc trưng hành vi tài khoản trong cửa s�
 > **F1 = 0,7801** trên tập test, so với 0,7826 mà bài báo công bố. Dữ liệu của nó
 > giữ nguyên đủ số dòng nên không dính lỗi đo nêu trên. Kết quả đầy đủ, kèm cảnh
 > báo về đuôi dữ liệu suy biến (F1 vận hành thật là 0,6893):
-> [`docs/MEGA_PNA_BAN_GIAO.md`](MEGA_PNA_BAN_GIAO.md).
+> [MEGA-PNA — Mô hình phát hiện rửa tiền của FIN-07](ml/README.md#mega-pna-mô-hình-phát-hiện-rửa-tiền-của-fin-07).
 
 Ngưỡng chốt 0,0569 → 446 cảnh báo trên 1.223.740 giao dịch (tỷ lệ 0,036%).
 
@@ -591,7 +591,7 @@ Ba tài liệu nên đọc theo thứ tự:
 |---|---|
 | [`README.md`](../README.md) | Dựng máy, biến môi trường, truy vấn mẫu |
 | [`docs/eval/GATE2_EVAL_EVIDENCE.md`](eval/GATE2_EVAL_EVIDENCE.md) | Tác tử thực sự làm được gì, kèm output thật |
-| [`docs/operations/CICD.md`](operations/CICD.md) | Code đi từ máy bạn lên tên miền thế nào |
+| [CI/CD — cổng chặn merge và pipeline giao hàng](operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) | Code đi từ máy bạn lên tên miền thế nào |
 
 Muốn xem hệ thống chạy ngay mà không cần dựng gì: đăng nhập
 <https://www.amlmonitoring.site> bằng `tuan.la@velrix.vn` / `demo-password`, mở

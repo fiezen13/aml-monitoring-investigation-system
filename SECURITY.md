@@ -41,7 +41,7 @@ riêng tư (không mở public issue cho lỗ hổng chưa vá). Nêu rõ:
 
 - Chưa có quét lỗ hổng image tự động trong CI (Trivy/Grype) — xem
   lịch sử git (báo cáo phụ thuộc đợt chuẩn hoá, đã gỡ khỏi cây làm việc).
-- Chưa bật branch protection trên GitHub cho `main`/`develop` — xem `docs/operations/CICD.md` mục 5.
+- Chưa bật branch protection trên GitHub cho `main`/`develop` — xem `docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng` mục 5.
 - Staging/production-like không mở cổng PostgreSQL/Redis ra ngoài, chỉ Caddy mở cổng ra Internet ở
-  môi trường VM (`docs/operations/DEPLOY_VM.md`) — môi trường phát triển mặc định thì mở cổng ra máy chủ để
+  môi trường VM (`docs/operations/README.md#triển-khai-lên-vm-gcp-httpsamlmonitoringsite`) — môi trường phát triển mặc định thì mở cổng ra máy chủ để
   tiện gỡ lỗi, có chủ đích, không dùng cho dữ liệu thật.

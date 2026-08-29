@@ -215,7 +215,7 @@ kỹ thuật, không có quyền nghiệp vụ AML.
 **Trợ lý AI** (`src/api/copilot/`) có ở mọi màn nghiệp vụ. Với Quản lý nó đề
 xuất được thao tác điều phối (giao việc, chuyển giao, đặt hạn, đổi ưu tiên,
 nhắc việc); mô hình chỉ *soạn đề xuất*, người dùng xác nhận rồi máy chủ mới
-thực thi bằng mã tất định — xem `docs/architecture/PRODUCTION_ARCHITECTURE.md`.
+thực thi bằng mã tất định — xem `docs/architecture/README.md#kiến-trúc-production-fin-07-aml-level-1`.
 Với Chuyên viên, ngữ cảnh bị giới hạn về hồ sơ của chính họ và không có công cụ
 điều phối nào.
 
@@ -456,7 +456,7 @@ artifacts/          Dump và artifact lớn, bị loại khỏi Git
 - Agent không được đọc ground-truth label; mọi kết luận cần bằng chứng và human review.
 
 Xem thêm [`SECURITY.md`](SECURITY.md), [`contracts/README.md`](contracts/README.md) và
-[`docs/ml/CURRENCY_NATIVE_EDGE_MVP.md`](docs/ml/CURRENCY_NATIVE_EDGE_MVP.md).
+[FIN-07 — Currency-native policy edge model cho MVP](docs/ml/README.md#fin-07-currency-native-policy-edge-model-cho-mvp).
 Bảng benchmark đầy đủ theo dạng báo cáo nghiên cứu nằm tại
 [`reports/edge-benchmark/hi_medium_currency_native_policy_v1.md`](reports/edge-benchmark/hi_medium_currency_native_policy_v1.md).
 
@@ -478,29 +478,29 @@ sudo systemctl enable --now fin07-autodeploy.timer
 journalctl -u fin07-autodeploy.service -f   # theo dõi
 ```
 
-Chi tiết ở [`docs/operations/CICD.md`](docs/operations/CICD.md).
+Chi tiết ở [CI/CD — cổng chặn merge và pipeline giao hàng](docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng).
 
 ## Tài liệu chuyên sâu
 
 | Tài liệu | Nội dung |
 |---|---|
 | [`docs/TONG_KET_VA_HUONG_PHAT_TRIEN.md`](docs/TONG_KET_VA_HUONG_PHAT_TRIEN.md) | **Bắt đầu từ đây** — đang có gì, huấn luyện thế nào, làm gì tiếp |
-| [`docs/MEGA_PNA_BAN_GIAO.md`](docs/MEGA_PNA_BAN_GIAO.md) | **Mô hình phát hiện** — thuật toán, kết quả, hạn chế đã biết |
-| [`docs/architecture/PRODUCTION_ARCHITECTURE.md`](docs/architecture/PRODUCTION_ARCHITECTURE.md) | Kiến trúc triển khai production |
-| [`docs/operations/RUNBOOK.md`](docs/operations/RUNBOOK.md) | Vận hành và xử lý sự cố |
-| [`docs/operations/DEPLOY_VM.md`](docs/operations/DEPLOY_VM.md) | Triển khai VM |
-| [`docs/SO_DO_TRIEN_KHAI_PRODUCTION.md`](docs/SO_DO_TRIEN_KHAI_PRODUCTION.md) | Hạ tầng đang chạy, số liệu thật và giới hạn đã biết |
-| [`docs/KIEN_TRUC_THEO_DU_LIEU.md`](docs/KIEN_TRUC_THEO_DU_LIEU.md) | Vì sao sơ đồ được vẽ lại theo cột dữ liệu có thật |
-| [`docs/KIEN_TRUC_HUONG_B.md`](docs/KIEN_TRUC_HUONG_B.md) | Vì sao MEGA-PNA là một nhánh, không thay cả hệ |
+| [MEGA-PNA — Mô hình phát hiện rửa tiền của FIN-07](docs/ml/README.md#mega-pna-mô-hình-phát-hiện-rửa-tiền-của-fin-07) | **Mô hình phát hiện** — thuật toán, kết quả, hạn chế đã biết |
+| [Kiến trúc production — FIN-07 AML Level 1](docs/architecture/README.md#kiến-trúc-production-fin-07-aml-level-1) | Kiến trúc triển khai production |
+| [Runbook — dựng và vận hành FIN-07 trên máy cá nhân](docs/operations/README.md#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân) | Vận hành và xử lý sự cố |
+| [Triển khai lên VM GCP — https://amlmonitoring.site/](docs/operations/README.md#triển-khai-lên-vm-gcp-httpsamlmonitoringsite) | Triển khai VM |
+| [FIN-07 · Sơ đồ triển khai Production](docs/architecture/README.md#fin-07-sơ-đồ-triển-khai-production) | Hạ tầng đang chạy, số liệu thật và giới hạn đã biết |
+| [Kiến trúc FIN-07 vẽ lại theo đúng những gì dữ liệu có](docs/architecture/README.md#kiến-trúc-fin-07-vẽ-lại-theo-đúng-những-gì-dữ-liệu-có) | Vì sao sơ đồ được vẽ lại theo cột dữ liệu có thật |
+| [Kiến trúc hướng B — MEGA-PNA làm một nhánh, không thay cả hệ](docs/architecture/README.md#kiến-trúc-hướng-b-mega-pna-làm-một-nhánh-không-thay-cả-hệ) | Vì sao MEGA-PNA là một nhánh, không thay cả hệ |
 | [`MODELS.md`](MODELS.md) | Bản đồ model: file nào ở đâu, nhánh nào đang phục vụ |
 | [`docs/RBAC.md`](docs/RBAC.md) | Ma trận phân quyền theo vai |
 | [`docs/QA_QC_REPORT.md`](docs/QA_QC_REPORT.md) | Kết quả rà soát chất lượng trên bản đang chạy |
-| [`docs/operations/CICD.md`](docs/operations/CICD.md) | CI/CD, cổng chặn merge và tự động triển khai |
+| [CI/CD — cổng chặn merge và pipeline giao hàng](docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) | CI/CD, cổng chặn merge và tự động triển khai |
 | [`docs/eval/GATE2_EVAL_EVIDENCE.md`](docs/eval/GATE2_EVAL_EVIDENCE.md) | Năm ca đánh giá thủ công với output Gemini thật |
-| [`docs/ml/CURRENCY_NATIVE_EDGE_MVP.md`](docs/ml/CURRENCY_NATIVE_EDGE_MVP.md) | Release đang phục vụ UI |
+| [FIN-07 — Currency-native policy edge model cho MVP](docs/ml/README.md#fin-07-currency-native-policy-edge-model-cho-mvp) | Release đang phục vụ UI |
 | [`reports/edge-benchmark/hi_medium_currency_native_policy_v1.md`](reports/edge-benchmark/hi_medium_currency_native_policy_v1.md) | 15 bảng benchmark khoa học của release HI-Medium |
-| [`docs/ml/FIN-07-FUSION-001.md`](docs/ml/FIN-07-FUSION-001.md) | Fusion IF + Graph |
-| [`docs/ml/MEGA_PNA_RUNBOOK.md`](docs/ml/MEGA_PNA_RUNBOOK.md) | Huấn luyện và benchmark MEGA-PNA |
+| [FIN-07-FUSION-001 — Release hợp nhất Isolation Forest và Graph](docs/ml/README.md#fin-07-fusion-001-release-hợp-nhất-isolation-forest-và-graph) | Fusion IF + Graph |
+| [FIN-07 — Runbook MEGA-PNA](docs/ml/README.md#fin-07-runbook-mega-pna) | Huấn luyện và benchmark MEGA-PNA |
 | [`contracts/ingestion/README.md`](contracts/ingestion/README.md) | Kafka/Flink/HDFS ingestion tùy chọn |
 | [`data/raw/ibm-aml/README.md`](data/raw/ibm-aml/README.md) | Nguồn và cách tải raw IBM AML |
 

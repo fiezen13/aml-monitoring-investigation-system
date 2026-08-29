@@ -11,7 +11,7 @@ không bao giờ được commit.
 Bộ dữ liệu ngân hàng Việt Nam mô phỏng (`generated/ABM-BANK-*`) đã được gỡ
 tháng 08/2026. Dự án dùng bộ IBM AML LI-Small làm nguồn duy nhất cho cả huấn
 luyện, đánh giá và trình diễn — lý do ghi trong
-[`docs/ml/FIN-07-ML-002`](../docs/ml/FIN-07-ML-002_EDA_Dac_trung_va_Kien_truc.md).
+[FIN-07 — Phương pháp EDA, thiết kế đặc trưng và kiến trúc ML / Agent](../docs/ml/README.md#fin-07-phương-pháp-eda-thiết-kế-đặc-trưng-và-kiến-trúc-ml-agent).
 
 Kết quả EDA nằm ở `artifacts/eda/` và **có** được commit: chỉ vài chục KB, và
 tài liệu trích số liệu cùng checksum từ đó nên người đọc kiểm chứng được mà

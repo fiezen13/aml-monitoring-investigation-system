@@ -648,8 +648,8 @@ def _render(report: dict[str, Any], baseline: dict[str, Any], input_path: Path, 
         "- Khoảng 95% mô tả seed dùng `x̄ ± t(0,975; 4) × SD / sqrt(5)`.",
         "",
         "Tài liệu phương pháp trong repo: "
-        "[`EDGE_LEVEL_BENCHMARK.md`](../../docs/ml/EDGE_LEVEL_BENCHMARK.md) và "
-        "[`CURRENCY_NATIVE_EDGE_MVP.md`](../../docs/ml/CURRENCY_NATIVE_EDGE_MVP.md).",
+        "[Benchmark mức giao dịch](../../docs/ml/README.md#benchmark-mức-giao-dịch-edge-level-cho-li-small) và "
+        "[Currency-native policy edge model](../../docs/ml/README.md#fin-07-currency-native-policy-edge-model-cho-mvp).",
         "",
     ]
     return "\n".join(lines)

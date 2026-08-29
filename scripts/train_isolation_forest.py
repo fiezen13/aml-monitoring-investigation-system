@@ -1,4 +1,4 @@
-"""Fit Isolation Forest trên 20 đặc trưng hành vi (FIN-07 / feature_spec.md).
+"""Fit Isolation Forest trên 20 đặc trưng hành vi (FIN-07 / docs/feature_spec.md).
 
 Ví dụ:
   python scripts/train_isolation_forest.py

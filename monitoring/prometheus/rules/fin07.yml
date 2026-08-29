@@ -16,7 +16,7 @@ groups:
         annotations:
           summary: "{{ $labels.job }} không trả lời trong 2 phút"
           description: "Prometheus không scrape được {{ $labels.instance }}."
-          runbook_url: "docs/observability/runbooks/service-down.md"
+          runbook_url: "docs/observability/README.md#scrape-target-down"
 
       - alert: DiaSapDay
         expr: |
@@ -27,7 +27,7 @@ groups:
         annotations:
           summary: "Đĩa còn dưới 15%"
           description: "Image Docker và log là hai thứ đầy đĩa nhanh nhất trên máy này."
-          runbook_url: "docs/observability/runbooks/infrastructure-capacity.md"
+          runbook_url: "docs/observability/README.md#infrastructure-capacity-pressure"
 
       - alert: BoNhoSapCan
         expr: |
@@ -38,7 +38,7 @@ groups:
         annotations:
           summary: "RAM dùng trên 90%"
           description: "VM e2-medium chỉ có 4 GB. Build image là lúc hay chạm trần nhất."
-          runbook_url: "docs/observability/runbooks/infrastructure-capacity.md"
+          runbook_url: "docs/observability/README.md#infrastructure-capacity-pressure"
 
       - alert: Fin07ContainerRestartLoop
         expr: changes(container_start_time_seconds{name!=""}[15m]) > 2
@@ -47,7 +47,7 @@ groups:
         annotations:
           summary: "Container {{ $labels.name }} is restarting repeatedly"
           description: "The container start timestamp changed more than twice in 15 minutes."
-          runbook_url: "docs/observability/runbooks/service-down.md"
+          runbook_url: "docs/observability/README.md#scrape-target-down"
 
   - name: fin07-ung-dung
     rules:
@@ -59,7 +59,7 @@ groups:
         annotations:
           summary: "Không nối được Cloud SQL"
           description: "Kiểm tra IP tĩnh của VM có còn nằm trong authorized_networks không."
-          runbook_url: "docs/observability/runbooks/postgres-saturation.md"
+          runbook_url: "docs/observability/README.md#postgresql-saturation"
 
   - name: fin07-correlated-observability
     rules:
@@ -71,7 +71,7 @@ groups:
         labels: {severity: critical}
         annotations:
           summary: "FIN-07 API 5xx rate exceeds engineering threshold"
-          runbook_url: "docs/observability/runbooks/high-api-error-rate.md"
+          runbook_url: "docs/observability/README.md#high-api-error-rate"
 
       - alert: Fin07ApiHighLatency
         expr: histogram_quantile(0.95, sum by (le) (rate(fin07_http_request_duration_seconds_bucket[5m]))) > 2
@@ -79,7 +79,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "FIN-07 API p95 exceeds engineering threshold"
-          runbook_url: "docs/observability/runbooks/high-api-latency.md"
+          runbook_url: "docs/observability/README.md#high-api-latency"
 
       - alert: Fin07WorkerDown
         expr: max(fin07_worker_available) < 1 or absent(fin07_worker_available)
@@ -87,7 +87,7 @@ groups:
         labels: {severity: critical}
         annotations:
           summary: "No FIN-07 worker heartbeat is visible"
-          runbook_url: "docs/observability/runbooks/worker-queue-backlog.md"
+          runbook_url: "docs/observability/README.md#worker-queue-backlog"
 
       - alert: Fin07WorkerJobFailureSpike
         expr: |
@@ -97,7 +97,7 @@ groups:
         labels: {severity: critical}
         annotations:
           summary: "FIN-07 worker job failure ratio exceeds 10%"
-          runbook_url: "docs/observability/runbooks/worker-queue-backlog.md"
+          runbook_url: "docs/observability/README.md#worker-queue-backlog"
 
       - alert: Fin07WorkerQueueBacklog
         expr: max(fin07_worker_queue_depth) > 100
@@ -105,7 +105,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "FIN-07 queue backlog exceeds provisional engineering threshold"
-          runbook_url: "docs/observability/runbooks/worker-queue-backlog.md"
+          runbook_url: "docs/observability/README.md#worker-queue-backlog"
 
       - alert: Fin07PostgresConnectionSaturation
         expr: sum(pg_stat_activity_count) / clamp_min(max(pg_settings_max_connections), 1) > 0.85
@@ -113,7 +113,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "PostgreSQL connection utilization exceeds 85%"
-          runbook_url: "docs/observability/runbooks/postgres-saturation.md"
+          runbook_url: "docs/observability/README.md#postgresql-saturation"
 
       - alert: Fin07RedisEvictions
         expr: increase(redis_evicted_keys_total[10m]) > 0
@@ -121,7 +121,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Redis is evicting keys"
-          runbook_url: "docs/observability/runbooks/redis-evictions.md"
+          runbook_url: "docs/observability/README.md#redis-evictions"
 
       - alert: Fin07TelemetryExportFailure
         expr: sum(rate({__name__=~"otelcol_exporter_send_failed_(spans|metric_points|log_records)(_total)?"}[5m])) > 0
@@ -129,7 +129,7 @@ groups:
         labels: {severity: critical}
         annotations:
           summary: "OpenTelemetry Collector is dropping or failing exports"
-          runbook_url: "docs/observability/runbooks/otel-export-failure.md"
+          runbook_url: "docs/observability/README.md#opentelemetry-export-failure"
 
   - name: fin07-agent-quality-provisional
     rules:
@@ -141,7 +141,7 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: Gemini failure ratio exceeds 10%"
-          runbook_url: "docs/observability/runbooks/gemini-timeout.md"
+          runbook_url: "docs/observability/README.md#gemini-timeout"
 
       - alert: Fin07GeminiRateLimitSpike
         expr: sum(rate(fin07_gemini_errors_total{error_type="rate_limit"}[10m])) > 0.1
@@ -149,7 +149,7 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: Gemini rate limits increased"
-          runbook_url: "docs/observability/runbooks/gemini-rate-limit.md"
+          runbook_url: "docs/observability/README.md#gemini-rate-limit"
 
       - alert: Fin07GeminiTimeoutSpike
         expr: sum(rate(fin07_gemini_errors_total{error_type="timeout"}[10m])) > 0.1
@@ -157,7 +157,7 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: Gemini timeouts increased"
-          runbook_url: "docs/observability/runbooks/gemini-timeout.md"
+          runbook_url: "docs/observability/README.md#gemini-timeout"
 
       - alert: Fin07AgentFailureSpike
         expr: sum(rate(fin07_agent_failures_total[10m])) > 0.1
@@ -165,7 +165,7 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: agent operational failures increased"
-          runbook_url: "docs/observability/runbooks/agent-failure-spike.md"
+          runbook_url: "docs/observability/README.md#agent-failure-spike"
 
       - alert: Fin07CriticFailSpike
         expr: |
@@ -175,7 +175,7 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: Critic FAIL ratio increased"
-          runbook_url: "docs/observability/runbooks/critic-fail-spike.md"
+          runbook_url: "docs/observability/README.md#critic-fail-spike"
 
       - alert: Fin07AgentLoopLimit
         expr: sum(increase(fin07_supervisor_limit_reached_total[15m])) > 2
@@ -183,7 +183,7 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: multiple investigations reached agent limits"
-          runbook_url: "docs/observability/runbooks/agent-loop-limit.md"
+          runbook_url: "docs/observability/README.md#agent-loop-limit"
 
       - alert: Fin07UnsupportedClaimSpike
         expr: sum(rate(fin07_critic_issues_total{issue_type="unsupported_claim"}[30m])) > 0.05
@@ -191,7 +191,7 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: unsupported claims detected more frequently"
-          runbook_url: "docs/observability/runbooks/critic-fail-spike.md"
+          runbook_url: "docs/observability/README.md#critic-fail-spike"
 
       - alert: Fin07SchemaValidationFailureSpike
         expr: |
@@ -201,7 +201,7 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: structured agent output schema failures increased"
-          runbook_url: "docs/observability/runbooks/agent-failure-spike.md"
+          runbook_url: "docs/observability/README.md#agent-failure-spike"
 
       - alert: Fin07ToolErrorSpike
         expr: |
@@ -211,7 +211,7 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: deterministic tool failure ratio exceeds 10%"
-          runbook_url: "docs/observability/runbooks/agent-failure-spike.md"
+          runbook_url: "docs/observability/README.md#agent-failure-spike"
 
       - alert: Fin07InvestigationLatencyDegradation
         expr: histogram_quantile(0.95, sum by (le) (rate(fin07_investigation_duration_seconds_bucket[30m]))) > 60
@@ -219,4 +219,4 @@ groups:
         labels: {severity: warning, threshold_status: provisional}
         annotations:
           summary: "PROVISIONAL: investigation p95 latency exceeds 60 seconds"
-          runbook_url: "docs/observability/runbooks/agent-loop-limit.md"
+          runbook_url: "docs/observability/README.md#agent-loop-limit"

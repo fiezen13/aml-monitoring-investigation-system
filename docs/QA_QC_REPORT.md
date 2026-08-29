@@ -267,7 +267,7 @@ rejections observed.
 | `src/api/routes.py` | Close AML-QA-002 (IDOR) | Added `_enforce_case_scope`; `get_case` + `case_network` now resolve the user and 404 on out-of-scope cases for `assigned` roles |
 | `src/api/authz.py` | Close AML-QA-001 (backend side) | Moved alerts/cases/graph **read** endpoints from `INVESTIGATION` → `INVESTIGATION_READ` (adds auditor read); investigate/crypto stay auditor-free |
 | `web/src/config/nav.ts` | Close AML-QA-001 (frontend gate) | `ROUTE_ROLES`: added auditor to alerts/cases/network; tightened `/users` and `/settings` to admin-only |
-| `web/src/pages/dashboard/AnalystDashboard.tsx` | Close AML-QA-004 | Honest labels: "open alerts / shared queue"; scope note distinguishes assignment-scoped cases from shared alerts |
+| `web/src/pages/dashboard/AnalystDashboard.tsx` (nay đã gộp vào [`DashboardPage.tsx`](../web/src/pages/DashboardPage.tsx)) | Close AML-QA-004 | Honest labels: "open alerts / shared queue"; scope note distinguishes assignment-scoped cases from shared alerts |
 | `web/src/components/layout/Sidebar.tsx` | Close AML-QA-005 | Badge caps at `999+` |
 | `tests/test_api/test_authz.py` | Cover the new matrix | Auditor now allowed on alerts/cases/graph (read); added a test proving auditor is still **denied** the investigate write |
 | `tests/conftest.py` | Fix test infra for in-body scope | `disable_authz` now supplies a full-scope test user when no token is present (real tokens still resolve normally) |
