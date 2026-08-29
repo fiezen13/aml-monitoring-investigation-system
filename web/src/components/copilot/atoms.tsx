@@ -24,8 +24,17 @@ import { Tooltip } from "../ui/Overlay";
  */
 export function CaseId({ id, onOpen }: { id: string; onOpen?: (id: string) => void }) {
   const [copied, setCopied] = useState(false);
-  const tail = id.slice(-5).toUpperCase();
-  const head = id.startsWith("CASE-AUTO-") ? "CASE-AUTO" : id.split("-").slice(0, 2).join("-");
+  // Tách ở dấu gạch CUỐI CÙNG, không giả định tiền tố.
+  //
+  // Bản đầu chỉ biết "CASE-AUTO-", nên `CASE-544e2a92dcac4a4aa49c` bị cắt thành
+  // `CASE-544e2a92dcac4a4aa49c…AA49C` — dài hơn cả mã gốc. Hệ thống có ít nhất
+  // hai dạng mã, và sẽ còn dạng khác.
+  const cut = id.lastIndexOf("-");
+  const head = cut > 0 ? id.slice(0, cut) : id;
+  const hash = cut > 0 ? id.slice(cut + 1) : "";
+  const tail = hash.slice(-5).toUpperCase();
+  // Đuôi ngắn thì rút gọn chẳng lợi gì — hiện nguyên cho khỏi thêm dấu ba chấm.
+  const shortened = hash.length > 8;
 
   const copy = async () => {
     try {
@@ -47,7 +56,7 @@ export function CaseId({ id, onOpen }: { id: string; onOpen?: (id: string) => vo
           title={id}
           className="tabular rounded-control text-body font-medium text-info transition-colors hover:text-info-soft focus:outline-none focus-visible:ring-1 focus-visible:ring-info disabled:cursor-default disabled:hover:text-info"
         >
-          {head}…{tail}
+          {shortened ? `${head}…${tail}` : id}
         </button>
       </Tooltip>
       <button

@@ -600,6 +600,49 @@ export function formatMoney(amount: number): string {
   return amount.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
 }
 
+/**
+ * Trạng thái của một dòng phân công.
+ *
+ * Máy chủ trả MÃ nghiệp vụ; câu chữ nằm ở đây. Người dùng không bao giờ nhìn
+ * thấy `in_progress` hay `due_soon`.
+ */
+const ASSIGNMENT_STATUS_LABELS: Record<string, string> = {
+  unassigned: "Chưa phân công",
+  in_progress: "Đang xử lý",
+  needs_info: "Chờ bổ sung",
+  due_soon: "Sắp đến hạn",
+  overdue: "Quá hạn",
+  completed: "Hoàn thành",
+};
+
+export function assignmentStatusLabel(status: string): string {
+  return ASSIGNMENT_STATUS_LABELS[status] ?? status;
+}
+
+/** Đường mà một lượt phân công đi tới, không phải người chịu trách nhiệm. */
+export function assignmentSourceLabel(source: string | null | undefined): string {
+  if (source === "ai_copilot") return "Trợ lý AI";
+  if (source === "manual") return "Thủ công";
+  return "—";
+}
+
+/**
+ * Hạn xử lý, kể bằng lời chứ không chỉ bằng màu.
+ *
+ * "Còn 5 giờ" đọc được ngay; một chấm vàng thì phải học mới hiểu, và người mù
+ * màu thì không hiểu được. Màu là lớp thứ hai, không phải lớp duy nhất.
+ */
+export function deadlineText(dueAt: string | null | undefined, now: Date = new Date()): string {
+  if (!dueAt) return "Chưa đặt hạn";
+  const diffMs = new Date(dueAt).getTime() - now.getTime();
+  const hours = Math.round(Math.abs(diffMs) / 3_600_000);
+  const days = Math.round(Math.abs(diffMs) / 86_400_000);
+  if (diffMs < 0) return days >= 1 ? `Quá hạn ${days} ngày` : `Quá hạn ${hours} giờ`;
+  if (hours < 1) return "Còn dưới 1 giờ";
+  if (hours < 48) return `Còn ${hours} giờ`;
+  return `Còn ${days} ngày`;
+}
+
 export function paymentChannelLabel(channel: string | null | undefined): string {
   if (!channel) return "—";
   const key = channel.toLowerCase().replace(/[\s_-]/g, "");

@@ -21,6 +21,7 @@ from typing import Any
 
 from sqlalchemy import text
 
+from src.api import assignment_service
 from src.api.copilot.schemas import CLOSED_CASE_STATES, ActionType
 
 #: Nguồn của mọi vết kiểm toán do trợ lý sinh ra.
@@ -296,30 +297,6 @@ def untrusted_case_text(session: Any, case_ids: list[str] | None = None, *, limi
 # --------------------------------------------------------------------------- #
 
 
-def _audit(
-    session: Any,
-    *,
-    case_id: str | None,
-    event_type: str,
-    actor: str,
-    actor_role: str,
-    payload: dict[str, Any],
-) -> None:
-    session.execute(
-        text(
-            """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
-               VALUES (:case_id, :event_type, :actor, :role, CAST(:payload AS jsonb))"""
-        ),
-        {
-            "case_id": case_id,
-            "event_type": event_type,
-            "actor": actor,
-            "role": actor_role,
-            "payload": json.dumps({"source": AUDIT_SOURCE, **payload}, ensure_ascii=False, default=str),
-        },
-    )
-
-
 def execute_action(
     session: Any,
     *,
@@ -346,26 +323,18 @@ def _do_assign(
     actor: str,
     actor_role: str,
 ) -> dict[str, Any]:
-    changed: list[str] = []
     for case_id in case_ids:
-        before = session.execute(
-            text("SELECT assigned_to FROM aml_case WHERE case_id = :c FOR UPDATE"), {"c": case_id}
-        ).scalar_one_or_none()
-        session.execute(
-            text("UPDATE aml_case SET assigned_to = :a, updated_at = now() WHERE case_id = :c"),
-            {"a": assignee, "c": case_id},
-        )
-        _audit(
+        assignment_service.assign(
             session,
             case_id=case_id,
-            event_type="case_assigned",
+            assignee_id=assignee,
             actor=actor,
             actor_role=actor_role,
-            payload={"before": before, "after": assignee, "reason": "Quản lý điều phối qua trợ lý"},
+            source=assignment_service.Source.AI_COPILOT,
+            reason="Quản lý điều phối qua trợ lý",
         )
-        changed.append(case_id)
-    _apply_optional_fields(session, changed, payload, actor, actor_role)
-    return {"assigned": changed, "assignee_id": assignee}
+    _apply_optional_fields(session, case_ids, payload, actor, actor_role)
+    return {"assigned": list(case_ids), "assignee_id": assignee}
 
 
 def _do_deadline(
@@ -378,17 +347,13 @@ def _do_deadline(
 ) -> dict[str, Any]:
     due = payload.get("due_at")
     for case_id in case_ids:
-        session.execute(
-            text("UPDATE aml_case SET due_at = CAST(:d AS timestamptz), updated_at = now() WHERE case_id = :c"),
-            {"d": due, "c": case_id},
-        )
-        _audit(
+        assignment_service.update_deadline(
             session,
             case_id=case_id,
-            event_type="case_state_changed",
+            due_at=due,
             actor=actor,
             actor_role=actor_role,
-            payload={"field": "due_at", "due_at": due},
+            source=assignment_service.Source.AI_COPILOT,
         )
     return {"cases": case_ids, "due_at": due}
 
@@ -403,17 +368,13 @@ def _do_priority(
 ) -> dict[str, Any]:
     priority = payload.get("priority")
     for case_id in case_ids:
-        session.execute(
-            text("UPDATE aml_case SET priority = :p, updated_at = now() WHERE case_id = :c"),
-            {"p": priority, "c": case_id},
-        )
-        _audit(
+        assignment_service.update_priority(
             session,
             case_id=case_id,
-            event_type="case_state_changed",
+            priority=str(priority),
             actor=actor,
             actor_role=actor_role,
-            payload={"field": "priority", "priority": priority},
+            source=assignment_service.Source.AI_COPILOT,
         )
     return {"cases": case_ids, "priority": priority}
 
@@ -429,20 +390,14 @@ def _do_note(kind: str):
     ) -> dict[str, Any]:
         body = payload.get("instruction") or ""
         for case_id in case_ids:
-            session.execute(
-                text(
-                    """INSERT INTO case_note(case_id, kind, body, author)
-                       VALUES (:c, :k, :b, :a)"""
-                ),
-                {"c": case_id, "k": kind, "b": body, "a": actor},
-            )
-            _audit(
+            assignment_service.add_note(
                 session,
                 case_id=case_id,
-                event_type="case_state_changed",
+                body=body,
+                kind=kind,
                 actor=actor,
                 actor_role=actor_role,
-                payload={"field": kind, "body": body[:500]},
+                source=assignment_service.Source.AI_COPILOT,
             )
         return {"cases": case_ids, "kind": kind}
 

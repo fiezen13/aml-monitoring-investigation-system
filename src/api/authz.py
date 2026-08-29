@@ -119,6 +119,14 @@ POLICY: dict[str, frozenset[str]] = {
     # Xác nhận / huỷ một đề xuất của trợ lý điều phối. Cổng ở đây chỉ chặn theo
     # vai; QUYỀN cho từng loại hành động được kiểm lại trong `copilot.policy`,
     # vì một endpoint phục vụ sáu hành động có mức thẩm quyền khác nhau.
+    # Màn Phân công. ĐỌC mở cho cả hai vai — chuyên viên xem việc của chính
+    # mình, phạm vi bị ép ở tầng route. GHI thì kiểm theo QUYỀN trong handler,
+    # vì một endpoint phục vụ nhiều thao tác có mức thẩm quyền khác nhau.
+    "/assignments": INVESTIGATION_READ,
+    "/assignments/overview": INVESTIGATION_READ,
+    "/assignments/{case_id}": INVESTIGATION_READ,
+    "/assignments/assign": INVESTIGATION,
+    "/assignments/{case_id}/reassign": INVESTIGATION,
     "/actions/{action_id}/confirm": INVESTIGATION,
     "/actions/{action_id}/cancel": INVESTIGATION,
     # --- Phiên điều tra của tác tử ---

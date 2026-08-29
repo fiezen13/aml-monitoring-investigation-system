@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from opentelemetry import trace
 from sqlalchemy import text
 
-from src.api import ai_assistant, authz, copilot
+from src.api import ai_assistant, assignment_service, authz, copilot
 from src.api.permissions import (
     Permission,
     data_scope_for,
@@ -2861,42 +2861,21 @@ def assign_case(
             if assignee is None and case["assigned_to"] != user["user_id"]:
                 raise HTTPException(status_code=403, detail="Chỉ trả lại được vụ của chính mình")
 
-        if assignee is not None:
-            target = (
-                session.execute(
-                    text("SELECT name, role, active FROM app_user WHERE user_id = :id"), {"id": assignee}
-                )
-                .mappings()
-                .first()
+        # Ghi qua DỊCH VỤ PHÂN CÔNG, không tự viết UPDATE ở đây: trợ lý và màn
+        # hình phải đi cùng một đường, nếu không hai lối vào của cùng một nghiệp
+        # vụ sẽ trôi dần ra xa nhau.
+        try:
+            assignment_service.assign(
+                session,
+                case_id=case_id,
+                assignee_id=assignee,
+                actor=user["user_id"],
+                actor_role=_audit_role(user["role"]),
+                source=assignment_service.Source.MANUAL,
+                reason=request.reason.strip(),
             )
-            if target is None:
-                raise HTTPException(status_code=404, detail=f"Không tìm thấy người dùng {assignee}")
-            if not target["active"]:
-                raise HTTPException(status_code=409, detail="Tài khoản đã bị khoá, không giao việc được")
-            # Quản lý KHÔNG nhận vụ. Vai của họ là chốt hồ sơ do Chuyên viên
-            # trình; giao vụ cho một Quản lý là đưa người phê duyệt vào vị trí
-            # người lập hồ sơ, đúng thứ mà nguyên tắc bốn mắt ngăn.
-            if target["role"] != "analyst":
-                raise HTTPException(status_code=409, detail="Chỉ giao vụ việc cho Chuyên viên")
-
-        session.execute(
-            text("UPDATE aml_case SET assigned_to = :who, updated_at = now() WHERE case_id = :id"),
-            {"who": assignee, "id": case_id},
-        )
-        session.execute(
-            text(
-                """INSERT INTO audit_log(case_id, event_type, actor, actor_role, payload)
-                   VALUES (:case_id, 'case_assigned', :actor, :role, CAST(:payload AS jsonb))"""
-            ),
-            {
-                "case_id": case_id,
-                "actor": user["user_id"],
-                "role": _audit_role(user["role"]),
-                "payload": json.dumps(
-                    {"before": case["assigned_to"], "after": assignee, "reason": request.reason.strip()}
-                ),
-            },
-        )
+        except assignment_service.AssignmentError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.message) from exc
     return get_case(case_id, authorization)
 
 

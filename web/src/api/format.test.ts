@@ -12,6 +12,9 @@ import {
   profileValueLabel,
   investigationTextVi,
   formatMoney,
+  deadlineText,
+  assignmentStatusLabel,
+  assignmentSourceLabel,
 } from "./format";
 
 describe("định dạng bằng chứng cho chuyên viên", () => {
@@ -171,5 +174,39 @@ describe("nhật ký xử lý của tác tử", () => {
     );
     expect(vi).not.toMatch(/mega_pna/);
     expect(vi).toContain("cảnh báo nhóm mạng lưới");
+  });
+});
+
+describe("hạn xử lý kể bằng lời", () => {
+  const NOW = new Date("2026-08-30T10:00:00Z");
+
+  it("còn hạn thì đếm ngược", () => {
+    expect(deadlineText("2026-08-30T15:00:00Z", NOW)).toBe("Còn 5 giờ");
+    expect(deadlineText("2026-09-02T10:00:00Z", NOW)).toBe("Còn 3 ngày");
+  });
+
+  it("quá hạn thì nói rõ quá bao lâu", () => {
+    expect(deadlineText("2026-08-29T10:00:00Z", NOW)).toBe("Quá hạn 1 ngày");
+    expect(deadlineText("2026-08-30T07:00:00Z", NOW)).toBe("Quá hạn 3 giờ");
+  });
+
+  it("chưa đặt hạn thì nói chưa đặt, không để trống", () => {
+    expect(deadlineText(null, NOW)).toBe("Chưa đặt hạn");
+  });
+});
+
+describe("nhãn của màn phân công", () => {
+  it("trạng thái là câu tiếng Việt, không phải mã backend", () => {
+    for (const code of ["unassigned", "in_progress", "needs_info", "due_soon", "overdue", "completed"]) {
+      const label = assignmentStatusLabel(code);
+      expect(label).not.toBe(code);
+      expect(label).not.toMatch(/_/);
+    }
+  });
+
+  it("nguồn phân công nói đường đi, không nói tên mô hình", () => {
+    expect(assignmentSourceLabel("ai_copilot")).toBe("Trợ lý AI");
+    expect(assignmentSourceLabel("manual")).toBe("Thủ công");
+    expect(assignmentSourceLabel(null)).toBe("—");
   });
 });

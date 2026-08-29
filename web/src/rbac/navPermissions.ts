@@ -10,6 +10,7 @@ export const NAV_PERMISSION: Record<string, Permission> = {
   "/dashboard": PERMISSIONS.VIEW_DASHBOARD,
   "/world": PERMISSIONS.VIEW_DASHBOARD,
   "/alerts": PERMISSIONS.VIEW_ALERTS,
+  "/assignments": PERMISSIONS.VIEW_CASES,
   "/cases": PERMISSIONS.VIEW_CASES,
   "/network": PERMISSIONS.VIEW_ENTITY_GRAPH,
   "/transactions": PERMISSIONS.VIEW_TRANSACTIONS,

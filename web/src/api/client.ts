@@ -320,6 +320,66 @@ export interface ApiSar extends SarDraft {
  * trả lời: nút bấm vẽ bằng chữ thì người dùng không phân biệt được đâu là hành
  * động thật, và mọi tham số đã nằm sẵn ở máy chủ dưới `action_id`.
  */
+/** Một dòng trên màn "Phân công & tải công việc". */
+export interface ApiAssignmentRow {
+  case_id: string;
+  title: string | null;
+  risk_score: number;
+  priority: string;
+  state: string;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  assigned_at: string | null;
+  /** Người BẤM NÚT giao việc — kể cả khi phương án do trợ lý soạn. */
+  assigned_by_name: string | null;
+  source: "manual" | "ai_copilot" | null;
+  due_at: string | null;
+  status: "unassigned" | "in_progress" | "needs_info" | "due_soon" | "overdue" | "completed";
+}
+
+export interface ApiAssignmentPage {
+  rows: ApiAssignmentRow[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ApiWorkloadPerson {
+  employee_id: string;
+  name: string;
+  open_cases: number;
+  high_priority: number;
+  overdue: number;
+  due_soon: number;
+}
+
+export interface ApiAssignmentOverview {
+  /** Do MÁY CHỦ quyết định; giao diện chỉ dùng để ẩn nút cho gọn. */
+  can_assign: boolean;
+  sees_team: boolean;
+  unassigned: number;
+  in_progress: number;
+  due_soon: number;
+  overdue: number;
+  high_priority: number;
+  workload: ApiWorkloadPerson[];
+}
+
+export interface ApiAssignmentDetail {
+  row: ApiAssignmentRow;
+  history: {
+    at: string;
+    event: string;
+    actor_name: string | null;
+    source: string | null;
+    field: string | null;
+    before: string | null;
+    after: string | null;
+    reason: string | null;
+  }[];
+  notes: { body: string; kind: string; at: string; author_name: string | null }[];
+}
+
 export interface ApiCopilotAction {
   action_id: string;
   action_type:
@@ -1177,6 +1237,41 @@ export const api = {
   workload: () => request<ApiWorkload>("/workload"),
 
   myWork: () => request<ApiMyWork>("/my-work"),
+
+  // --- Phân công & tải công việc ---
+  assignments: (params: {
+    q?: string;
+    assignee?: string;
+    status?: string;
+    priority?: string;
+    source?: string;
+    page?: number;
+    page_size?: number;
+  }) => request<ApiAssignmentPage>(`/assignments${query(params)}`),
+
+  assignmentOverview: () => request<ApiAssignmentOverview>("/assignments/overview"),
+
+  assignmentDetail: (caseId: string) =>
+    request<ApiAssignmentDetail>(`/assignments/${encodeURIComponent(caseId)}`),
+
+  assignCases: (body: {
+    case_ids: string[];
+    assignee_id: string;
+    priority?: string;
+    due_at?: string;
+    instruction?: string;
+    reason?: string;
+  }) =>
+    request<{ assigned: string[]; conflicts: { case_id: string; code: string; message: string }[] }>(
+      "/assignments/assign",
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
+  reassignCase: (caseId: string, body: { assignee_id: string; reason: string; expected_assignee?: string | null }) =>
+    request<{ case_id: string; before: string | null; after: string | null }>(
+      `/assignments/${encodeURIComponent(caseId)}/reassign`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
 
   investigate: (caseId: string) =>
     request<ApiInvestigate>(`/cases/${encodeURIComponent(caseId)}/investigate`, { method: "POST" }),
