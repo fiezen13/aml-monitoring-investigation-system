@@ -74,3 +74,18 @@ async def test_jurisdiction_risk_is_not_invented_for_operational_data(client, lo
     chính sách và theo fc.hub thì phải có ngày hiệu lực."""
     body = (await client.get("/api/v1/world", params={"mode": "operational"})).json()
     assert {hub["jurisdiction_risk"] for hub in body["hubs"]} == {"unknown"}
+
+
+@pytest.mark.asyncio
+async def test_man_rui_ro_du_an_tra_ve_danh_sach_chu_khong_bao_loi(client) -> None:
+    """Trang "Rủi ro dự án" gọi `/fc/projects` — endpoint này TỪNG không tồn tại.
+
+    Giao diện đã có từ trước nhưng backend chưa bao giờ có route, nên người dùng
+    nhận màn "Lỗi tải dữ liệu · Not Found". Bài này khoá lại việc endpoint có
+    mặt và trả đúng kiểu danh sách; bảng nguồn rỗng thì trả rỗng, đó là trạng
+    thái hợp lệ chứ không phải lỗi.
+    """
+    response = await client.get("/api/v1/fc/projects")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)

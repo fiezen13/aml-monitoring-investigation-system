@@ -39,6 +39,7 @@ from src.models.fc_schemas import (
     BitcoinScoredRowOut,
     BitcoinSummaryOut,
     CryptoOut,
+    ProjectOut,
     CryptoTransferOut,
     DataQualityOut,
     DetectedPatternOut,
@@ -1191,6 +1192,59 @@ def node_transactions(
 # ---------------------------------------------------------------------
 # Crypto và dự án token
 # ---------------------------------------------------------------------
+
+
+@router.get("/fc/projects", response_model=list[ProjectOut])
+def projects() -> list[ProjectOut]:
+    """Dự án token đang theo dõi, xếp theo điểm rủi ro giảm dần.
+
+    Màn hình này đã có từ trước nhưng KHÔNG có endpoint — giao diện gọi vào một
+    đường dẫn không tồn tại nên người dùng nhận màn "Lỗi tải dữ liệu · Not
+    Found". Ở đây đọc đúng bảng mà lược đồ đã định nghĩa cho nó.
+
+    Bảng ``fc.token_project`` hiện chưa có dữ liệu: đây là phần mô phỏng ABM
+    chưa từng được nạp. Endpoint trả danh sách rỗng — màn hình sẽ hiện trạng
+    thái "chưa có dữ liệu" thay vì báo lỗi, và KHÔNG sinh dự án giả để lấp chỗ
+    trống: một danh sách bịa trên màn hình rà soát rủi ro còn tệ hơn một màn
+    hình trống.
+    """
+    with get_session() as session:
+        rows = (
+            session.execute(
+                text(
+                    """SELECT project_id, name, symbol, chain, contract_address,
+                              deployer_address, launched_at, holder_gini, liquidity_usd,
+                              liquidity_removed_pct, privileged_functions, kol_channels,
+                              domain_age_days, risk_score, status
+                         FROM fc.token_project
+                        ORDER BY risk_score DESC NULLS LAST, launched_at DESC"""
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return [
+        ProjectOut(
+            id=r["project_id"],
+            name=r["name"],
+            symbol=r["symbol"],
+            chain=r["chain"],
+            contract_address=r["contract_address"],
+            deployer_address=r["deployer_address"],
+            launched_at=r["launched_at"],
+            holder_gini=float(r["holder_gini"]) if r["holder_gini"] is not None else None,
+            liquidity_usd=float(r["liquidity_usd"] or 0),
+            liquidity_removed_pct=(
+                float(r["liquidity_removed_pct"]) if r["liquidity_removed_pct"] is not None else None
+            ),
+            privileged_functions=list(r["privileged_functions"] or []),
+            kol_channels=int(r["kol_channels"] or 0),
+            domain_age_days=int(r["domain_age_days"]) if r["domain_age_days"] is not None else None,
+            risk_score=int(r["risk_score"] or 0),
+            status=r["status"] or "unknown",
+        )
+        for r in rows
+    ]
 
 
 @router.get("/fc/crypto", response_model=CryptoOut)
