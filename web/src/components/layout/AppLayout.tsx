@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
+import { CopilotProvider } from "../copilot/CopilotLauncher";
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
@@ -81,6 +82,7 @@ export function AppLayout() {
   const workspace = isWorkspace(location.pathname);
 
   return (
+    <CopilotProvider>
     <div className="fc-atmosphere flex h-screen overflow-hidden bg-app">
       <div className="flex h-full min-w-0 flex-1">
         {!narrow && <Sidebar counts={counts.data ?? {}} />}
@@ -138,5 +140,6 @@ export function AppLayout() {
       <CommandPalette entities={search.data ?? []} onQueryChange={setPaletteQuery} />
       <ToastRegion />
     </div>
+    </CopilotProvider>
   );
 }

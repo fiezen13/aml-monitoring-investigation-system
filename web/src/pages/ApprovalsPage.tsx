@@ -27,7 +27,7 @@ import { Panel } from "../components/common/Panel";
 import { Tabs } from "../components/common/Tabs";
 import { DataTable, type Column } from "../components/tables/DataTable";
 import { api } from "../api/client";
-import { SarCopilotDrawer } from "../components/copilot/SarCopilotDrawer";
+import { useCopilot } from "../components/copilot/CopilotLauncher";
 import { useApi } from "../api/useApi";
 import { useApp } from "../context/AppContext";
 import type { Approval } from "../types";
@@ -52,7 +52,7 @@ export function ApprovalsPage() {
 
   // Trợ lý điều phối nằm trong ngăn kéo riêng; trang này chỉ giữ việc mở/đóng
   // và nạp lại hàng đợi sau khi một hành động được thực thi.
-  const [chatOpen, setChatOpen] = useState(false);
+  const copilot = useCopilot();
 
   const rows = useMemo(() => {
     const base: Approval[] = (sars.data ?? []).map((sar) => {
@@ -435,7 +435,7 @@ export function ApprovalsPage() {
           </div>
           <button
             type="button"
-            onClick={() => setChatOpen(true)}
+            onClick={copilot.open}
             className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-control bg-primary py-2 text-body font-semibold text-app hover:bg-primary-hover"
           >
             <Sparkles size={13} aria-hidden />
@@ -444,14 +444,6 @@ export function ApprovalsPage() {
         </Panel>
       </div>
 
-      <SarCopilotDrawer
-        open={chatOpen}
-        onClose={() => setChatOpen(false)}
-        onExecuted={() => {
-          sars.reload();
-          closeReqs.reload();
-        }}
-      />
     </PageShell>
   );
 }

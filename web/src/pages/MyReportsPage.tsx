@@ -1,12 +1,12 @@
 import { Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
+import { useCopilot } from "../components/copilot/CopilotLauncher";
 import type { ApiMySar } from "../api/client";
 import { formatDateTime } from "../api/format";
 import { useApi } from "../api/useApi";
-import { SarCopilotDrawer } from "../components/copilot/SarCopilotDrawer";
 import { CaseId, PriorityBadge } from "../components/copilot/atoms";
 import { Column, DataTable, PageShell, Panel } from "../components/ui";
 
@@ -39,7 +39,7 @@ const DECISION_TONE: Record<string, string> = {
 export function MyReportsPage() {
   const navigate = useNavigate();
   const reports = useApi(() => api.mySars(), []);
-  const [chatOpen, setChatOpen] = useState(false);
+  const copilot = useCopilot();
 
   const rows = reports.data ?? [];
   const counts = useMemo(
@@ -115,14 +115,16 @@ export function MyReportsPage() {
       title="Báo cáo của tôi"
       subtitle="Hồ sơ nghi vấn bạn đã trình và quyết định của quản lý."
       actions={
+        copilot.available ? (
         <button
           type="button"
-          onClick={() => setChatOpen(true)}
+          onClick={copilot.open}
           className="inline-flex items-center gap-1.5 rounded-control border border-line px-3 py-1.5 text-2xs font-medium text-ink-hi hover:border-line-emphasis"
         >
           <Sparkles size={13} aria-hidden />
           Trợ lý AI
         </button>
+        ) : undefined
       }
     >
       <div className="space-y-3">
@@ -154,7 +156,6 @@ export function MyReportsPage() {
         </Panel>
       </div>
 
-      <SarCopilotDrawer open={chatOpen} onClose={() => setChatOpen(false)} onExecuted={() => reports.reload()} />
     </PageShell>
   );
 }
