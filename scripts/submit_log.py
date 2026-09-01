@@ -48,6 +48,18 @@ def _archive(pending: Path) -> None:
         shutil.copyfileobj(src, dst)
 
 
+def _archive_entries(entries: list[dict]) -> None:
+    """Archive only the batch acknowledged by the server."""
+    if not entries:
+        return
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    archive_file = ARCHIVE_DIR / f"{today}.jsonl"
+    with archive_file.open("a", encoding="utf-8") as dst:
+        for entry in entries:
+            dst.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 def _restore_pending(pending: Path) -> None:
     """Failure path: put pending back at LOG_FILE so the next push retries.
     If hook wrote new entries to LOG_FILE in the meantime, prepend pending."""
@@ -128,7 +140,7 @@ def main():
         sys.exit(0)  # Don't block push on server error
 
     # Success: archive the submitted batch, then handle any leftover.
-    _archive(pending)
+    _archive_entries(entries)
     pending.unlink()
 
     if leftover_lines:

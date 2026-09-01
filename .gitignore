@@ -20,6 +20,8 @@ env/
 # IDE
 .vscode/
 .idea/
+.metals/
+.claude/settings.local.json
 *.swp
 *.swo
 *~
@@ -29,9 +31,59 @@ env/
 Thumbs.db
 
 # Data (never commit large data)
-data/
+data/*
+# `artifacts/*` chứ không phải `artifacts/`: git không đi vào một thư mục đã bị
+# loại, nên viết `artifacts/` thì mọi ngoại lệ bên dưới đều vô hiệu.
+artifacts/*
+# Ngoại lệ: kết quả EDA là báo cáo, không phải dữ liệu. Vài chục KB, và tài
+# liệu docs/ml/ trích số liệu cùng checksum từ đây — có nó trong repo thì
+# người đọc kiểm chứng được mà không cần tải bộ dữ liệu 650 MB.
+!artifacts/eda/
+artifacts/eda/*
+!artifacts/eda/*.json
+simulation_output/
+*.parquet
 *.db
 *.sqlite3
+
+# Graph handoff payloads distributed through Drive (checksums in manifest).
+# Git chỉ giữ model nhỏ, manifest và đặc tả; mọi bảng/evidence đều ở ngoài Git.
+/graph_handoff/*.parquet
+/graph_handoff/*.jsonl
+
+# Isolation Forest handoff payloads copied from Drive. Keep the compact model,
+# manifest and documentation reviewable; tables stay outside Git and are
+# verified by checksum before a fusion release.
+/if_handoff/*.parquet
+
+# Bộ dữ liệu IBM AML nặng từ hàng trăm megabyte tới hàng chục gigabyte và
+# tải về từ Kaggle, không commit. Nhưng thư mục và hướng dẫn đặt file thì
+# phải có sẵn, nếu không người mới sẽ không biết đặt file vào đâu.
+!data/README.md
+!data/raw/
+data/raw/*
+!data/raw/ibm-aml/
+data/raw/ibm-aml/*
+!data/raw/ibm-aml/.gitkeep
+!data/raw/ibm-aml/README.md
+
+# Bảng tra cứu do dự án soạn, không phải dữ liệu tải về: ánh xạ tên ngân hàng
+# sang mã quốc gia và toạ độ vẽ bản đồ. Thiếu nó thì
+# scripts/load_bank_geography.py không chạy được trên bản clone mới.
+!data/reference/
+!data/reference/*.csv
+
+# Sổ đăng ký nguồn dữ liệu công khai. Đây là bằng chứng xuất xứ của mọi tham số
+# sinh dữ liệu, không phải dữ liệu sinh ra — phải nằm trong Git.
+!data/source_registry/
+!data/source_registry/**
+
+# Khoá API Kaggle — không bao giờ nằm trong repo.
+kaggle.json
+.kaggle/
+
+# Sản phẩm build của job Flink
+flink/**/target/
 
 # Logs
 logs/
@@ -51,10 +103,79 @@ node_modules/
 out/
 .nuxt/
 
-# Build
-*.pyc
-*.pyo
-
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
+.ai-log/local-backup/
+
+# Jenkins — bí mật của controller
+jenkins/.env
+
+# CI — sản phẩm trung gian
+.image-tags
+pytest-report.xml
+.gstack/
+.github/modernize/
+
+# Terraform — state CHỨA MẬT KHẨU CƠ SỞ DỮ LIỆU dạng chữ thường.
+#
+# Bỏ qua state không phải để repo gọn, mà vì commit nó là công bố mật khẩu cho
+# mọi người có quyền đọc repo, vĩnh viễn — git không quên. Cũng bỏ qua .tfvars
+# vì nó chứa định danh dự án, và thư mục .terraform vì nó nặng và dựng lại được
+# bằng `terraform init`.
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfvars
+!infra/terraform/*.tfvars.example
+infra/terraform/crash.log
+
+# Module Terraform GPU (EC2 huấn luyện MEGA-PNA) đã gỡ khỏi repo bản nộp —
+# production chạy trên GCP, module này là hạ tầng huấn luyện một lần.
+#
+# GIỮ LẠI các dòng chặn dưới đây: state và tfvars vẫn còn TRÊN MÁY CÁ NHÂN
+# (terraform.tfstate ghi nhận một aws_instance đang tồn tại — đó là thứ duy
+# nhất còn `terraform destroy` được nó). Chúng chứa IP nhà và thông tin hạ
+# tầng, tuyệt đối không được commit nếu ai đó chạy `git add -A`.
+infra/terraform/gpu/terraform.tfvars
+infra/terraform/gpu/.terraform/
+infra/terraform/gpu/*.tfstate*
+infra/terraform/gpu/tfplan*
+# Bản sao lưu tfvars cũng chứa IP nhà, chặn luôn cả *.bak.
+infra/terraform/gpu/*.tfvars.bak
+infra/terraform/gpu/*.tfvars.example.bak
+
+# Điểm từng cạnh là dữ liệu lớn, dựng lại được từ checkpoint — để ngoài Git.
+/models/mega-pna/**/*.parquet
+
+# Checkpoint thì ngược lại: giữ trong Git.
+#
+# Quy tắc cũ loại luôn cả *.pt vì lúc viết chưa ai huấn luyện, nên nó bị xem là
+# "artifact benchmark dựng lại được". Hai điều làm quy tắc ấy sai:
+#
+#   * Checkpoint MEGA-PNA chỉ **79.197 tham số, dưới 1 MB** — nhỏ hơn cả file
+#     JSON báo cáo đi kèm.
+#   * Nó **không dựng lại được** trong thực tế. Dựng lại đòi đúng GPU, đúng phiên
+#     bản thư viện, và vài giờ máy. Mất file là mất luôn mô hình đã sinh ra những
+#     điểm số đang phục vụ trên console.
+#
+# PostgreSQL chỉ giữ mã băm SHA-256 của nó (edge_model_release.model_sha256), nên
+# nếu file biến mất thì mã băm ấy không đối chiếu được với gì nữa.
+!/models/mega-pna/**/*.pt
+
+# Gói bàn giao sinh ra từ script, không đưa vào git.
+fin07-mega-pna-*.zip
+
+# Bộ dữ liệu SAML-D tải từ Kaggle — 950 MB, không đưa vào git.
+SAML-D.csv
+aml-prediction.ipynb
+
+# Kết xuất thô của đợt rà soát tác tử — README giữ phần tóm tắt
+reports/agent-audit/*.jsonl
+
+# QA ảnh chụp/đầu ra — không đưa vào repo.
+/qa/
+# Hạ tầng train GPU (terraform, có state/tfvars nhạy cảm) — thêm có chủ đích
+# riêng, không lẫn vào commit deploy ứng dụng.
+/deploy/samld-gpu/

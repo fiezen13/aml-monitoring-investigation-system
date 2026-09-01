@@ -1,0 +1,56 @@
+# Caddy đứng trước toàn bộ stack FIN-07 trên VM GCP.
+#
+# Caddy tự xin và tự gia hạn chứng chỉ Let's Encrypt cho tên miền dưới đây,
+# và tự chuyển hướng HTTP → HTTPS. Điều kiện: bản ghi A của tên miền phải
+# trỏ về IP công cộng của máy này, và cổng 80/443 phải mở ở firewall GCP —
+# quá trình xác thực ACME đi vào bằng cổng 80.
+
+{
+	email {$ACME_EMAIL}
+
+	# Caddy TẮT số liệu HTTP theo mặc định vì chúng tốn chi phí trên đường
+	# phục vụ request. Không có dòng này thì endpoint /metrics vẫn trả lời,
+	# nhưng không có `caddy_http_requests_total` hay
+	# `caddy_http_request_duration_seconds` nào cả — nghĩa là dashboard trống
+	# đúng ở hai ô quan trọng nhất, mà không có lỗi nào chỉ ra vì sao.
+	servers {
+		metrics
+	}
+}
+
+# Số liệu cho Prometheus, trên một cổng riêng.
+#
+# Caddy có sẵn metrics ở admin API (cổng 2019) — nhưng admin API còn cho phép
+# ĐỔI cấu hình đang chạy. Mở nó ra mạng compose để Prometheus scrape nghĩa là
+# bất cứ container nào cũng định tuyến lại được cả site. Ở đây chỉ dựng một
+# listener làm đúng một việc.
+#
+# Cổng 2020 không publish ra máy chủ (xem docker-compose.yml), nên chỉ với
+# tới được từ bên trong mạng compose.
+:2020 {
+	metrics /metrics
+}
+
+{$SITE_DOMAIN}, www.{$SITE_DOMAIN} {
+	# Chuyển thẳng sang container web. Bên trong web, nginx phục vụ tệp tĩnh
+	# và proxy /api/ sang container api, nên ở đây không cần chia đường dẫn
+	# lần nữa — hai tầng cùng định tuyến một thứ là hai chỗ để sai.
+	reverse_proxy web:8080
+
+	encode gzip zstd
+
+	header {
+		# HSTS chỉ bật sau khi chứng chỉ đã cấp thành công; nếu bật sớm mà TLS
+		# hỏng thì trình duyệt từ chối cả đường HTTP để mà sửa.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

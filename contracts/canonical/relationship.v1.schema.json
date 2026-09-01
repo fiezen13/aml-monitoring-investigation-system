@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/canonical/relationship.v1.schema.json",
+  "title": "Canonical RELATIONSHIP v1",
+  "description": "Một cạnh trong đồ thị thực thể, có valid time và provenance (kiến trúc mục 6.2, 6.3). Đây là contract quan trọng nhất về mặt an toàn suy luận trong toàn bộ nền tảng: nó là chỗ một phỏng đoán có thể lặng lẽ biến thành một sự thật. Vì vậy `method` và `confidence` là BẮT BUỘC, và `is_fact` được tính từ chúng chứ không do người ghi tự khai.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "relationship_id",
+    "source_entity",
+    "target_entity",
+    "relationship_type",
+    "method",
+    "confidence",
+    "valid_from",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "relationship_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "source_entity": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/entity_ref" },
+    "target_entity": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/entity_ref" },
+
+    "relationship_type": {
+      "type": "string",
+      "enum": [
+        "OWNS_ACCOUNT",
+        "CO_OWNS_ACCOUNT",
+        "TRANSACTED_WITH",
+        "SHARED_DEVICE",
+        "SHARED_IP",
+        "SHARED_CONTACT",
+        "SHARED_ADDRESS",
+        "BENEFICIAL_OWNER",
+        "AUTHORIZED_SIGNATORY",
+        "EMPLOYED_BY",
+        "SAME_LEGAL_ENTITY",
+        "WALLET_CONTROLLED_BY",
+        "RESOLVED_SAME_PERSON"
+      ]
+    },
+
+    "direction": { "type": "string", "enum": ["DIRECTED", "UNDIRECTED"] },
+
+    "method": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/resolution_method",
+      "description": "DETERMINISTIC dựa trên định danh đã xác minh. PROBABILISTIC dựa trên tương đồng và KHÔNG BAO GIỜ được coi là fact cho tới khi có ANALYST_CONFIRMED (mục 6.3)."
+    },
+
+    "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" },
+
+    "is_fact": {
+      "type": "boolean",
+      "description": "Chỉ được true khi method là DETERMINISTIC hoặc ANALYST_CONFIRMED — ràng buộc này được cưỡng chế ở `allOf` bên dưới. Một cạnh suy luận đánh dấu là fact sẽ lan truyền sai lệch qua mọi thuật toán đồ thị dùng nó, và không ai truy ngược lại được nguồn gốc."
+    },
+
+    "inference_logic": {
+      "type": "string",
+      "maxLength": 2048,
+      "description": "Giải thích bằng chữ vì sao cạnh này được suy ra. Bắt buộc với PROBABILISTIC. Ví dụ tốt: 'cùng IMEI trong 41 phiên'. Ví dụ cần cẩn trọng: 'cùng IP tĩnh trong 9 phiên, không loại trừ được NAT của nhà mạng' — vế sau chính là thứ phải viết ra."
+    },
+
+    "supporting_features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "value"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 128 },
+          "value": { "type": ["string", "number", "boolean"] }
+        }
+      }
+    },
+
+    "observation_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Số lần quan sát được. Một lần trùng thiết bị là ngẫu nhiên; bốn mươi lần thì không."
+    },
+
+    "valid_from": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+    "valid_to": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "provenance": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/provenance" },
+
+    "confirmed_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Ai đã xác nhận/bác bỏ cạnh này, nếu có.",
+      "properties": {
+        "user_id": { "type": "string", "maxLength": 128 },
+        "confirmed_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "note": { "type": "string", "maxLength": 1024 }
+      }
+    }
+  },
+
+  "allOf": [
+    {
+      "if": {
+        "properties": { "is_fact": { "const": true } },
+        "required": ["is_fact"]
+      },
+      "then": {
+        "properties": {
+          "method": { "enum": ["DETERMINISTIC", "ANALYST_CONFIRMED"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "method": { "const": "PROBABILISTIC" } },
+        "required": ["method"]
+      },
+      "then": {
+        "required": ["inference_logic"]
+      }
+    }
+  ]
+}

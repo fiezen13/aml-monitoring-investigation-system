@@ -1,0 +1,98 @@
+{
+  "mapping_version": "v1.0",
+  "source": {
+    "file": "data/raw/ibm-aml/LI-Small_Patterns.txt",
+    "sha256": "734c15b7ff4be1a04a3529bd1524b92c1e8b62289d3ce4881423596ee47a208f",
+    "parser_version": "v1.0"
+  },
+  "rules": [
+    {
+      "ibm_pattern_type": "CYCLE",
+      "display_name": "Cycle",
+      "primary_typology": "T03",
+      "secondary_typologies": [],
+      "mapping_status": "MAPPED",
+      "mapping_reason": "Chuỗi chuyển tiền tạo đường đi khép kín và quay lại nút trước đó, phù hợp định nghĩa giao dịch vòng (T03).",
+      "mapping_version": "v1.0",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    {
+      "ibm_pattern_type": "FAN-IN",
+      "display_name": "Fan-In",
+      "primary_typology": "T04",
+      "secondary_typologies": [],
+      "mapping_status": "MAPPED",
+      "mapping_reason": "Nhiều tài khoản gửi dồn vào một tài khoản nhận (tăng in-degree), khớp mẫu hình gom vào của T04.",
+      "mapping_version": "v1.0",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    {
+      "ibm_pattern_type": "FAN-OUT",
+      "display_name": "Fan-Out",
+      "primary_typology": "T04",
+      "secondary_typologies": [],
+      "mapping_status": "MAPPED",
+      "mapping_reason": "Một tài khoản gửi tỏa ra nhiều đích (tăng out-degree), khớp mẫu hình tỏa ra của T04.",
+      "mapping_version": "v1.0",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    {
+      "ibm_pattern_type": "GATHER-SCATTER",
+      "display_name": "Gather-Scatter",
+      "primary_typology": null,
+      "secondary_typologies": ["T02", "T04"],
+      "mapping_status": "PARTIAL",
+      "mapping_reason": "Gom vào rồi tỏa ra: vừa liên quan mạng trung chuyển (T02) vừa cấu trúc fan (T04); chưa đủ cơ sở chốt primary chắc.",
+      "mapping_version": "v1.0",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    {
+      "ibm_pattern_type": "SCATTER-GATHER",
+      "display_name": "Scatter-Gather",
+      "primary_typology": null,
+      "secondary_typologies": ["T02", "T04"],
+      "mapping_status": "PARTIAL",
+      "mapping_reason": "Tỏa ra rồi gom lại: overlap T02 (mule/pass-through) và T04 (fan); chưa chọn primary chắc.",
+      "mapping_version": "v1.0",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    {
+      "ibm_pattern_type": "RANDOM",
+      "display_name": "Random",
+      "primary_typology": "T05",
+      "secondary_typologies": [],
+      "mapping_status": "PARTIAL",
+      "mapping_reason": "Chuỗi hop nhiều bước có thể phản ánh luân chuyển nhanh (T05), nhưng file không chứng minh holding time/số dư cuối ngày — chỉ bao phủ một phần định nghĩa T05.",
+      "mapping_version": "v1.0",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    {
+      "ibm_pattern_type": "STACK",
+      "display_name": "Stack",
+      "primary_typology": "T01",
+      "secondary_typologies": [],
+      "mapping_status": "PARTIAL",
+      "mapping_reason": "Xếp chồng/chia dòng tiền gần structuring (T01), nhưng không có bằng chứng ngưỡng báo cáo hay độ lệch chuẩn số tiền trong file pattern.",
+      "mapping_version": "v1.0",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    {
+      "ibm_pattern_type": "BIPARTITE",
+      "display_name": "Bipartite",
+      "primary_typology": "T04",
+      "secondary_typologies": [],
+      "mapping_status": "PARTIAL",
+      "mapping_reason": "Cấu trúc hai phía gần fan-in/fan-out (T04), nhưng chưa đủ các dấu hiệu đột biến bậc và tỷ lệ đối tác mới theo định nghĩa đầy đủ T04.",
+      "mapping_version": "v1.0",
+      "reviewed_by": null,
+      "reviewed_at": null
+    }
+  ]
+}

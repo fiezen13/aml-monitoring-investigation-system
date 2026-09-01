@@ -1,0 +1,128 @@
+# Lớp phủ cho VM GCP phục vụ https://amlmonitoring.site/
+#
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.vm.yml up -d --wait
+#
+# Khác với docker-compose.yml (dành cho máy cá nhân):
+#
+#   * Thêm Caddy đứng trước, giữ chứng chỉ Let's Encrypt và là tiến trình duy
+#     nhất mở cổng ra Internet. Mọi dịch vụ khác chỉ nghe trong mạng nội bộ
+#     của compose — kể cả PostgreSQL và Redis, vốn mở cổng ra máy chủ ở bản
+#     dev cho tiện gỡ lỗi. Trên một máy có IP công cộng thì "cho tiện" nghĩa
+#     là một cơ sở dữ liệu ai cũng quét thấy.
+#   * restart: always thay vì unless-stopped, để máy khởi động lại là stack lên.
+#   * Giới hạn bộ nhớ và xoay vòng log, tránh một truy vấn nặng kéo sập cả máy
+#     và tránh đĩa đầy sau vài tuần.
+#
+# Biến bắt buộc (đặt trong .env cạnh docker-compose.yml):
+#   POSTGRES_PASSWORD, FIN07_AGENT_DB_PASSWORD, ACME_EMAIL
+
+services:
+  postgres:
+    # !override bắt buộc: không có nó, compose gộp danh sách cổng của hai file
+    # lại với nhau và 5432 vẫn mở ra ngoài.
+    ports: !override []
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?VM bắt buộc phải đặt POSTGRES_PASSWORD}
+      FIN07_AGENT_DB_PASSWORD: ${FIN07_AGENT_DB_PASSWORD:?VM bắt buộc phải đặt FIN07_AGENT_DB_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          memory: 1500m
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+  redis:
+    ports: !override []
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  migrate:
+    restart: "no"
+
+  api:
+    ports: !override []
+    restart: always
+    environment:
+      # Gắn cứng tên môi trường ở đây thì .env không ghi đè được (khối
+      # `environment:` thắng `env_file:`), và cùng một VM không chạy được
+      # ở chế độ staging. Mặc định vẫn là production nên hành vi cũ giữ
+      # nguyên; đặt APP_ENV trong .env để đổi.
+      APP_ENV: ${APP_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Giao diện và API cùng một gốc nên trình duyệt không phát sinh request
+      # cross-origin nào. Danh sách này chỉ còn tác dụng cho công cụ gọi thẳng.
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://amlmonitoring.site}
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+  worker:
+    restart: always
+    environment:
+      # Gắn cứng tên môi trường ở đây thì .env không ghi đè được (khối
+      # `environment:` thắng `env_file:`), và cùng một VM không chạy được
+      # ở chế độ staging. Mặc định vẫn là production nên hành vi cũ giữ
+      # nguyên; đặt APP_ENV trong .env để đổi.
+      APP_ENV: ${APP_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+  web:
+    ports: !override []
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 192m
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  # -------------------------------------------------------------------
+  # Caddy: TLS tự động qua Let's Encrypt, chuyển hướng HTTP → HTTPS, và
+  # proxy toàn bộ sang container web (bên trong web đã có nginx định tuyến
+  # /api sang api — xem web/nginx.conf). Một tầng định tuyến, không hai.
+  caddy:
+    image: caddy:2.8-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-amlmonitoring.site}
+      ACME_EMAIL: ${ACME_EMAIL:?Let's Encrypt cần một địa chỉ email liên hệ}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Chứng chỉ phải sống qua các lần dựng lại container. Mất volume này là
+      # xin lại chứng chỉ từ đầu, và Let's Encrypt giới hạn 5 lần mỗi tuần cho
+      # cùng một tên miền.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: always
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+volumes:
+  caddy_data:
+  caddy_config:

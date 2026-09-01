@@ -1,0 +1,42 @@
+# Nguồn dữ liệu khai báo bằng file, không bấm qua giao diện.
+#
+# Cùng lý do với Jenkins dựng từ `jenkins/casc.yaml`: thứ cấu hình bằng tay
+# trên giao diện sẽ biến mất cùng volume, và không ai dựng lại được y hệt.
+#
+# LƯU Ý (Grafana 13+): KHÔNG khai báo tham chiếu chéo `datasourceUid` giữa các
+# nguồn (exemplar→jaeger, derivedFields→jaeger, tracesToLogs/tracesToMetrics…)
+# ngay trong file provisioning. Grafana 13.1.0 siết validation: lúc provision,
+# nguồn được trỏ tới "chưa tồn tại" → lỗi "Datasource provisioning error: data
+# source not found" → module provisioning fail → cả Grafana crash-loop. Ba nguồn
+# vẫn khai đầy đủ ở đây; phần liên kết trace↔log↔metric (tiện, không cốt lõi) để
+# thiết lập sau qua Correlations nếu cần, không nhét vào provisioning.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Phải khớp scrape_interval trong prometheus.yml, nếu không Grafana chọn
+      # bước nhảy sai và đồ thị hiện răng cưa ở mức thu phóng nhỏ.
+      timeInterval: 15s
+      httpMethod: POST
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+
+  - name: Jaeger
+    uid: jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    editable: false

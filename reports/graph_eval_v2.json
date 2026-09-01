@@ -1,0 +1,402 @@
+{
+  "eval_version": "graph_eval_v2",
+  "primary_split": "test",
+  "match_rule": "same detected_pattern + center_account_key == detection.account_key + IBM [t_min,t_max] overlaps detection 7d window",
+  "scope": {
+    "patterns": [
+      "FAN_IN",
+      "FAN_OUT",
+      "GATHER_SCATTER"
+    ],
+    "cycle_excluded": true,
+    "credit": "recall: GT hit if >=1 matching PI in split; precision: PI hit if >=1 matching GT (edges restricted to split)",
+    "gt_split_assignment": "sample_split from assign_snapshot_split(as_of) where as_of = date(t_max)+1 day 00:00 UTC"
+  },
+  "n_gt_enriched": 43,
+  "n_match_edges": 115,
+  "gt_by_split": {
+    "train": 16,
+    "val": 3,
+    "test": 24
+  },
+  "primary": {
+    "split": "test",
+    "overall": {
+      "n_gt": 24,
+      "n_pred": 55702,
+      "n_gt_hit": 14,
+      "n_pred_hit": 76,
+      "precision": 0.0013644034325517936,
+      "recall": 0.5833333333333334,
+      "f1": 0.0027224391417152386
+    },
+    "by_pattern": {
+      "FAN_IN": {
+        "ibm_pattern_type": "FAN-IN",
+        "n_gt": 6,
+        "n_pred": 32176,
+        "n_gt_hit": 3,
+        "n_pred_hit": 22,
+        "precision": 0.0006837394331178519,
+        "recall": 0.5,
+        "f1": 0.0013656114214773433
+      },
+      "FAN_OUT": {
+        "ibm_pattern_type": "FAN-OUT",
+        "n_gt": 10,
+        "n_pred": 23363,
+        "n_gt_hit": 8,
+        "n_pred_hit": 47,
+        "precision": 0.002011727945897359,
+        "recall": 0.8,
+        "f1": 0.004013363647037476
+      },
+      "GATHER_SCATTER": {
+        "ibm_pattern_type": "GATHER-SCATTER",
+        "n_gt": 8,
+        "n_pred": 163,
+        "n_gt_hit": 3,
+        "n_pred_hit": 7,
+        "precision": 0.04294478527607362,
+        "recall": 0.375,
+        "f1": 0.07706422018348624
+      }
+    }
+  },
+  "by_split": {
+    "train": {
+      "split": "train",
+      "overall": {
+        "n_gt": 16,
+        "n_pred": 19896,
+        "n_gt_hit": 7,
+        "n_pred_hit": 17,
+        "precision": 0.000854443104141536,
+        "recall": 0.4375,
+        "f1": 0.0017055552370578457
+      },
+      "by_pattern": {
+        "FAN_IN": {
+          "ibm_pattern_type": "FAN-IN",
+          "n_gt": 6,
+          "n_pred": 10033,
+          "n_gt_hit": 5,
+          "n_pred_hit": 11,
+          "precision": 0.0010963819395993222,
+          "recall": 0.8333333333333334,
+          "f1": 0.0021898827417331924
+        },
+        "FAN_OUT": {
+          "ibm_pattern_type": "FAN-OUT",
+          "n_gt": 7,
+          "n_pred": 9704,
+          "n_gt_hit": 2,
+          "n_pred_hit": 6,
+          "precision": 0.0006183017312448475,
+          "recall": 0.2857142857142857,
+          "f1": 0.0012339331619537275
+        },
+        "GATHER_SCATTER": {
+          "ibm_pattern_type": "GATHER-SCATTER",
+          "n_gt": 3,
+          "n_pred": 159,
+          "n_gt_hit": 0,
+          "n_pred_hit": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": null
+        }
+      }
+    },
+    "val": {
+      "split": "val",
+      "overall": {
+        "n_gt": 3,
+        "n_pred": 20942,
+        "n_gt_hit": 2,
+        "n_pred_hit": 22,
+        "precision": 0.0010505204851494604,
+        "recall": 0.6666666666666666,
+        "f1": 0.002097735399284863
+      },
+      "by_pattern": {
+        "FAN_IN": {
+          "ibm_pattern_type": "FAN-IN",
+          "n_gt": 0,
+          "n_pred": 12218,
+          "n_gt_hit": 0,
+          "n_pred_hit": 12,
+          "precision": 0.0009821574725814373,
+          "recall": null,
+          "f1": null
+        },
+        "FAN_OUT": {
+          "ibm_pattern_type": "FAN-OUT",
+          "n_gt": 2,
+          "n_pred": 8599,
+          "n_gt_hit": 2,
+          "n_pred_hit": 10,
+          "precision": 0.001162925921618793,
+          "recall": 1.0,
+          "f1": 0.002323150191659891
+        },
+        "GATHER_SCATTER": {
+          "ibm_pattern_type": "GATHER-SCATTER",
+          "n_gt": 1,
+          "n_pred": 125,
+          "n_gt_hit": 0,
+          "n_pred_hit": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": null
+        }
+      }
+    },
+    "test": {
+      "split": "test",
+      "overall": {
+        "n_gt": 24,
+        "n_pred": 55702,
+        "n_gt_hit": 14,
+        "n_pred_hit": 76,
+        "precision": 0.0013644034325517936,
+        "recall": 0.5833333333333334,
+        "f1": 0.0027224391417152386
+      },
+      "by_pattern": {
+        "FAN_IN": {
+          "ibm_pattern_type": "FAN-IN",
+          "n_gt": 6,
+          "n_pred": 32176,
+          "n_gt_hit": 3,
+          "n_pred_hit": 22,
+          "precision": 0.0006837394331178519,
+          "recall": 0.5,
+          "f1": 0.0013656114214773433
+        },
+        "FAN_OUT": {
+          "ibm_pattern_type": "FAN-OUT",
+          "n_gt": 10,
+          "n_pred": 23363,
+          "n_gt_hit": 8,
+          "n_pred_hit": 47,
+          "precision": 0.002011727945897359,
+          "recall": 0.8,
+          "f1": 0.004013363647037476
+        },
+        "GATHER_SCATTER": {
+          "ibm_pattern_type": "GATHER-SCATTER",
+          "n_gt": 8,
+          "n_pred": 163,
+          "n_gt_hit": 3,
+          "n_pred_hit": 7,
+          "precision": 0.04294478527607362,
+          "recall": 0.375,
+          "f1": 0.07706422018348624
+        }
+      }
+    }
+  },
+  "cycle_evaluation": {
+    "status": "OK",
+    "rows": [
+      {
+        "instance_id": "b806fed6188808802bed43ec",
+        "pattern_type": "CYCLE",
+        "detected_pattern": "CYCLE",
+        "cycle_signature": [
+          "11:802BC3160",
+          "224:8023BE570",
+          "1277:80220D0A0"
+        ],
+        "t_min": "2022-09-03T18:38:00+00:00",
+        "t_max": "2022-09-05T20:43:00+00:00",
+        "n_tx": 3,
+        "span_days": 2.0868055555555554,
+        "source_start_line": 447,
+        "source_end_line": 451,
+        "sample_split": "train",
+        "as_of_ts": "2022-09-06T00:00:00+00:00"
+      },
+      {
+        "instance_id": "ebe91eaa5f7d767424c8920c",
+        "pattern_type": "CYCLE",
+        "detected_pattern": "CYCLE",
+        "cycle_signature": [
+          "24643:8026B9C00",
+          "3:8026B9BB0"
+        ],
+        "t_min": "2022-09-04T15:41:00+00:00",
+        "t_max": "2022-09-08T08:16:00+00:00",
+        "n_tx": 2,
+        "span_days": 3.6909722222222223,
+        "source_start_line": 537,
+        "source_end_line": 540,
+        "sample_split": "test",
+        "as_of_ts": "2022-09-09T00:00:00+00:00"
+      },
+      {
+        "instance_id": "dbc311ec7f42b2bc07550e5c",
+        "pattern_type": "CYCLE",
+        "detected_pattern": "CYCLE",
+        "cycle_signature": [
+          "25634:80273DE60",
+          "425:80195DD20"
+        ],
+        "t_min": "2022-09-07T19:08:00+00:00",
+        "t_max": "2022-09-09T05:29:00+00:00",
+        "n_tx": 2,
+        "span_days": 1.43125,
+        "source_start_line": 1052,
+        "source_end_line": 1055,
+        "sample_split": "test",
+        "as_of_ts": "2022-09-10T00:00:00+00:00"
+      },
+      {
+        "instance_id": "1622ceb4dc4d226637c236b5",
+        "pattern_type": "CYCLE",
+        "detected_pattern": "CYCLE",
+        "cycle_signature": [
+          "3597:8018CF810",
+          "3:800AF7050",
+          "600:8016EA8A0"
+        ],
+        "t_min": "2022-09-08T08:25:00+00:00",
+        "t_max": "2022-09-12T02:38:00+00:00",
+        "n_tx": 3,
+        "span_days": 3.759027777777778,
+        "source_start_line": 1125,
+        "source_end_line": 1129,
+        "sample_split": "test",
+        "as_of_ts": "2022-09-13T00:00:00+00:00"
+      },
+      {
+        "instance_id": "f662eb415c401eba2c9cd190",
+        "pattern_type": "CYCLE",
+        "detected_pattern": "CYCLE",
+        "cycle_signature": [
+          "12055:80110E7E0",
+          "21876:80158BDC0",
+          "22129:8011B4510",
+          "1291:8001E4BD0"
+        ],
+        "t_min": "2022-09-08T14:26:00+00:00",
+        "t_max": "2022-09-10T21:04:00+00:00",
+        "n_tx": 4,
+        "span_days": 2.276388888888889,
+        "source_start_line": 1131,
+        "source_end_line": 1136,
+        "sample_split": "test",
+        "as_of_ts": "2022-09-11T00:00:00+00:00"
+      },
+      {
+        "instance_id": "534ec156e1d465b61c5a4c7c",
+        "pattern_type": "CYCLE",
+        "detected_pattern": "CYCLE",
+        "cycle_signature": [
+          "130803:8102A4BA0",
+          "142342:80FB392A0",
+          "19419:80EEC43A0",
+          "21393:80FECC930"
+        ],
+        "t_min": "2022-09-10T01:14:00+00:00",
+        "t_max": "2022-09-11T06:13:00+00:00",
+        "n_tx": 4,
+        "span_days": 1.207638888888889,
+        "source_start_line": 1264,
+        "source_end_line": 1269,
+        "sample_split": "test",
+        "as_of_ts": "2022-09-12T00:00:00+00:00"
+      }
+    ],
+    "excluded": [
+      {
+        "instance_id": "c97d2b11f7340389fd3f7f92",
+        "reason": "cycle_length_exceeds_detector",
+        "n_tx": 11,
+        "cycle_length": 11
+      },
+      {
+        "instance_id": "5be589f206aeb4050a4cb776",
+        "reason": "cycle_length_exceeds_detector",
+        "n_tx": 10,
+        "cycle_length": 10
+      },
+      {
+        "instance_id": "9f881fc735f622ddc0f1b57c",
+        "reason": "cycle_length_exceeds_detector",
+        "n_tx": 11,
+        "cycle_length": 11
+      },
+      {
+        "instance_id": "d25a8cc47702bffcda712b93",
+        "reason": "cycle_length_exceeds_detector",
+        "n_tx": 7,
+        "cycle_length": 7
+      },
+      {
+        "instance_id": "c7702d6186adbcafa25de896",
+        "reason": "cycle_length_exceeds_detector",
+        "n_tx": 13,
+        "cycle_length": 13
+      },
+      {
+        "instance_id": "b1ec7a366541fcea4bb3a24e",
+        "reason": "cycle_length_exceeds_detector",
+        "n_tx": 13,
+        "cycle_length": 13
+      }
+    ],
+    "total_cycle_blocks": 12,
+    "eligible_count": 6,
+    "matching_rule": "exact directed canonical account-cycle signature + IBM timestamp interval overlaps prediction 7d snapshot window; GT blocks outside CYCLE length/window are excluded, not counted as misses",
+    "n_match_edges": 28,
+    "primary": {
+      "status": "EVALUATED",
+      "split": "test",
+      "n_gt": 5,
+      "n_pred": 13169,
+      "n_gt_hit": 5,
+      "n_pred_hit": 25,
+      "precision": 0.0018983977522970613,
+      "recall": 1.0,
+      "f1": 0.0037896013339396694
+    },
+    "by_split": {
+      "train": {
+        "status": "EVALUATED",
+        "split": "train",
+        "n_gt": 1,
+        "n_pred": 3008,
+        "n_gt_hit": 1,
+        "n_pred_hit": 1,
+        "precision": 0.0003324468085106383,
+        "recall": 1.0,
+        "f1": 0.0006646726487205051
+      },
+      "val": {
+        "status": "NOT_EVALUATED",
+        "reason": "no eligible CYCLE GT instances in val split",
+        "split": "val",
+        "n_gt": 0,
+        "n_pred": 4571,
+        "n_gt_hit": 0,
+        "n_pred_hit": 0,
+        "precision": null,
+        "recall": null,
+        "f1": null
+      },
+      "test": {
+        "status": "EVALUATED",
+        "split": "test",
+        "n_gt": 5,
+        "n_pred": 13169,
+        "n_gt_hit": 5,
+        "n_pred_hit": 25,
+        "precision": 0.0018983977522970613,
+        "recall": 1.0,
+        "f1": 0.0037896013339396694
+      }
+    }
+  }
+}

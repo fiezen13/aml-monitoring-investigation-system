@@ -1,16 +1,64 @@
+# Mọi thứ không cần cho image api/worker. Context nhỏ thì build nhanh, và
+# quan trọng hơn: .env không bao giờ lọt vào một lớp image nào.
 .git
 .gitignore
 .env
+.env.*
 .venv
+venv
 __pycache__
 *.pyc
+*.pyo
 .pytest_cache
 .ruff_cache
+.coverage
+coverage.xml
+htmlcov
+
+# Giao diện có Dockerfile riêng với context riêng là ./web
+web/
+
+# db/ KHÔNG bị loại: `scripts/migrate.py` đọc db/init/*.sql và luôn chạy bên
+# trong container. Câu chú thích cũ ở đây — "lược đồ do container postgres nạp,
+# không nằm trong image ứng dụng" — chỉ đúng với đường dựng bằng compose ở máy
+# cá nhân, nơi lược đồ vào qua bind mount. Trên Cloud SQL không có container
+# postgres nào, migrate.py là đường duy nhất, và nó dừng với "Không tìm thấy
+# file .sql nào trong /app/db/init".
+#
+# Thư mục nhỏ, toàn file .sql và một .sh — không đáng để loại khỏi image.
+
+# Tài liệu và dữ liệu
 docs/
 presentation/
 eval/
+data/
+.ai-log/
 *.md
-!requirements.txt
-.dockerignore
+
+# Cấu hình chỉ dùng lúc phát triển
+.github/
+.agents/
+.claude/
+.codex/
+.cursor/
+.gemini/
+Makefile
+docker-compose*.yml
 Dockerfile
-docker-compose.yml
+.dockerignore
+requirements-dev.txt
+pytest.ini
+
+# Hạ tầng CI/CD — không thuộc image ứng dụng
+ci/
+deploy/
+jenkins/
+Jenkinsfile
+
+# Sản phẩm build của job Flink. Thư mục `flink/` KHÔNG được loại bỏ: image
+# Flink (docker/flink/Dockerfile) dùng chung context này và cần mã nguồn ở
+# đó để biên dịch. Chỉ loại thứ đã build ra — 30 MB jar gửi sang daemon ở
+# mỗi lần build là 30 MB không ai dùng tới.
+flink/**/target/
+!flink/aml-ingestion/target/
+!flink/aml-ingestion/target/aml-ingestion-1.0.0.jar

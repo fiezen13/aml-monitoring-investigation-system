@@ -1,0 +1,82 @@
+# Lớp phủ cho môi trường production-like — nơi hội đồng nghiệm thu nhìn vào.
+#
+# Theo FIN-07-ARC-001 mục 7: "cấu hình tương đương thật, chạy kiểm tra tải,
+# có sao lưu và diễn tập khôi phục".
+#
+# So với staging, siết thêm:
+#   * Giới hạn tài nguyên, để một truy vấn đồ thị chạy loạn không kéo sập cả máy
+#   * Xoay vòng log, để đĩa không đầy sau hai tuần
+#   * Không có fixture seed; dữ liệu nghiệp vụ chỉ đến từ LI-Small
+
+services:
+  postgres:
+    ports: !override []
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?production-like bắt buộc phải có POSTGRES_PASSWORD}
+      FIN07_AGENT_DB_PASSWORD: ${FIN07_AGENT_DB_PASSWORD:?production-like bắt buộc phải có FIN07_AGENT_DB_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+  redis:
+    ports: !override []
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  migrate:
+    restart: "no"
+
+  api:
+    restart: always
+    # Cổng khác staging vì hai môi trường chạy song song trên cùng một máy.
+    # Trùng cổng thì môi trường lên sau không bind được, và thông báo lỗi
+    # ("port is already allocated") không hề gợi ý rằng nguyên nhân là môi
+    # trường kia đang chạy.
+    ports: !override
+      - "${API_PORT:-8001}:8000"
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+  worker:
+    restart: always
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "5"}
+
+  web:
+    restart: always
+    ports: !override
+      - "${WEB_PORT:-5174}:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}

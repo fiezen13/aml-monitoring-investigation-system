@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/agent/tool-call-request.v1.schema.json",
+  "title": "ToolCallRequest v1",
+  "description": "Yêu cầu gọi một tool qua Tool Gateway (kiến trúc phụ lục B). Model KHÔNG BAO GIỜ gọi thẳng nguồn dữ liệu — nó chỉ sinh ra cấu trúc này, và Tool Gateway là bên quyết định có thực thi hay không. Không tồn tại tool `execute_sql`, `run_shell` hay `call_any_api` (mục 8.5).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool_call_id",
+    "run_id",
+    "case_id",
+    "tool_name",
+    "tool_version",
+    "purpose_id",
+    "user_context",
+    "snapshot_time",
+    "arguments"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "tool_call_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "run_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "case_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Mọi lần gọi tool phải thuộc về một case. Không có 'truy vấn khám phá' ngoài phạm vi case — đó là cách một agent trở thành một công cụ tra cứu khách hàng tuỳ ý."
+    },
+
+    "tool_name": {
+      "type": "string",
+      "enum": [
+        "get_customer_profile",
+        "get_account_activity",
+        "compare_peer_group",
+        "explore_entity_graph",
+        "explain_detection",
+        "retrieve_policy_typology",
+        "query_approved_intelligence",
+        "create_case_draft",
+        "propose_edd_request",
+        "propose_str_draft",
+        "commit_case_note",
+        "GetRiskBreakdown",
+        "GetAccountBehavior",
+        "GetTransactions",
+        "GetGraphEvidence",
+        "GetGraphNeighborhood",
+        "GetTypology",
+        "GetAnomalyExplanation"
+      ],
+      "description": "Danh sách ĐÓNG, đúng theo mục 8.5. Enum ở đây là allowlist thứ nhất: một tool không có trong danh sách này thì request không hợp lệ về schema, chưa cần tới tầng policy. Thêm tool mới là một thay đổi contract cần review bảo mật."
+    },
+
+    "tool_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+
+    "purpose_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Mục đích truy cập, dùng cho ABAC (mục 12). Ví dụ: AML_INVESTIGATION, EDD_PREPARATION, STR_DRAFTING."
+    },
+
+    "user_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_id", "role"],
+      "description": "Agent hành động THAY MẶT người dùng này. Quyền hiệu lực là giao của quyền người dùng và quyền tool — agent không bao giờ có quyền rộng hơn người đang dùng nó.",
+      "properties": {
+        "user_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": {
+          "type": "string",
+          "enum": ["ANALYST", "SENIOR_ANALYST", "COMPLIANCE_OFFICER", "MLRO", "ADMIN", "AUDITOR"]
+        },
+        "unit": { "type": "string", "maxLength": 128 },
+        "case_membership_verified": {
+          "type": "boolean",
+          "description": "Người dùng này thật sự có quyền trên case này hay không. Gateway phải tự kiểm chứng lại, không tin giá trị do bên gọi đưa vào."
+        }
+      }
+    },
+
+    "snapshot_time": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+      "description": "Tool phải trả dữ liệu như tại thời điểm này. Một lượt điều tra chạy hàng phút; nếu mỗi tool trả 'mới nhất' thì các bằng chứng trong cùng một case sẽ mô tả các thời điểm khác nhau và timeline dựng ra sẽ mâu thuẫn với chính nó."
+    },
+
+    "arguments": {
+      "type": "object",
+      "description": "Tham số của tool. Hình dạng do schema riêng của từng tool quy định; gateway PHẢI validate theo schema đó trước khi thực thi (mục 8.9: tool argument manipulation)."
+    },
+
+    "max_rows": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "description": "Trần số dòng trả về. Có trần cứng ở schema để một tham số do model sinh ra không thể biến thành một lần quét toàn bộ cơ sở dữ liệu."
+    },
+
+    "timeout_ms": { "type": "integer", "minimum": 1, "maximum": 120000 },
+
+    "expected_schema_version": {
+      "type": "string",
+      "maxLength": 16,
+      "description": "Phiên bản contract kết quả mà bên gọi mong đợi. Lệch thì gateway trả lỗi thay vì trả dữ liệu có hình dạng khác."
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  }
+}

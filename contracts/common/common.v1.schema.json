@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/common/common.v1.schema.json",
+  "title": "FIN-07 — định nghĩa dùng chung v1",
+  "description": "Các kiểu dữ liệu lặp lại ở nhiều contract. File này không mô tả một bản ghi nào cả; nó chỉ chứa `$defs` để các schema khác `$ref` tới. Sửa một định nghĩa ở đây là sửa mọi contract tham chiếu tới nó — coi như thay đổi phá vỡ tương thích trừ khi chứng minh được ngược lại.",
+
+  "$defs": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "Phiên bản của chính contract này, dạng MAJOR.MINOR. Consumer phải từ chối bản ghi có MAJOR không nhận ra thay vì cố đoán ý nghĩa."
+    },
+
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$",
+      "description": "Mốc thời gian RFC 3339 có múi giờ tường minh. Múi giờ là bắt buộc: một mốc thời gian không múi giờ trong hệ thống AML đa kênh là một lỗi chờ xảy ra, không phải một tiện lợi."
+    },
+
+    "event_time": {
+      "$ref": "#/$defs/timestamp",
+      "description": "Thời điểm sự việc XẢY RA ở thế giới thật. Đây là trục thời gian dùng cho mọi feature và cửa sổ phân tích."
+    },
+
+    "ingestion_time": {
+      "$ref": "#/$defs/timestamp",
+      "description": "Thời điểm nền tảng NHẬN được bản ghi. Luôn >= event_time. Chênh lệch giữa hai mốc là độ trễ nguồn, và nó phải quan sát được chứ không bị xoá đi."
+    },
+
+    "posting_time": {
+      "$ref": "#/$defs/timestamp",
+      "description": "Thời điểm giao dịch được HẠCH TOÁN. Khác event_time với giao dịch pending/hold, và khác biệt đó là tín hiệu nghiệp vụ chứ không phải nhiễu."
+    },
+
+    "available_from": {
+      "$ref": "#/$defs/timestamp",
+      "description": "Thời điểm sớm nhất mà thông tin này được phép dùng để suy luận (point-in-time correctness, nguyên tắc kiến trúc số 2). Một bằng chứng biết được hôm nay không được dùng để giải thích một quyết định của tuần trước — làm vậy là rò rỉ dữ liệu tương lai và mọi chỉ số đo sau đó đều đẹp một cách giả tạo."
+    },
+
+    "decimal": {
+      "type": "string",
+      "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+      "description": "Số thập phân dạng chuỗi, giữ nguyên độ chính xác. KHÔNG dùng number cho tiền: phát hiện structuring so sánh với ngưỡng, và một khoản 299999999.99 bị IEEE-754 làm tròn thành 300000000 sẽ đổi kết luận của luật AML theo hướng bỏ sót. Không dấu phân cách nghìn, không ký hiệu tiền tệ."
+    },
+
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "Mã tiền tệ ISO 4217, ví dụ VND, USD, EUR."
+    },
+
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency"],
+      "description": "Số tiền luôn đi kèm đơn vị. Một số trần không có tiền tệ là nguyên nhân kinh điển của việc so sánh 100 triệu VND với 100 triệu USD.",
+      "properties": {
+        "amount": { "$ref": "#/$defs/decimal" },
+        "currency": { "$ref": "#/$defs/currency" }
+      }
+    },
+
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Độ tin cậy trong khoảng [0,1]. Bắt buộc với mọi thứ được suy luận. 1.0 chỉ dành cho sự kiện quan sát trực tiếp; kết quả của mô hình hay heuristic không bao giờ là 1.0."
+    },
+
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "CUSTOMER",
+        "ACCOUNT",
+        "TRANSACTION",
+        "DEVICE",
+        "SESSION",
+        "COUNTERPARTY",
+        "MERCHANT",
+        "WALLET",
+        "VASP",
+        "LEGAL_ENTITY"
+      ],
+      "description": "Loại thực thể trong mô hình chuẩn (mục 6.2 của kiến trúc)."
+    },
+
+    "entity_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_type", "entity_id"],
+      "description": "Tham chiếu tới một thực thể canonical.",
+      "properties": {
+        "entity_type": { "$ref": "#/$defs/entity_type" },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Canonical ID do nền tảng cấp. KHÔNG phải ID của hệ thống nguồn — ID nguồn nằm ở `source_refs` để giữ được đường truy nguyên (mục 3.2)."
+        }
+      }
+    },
+
+    "source_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_system", "source_id"],
+      "description": "Định danh của thực thể này TẠI hệ thống nguồn. Giữ nguyên trạng, không chuẩn hoá, không ghi đè. Kiến trúc mục 3.2: không được overwrite nguồn bằng kết quả entity resolution.",
+      "properties": {
+        "source_system": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Ví dụ: core-banking, cif, card-switch, ib-mb, ekyc."
+        },
+        "source_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_id_type": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Ví dụ: CIF_ID, ACCOUNT_NUMBER, CARD_NUMBER_TOKEN, DEVICE_ID."
+        }
+      }
+    },
+
+    "resolution_method": {
+      "type": "string",
+      "enum": ["DETERMINISTIC", "PROBABILISTIC", "ANALYST_CONFIRMED", "ANALYST_REJECTED"],
+      "description": "Cách một liên kết được tạo ra (mục 6.3). DETERMINISTIC dựa trên định danh đã xác minh; PROBABILISTIC dựa trên tương đồng và KHÔNG được coi là fact cho tới khi ANALYST_CONFIRMED."
+    },
+
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_system", "known_from"],
+      "description": "Thông tin này từ đâu ra và biết được từ khi nào. Thiếu provenance thì không replay được, và không replay được thì không giải trình được với thanh tra.",
+      "properties": {
+        "source_system": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "source_record_ref": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Trỏ về bản ghi gốc: URI, khoá, hoặc offset trong event store."
+        },
+        "known_from": {
+          "$ref": "#/$defs/timestamp",
+          "description": "Thời điểm nền tảng bắt đầu biết điều này. Dùng cho point-in-time correctness."
+        },
+        "method": { "$ref": "#/$defs/resolution_method" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "license_constraints": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Ràng buộc sử dụng với nguồn intelligence bên ngoài. Bỏ trống nghĩa là không có ràng buộc đã biết, KHÔNG có nghĩa là được dùng tự do."
+        }
+      }
+    },
+
+    "reason_code": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "description"],
+      "description": "Lý do máy đọc được cho một quyết định. Nguyên tắc explainability: điểm rủi ro không bao giờ được hiển thị một mình.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_]{3,64}$",
+          "description": "Ví dụ: FAN_IN_BURST, RAPID_PASS_THROUGH, PEER_DEVIATION_HIGH."
+        },
+        "description": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "contribution": {
+          "type": "number",
+          "description": "Mức đóng góp vào điểm tổng. Dấu có ý nghĩa: giá trị âm là yếu tố LÀM GIẢM rủi ro, và chúng phải được giữ lại chứ không bị lọc bỏ — bằng chứng phản chứng cũng là bằng chứng."
+        },
+        "feature_refs": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 128 },
+          "description": "Các feature đã dẫn tới reason code này."
+        }
+      }
+    },
+
+    "evidence_ref": {
+      "type": "string",
+      "pattern": "^EV-[A-Za-z0-9_-]{1,64}$",
+      "description": "Khoá của một mục trong evidence ledger. Bất biến, chỉ append."
+    },
+
+    "version_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "description": "Định danh phiên bản của một thành phần đã tham gia tạo ra kết quả. Không có nó thì không replay được (nguyên tắc kiến trúc số 9).",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+
+    "data_class": {
+      "type": "string",
+      "enum": ["C0_PUBLIC", "C1_INTERNAL", "C2_CONFIDENTIAL", "C3_RESTRICTED", "C4_EVIDENCE_SENSITIVE"],
+      "description": "Phân loại dữ liệu cho prompt (phụ lục C của kiến trúc). C3 KHÔNG BAO GIỜ được vào model context — chỉ tool server xử lý. C4 chỉ trong phạm vi case và model zone đã duyệt."
+    },
+
+    "quality_flag": {
+      "type": "string",
+      "enum": [
+        "LATE_ARRIVING",
+        "PARTIAL_WINDOW",
+        "SOURCE_DEGRADED",
+        "RECONCILIATION_MISMATCH",
+        "FIELD_MASKED",
+        "STALE_FEATURE",
+        "LOW_SAMPLE_PEER_GROUP"
+      ],
+      "description": "Cảnh báo về chất lượng dữ liệu, đi kèm kết quả thay vì bị nuốt. Một kết quả tính trên cửa sổ thiếu dữ liệu vẫn có thể dùng được — nhưng chỉ khi người đọc biết là nó thiếu."
+    },
+
+    "trace_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trace_id"],
+      "description": "Nối một bản ghi vào chuỗi correlation end-to-end (mục 13): trace_id → source_event_id → detection_result_id → alert_id → case_id → agent_run_id → tool_call_id → evidence_id → claim_id → decision_id.",
+      "properties": {
+        "trace_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "span_id": { "type": "string", "maxLength": 128 },
+        "traceparent": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Header W3C Trace Context nguyên trạng."
+        }
+      }
+    },
+
+    "channel": {
+      "type": "string",
+      "enum": ["BRANCH", "ATM", "POS", "INTERNET", "MOBILE", "SWIFT", "NAPAS", "CARD", "API", "BATCH", "OTHER"],
+      "description": "Kênh phát sinh giao dịch/phiên."
+    }
+  }
+}

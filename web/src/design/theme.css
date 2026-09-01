@@ -1,0 +1,132 @@
+/**
+ * Token dưới dạng biến CSS.
+ *
+ * Ba nhóm người dùng cần chúng ở dạng này chứ không phải dạng class Tailwind:
+ * engine canvas thuần JS (`vendor/fc`), các thư viện dựng hình chèn DOM của
+ * riêng chúng (MapLibre, Cesium), và vài chỗ phải tính màu trong `style` inline.
+ *
+ * Giá trị ở đây PHẢI khớp `src/design/tokens.ts`. Nguồn là file TypeScript —
+ * `installCanvasTheme()` ghi đè lại các biến `--fc-*` lúc chạy, nên nếu hai bên
+ * lệch nhau thì bản TypeScript thắng.
+ */
+
+:root {
+  /* Bề mặt */
+  --surface-app: #080d12;
+  --surface-side: #0c131b;
+  --surface-panel: #111a24;
+  --surface-elev: #17242f;
+  --surface-raised: #1b2a36;
+  --surface-sunken: #0a1017;
+  --surface-scrim: rgba(4, 8, 12, 0.72);
+
+  /* Chữ */
+  --ink-hi: #e6edf3;
+  --ink-mid: #b6c4d0;
+  --ink-soft: #91a2b1;
+  --ink-low: #8397a8;
+  --ink-dim: #708597;
+
+  /* Đường kẻ */
+  --line-faint: #141d26;
+  --line-soft: #182430;
+  --line-base: #1d2a35;
+  --line-strong: #293b49;
+  --line-emphasis: #385062;
+
+  /* Accent — chỉ dành cho "đang chọn / hành động chính" */
+  --accent: #20c7a7;
+  --accent-hover: #2fddba;
+  --accent-soft: rgba(32, 199, 167, 0.1);
+  --accent-line: rgba(32, 199, 167, 0.32);
+
+  /* Ngữ nghĩa */
+  --risk: #f45b69;
+  --warn: #f0b44d;
+  --ok: #4cc38a;
+  --info: #4b9eff;
+  --agent: #a78bfa;
+
+  /* Bo góc */
+  --radius-panel: 10px;
+  --radius-control: 7px;
+  --radius-chip: 20px;
+
+  /* Chuyển động */
+  --duration-fast: 0.14s;
+  --duration-normal: 0.22s;
+  --duration-slow: 0.36s;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/**
+ * Bầu không khí nền của console.
+ *
+ * Màn đăng nhập có chiều sâu — hai quầng radial, một lưới kỹ thuật, vignette —
+ * còn phần nghiệp vụ trước đây là một mặt phẳng #080D12 phẳng lì, nên hai nơi
+ * trông như hai sản phẩm. Lớp này mang đúng DNA ấy vào console nhưng giảm cường
+ * độ khoảng bốn lần: đủ để nền có chiều sâu, không đủ để cạnh tranh với dữ liệu.
+ *
+ * Dựng bằng pseudo-element cố định thay vì background của `<main>`: nội dung
+ * cuộn, còn bầu không khí thì không — nền trôi theo nội dung sẽ lộ ngay là hiệu
+ * ứng trang trí.
+ */
+.fc-atmosphere::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 760px at 16% 8%, rgba(32, 199, 167, 0.035), transparent 62%),
+    radial-gradient(900px 620px at 88% 4%, rgba(75, 158, 255, 0.022), transparent 66%);
+}
+
+.fc-atmosphere::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.02;
+  background-image:
+    linear-gradient(rgba(133, 173, 209, 1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(133, 173, 209, 1) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+/* Nội dung phải nằm trên hai lớp nền trên. */
+.fc-atmosphere > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Thanh cuộn mảnh cho ngăn kéo trợ lý.
+ *
+ * Thanh cuộn mặc định của trình duyệt dày và sáng hơn mọi đường kẻ khác trong
+ * console, nên nó thành đường đậm nhất màn hình cho một thứ chỉ là cơ chế điều
+ * hướng. Ở đây: mảnh, chìm, và chỉ rõ lên khi con trỏ đi qua. */
+.copilot-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(133, 173, 209, 0.18) transparent;
+}
+
+.copilot-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.copilot-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.copilot-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background-clip: content-box;
+  background-color: rgba(133, 173, 209, 0.18);
+  border-radius: 999px;
+}
+
+.copilot-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(133, 173, 209, 0.32);
+}

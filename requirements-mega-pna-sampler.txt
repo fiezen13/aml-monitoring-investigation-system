@@ -1,0 +1,4 @@
+# Install only after requirements-mega-pna.txt. On macOS/Python 3.14 use:
+# MAX_JOBS=4 pip install --no-build-isolation -r requirements-mega-pna-sampler.txt
+torch-scatter==2.1.2
+torch-sparse==0.6.18

@@ -8,11 +8,24 @@
 # Exits 0 silently if no Python is found — hooks must never block the AI tool.
 set -u
 
-if command -v python3 >/dev/null 2>&1; then
+# Prefer the project's own virtualenv (has python-dotenv + deps installed)
+# over whatever Python happens to be on PATH.
+# A name being on PATH does not mean it runs. Windows Store installs an
+# execution alias at WindowsApps/python3 that `command -v` finds but that
+# prints "Python was not found" and never executes. Selecting it makes AI log
+# submission fail silently on pre-push. Every PATH candidate is therefore
+# verified by actually invoking it.
+if [ -x ".venv/bin/python" ]; then
+  PY=".venv/bin/python"
+elif [ -x ".venv/Scripts/python" ]; then
+  PY=".venv/Scripts/python"
+elif [ -x ".venv/Scripts/python.exe" ]; then
+  PY=".venv/Scripts/python.exe"
+elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
   PY=python3
-elif command -v python >/dev/null 2>&1; then
+elif command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
   PY=python
-elif command -v py >/dev/null 2>&1; then
+elif command -v py >/dev/null 2>&1 && py -3 --version >/dev/null 2>&1; then
   PY="py -3"
 else
   # PATH lookup failed — probe standard Windows install locations.

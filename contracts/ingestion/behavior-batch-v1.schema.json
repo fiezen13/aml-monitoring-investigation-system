@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/schemas/behavior-batch-v1.schema.json",
+  "title": "FIN-07 Behaviour batch transaction v1",
+  "description": "One unlabeled transaction row for the local Behaviour ML batch PoC. CSV columns use the same property names. Labels are intentionally forbidden.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "occurred_at",
+    "from_bank",
+    "from_account",
+    "to_bank",
+    "to_account",
+    "amount",
+    "currency",
+    "channel"
+  ],
+  "properties": {
+    "transaction_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Stable source-system idempotency key. When absent, the loader derives a deterministic SHA-256 prefix from the normalized row."
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 event time with an explicit timezone."
+    },
+    "from_bank": {"type": "string", "minLength": 1},
+    "from_account": {"type": "string", "minLength": 1},
+    "to_bank": {"type": "string", "minLength": 1},
+    "to_account": {"type": "string", "minLength": 1},
+    "amount": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]{1,2})?$",
+      "description": "Positive decimal string in payment currency; at most two decimal places."
+    },
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "amount_received": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]{1,2})?$"
+    },
+    "receiving_currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "channel": {"type": "string", "minLength": 1, "maxLength": 64},
+    "remarks": {"type": "string", "maxLength": 2000}
+  }
+}

@@ -1,0 +1,55 @@
+# Lớp phủ dùng Cloud SQL thay cho container postgres.
+#
+#   docker compose -f docker-compose.yml \
+#                  -f deploy/docker-compose.vm.yml \
+#                  -f deploy/docker-compose.cloudsql.yml up -d --wait
+#
+# Hoặc để vm-deploy.sh tự thêm: đặt USE_CLOUD_SQL=true trong .env.
+#
+# --------------------------------------------------------------------
+# Vì sao cần một file riêng, không chỉ sửa DATABASE_URL trong .env
+#
+# `docker-compose.yml` đặt DATABASE_URL trong khối `environment:` của
+# x-app-env, trỏ cứng vào host `postgres`. Compose cho `environment:` quyền
+# cao hơn `env_file:`, nên đặt DATABASE_URL vào .env KHÔNG có tác dụng gì —
+# container vẫn nối vào container postgres, và không có lỗi nào báo ra. Nó
+# chỉ lặng lẽ đọc ghi vào cơ sở dữ liệu cũ trong khi bạn tin rằng nó đang
+# dùng Cloud SQL.
+#
+# Lớp phủ này ghi đè đúng khoá đó ở cùng tầng ưu tiên, nên nó thắng.
+# --------------------------------------------------------------------
+
+services:
+  # Container postgres không dựng nữa. Đặt profile là cách tắt một service
+  # trong compose mà không phải xoá định nghĩa của nó: profile này không bao
+  # giờ được bật, nên service không lên. Định nghĩa vẫn còn nguyên cho máy
+  # cá nhân và cho lúc cần quay lui.
+  #
+  # Điều kiện để cách này hiệu quả: KHÔNG service nào còn `depends_on` tới
+  # postgres — nếu còn, compose tự bật profile lên để thoả mãn phụ thuộc.
+  # Ba khối `depends_on: !override` bên dưới lo việc đó.
+  postgres:
+    profiles: ["localdb-khong-dung-voi-cloudsql"]
+
+  migrate:
+    depends_on: !override {}
+    environment:
+      DATABASE_URL: "${DATABASE_URL:?chua dat DATABASE_URL trong .env - lay bang lenh terraform output -raw database_url}"
+
+  api:
+    depends_on: !override
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: "${DATABASE_URL:?chua dat DATABASE_URL trong .env - lay bang lenh terraform output -raw database_url}"
+
+  worker:
+    depends_on: !override
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: "${DATABASE_URL:?chua dat DATABASE_URL trong .env - lay bang lenh terraform output -raw database_url}"

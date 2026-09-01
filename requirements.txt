@@ -1,3 +1,6 @@
+# Phụ thuộc lúc chạy. Image Docker chỉ cài file này.
+# Công cụ phát triển và kiểm thử nằm ở requirements-dev.txt.
+
 # Core
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
@@ -5,21 +8,58 @@ pydantic>=2.10.0
 pydantic-settings>=2.7.0
 python-dotenv>=1.0.0
 
-# AI / LangChain
-langchain>=0.3.0
-langchain-openai>=0.3.0
-langgraph>=0.2.0
+# AI. Ba tác tử điều tra gọi Gemini qua đúng SDK chính thức của Google Gen AI,
+# không qua lớp trung gian nào. LangChain và LangGraph từng có mặt ở đây chỉ để
+# phục vụ khung mẫu trong src/agents/; khung đó đã gỡ nên hai gói cũng đi theo.
+google-genai>=2.14.0
 
-# Database (uncomment as needed)
-# sqlalchemy>=2.0.0
-# alembic>=1.14.0
-# psycopg2-binary>=2.9.0
+# Database
+sqlalchemy>=2.0.0
+psycopg[binary]>=3.2.0
 
-# Vector Store (uncomment as needed)
+# Hàng đợi tác vụ
+redis>=5.2.0
+
+# Correlated observability. Applications emit OTLP to the Collector while a
+# Prometheus reader also backs the local /metrics diagnostic endpoint.
+opentelemetry-api>=1.39.0,<2
+opentelemetry-sdk>=1.39.0,<2
+# The meta package keeps the gRPC and HTTP exporters on the same exact release.
+# Declaring both children independently lets a stale meta package remain in an
+# existing venv and causes an inconsistent OpenTelemetry installation.
+opentelemetry-exporter-otlp>=1.39.0,<2
+opentelemetry-exporter-prometheus>=0.60b0,<1
+opentelemetry-instrumentation-fastapi>=0.60b0,<1
+opentelemetry-instrumentation-redis>=0.60b0,<1
+opentelemetry-instrumentation-sqlalchemy>=0.60b0,<1
+prometheus-client>=0.21.0,<1
+
+# Kafka — producer phát lại dữ liệu AML (`python -m src.aml`).
+# Nằm ở đây chứ không ở requirements-dev vì producer chạy trong cùng image
+# với api và worker, đúng nguyên tắc "một image, nhiều lệnh khởi động" đã
+# áp dụng cho batch loader. Chọn confluent-kafka vì nó là client duy nhất hỗ trợ
+# idempotent producer — thứ quyết định việc thử lại không đẻ ra bản trùng.
+confluent-kafka>=2.6.0
+
+# Canonical ABM-BANK releases. PyArrow provides bounded-batch Parquet I/O;
+# pinning keeps release serialization behavior reviewable and reproducible.
+pyarrow==25.0.0
+PyYAML>=6.0.2
+
+# Offline ML / feature platform (Isolation Forest + DuckDB features)
+pandas>=2.2.0
+numpy>=2.0.0
+polars>=1.0.0
+# Runtime model bundles are repacked and parity-tested with this exact version.
+scikit-learn==1.9.0
+joblib>=1.4.0
+networkx>=3.0
+duckdb>=1.1.0
+pytz>=2024.1
+
+# Dựng PDF báo cáo SAR (thuần Python, không phụ thuộc hệ thống). Nhúng TTF
+# DejaVu (src/api/assets/fonts) để render dấu tiếng Việt.
+fpdf2>=2.7.9
+
+# Vector Store (mở khi cần)
 # chromadb>=0.5.0
-
-# Dev tools
-ruff>=0.8.0
-pytest>=8.0.0
-pytest-asyncio>=0.24.0
-httpx>=0.28.0

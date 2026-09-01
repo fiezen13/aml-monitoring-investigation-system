@@ -1,0 +1,634 @@
+{
+  "uid": "fin07-system",
+  "title": "FIN-07 · Hệ thống",
+  "tags": [
+    "fin07",
+    "system"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "1 · Sức khoẻ",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Thành phần đang sống",
+      "description": "Số mục tiêu Prometheus cào được trên tổng số. Tụt xuống là có thứ đã chết.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "sống",
+          "expr": "sum(up)"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "tổng",
+          "expr": "count(up)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Yêu cầu đang xử lý",
+      "description": "Số request HTTP đang chạy dở. Tăng vọt mà độ trễ cũng tăng nghĩa là đang nghẽn.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "đang chạy",
+          "expr": "sum(fin07_http_active_requests)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Tỷ lệ lỗi 5xx",
+      "description": "Phần trăm request trả về lỗi máy chủ trong 5 phút gần nhất.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "5xx %",
+          "expr": "100 * (sum(rate(fin07_http_requests_total{status_class=\"5xx\"}[5m])) or vector(0)) / clamp_min(sum(rate(fin07_http_requests_total[5m])), 0.001)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Độ trễ P95 hiện tại",
+      "description": "Nhịp phản hồi thực tế người dùng đang chịu.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_http_request_duration_seconds_bucket[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "2 · Độ trễ API",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Độ trễ HTTP P50 / P95 / P99",
+      "description": "Thời gian máy chủ xử lý một request, đo bằng middleware ở src/observability/http.py. Đây là độ trễ THẬT của hệ thống, khác với độ trễ gọi mô hình AI ở bảng Tác tử.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(fin07_http_request_duration_seconds_bucket[5m])))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_http_request_duration_seconds_bucket[5m])))"
+        },
+        {
+          "refId": "C",
+          "legendFormat": "p99",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(fin07_http_request_duration_seconds_bucket[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "8 đường chậm nhất (P95)",
+      "description": "Xếp hạng theo route để biết CHỖ NÀO chậm, không chỉ biết là chậm.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{route}}",
+          "expr": "topk(8, histogram_quantile(0.95, sum by (le, route) (rate(fin07_http_request_duration_seconds_bucket[5m]))))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "3 · Lưu lượng và lỗi",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Request mỗi giây theo đường",
+      "description": "8 route bận nhất. Đọc cùng bảng độ trễ để phân biệt chậm-vì-tải và chậm-vì-lỗi.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{route}}",
+          "expr": "topk(8, sum by (route) (rate(fin07_http_requests_total[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Request mỗi giây theo nhóm mã trả về",
+      "description": "2xx/4xx/5xx tách riêng. 4xx tăng thường là lỗi phía người dùng hoặc quyền, 5xx là lỗi của ta.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{status_class}}",
+          "expr": "sum by (status_class) (rate(fin07_http_requests_total[5m]))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "4 · Hàng đợi và worker",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Độ sâu hàng đợi",
+      "description": "Số việc đang chờ. Tăng đều mà không tụt là worker không theo kịp.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{queue}}",
+          "expr": "fin07_worker_queue_depth"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tuổi việc chờ lâu nhất",
+      "description": "Việc cũ nhất còn nằm trong hàng đợi. Chỉ số này bắt được tình trạng đói mà độ sâu hàng đợi giấu đi.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{queue}}",
+          "expr": "fin07_worker_queue_oldest_age_seconds"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "P95 thời gian chờ và thời gian chạy",
+      "description": "Chờ lâu thì thiếu worker; chạy lâu thì bản thân tác vụ chậm. Hai nguyên nhân, hai cách xử lý.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "chờ p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_worker_queue_wait_seconds_bucket[5m])))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "chạy p95 · {{exported_job}}",
+          "expr": "histogram_quantile(0.95, sum by (le, exported_job) (rate(fin07_worker_job_duration_seconds_bucket[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "5 · Điều tra đầu-cuối",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Thời gian trọn một lượt điều tra",
+      "description": "Từ lúc nhận việc tới lúc có kết luận. Đây là con số người dùng nghiệp vụ thực sự cảm nhận.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(fin07_investigation_duration_seconds_bucket[5m])))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(fin07_investigation_duration_seconds_bucket[5m])))"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Số lượt điều tra mỗi giờ",
+      "description": "Thông lượng nghiệp vụ, để đối chiếu với thời gian mỗi lượt.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "lượt/giờ",
+          "expr": "sum(rate(fin07_investigations_total[30m])) * 3600"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "6 · Hạ tầng",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU và RAM máy chủ",
+      "description": "Phần trăm CPU đang bận và lượng RAM đang dùng của VM. Không dùng cadvisor: Docker trên VM này chạy storage driver `overlayfs` (containerd snapshotter) nên cadvisor không dựng được handler cho từng container — nó chỉ thấy systemd slice. Đã thử cả --docker_only lẫn --containerd, đều không ra. Vì vậy chỉ số ở đây lấy từ node-exporter và redis-exporter, là thứ chắc chắn có số liệu.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 42
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "CPU bận %",
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "RAM đã dùng %",
+          "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis — bộ nhớ và khoá hàng đợi",
+      "description": "Redis là nơi hàng đợi tác vụ nằm. Bộ nhớ tăng không tụt, hoặc số khoá dồn lại, đều là dấu hiệu worker không tiêu thụ kịp.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 42
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "khoá",
+          "expr": "sum(redis_db_keys)"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "bộ nhớ (MB)",
+          "expr": "redis_memory_used_bytes / 1024 / 1024"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Kết nối PostgreSQL",
+      "description": "Số kết nối theo trạng thái. Chạm trần pool là nguyên nhân phổ biến khiến API treo.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 42
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{state}}",
+          "expr": "sum by (state) (pg_stat_activity_count)"
+        }
+      ]
+    }
+  ]
+}

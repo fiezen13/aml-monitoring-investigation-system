@@ -1,0 +1,296 @@
+{
+  "manifest_version": "graph_pipeline_manifest_v2",
+  "manifest_path": "reports/graph_pipeline_manifest_v2.json",
+  "input_db_checksum": "988750df401b88c5dada8492f2ec6272707d9e28a5ed2fb09614a032779bc5c5",
+  "feature_artifact_checksum": "925cf3160597e402af38e1bbe30ba8f0aca2bbf84d09ab092340e21ae92ea0e4",
+  "detection_artifact_checksum": "f2df03347d329a1bcfa174fce98597b3e5ae9c2cfd2f19a2245b4813cfe2bd62",
+  "evidence_artifact_checksum": "df2f538e76a77f42a274a09c5c3a0b6bbe9522bc6c21396fa25a5209b6630454",
+  "features_prebuilt": true,
+  "feature_prebuilt_validation": {
+    "features_prebuilt": true,
+    "path": "/Users/nguyenbao/P-022/data/processed/graph_features_v1.parquet",
+    "checksum": "925cf3160597e402af38e1bbe30ba8f0aca2bbf84d09ab092340e21ae92ea0e4",
+    "checksum_validated_against": "explicit_argument_or_previous_manifest",
+    "schema_version": "graph_features_v1"
+  },
+  "feature_schema_version": "graph_features_v1",
+  "detector_versions": {
+    "FAN_IN": [
+      "graph_fan_v3_min"
+    ],
+    "FAN_OUT": [
+      "graph_fan_v3_min"
+    ],
+    "GATHER_SCATTER": [
+      "graph_gather_v1"
+    ],
+    "CYCLE": [
+      "graph_cycle_v1"
+    ]
+  },
+  "config_hashes": {
+    "configs/graph/graph_fan_config_v3.json": "abb634585f54a6b1176dc61f960af7a43d70ea90be5b290076bb29aa3f609fcb",
+    "configs/graph/graph_gather_config_v1.json": "ed9abffa2eab59b1da87954b62984229939a99077b1460e2b7369d11fe70fc2f",
+    "src/data/cycle_detector.py": "c21ee1ec0f622f5a9959f53fe6eeed538567060072b72438a419092ab228ac4b"
+  },
+  "snapshot_range": {
+    "min": "2022-09-01",
+    "max": "2022-09-17"
+  },
+  "row_counts": {
+    "detections": 138939,
+    "evidence": 117288,
+    "by_pattern": {
+      "FAN_IN": 54427,
+      "FAN_OUT": 41666,
+      "GATHER_SCATTER": 447,
+      "CYCLE": 42399
+    }
+  },
+  "validation": {
+    "status": "PASS",
+    "errors": [],
+    "detection_rows": 138939,
+    "evidence_rows": 117288,
+    "unique_detection_ids": 138939,
+    "unique_evidence_ids": 117288,
+    "witness_rows": 1838411,
+    "unique_transaction_ids": 561643,
+    "transaction_ids_found": 561643,
+    "feature_join_checked": true,
+    "sample_split_checked": true,
+    "detector_versions_checked": true,
+    "config_hashes_checked": true
+  },
+  "telemetry": {
+    "phases": [
+      {
+        "runtime_s": 25.875,
+        "peak_rss_mb": 3669472.0,
+        "detection_rows": 96093,
+        "evidence_rows": 96093,
+        "snapshot_count": 17,
+        "snapshots": [
+          {
+            "snapshot_date": "2022-09-01",
+            "auxiliary_rows": 188788,
+            "detection_rows": 1356,
+            "evidence_rows": 1356,
+            "auxiliary_runtime_s": 0.165,
+            "selection_runtime_s": 0.039,
+            "hydration_runtime_s": 0.427,
+            "runtime_s": 0.756,
+            "current_rss_mb": 924960.0
+          },
+          {
+            "snapshot_date": "2022-09-02",
+            "auxiliary_rows": 347665,
+            "detection_rows": 2987,
+            "evidence_rows": 2987,
+            "auxiliary_runtime_s": 0.297,
+            "selection_runtime_s": 0.062,
+            "hydration_runtime_s": 0.672,
+            "runtime_s": 1.214,
+            "current_rss_mb": 1643280.0
+          },
+          {
+            "snapshot_date": "2022-09-03",
+            "auxiliary_rows": 355381,
+            "detection_rows": 3838,
+            "evidence_rows": 3838,
+            "auxiliary_runtime_s": 0.303,
+            "selection_runtime_s": 0.074,
+            "hydration_runtime_s": 0.78,
+            "runtime_s": 1.368,
+            "current_rss_mb": 2040288.0
+          },
+          {
+            "snapshot_date": "2022-09-04",
+            "auxiliary_rows": 362578,
+            "detection_rows": 4786,
+            "evidence_rows": 4786,
+            "auxiliary_runtime_s": 0.326,
+            "selection_runtime_s": 0.086,
+            "hydration_runtime_s": 0.908,
+            "runtime_s": 1.563,
+            "current_rss_mb": 2330272.0
+          },
+          {
+            "snapshot_date": "2022-09-05",
+            "auxiliary_rows": 370067,
+            "detection_rows": 6770,
+            "evidence_rows": 6770,
+            "auxiliary_runtime_s": 0.388,
+            "selection_runtime_s": 0.111,
+            "hydration_runtime_s": 1.008,
+            "runtime_s": 1.814,
+            "current_rss_mb": 2663728.0
+          },
+          {
+            "snapshot_date": "2022-09-06",
+            "auxiliary_rows": 377177,
+            "detection_rows": 9158,
+            "evidence_rows": 9158,
+            "auxiliary_runtime_s": 0.488,
+            "selection_runtime_s": 0.164,
+            "hydration_runtime_s": 1.232,
+            "runtime_s": 2.239,
+            "current_rss_mb": 3009200.0
+          },
+          {
+            "snapshot_date": "2022-09-07",
+            "auxiliary_rows": 384623,
+            "detection_rows": 11659,
+            "evidence_rows": 11659,
+            "auxiliary_runtime_s": 0.521,
+            "selection_runtime_s": 0.198,
+            "hydration_runtime_s": 1.385,
+            "runtime_s": 2.524,
+            "current_rss_mb": 3398704.0
+          },
+          {
+            "snapshot_date": "2022-09-08",
+            "auxiliary_rows": 318620,
+            "detection_rows": 11080,
+            "evidence_rows": 11080,
+            "auxiliary_runtime_s": 0.473,
+            "selection_runtime_s": 0.169,
+            "hydration_runtime_s": 1.272,
+            "runtime_s": 2.33,
+            "current_rss_mb": 3523312.0
+          },
+          {
+            "snapshot_date": "2022-09-09",
+            "auxiliary_rows": 275240,
+            "detection_rows": 10416,
+            "evidence_rows": 10416,
+            "auxiliary_runtime_s": 0.453,
+            "selection_runtime_s": 0.158,
+            "hydration_runtime_s": 1.206,
+            "runtime_s": 2.18,
+            "current_rss_mb": 3616592.0
+          },
+          {
+            "snapshot_date": "2022-09-10",
+            "auxiliary_rows": 275087,
+            "detection_rows": 10258,
+            "evidence_rows": 10258,
+            "auxiliary_runtime_s": 0.442,
+            "selection_runtime_s": 0.153,
+            "hydration_runtime_s": 1.188,
+            "runtime_s": 2.156,
+            "current_rss_mb": 3669472.0
+          },
+          {
+            "snapshot_date": "2022-09-11",
+            "auxiliary_rows": 266043,
+            "detection_rows": 8095,
+            "evidence_rows": 8095,
+            "auxiliary_runtime_s": 0.421,
+            "selection_runtime_s": 0.123,
+            "hydration_runtime_s": 1.008,
+            "runtime_s": 1.857,
+            "current_rss_mb": 3669472.0
+          },
+          {
+            "snapshot_date": "2022-09-12",
+            "auxiliary_rows": 256571,
+            "detection_rows": 5860,
+            "evidence_rows": 5860,
+            "auxiliary_runtime_s": 0.359,
+            "selection_runtime_s": 0.1,
+            "hydration_runtime_s": 0.887,
+            "runtime_s": 1.601,
+            "current_rss_mb": 3669472.0
+          },
+          {
+            "snapshot_date": "2022-09-13",
+            "auxiliary_rows": 247095,
+            "detection_rows": 3930,
+            "evidence_rows": 3930,
+            "auxiliary_runtime_s": 0.289,
+            "selection_runtime_s": 0.067,
+            "hydration_runtime_s": 0.724,
+            "runtime_s": 1.286,
+            "current_rss_mb": 3669472.0
+          },
+          {
+            "snapshot_date": "2022-09-14",
+            "auxiliary_rows": 236603,
+            "detection_rows": 3068,
+            "evidence_rows": 3068,
+            "auxiliary_runtime_s": 0.232,
+            "selection_runtime_s": 0.055,
+            "hydration_runtime_s": 0.61,
+            "runtime_s": 1.071,
+            "current_rss_mb": 3669472.0
+          },
+          {
+            "snapshot_date": "2022-09-15",
+            "auxiliary_rows": 225362,
+            "detection_rows": 2284,
+            "evidence_rows": 2284,
+            "auxiliary_runtime_s": 0.181,
+            "selection_runtime_s": 0.045,
+            "hydration_runtime_s": 0.508,
+            "runtime_s": 0.879,
+            "current_rss_mb": 3669472.0
+          },
+          {
+            "snapshot_date": "2022-09-16",
+            "auxiliary_rows": 33087,
+            "detection_rows": 541,
+            "evidence_rows": 541,
+            "auxiliary_runtime_s": 0.048,
+            "selection_runtime_s": 0.014,
+            "hydration_runtime_s": 0.172,
+            "runtime_s": 0.28,
+            "current_rss_mb": 3669472.0
+          },
+          {
+            "snapshot_date": "2022-09-17",
+            "auxiliary_rows": 15,
+            "detection_rows": 7,
+            "evidence_rows": 7,
+            "auxiliary_runtime_s": 0.009,
+            "selection_runtime_s": 0.005,
+            "hydration_runtime_s": 0.008,
+            "runtime_s": 0.023,
+            "current_rss_mb": 3669472.0
+          }
+        ],
+        "phase": "fan",
+        "orchestration_runtime_s": 26.232,
+        "detection_path": "/tmp/graph_phases_tuamz82s/fan_detection.parquet",
+        "evidence_path": "/tmp/graph_phases_tuamz82s/fan_evidence.jsonl"
+      },
+      {
+        "phase": "gather",
+        "runtime_s": 1.259,
+        "peak_rss_mb": 5060240.0,
+        "detection_rows": 447,
+        "evidence_rows": 447,
+        "orchestration_runtime_s": 1.635,
+        "detection_path": "/tmp/graph_phases_tuamz82s/gather_detection.parquet",
+        "evidence_path": "/tmp/graph_phases_tuamz82s/gather_evidence.jsonl"
+      },
+      {
+        "phase": "cycle",
+        "runtime_s": 40.691,
+        "peak_rss_mb": 3401536.0,
+        "detection_rows": 42399,
+        "evidence_rows": 20748,
+        "orchestration_runtime_s": 41.781,
+        "detection_path": "/tmp/graph_phases_tuamz82s/cycle_detection.parquet",
+        "evidence_path": "/tmp/graph_phases_tuamz82s/cycle_evidence.jsonl"
+      }
+    ],
+    "merge_runtime_s": 0.616,
+    "validation_runtime_s": 131.944,
+    "parent_peak_rss_mb": 4147408.0,
+    "peak_phase_rss_mb": 5060240.0
+  },
+  "runtime_s": 203.447,
+  "created_at": "2026-08-14T02:52:30.519599+00:00",
+  "test_status": "PASS"
+}

@@ -1,0 +1,63 @@
+{
+  "schema_version": "fin07.behavior.7d.v1",
+  "created_at": "2026-08-14T02:47:26.034673+00:00",
+  "protocol": {
+    "window": "7d",
+    "features": "continuous point-in-time rolling history",
+    "fit": "train only",
+    "threshold_selection": "validation only",
+    "test": "one final pass"
+  },
+  "dataset": {
+    "transactions": 6119572,
+    "start": "2022-09-01T07:00:00+07:00",
+    "end": "2022-09-17T22:28:00+07:00",
+    "calendar_span_days": 17,
+    "transactions_by_split": {
+      "train": 3671838,
+      "val": 1223994,
+      "test": 1223740
+    }
+  },
+  "warnings": [
+    "train has no fully mature 7-day snapshot; this release remains a research baseline"
+  ],
+  "first_fully_mature_as_of": "2022-09-08T00:00:00+00:00",
+  "train_has_fully_mature_snapshot": false,
+  "features": {
+    "train": {
+      "path": "data/processed/behavior-7d/features_train_7d.parquet",
+      "sha256": "a6d61a3269a429750b64e1cfe50556461be55fc6b8087aeeaf5bd9a86433d882",
+      "rows": 2546264,
+      "as_of_min": "2022-09-02T06:59:59+07:00",
+      "as_of_max": "2022-09-06T06:59:59+07:00"
+    },
+    "val": {
+      "path": "data/processed/behavior-7d/features_val_7d.parquet",
+      "sha256": "bf31261e956f75ac425dbef8df04abc37a7ba9a7ed0fd4497707bc9a46527959",
+      "rows": 1120541,
+      "as_of_min": "2022-09-07T06:59:59+07:00",
+      "as_of_max": "2022-09-08T06:59:59+07:00"
+    },
+    "test": {
+      "path": "data/processed/behavior-7d/features_test_7d.parquet",
+      "sha256": "27d166d366acad7de8c7fd9d3819af5ecd09a13e792130a80fd5de23d062b460",
+      "rows": 4278901,
+      "as_of_min": "2022-09-09T06:59:59+07:00",
+      "as_of_max": "2022-09-18T06:59:59+07:00"
+    }
+  },
+  "model": {
+    "path": "data/processed/behavior-7d/isolation_forest_model_7d.joblib",
+    "sha256": "343c91fe7701a1868f2e21c5b49aae22011ba980b898703436897e23d7ab8bb7"
+  },
+  "scores": {
+    "path": "data/processed/behavior-7d/if_scores_7d.parquet",
+    "sha256": "6cdc6917e33cc464cf98fdbc314321bb32f8da7a947d5847ca90bfd505ded693",
+    "rows": 7945706,
+    "as_of_min": "2022-09-02T06:59:59+07:00",
+    "as_of_max": "2022-09-18T06:59:59+07:00"
+  },
+  "evaluation_report": "reports/behavior-7d/evaluation_7d.txt",
+  "threshold": 0.18737509535439478
+}

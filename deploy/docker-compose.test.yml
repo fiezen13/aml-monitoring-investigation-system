@@ -1,0 +1,47 @@
+# Hạ tầng tối thiểu để chạy kiểm thử: chỉ PostgreSQL và Redis.
+#
+# Tách khỏi docker-compose.yml chính vì kiểm thử không cần api, worker hay
+# web — chúng được nạp vào tiến trình pytest, không chạy trong container.
+#
+# Cổng mặc định là 0, tức là để Docker tự cấp cổng còn trống. Nhờ vậy chạy
+# kiểm thử không đụng stack phát triển đang mở trên cổng 5432, và hai lượt
+# build song song trên cùng một agent Jenkins không giẫm lên nhau.
+#
+# Không dùng volume: dữ liệu kiểm thử chết theo container là đúng.
+
+name: fin07-test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fin07}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fin07_test_password}
+      POSTGRES_DB: ${POSTGRES_DB:-fin07}
+      FIN07_AGENT_DB_PASSWORD: ${FIN07_AGENT_DB_PASSWORD:-fin07_agent_test_password}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "${TEST_PG_PORT:-0}:5432"
+    # tmpfs cho thư mục dữ liệu: kiểm thử chạy trong RAM, nhanh hơn đáng kể
+    # và không để lại gì trên đĩa của agent.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-fin07} -d ${POSTGRES_DB:-fin07}"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", ""]
+    ports:
+      - "${TEST_REDIS_PORT:-0}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+      start_period: 3s

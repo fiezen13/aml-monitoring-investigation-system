@@ -1,0 +1,28 @@
+# Plugin của Jenkins controller, ghim tường minh.
+#
+# Không cài qua giao diện. Cài qua giao diện nghĩa là sáu tháng sau không ai
+# dựng lại được đúng controller đó, và "Mọi thay đổi hạ tầng đi qua mã nguồn
+# và pull request" (FIN-07-ARC-001 mục 7) chỉ còn là khẩu hiệu.
+#
+# Không ghim số phiên bản: bản lts của image cập nhật liên tục, ghim cứng sẽ
+# gây xung đột phụ thuộc mỗi lần nâng. Đổi lại phải đọc changelog khi nâng.
+
+configuration-as-code
+job-dsl
+
+workflow-aggregator
+pipeline-stage-view
+pipeline-utility-steps
+
+git
+github-branch-source
+
+docker-workflow
+credentials-binding
+plain-credentials
+
+timestamper
+ansicolor
+ws-cleanup
+junit
+matrix-auth

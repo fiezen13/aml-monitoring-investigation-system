@@ -1,0 +1,23 @@
+{
+  "manifest_version": "if_handoff_v1",
+  "owner": "Huong",
+  "window": "7d",
+  "timestamp_semantics": "(as_of_ts - 7 days, as_of_ts] with as_of_ts at 23:59:59 UTC",
+  "canonical_fusion_adjustment": "add 1 second, yielding [as_of_ts - 7 days, as_of_ts)",
+  "artifact_checksums": {
+    "isolation_forest_model_7d.joblib": "660500cd2935327664b1a20b2beda06ad7731ea68866edb94263a8b2d4633179",
+    "if_scores_v1.parquet": "f4a787681fae5b66f35820a4a78e54f65b8a84f0d6c416e7761755cc6df92c70",
+    "features_train_7d.parquet": "d910213e23fd20b0b012649939868af20132c6d53c55f2f16789e7b6c5490af9",
+    "features_val_7d.parquet": "415f837b54d141e82745a125930acd8b9be1f2be8ca5115de0e5b17f70b7bb76",
+    "features_test_7d.parquet": "e2db9d189fd7249dd1eff3fe1d0eb5b31cd5b0dd5889603ab0250690d9b77463",
+    "evaluation_report.txt": "3350736ac97d2549ac2cf2811a5c456fa643273719c0ef5ac67fbe0288a99b59",
+    "feature_spec.md": "a712e9fc9296f0e91e914469e5929ea1f8bc8e218e7c81e8503866293ba60beb",
+    "README.md": "bfdedb1d90d461755e4b39f639f32bfc17efcdf04a7a1698f6cc2c325c3e593f"
+  },
+  "row_counts": {
+    "features_train_7d.parquet": 3103668,
+    "features_val_7d.parquet": 636476,
+    "features_test_7d.parquet": 3642493,
+    "if_scores_v1.parquet": 7382637
+  }
+}

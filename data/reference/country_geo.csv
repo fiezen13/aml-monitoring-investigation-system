@@ -1,0 +1,44 @@
+# Toạ độ đại diện dùng để vẽ bản đồ World Monitor. Mã quốc gia dùng tâm địa lý
+# gần đúng; `ZZ` là neo kỹ thuật giữa Thái Bình Dương cho VASP chưa rõ pháp vực,
+# không phải quốc gia và không mang ý nghĩa nghiệp vụ.
+country_code,name,lat,lon
+AU,Australia,-25.274,133.775
+AT,Austria,47.516,14.550
+BE,Belgium,50.504,4.470
+BR,Brazil,-14.235,-51.925
+CA,Canada,56.130,-106.347
+CH,Switzerland,46.818,8.228
+CN,China,35.862,104.195
+CY,Cyprus,35.127,33.429
+DE,Germany,51.166,10.452
+EE,Estonia,58.595,25.014
+ES,Spain,40.464,-3.749
+FI,Finland,61.924,25.748
+FR,France,46.228,2.214
+GB,United Kingdom,55.378,-3.436
+GR,Greece,39.074,21.824
+HR,Croatia,45.100,15.200
+IE,Ireland,53.413,-8.244
+IL,Israel,31.046,34.852
+IN,India,20.594,78.963
+IT,Italy,41.872,12.567
+JP,Japan,36.205,138.253
+LT,Lithuania,55.169,23.881
+LU,Luxembourg,49.816,6.130
+LV,Latvia,56.880,24.603
+MT,Malta,35.938,14.375
+MX,Mexico,23.635,-102.553
+NL,Netherlands,52.133,5.291
+PT,Portugal,39.400,-8.224
+RU,Russia,61.524,105.319
+SA,Saudi Arabia,23.886,45.079
+SI,Slovenia,46.151,14.995
+SK,Slovakia,48.669,19.699
+US,United States,37.090,-95.713
+ZZ,Unknown VASP jurisdiction,0.000,-160.000
+AE,United Arab Emirates,23.424,53.848
+AL,Albania,41.153,20.168
+MA,Morocco,31.792,-7.093
+NG,Nigeria,9.082,8.675
+PK,Pakistan,30.375,69.345
+TR,Türkiye,38.964,35.243

@@ -1,0 +1,31 @@
+{
+  "detector_version": "graph_fan_v2",
+  "window": "7d",
+  "tuned_on": "val",
+  "supersedes": "graph_fan_v1",
+  "candidate": "v2B_shape",
+  "train_eda_note": "new_* ignored (cold-start on train); history_available not used as gate",
+  "selection_rule": "MVP volume cut ~2x vs v1 on train/val; keep snapshot stability; preserve train GT secondary hit; mega-hubs not dominating. Not tuned on test.",
+  "fan_in": {
+    "detected_pattern": "FAN_IN",
+    "min_in_degree_7d": 15,
+    "max_inflow_concentration_7d": 0.15
+  },
+  "fan_out": {
+    "detected_pattern": "FAN_OUT",
+    "min_out_degree_7d": 10,
+    "min_outflow_dispersion_7d": 0.7
+  },
+  "val_volumes_at_freeze": {
+    "fan_in": 2007,
+    "fan_out": 1323,
+    "total": 3330,
+    "vs_v1_total": 0.4759
+  },
+  "train_volumes_at_freeze": {
+    "fan_in": 2380,
+    "fan_out": 2168,
+    "total": 4548,
+    "vs_v1_total": 0.493
+  }
+}

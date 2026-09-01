@@ -1,0 +1,29 @@
+# Công cụ phát triển và kiểm thử. Không được cài vào image production.
+-r requirements.txt
+
+# CI formatting is deliberately deterministic; formatter output changed across
+# the former open-ended range and could fail unchanged branches after a release.
+ruff==0.16.0
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+pytest-cov>=6.0.0
+httpx>=0.28.0
+
+# Kiểm chứng sự kiện AML đúng với hợp đồng dữ liệu ở
+# contracts/ingestion/aml-transaction-v1.schema.json.
+jsonschema>=4.23.0
+
+# Phân cụm hành vi tài khoản IBM (giai đoạn 3 của quá trình dựng lại dữ liệu).
+# Nằm ở requirements-dev chứ không phải requirements: đây là bước phân tích
+# ngoại tuyến chạy một lần để rút ra archetype, image api/worker không cần tới.
+numpy>=2.0.0
+scikit-learn>=1.5.0
+
+# Sinh biểu đồ EDA (scripts/eda/plot_eda.py). Cũng là bước ngoại tuyến chạy
+# một lần: đọc artifacts/eda/*.json và ghi ra docs/ml/figures/*.png.
+matplotlib>=3.9.0
+
+# ci/lint.sh gọi scripts/validate_observability.py, và script đó đọc file YAML
+# cấu hình của Prometheus/Grafana. Thiếu nó thì job lint hỏng ngay ở bước thứ
+# hai với ModuleNotFoundError — đúng lỗi đã làm CI đỏ trên develop.
+pyyaml>=6.0.0

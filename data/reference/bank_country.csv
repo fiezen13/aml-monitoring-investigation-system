@@ -1,0 +1,81 @@
+# Ánh xạ họ tên ngân hàng trong bộ IBM AML sang mã quốc gia ISO 3166-1 alpha-2.
+#
+# `bank_name_family` là tên ngân hàng sau khi bỏ hậu tố ` #<số>`:
+#   "China Bank #2820"  -> "China Bank"
+#   "Acme Bancorp"      -> "Acme Bancorp"
+#
+# country_source:
+#   parsed   — quốc gia nằm ngay trong tên ngân hàng, đọc ra chứ không suy diễn.
+#   assigned — tên hư cấu, quốc gia do dự án gán; căn cứ ghi ở cuối file.
+#   unknown  — không có căn cứ để gán; country_code để trống.
+#
+# Bảng này là DỮ LIỆU, không sinh lúc chạy. Sửa ở đây rồi chạy lại
+# scripts/load_bank_geography.py.
+bank_name_family,country_code,country_source,is_vasp
+Australia Bank,AU,parsed,false
+Austria Bank,AT,parsed,false
+Belgium Bank,BE,parsed,false
+Brazil Bank,BR,parsed,false
+Canada Bank,CA,parsed,false
+China Bank,CN,parsed,false
+Croatia Bank,HR,parsed,false
+Cyprus Bank,CY,parsed,false
+Estonia Bank,EE,parsed,false
+Finland Bank,FI,parsed,false
+France Bank,FR,parsed,false
+Germany Bank,DE,parsed,false
+Greece Bank,GR,parsed,false
+India Bank,IN,parsed,false
+Ireland Bank,IE,parsed,false
+Israel Bank,IL,parsed,false
+Italy Bank,IT,parsed,false
+Japan Bank,JP,parsed,false
+Latvia Bank,LV,parsed,false
+Lithuania Bank,LT,parsed,false
+Luxembourg Bank,LU,parsed,false
+Malta Bank,MT,parsed,false
+Mexico Bank,MX,parsed,false
+Netherlands Bank,NL,parsed,false
+Portugal Bank,PT,parsed,false
+Russia Bank,RU,parsed,false
+Saudi Arabia Bank,SA,parsed,false
+Slovakia Bank,SK,parsed,false
+Slovenia Bank,SI,parsed,false
+Spain Bank,ES,parsed,false
+Switzerland Bank,CH,parsed,false
+UK Bank,GB,parsed,false
+Crytpo Bank,ZZ,assigned,true
+#
+# ---------------------------------------------------------------------
+# Căn cứ cho `assigned`
+#
+# 468 tên ngân hàng còn lại không chứa quốc gia. Chúng chia làm hai họ, và cả
+# hai đều chỉ về Hoa Kỳ:
+#
+#   1. 216 tên dạng "<X> Bank of <địa danh>". Toàn bộ địa danh là thành phố
+#      hoặc vùng của Mỹ: Albany, Arkadelphia, Augusta, Billings, Boston,
+#      Bridgeport, Butte, Chicago, Cleveland, Columbus, Dallas, Danbury,
+#      Denver, Detroit, Fairfield, Fort Wayne, Harrisburg, Hartford, Helena,
+#      Houston, Huron, Indianapolis, Lacrosse, Laramie, Lincoln, Los Angeles,
+#      Madison, Miami, Milford, Montpelier, New Orleans, New York, Newbury,
+#      Newport, Omaha, Philadelphia, Phoenix, Pittsburgh, Plattsburg, Portland,
+#      Portsmouth, Providence, Sacramento, Seattle, Springfield, Tampa, Topeka,
+#      Tuscon, Watertown, cùng "the East/North/South/Valley/West".
+#      Không có địa danh nào ngoài Mỹ.
+#
+#   2. 252 tên dạng thương hiệu (Acme, Arbor, Baltech, Pine...) ghép với loại
+#      hình tổ chức tín dụng đặc trưng của Mỹ: Bancorp, Credit Union, Thrift,
+#      Savings Bank, Federal Bank, Community Bank, Cooperative Bank, Trust Bank.
+#      "Thrift", "Bancorp" và "Credit Union" gần như chỉ dùng ở Mỹ.
+#
+# Nên toàn bộ 468 tên được gán US. Đây vẫn là `assigned` chứ không phải
+# `parsed`: quốc gia không được viết ra trong tên, nó được suy ra từ địa danh và
+# loại hình. Quy tắc này nằm trong scripts/load_bank_geography.py, không liệt kê
+# 468 dòng ở đây.
+#
+# `Crytpo Bank` dùng mã kỹ thuật `ZZ`, không phải mã một quốc gia thật. Nó là
+# sàn tài sản mã hoá — 99,95% giao dịch của tài khoản thuộc ngân hàng này dùng
+# Bitcoin, và chúng chiếm 90,8% toàn bộ Bitcoin trong bộ dữ liệu. IBM không nêu
+# pháp vực, nên `ZZ` chỉ giúp giữ đủ tài khoản trên bản đồ; tuyệt đối không được
+# diễn giải thành quốc gia hay mức rủi ro pháp vực.
+# ---------------------------------------------------------------------

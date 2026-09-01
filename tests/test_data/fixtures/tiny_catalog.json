@@ -1,0 +1,32 @@
+{
+  "mapping_version": "v1.0-test",
+  "source": {
+    "file": "tests/test_data/fixtures/tiny_patterns.txt",
+    "sha256": "placeholder",
+    "parser_version": "v1.0"
+  },
+  "rules": [
+    {
+      "ibm_pattern_type": "FAN-IN",
+      "display_name": "Fan-In",
+      "primary_typology": "T04",
+      "secondary_typologies": [],
+      "mapping_status": "MAPPED",
+      "mapping_reason": "Test fixture: fan-in maps to T04.",
+      "mapping_version": "v1.0-test",
+      "reviewed_by": null,
+      "reviewed_at": null
+    },
+    {
+      "ibm_pattern_type": "CYCLE",
+      "display_name": "Cycle",
+      "primary_typology": "T03",
+      "secondary_typologies": [],
+      "mapping_status": "MAPPED",
+      "mapping_reason": "Test fixture: cycle maps to T03.",
+      "mapping_version": "v1.0-test",
+      "reviewed_by": null,
+      "reviewed_at": null
+    }
+  ]
+}

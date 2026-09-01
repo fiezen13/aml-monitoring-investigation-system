@@ -1,19 +1,934 @@
-version: "3.8"
+# FIN-07 — toàn bộ hệ thống trong một lệnh.
+#
+#   docker compose up
+#
+# Chạy được ngay trên máy vừa clone repo: mọi biến đều có giá trị mặc định
+# cho môi trường phát triển, không cần tạo .env trước. Khi có .env thì file
+# đó ghi đè (xem `env_file` bên dưới). Danh sách biến: .env.example.
+#
+# Thứ tự khởi động do healthcheck quyết định, không do sleep:
+#   postgres, redis  →  migrate (chạy một lần rồi thoát)  →  api, worker  →  web
+#
+# Luồng nạp dữ liệu AML (Kafka → Flink → HDFS) nằm trong profile `aml` và
+# **không** khởi động cùng lệnh trên. Nó nặng khoảng 4 GB RAM và chỉ cần khi
+# làm việc với bộ dữ liệu IBM, nên bắt mọi người trả giá đó ở mỗi lần
+# `docker compose up` là sai. Bật riêng khi cần:
+#
+#   docker compose --profile aml up -d --wait
+#
+# Cùng file, cùng project, cùng mạng — nên producer, Flink và các dịch vụ
+# sẵn có nói chuyện được với nhau mà không cần cấu hình mạng thêm.
+# Chi tiết: contracts/ingestion/README.md
+
+name: fin07
+
+# --- Cấu hình dùng chung cho ba dịch vụ chạy cùng một image -------------
+x-app-image: &app-image ${APP_IMAGE:-fin07/app:local}
+
+x-app-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+
+x-app-env: &app-env
+  APP_ENV: ${APP_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-fin07}:${POSTGRES_PASSWORD:-fin07_dev_password}@postgres:5432/${POSTGRES_DB:-fin07_hi_medium}
+  REDIS_URL: redis://redis:6379/0
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+  LLM_MODE: ${LLM_MODE:-mock}
+  GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+  GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+  GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
+  GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-2}
+  AML_AGENT_MAX_ITERATIONS: ${AML_AGENT_MAX_ITERATIONS:-5}
+  AML_AGENT_MAX_TOOL_CALLS: ${AML_AGENT_MAX_TOOL_CALLS:-16}
+  MAX_GRAPH_HOPS: ${MAX_GRAPH_HOPS:-2}
+  MAX_GRAPH_NODES: ${MAX_GRAPH_NODES:-100}
+  MAX_GRAPH_EDGES: ${MAX_GRAPH_EDGES:-250}
+  INVESTIGATION_TX_LIMIT: ${INVESTIGATION_TX_LIMIT:-100}
+  OTEL_ENABLED: ${OTEL_ENABLED:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+  OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment.name=development}
+  OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+  OTEL_METRIC_EXPORT_INTERVAL_MS: ${OTEL_METRIC_EXPORT_INTERVAL_MS:-15000}
+  CAPTURE_GENAI_CONTENT: ${CAPTURE_GENAI_CONTENT:-false}
+  GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
+  BUILD_VERSION: ${BUILD_VERSION:-}
+
+# .env là tuỳ chọn: thiếu file thì dùng mặc định ở trên, có thì ghi đè.
+x-env-file: &env-file
+  - path: .env
+    required: false
 
 services:
-  backend:
+  # -------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fin07}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fin07_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-fin07_hi_medium}
+      # Mật khẩu vai trò chỉ đọc của agent, dùng trong db/init/003.
+      FIN07_AGENT_DB_PASSWORD: ${FIN07_AGENT_DB_PASSWORD:-fin07_agent_dev_password}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Các file .sql chạy theo thứ tự tên khi volume còn rỗng.
+      # Muốn áp dụng lại sau khi sửa lược đồ: `make db-reset`.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      # -h 127.0.0.1 là bắt buộc, không phải trang trí: trong lúc chạy các
+      # script khởi tạo, entrypoint dựng một server tạm chỉ nghe unix socket.
+      # pg_isready qua socket sẽ báo xanh ngay lúc đó, và dịch vụ migrate lao vào
+      # một cơ sở dữ liệu chưa có bảng nào. Hỏi qua TCP thì chỉ xanh khi server
+      # thật đã lên.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-fin07} -d ${POSTGRES_DB:-fin07_hi_medium}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    # appendonly để hàng đợi sống sót qua một lần restart container.
+    command: ["redis-server", "--appendonly", "yes", "--save", ""]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Tác vụ một lần: áp migration rồi thoát. Không nạp dữ liệu nghiệp vụ;
+  # LI-Small là nguồn duy nhất và được nạp bằng pipeline Behaviour/AML.
+  migrate:
+    image: *app-image
+    build: *app-build
+    command: ["python", "scripts/migrate.py"]
+    environment: *app-env
+    env_file: *env-file
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # -------------------------------------------------------------------
+  # PoC batch Behaviour ML. Không tự chạy cùng stack chính và không gọi
+  # Gemini. Đặt CSV canonical trong BEHAVIOR_BATCH_DIR (mặc định
+  # ./data/batch), rồi dùng `make behavior-batch`.
+  behavior-batch:
+    image: *app-image
+    build: *app-build
+    profiles: ["batch"]
+    entrypoint: ["python", "scripts/run_behavior_batch.py"]
+    command: ["--help"]
+    environment: *app-env
+    env_file: *env-file
+    volumes:
+      - app_data:/app/data
+      - ${BEHAVIOR_BATCH_DIR:-./data/batch}:/input:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # -------------------------------------------------------------------
+  api:
+    image: *app-image
+    build: *app-build
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: ${OTEL_API_SERVICE_NAME:-fin07-backend}
+      OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-1.0.0}
+    env_file: *env-file
+    volumes:
+      - app_data:/app/data
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 15s
+      # Cùng lý do như worker: mỗi lần kiểm tra khởi động một trình thông dịch
+      # mới. Trên VM hai nhân chạy đồng thời api, worker, web, Caddy, Prometheus
+      # và Loki, riêng phần khởi động ấy đã vượt 5 giây — /health/ready trả lời
+      # ngay lập tức nhưng vẫn bị tính là trượt.
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Worker không mở cổng nào nên healthcheck không dùng HTTP: nó ghi nhịp
+  # tim vào Redis kèm TTL, script kiểm tra khoá đó còn sống không.
+  worker:
+    image: *app-image
+    build: *app-build
+    command: ["python", "-m", "src.worker.main"]
+    environment:
+      <<: *app-env
+      OTEL_SERVICE_NAME: ${OTEL_WORKER_SERVICE_NAME:-fin07-worker}
+      OTEL_SERVICE_VERSION: ${OTEL_SERVICE_VERSION:-1.0.0}
+    env_file: *env-file
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.worker.healthcheck"]
+      interval: 15s
+      # 10s chứ không phải 5s: mỗi lần kiểm tra là một tiến trình Python mới.
+      # Trên máy hai nhân, lúc worker đang gọi mô hình và API cũng đang phục vụ,
+      # riêng phần khởi động trình thông dịch đã ăn hết 5 giây và Docker tính
+      # đó là một lần trượt — worker khoẻ nhưng bị báo hỏng.
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  web:
+    image: ${WEB_IMAGE:-fin07/web:local}
     build:
-      context: .
+      context: ./web
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
+      - "${WEB_PORT:-5173}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ===================================================================
+  # Luồng nạp dữ liệu AML — profile `aml`, không chạy mặc định.
+  #
+  #   CSV IBM AML → producer → Kafka → Flink → HDFS
+  #
+  # Ở giai đoạn này đây thuần tuý là đường ống dữ liệu: không có mô hình,
+  # không chấm điểm rủi ro, không sinh cảnh báo.
+  # ===================================================================
+
+  # -------------------------------------------------------------------
+  # Kafka một node ở chế độ KRaft: vừa là broker vừa là controller, không
+  # cần ZooKeeper. Đủ cho máy cá nhân; cụm thật thì tách vai trò ra.
+  kafka:
+    image: apache/kafka:3.9.1
+    profiles: ["aml", "bitcoin", "stream"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Ba listener cho ba đường vào khác nhau: nội bộ giữa các container,
+      # bầu cử controller, và từ máy chủ vào. Hai đường đầu quảng bá tên
+      # `kafka` — tên đó chỉ phân giải được bên trong mạng compose; đường
+      # thứ ba quảng bá `localhost` để client trên máy chủ nối được.
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:${AML_KAFKA_PORT:-29092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # Một broker thì không thể có ba bản sao. Để mặc định 3 thì mọi topic
+      # nội bộ của Kafka đều không tạo được và broker không bao giờ xanh.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_RETENTION_HOURS: ${AML_KAFKA_RETENTION_HOURS:-168}
+      CLUSTER_ID: ${AML_KAFKA_CLUSTER_ID:-fin07-aml-local-cluster}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "${AML_KAFKA_PORT:-29092}:29092"
+    healthcheck:
+      # Hỏi đúng thứ client sẽ hỏi. Broker mở cổng từ trước khi nhận được
+      # metadata request, nên kiểm tra cổng không nói lên điều gì.
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 20s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Tạo topic, chạy một lần rồi thoát. Chạy lại an toàn: `--if-not-exists`.
+  kafka-init:
+    image: apache/kafka:3.9.1
+    profiles: ["aml", "bitcoin", "stream"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AML_RAW_TOPIC: ${AML_RAW_TOPIC:-aml.transactions.raw.v1}
+      AML_DLQ_TOPIC: ${AML_DLQ_TOPIC:-aml.transactions.dlq.v1}
+      AML_TOPIC_PARTITIONS: ${AML_TOPIC_PARTITIONS:-3}
+      AML_TOPIC_REPLICATION_FACTOR: ${AML_TOPIC_REPLICATION_FACTOR:-1}
+      AML_TOPIC_RETENTION_MS: ${AML_TOPIC_RETENTION_MS:-604800000}
+    volumes:
+      - ./scripts/aml/create_topics.sh:/opt/create_topics.sh:ro
+    command: ["bash", "/opt/create_topics.sh"]
+    restart: "no"
+
+  # -------------------------------------------------------------------
+  # Giao diện xem Kafka. Chỉ để quan sát: topic, offset từng partition, độ
+  # trễ của consumer group, và nội dung từng message kèm header — những thứ
+  # `inspect_kafka.sh` in ra, nhưng đọc được bằng mắt trong lúc dữ liệu đang
+  # chảy.
+  #
+  # Dùng bản kafbat, không phải `provectuslabs/kafka-ui`: dự án đã chuyển
+  # sang tổ chức kafbat và bản provectus dừng ở 2023, không có ảnh arm64.
+  #
+  # Không có trong đường dữ liệu. Tắt nó đi thì đường ống vẫn chạy y nguyên.
+  kafka-ui:
+    image: ${AML_KAFKA_UI_IMAGE:-ghcr.io/kafbat/kafka-ui:v1.5.0}
+    profiles: ["aml"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: ${AML_KAFKA_UI_CLUSTER_NAME:-fin07-aml}
+      # Tên `kafka` chỉ phân giải được trong mạng compose — đúng, vì chính
+      # container này nối vào broker, không phải trình duyệt trên máy chủ.
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      # Tắt sửa cấu hình cụm từ trình duyệt. Đây là công cụ để nhìn, không
+      # phải để một cú bấm nhầm xoá mất topic đang có dữ liệu.
+      DYNAMIC_CONFIG_ENABLED: "false"
+      SERVER_PORT: 8080
+    ports:
+      - "${AML_KAFKA_UI_PORT:-8082}:8080"
+    healthcheck:
+      # Ảnh không có curl; wget của busybox thì có sẵn.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # HDFS: một NameNode, một DataNode. Cấu hình đi qua biến môi trường theo
+  # quy ước của image chính thức — `CORE-SITE.XML_khoá=giá trị` được dịch
+  # thành phần tử tương ứng trong core-site.xml lúc container khởi động.
+  namenode:
+    image: apache/hadoop:3.3.6
+    profiles: ["aml"]
+    # Image chính thức của Hadoop chỉ có bản amd64. Trên máy Apple Silicon
+    # nó chạy qua lớp giả lập của Docker Desktop — chậm hơn, nhưng đúng.
+    # Khai báo tường minh để không phải đoán khi thấy cảnh báo platform.
+    platform: linux/amd64
+    hostname: namenode
+    user: root
+    command: ["hdfs", "namenode"]
+    environment: &hdfs-env
+      CORE-SITE.XML_fs.defaultFS: hdfs://namenode:8020
+      HDFS-SITE.XML_dfs.namenode.rpc-address: namenode:8020
+      HDFS-SITE.XML_dfs.namenode.rpc-bind-host: 0.0.0.0
+      HDFS-SITE.XML_dfs.namenode.http-bind-host: 0.0.0.0
+      HDFS-SITE.XML_dfs.datanode.hostname: datanode
+      HDFS-SITE.XML_dfs.replication: "1"
+      # Stack phát triển chạy Flink dưới user `flink` và HDFS dưới `root`.
+      # Bật kiểm tra quyền ở đây chỉ đẻ ra lỗi permission denied không dạy
+      # được điều gì. Cụm thật thì bật, kèm Kerberos.
+      HDFS-SITE.XML_dfs.permissions.enabled: "false"
+      # Định dạng NameNode ở lần khởi động đầu, và chỉ lần đầu: image bỏ qua
+      # nếu thư mục đã có dữ liệu.
+      ENSURE_NAMENODE_DIR: /tmp/hadoop-root/dfs/name
+    volumes:
+      - namenode_data:/tmp/hadoop-root/dfs
+    ports:
+      - "${AML_HDFS_UI_PORT:-9870}:9870"
+    healthcheck:
+      # Hỏi đúng thứ client sẽ hỏi — cùng bài học đã rút ra ở healthcheck của
+      # postgres. Giao diện HTTP trả lời từ rất sớm, kể cả khi NameNode còn
+      # trong safe mode và MỌI thao tác ghi đều bị từ chối. Kiểm tra bằng
+      # `curl /` sẽ báo xanh ở đúng khoảng thời gian đó, `--wait` trả về, rồi
+      # lệnh `hdfs dfs -mkdir` đầu tiên chết với "Name node is in safe mode".
+      #
+      # `dfsadmin -safemode get` mất khoảng 2,5 giây vì phải khởi động JVM,
+      # nên timeout phải rộng hơn nhịp thường gặp.
+      test: ["CMD-SHELL", "hdfs dfsadmin -safemode get 2>/dev/null | grep -q 'Safe mode is OFF'"]
+      interval: 10s
+      timeout: 15s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  datanode:
+    image: apache/hadoop:3.3.6
+    profiles: ["aml"]
+    platform: linux/amd64
+    hostname: datanode
+    user: root
+    command: ["hdfs", "datanode"]
+    environment: *hdfs-env
+    volumes:
+      - datanode_data:/tmp/hadoop-root/dfs
+    depends_on:
+      namenode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9864/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Tạo sẵn cây thư mục trên HDFS rồi thoát. Flink tự tạo được thư mục con,
+  # nhưng thư mục gốc có sẵn thì `hdfs dfs -ls` ngay sau khi dựng hệ thống
+  # cho ra thứ dễ hiểu thay vì lỗi "không tồn tại".
+  hdfs-init:
+    image: apache/hadoop:3.3.6
+    profiles: ["aml"]
+    platform: linux/amd64
+    user: root
+    environment: *hdfs-env
+    depends_on:
+      datanode:
+        condition: service_healthy
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        hdfs dfs -mkdir -p /data/aml/bronze/transactions /data/aml/rejected/transactions /data/aml/reference
+        hdfs dfs -chmod -R 777 /data/aml
+        hdfs dfs -ls -R /data/aml
+    restart: "no"
+
+  # -------------------------------------------------------------------
+  # Flink. Image tự build: Flink gốc không có client Hadoop nên không ghi
+  # được `hdfs://`, và jar của job cũng phải nằm sẵn trong đó.
+  flink-jobmanager:
+    image: ${AML_FLINK_IMAGE:-fin07/flink-aml:local}
+    profiles: ["aml"]
+    build: &flink-build
+      context: .
+      dockerfile: ${AML_FLINK_DOCKERFILE:-docker/flink/Dockerfile}
+    command: ["jobmanager"]
+    environment: &flink-env
+      # Địa chỉ JobManager phải giống nhau ở cả hai phía, nếu không
+      # TaskManager đăng ký vào hư không và job đứng mãi ở trạng thái
+      # SCHEDULED mà không báo lỗi gì.
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: ${AML_FLINK_TASK_SLOTS:-4}
+        parallelism.default: ${AML_FLINK_PARALLELISM:-2}
+        state.backend.type: hashmap
+        execution.checkpointing.storage: filesystem
+        execution.checkpointing.dir: hdfs://namenode:8020/data/aml/_checkpoints
+        rest.flamegraph.enabled: true
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AML_RAW_TOPIC: ${AML_RAW_TOPIC:-aml.transactions.raw.v1}
+      AML_FLINK_GROUP_ID: ${AML_FLINK_GROUP_ID:-aml-hdfs-ingestion-v1}
+      AML_KAFKA_OFFSET_RESET: ${AML_KAFKA_OFFSET_RESET:-earliest}
+      AML_HDFS_BASE_PATH: ${AML_HDFS_BASE_PATH:-hdfs://namenode:8020/data/aml}
+      AML_HDFS_FORMAT: ${AML_HDFS_FORMAT:-parquet}
+      AML_CHECKPOINT_INTERVAL_MS: ${AML_CHECKPOINT_INTERVAL_MS:-30000}
+      AML_WATERMARK_OUT_OF_ORDER_SECONDS: ${AML_WATERMARK_OUT_OF_ORDER_SECONDS:-120}
+      AML_FLINK_PARALLELISM: ${AML_FLINK_PARALLELISM:-2}
+      HADOOP_USER_NAME: root
+    ports:
+      - "${AML_FLINK_UI_PORT:-8081}:8081"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/overview >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  flink-taskmanager:
+    image: ${AML_FLINK_IMAGE:-fin07/flink-aml:local}
+    profiles: ["aml"]
+    build: *flink-build
+    command: ["taskmanager"]
+    environment: *flink-env
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Producer phát lại CSV. Dùng chung image với api và worker — cùng mã
+  # nguồn, khác lệnh khởi động, đúng nguyên tắc một image nhiều tiến trình.
+  #
+  # Không chạy tự động cùng `up`: nạp dữ liệu là một hành động có chủ đích,
+  # không phải hệ quả phụ của việc dựng hạ tầng. Chạy bằng:
+  #
+  #   docker compose run --rm aml-producer --max-records 1000
+  aml-producer:
+    image: *app-image
+    build: *app-build
+    profiles: ["aml"]
+    entrypoint: ["python", "-m", "src.aml"]
+    command: ["--max-records", "1000"]
+    environment:
+      <<: *app-env
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AML_CSV_PATH: /data/raw/ibm-aml/${AML_DATASET_FILE:-HI-Small_Trans.csv}
+      AML_SOURCE_DATASET: ${AML_SOURCE_DATASET:-}
+      AML_RAW_TOPIC: ${AML_RAW_TOPIC:-aml.transactions.raw.v1}
+      AML_DLQ_TOPIC: ${AML_DLQ_TOPIC:-aml.transactions.dlq.v1}
+      DATASET_TIMEZONE: ${DATASET_TIMEZONE:-UTC}
+      REPLAY_MODE: ${REPLAY_MODE:-max-throughput}
+      REPLAY_SPEED_MULTIPLIER: ${REPLAY_SPEED_MULTIPLIER:-1.0}
+      AML_CHECKPOINT_PATH: /app/data/aml/checkpoints/producer.json
+      AML_ERROR_LOG_PATH: /app/data/aml/rejected/producer-errors.jsonl
+      AML_LOG_LEVEL: ${AML_LOG_LEVEL:-INFO}
+    volumes:
+      # Bộ dữ liệu gắn chỉ đọc: một tiến trình phát lại không có việc gì
+      # phải ghi vào file nguồn. Và không copy vào image — file thật nặng
+      # hàng gigabyte.
+      - ${AML_DATASET_DIR:-./data/raw/ibm-aml}:/data/raw/ibm-aml:ro
+      - app_data:/app/data
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+
+  # ===================================================================
+  # NHÁNH BITCOIN REAL-TIME (profile `bitcoin`) — xương sống streaming lát A.
+  #
+  # bitcoin-producer phát lại giao dịch Elliptic vào Kafka; bitcoin-scorer là
+  # consumer thường trú, chấm RF trực tiếp và ghi bitcoin_scored_tx để trang
+  # /crypto hiện ngay. RF chấm ĐỘC LẬP từng giao dịch nên điểm giống hệt batch.
+  #
+  # Chạy local:  docker compose --profile bitcoin up -d bitcoin-scorer
+  #              docker compose --profile bitcoin run --rm bitcoin-producer
+  # data/ không nằm trong image (nặng) — gắn chỉ đọc từ máy chủ.
+  # ===================================================================
+  bitcoin-producer:
+    image: *app-image
+    build: *app-build
+    profiles: ["bitcoin"]
+    entrypoint: ["python", "-m", "src.bitcoin_aml.stream"]
+    command: ["produce", "--rate", "1.0", "--batch", "200"]
+    environment:
+      <<: *app-env
+      BTC_KAFKA_BOOTSTRAP: kafka:9092
+      BTC_RAW_TOPIC: ${BTC_RAW_TOPIC:-aml.bitcoin.raw.v1}
+    volumes:
+      - ./data/raw/elliptic:/app/data/raw/elliptic:ro
+      - ./data/models/bitcoin_elliptic:/app/data/models/bitcoin_elliptic:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+
+  bitcoin-scorer:
+    image: *app-image
+    build: *app-build
+    profiles: ["bitcoin"]
+    entrypoint: ["python", "-m", "src.bitcoin_aml.stream"]
+    command: ["score"]
+    environment:
+      <<: *app-env
+      BTC_KAFKA_BOOTSTRAP: kafka:9092
+      BTC_RAW_TOPIC: ${BTC_RAW_TOPIC:-aml.bitcoin.raw.v1}
+      BTC_SCORE_BATCH: ${BTC_SCORE_BATCH:-200}
+      BTC_KAFKA_OFFSET_RESET: ${BTC_KAFKA_OFFSET_RESET:-earliest}
+    volumes:
+      - ./data/raw/elliptic:/app/data/raw/elliptic:ro
+      - ./data/models/bitcoin_elliptic:/app/data/models/bitcoin_elliptic:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===================================================================
+  # STREAMING ĐỒ THỊ TĂNG DẦN (profile `stream`) — Pha 1.
+  #
+  # Consumer đọc aml.transactions.raw.v1 và dựng đồ thị AML từng cạnh một vào
+  # các bảng stream_* (db/init/032). Đây là nền cho chấm cục bộ (Pha 2), dò mẫu
+  # (Pha 3), bồi tụ vụ việc (Pha 4). Chạy local:
+  #   docker compose --profile aml up -d kafka kafka-init
+  #   docker compose --profile aml run --rm aml-producer --max-records 5000
+  #   docker compose --profile stream up -d stream-graph-ingest
+  # ===================================================================
+  stream-graph-ingest:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.graph_ingest"]
+    environment:
+      <<: *app-env
+      STREAM_KAFKA_BOOTSTRAP: kafka:9092
+      STREAM_RAW_TOPIC: ${AML_RAW_TOPIC:-aml.transactions.raw.v1}
+      STREAM_INGEST_BATCH: ${STREAM_INGEST_BATCH:-500}
+      STREAM_KAFKA_OFFSET_RESET: ${STREAM_KAFKA_OFFSET_RESET:-earliest}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # SAML-D → topic canonical (consumer graph_ingest dùng lại y nguyên, chỉ đổi
+  # STREAM_RAW_TOPIC=aml.samld.raw.v1). account_key = <quốc gia>:<số tài khoản>.
+  samld-producer:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.samld_producer"]
+    command: ["--max-records", "5000", "--rate", "1.0"]
+    environment:
+      <<: *app-env
+      STREAM_KAFKA_BOOTSTRAP: kafka:9092
+      SAMLD_RAW_CSV: /app/data/raw/saml-d/SAML-D.csv
+    volumes:
+      - ./data/raw/saml-d:/app/data/raw/saml-d:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+
+  # Pha 2 — chấm GNN cục bộ SAML-D: neighbor-loader per-edge trên đồ thị tích luỹ.
+  # Cần checkpoint + encoder ở data/models/samld và ngưỡng ở artifacts/samld.
+  samld-score:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.samld_score"]
+    environment:
+      <<: *app-env
+      # PIN đúng gốc dataset để elapsed_days khớp chuẩn hoá encoder (bắt buộc).
+      SAMLD_ORIGIN: ${SAMLD_ORIGIN:-2022-10-07T10:35:19}
+      SAMLD_GRAPH_WINDOW: ${SAMLD_GRAPH_WINDOW:-0}
+    volumes:
+      - ./data/models/samld:/app/data/models/samld:ro
+      - ./artifacts/samld:/app/artifacts/samld:ro
+      - ./artifacts/streaming:/app/artifacts/streaming:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Pha 2 — chấm GNN cục bộ IBM MEGA-PNA (HI-Medium): neighbor-loader per-edge
+  # trên đồ thị đã mã hoá (stream_ibm_edge). Cần checkpoint + file đã format.
+  ibm-score:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.ibm_score", "run"]
+    environment:
+      <<: *app-env
+      # Ngưỡng streaming + warm_degree đọc từ artifacts/streaming/thresholds.json
+      # (hiệu chỉnh bằng scripts/streaming/calibrate_ibm_threshold.py). Đặt
+      # IBM_THRESHOLD/IBM_WARM_DEGREE để ghi đè khi cần.
+      IBM_GRAPH_WINDOW: ${IBM_GRAPH_WINDOW:-0}
+    volumes:
+      - ./models/mega-pna/Medium_HI:/app/models/mega-pna/Medium_HI:ro
+      - ./data/processed/mega-pna/Medium_HI:/app/data/processed/mega-pna/Medium_HI:ro
+      - ./artifacts/streaming:/app/artifacts/streaming:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Bitcoin: đồ thị GIAO DỊCH→GIAO DỊCH tăng dần (topology từ edgelist Elliptic).
+  bitcoin-graph-ingest:
+    image: *app-image
+    build: *app-build
+    profiles: ["stream"]
+    entrypoint: ["python", "-m", "src.streaming.bitcoin_graph_ingest"]
+    environment:
+      <<: *app-env
+      STREAM_KAFKA_BOOTSTRAP: kafka:9092
+      BTC_RAW_TOPIC: ${BTC_RAW_TOPIC:-aml.bitcoin.raw.v1}
+      BTC_EDGELIST: /app/data/raw/elliptic/elliptic_txs_edgelist.csv
+    volumes:
+      - ./data/raw/elliptic:/app/data/raw/elliptic:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===================================================================
+  # GIÁM SÁT — profile `obs` / `observability`, không chạy cùng core stack.
+  #
+  # Prometheus thu thập, Grafana hiển thị, bốn exporter cung cấp số liệu.
+  # Toàn bộ nằm ngoài đường phục vụ người dùng: tắt hết cụm này thì hệ
+  # thống vẫn chạy y nguyên.
+  #
+  # Cổng của Grafana và Prometheus bind vào 127.0.0.1, KHÔNG ra Internet.
+  # Trên VM, xem bằng đường hầm SSH — chi tiết ở docs/operations/README.md#giám-sát-prometheus-và-grafana.
+  # ===================================================================
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.54.1}
+    profiles: ["obs", "observability"]
+    user: root
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # Giữ 15 ngày VÀ trần 2 GB. Chỉ đặt theo thời gian là chưa đủ: một đợt
+      # số liệu bất thường có thể làm đầy đĩa trước khi tới hạn xoá.
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+      - --storage.tsdb.retention.size=2GB
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    restart: unless-stopped
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.1.0}
+    profiles: ["obs", "observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Tắt đăng ký và mời người dùng: đây là công cụ nội bộ, không phải SaaS.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Gửi số liệu sử dụng ra ngoài là điều không nên mặc định bật ở một hệ
+      # thống làm việc với dữ liệu ngân hàng, kể cả khi dữ liệu ấy là tổng hợp.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Keep the local stack deterministic and air-gap friendly. The built-in
+      # Prometheus/Loki/Jaeger data sources need no catalog downloads.
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: "10s"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:5173/grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_PROXY_ENABLED: "true"
+      GF_AUTH_PROXY_HEADER_NAME: X-WEBAUTH-USER
+      GF_AUTH_PROXY_HEADER_PROPERTY: username
+      GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
+      GF_AUTH_PROXY_SYNC_TTL: "0"
+      GF_AUTH_PROXY_HEADERS: "Role:X-WEBAUTH-ROLE"
+      GF_USERS_AUTO_ASSIGN_ORG: "true"
+      GF_USERS_AUTO_ASSIGN_ORG_ROLE: Viewer
+      # Cho Viewer dùng Explore để điều tra Loki/Jaeger nhưng không thể lưu
+      # thay đổi dashboard. Grafana OSS chưa có fixed data-sources-explorer
+      # role chi tiết như Enterprise/Cloud.
+      GF_USERS_VIEWERS_CAN_EDIT: "true"
+      GF_AUTH_DISABLE_SIGNOUT_MENU: "true"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 320m
+    restart: unless-stopped
+
+  # Số liệu của máy chủ. Cần nhìn vào /proc và /sys của HOST, không phải của
+  # container — nên pid: host và ba mount chỉ đọc bên dưới là bắt buộc.
+  node-exporter:
+    image: ${NODE_EXPORTER_IMAGE:-prom/node-exporter:v1.8.2}
+    profiles: ["obs", "observability"]
+    pid: host
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/docker/.+)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      # `rslave` is useful on native Linux but Docker Desktop rejects it because
+      # its VM root is not a shared mount. Read-only rootfs keeps local startup
+      # portable; production Linux deployments may add `rslave` in an override.
+      - /:/host/root:ro
+    deploy:
+      resources:
+        limits:
+          memory: 96m
+    restart: unless-stopped
+
+  redis-exporter:
+    image: ${REDIS_EXPORTER_IMAGE:-oliver006/redis_exporter:v1.62.0}
+    profiles: ["obs", "observability"]
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    restart: unless-stopped
+
+  # Cloud SQL. Chuỗi kết nối riêng vì exporter dùng libpq, không hiểu tiền tố
+  # `+psycopg` trong DATABASE_URL của SQLAlchemy.
+  postgres-exporter:
+    image: ${POSTGRES_EXPORTER_IMAGE:-quay.io/prometheuscommunity/postgres-exporter:v0.15.0}
+    profiles: ["obs", "observability"]
+    environment:
+      DATA_SOURCE_NAME: ${MONITORING_PG_DSN:-postgresql://fin07:fin07_dev_password@postgres:5432/fin07?sslmode=disable}
+    deploy:
+      resources:
+        limits:
+          memory: 96m
+    restart: unless-stopped
+
+  # Central gateway. Ingestion ports stay on the internal Compose network.
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.158.0}
+    profiles: ["obs", "observability"]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./monitoring/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol/config.yaml"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    restart: unless-stopped
+
+  loki:
+    image: ${LOKI_IMAGE:-grafana/loki:3.7.2}
+    profiles: ["obs", "observability"]
+    command: ["-config.file=/etc/loki/config.yaml", "-config.expand-env=true"]
+    environment:
+      LOKI_RETENTION: ${LOKI_RETENTION:-168h}
+    volumes:
+      - ./monitoring/loki/config.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+    healthcheck:
+      # Loki 3.7 image is distroless (no shell/wget). Validate the exact mounted
+      # config in-container; readiness is also scraped externally by Prometheus.
+      test: ["CMD", "/usr/bin/loki", "-config.file=/etc/loki/config.yaml", "-config.expand-env=true", "-verify-config=true"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    restart: unless-stopped
+
+  jaeger:
+    image: ${JAEGER_IMAGE:-cr.jaegertracing.io/jaegertracing/jaeger:2.20.0}
+    profiles: ["obs", "observability"]
+    ports:
+      - "127.0.0.1:${JAEGER_UI_PORT:-16686}:16686"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:13133/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    restart: unless-stopped
+
+  cadvisor:
+    image: ${CADVISOR_IMAGE:-gcr.io/cadvisor/cadvisor:v0.52.1}
+    profiles: ["obs", "observability"]
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 192m
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  app_data:
+  kafka_data:
+  namenode_data:
+  datanode_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:

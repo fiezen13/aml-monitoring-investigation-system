@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fin07.local/contracts/events/aml.alert.created.v1.schema.json",
+  "title": "aml.alert.created.v1 — payload",
+  "description": "Một alert do alert-aggregator tạo ra sau khi gom nhiều detection result. Topic `aml.alert.created.v1`, khoá `alert_id` (kiến trúc mục 10.2). Quy tắc quan trọng nhất (mục 7.3): KHÔNG tạo một alert cho mỗi rule hit — gom theo thực thể, mạng lưới, typology và cửa sổ thời gian.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "alert_id",
+    "primary_entity",
+    "created_at",
+    "risk",
+    "detection_result_refs",
+    "reason_codes"
+  ],
+  "properties": {
+    "schema_version": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/schema_version" },
+
+    "alert_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+
+    "primary_entity": {
+      "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/entity_ref",
+      "description": "Chủ thể chính của alert."
+    },
+
+    "related_entities": {
+      "type": "array",
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/entity_ref" },
+      "description": "Các thực thể liên quan trong cùng cụm. Đây là thứ biến một alert đơn lẻ thành một bức tranh mạng lưới."
+    },
+
+    "created_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+
+    "aggregation_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "window_start": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "window_end": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "level"],
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "level": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" },
+        "fusion_version": {
+          "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/version_ref",
+          "description": "Phiên bản của score fusion (bước 7, mục 7.1)."
+        }
+      }
+    },
+
+    "priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "1 là cao nhất. Ưu tiên tính theo rủi ro cấp CASE và năng lực analyst, không theo điểm của một giao dịch đơn lẻ (mục 7.3)."
+    },
+
+    "detection_result_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "maxLength": 128 },
+      "description": "Toàn bộ detection result đã gom vào alert này. Giữ HẾT, kể cả cái trùng lặp — mục 7.3 yêu cầu giữ lại underlying result để kiểm toán."
+    },
+
+    "reason_codes": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/reason_code" },
+      "description": "Tối thiểu BA yếu tố đóng góp. Đây là quy tắc nghiệp vụ NT7 của dự án, đã được cưỡng chế ở lược đồ cơ sở dữ liệu hiện tại (bảng `alert_reason`) và nay cưỡng chế luôn ở tầng contract: điểm rủi ro không bao giờ được hiển thị một mình."
+    },
+
+    "typology_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["typology_id", "confidence"],
+        "properties": {
+          "typology_id": { "type": "string", "maxLength": 128 },
+          "typology_version": { "type": "string", "maxLength": 32 },
+          "confidence": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/confidence" }
+        }
+      }
+    },
+
+    "suppression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["is_suppressed"],
+      "description": "Alert bị nén vẫn được PHÁT RA, chỉ không vào hàng đợi analyst. Mục 7.3: suppression không được làm mất raw risk event.",
+      "properties": {
+        "is_suppressed": { "type": "boolean" },
+        "reason": { "type": "string", "maxLength": 512 },
+        "approved_by": { "type": "string", "maxLength": 128 },
+        "expires_at": {
+          "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp",
+          "description": "Bắt buộc khi is_suppressed = true. Nén vĩnh viễn không có ngày hết hạn là cách một lỗ hổng phát hiện tồn tại mãi mà không ai rà lại."
+        }
+      }
+    },
+
+    "sla": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "due_at": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/timestamp" },
+        "sla_policy_id": { "type": "string", "maxLength": 64 }
+      }
+    },
+
+    "trace": { "$ref": "https://fin07.local/contracts/common/common.v1.schema.json#/$defs/trace_context" }
+  },
+
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "suppression": {
+            "properties": { "is_suppressed": { "const": true } },
+            "required": ["is_suppressed"]
+          }
+        },
+        "required": ["suppression"]
+      },
+      "then": {
+        "properties": {
+          "suppression": { "required": ["is_suppressed", "reason", "expires_at"] }
+        }
+      }
+    }
+  ]
+}
