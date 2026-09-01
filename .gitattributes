@@ -9,5 +9,5 @@
 *.ico binary
 
 # Không tính vào thống kê ngôn ngữ của GitHub — vendor nguyên trạng từ
-# docs/design/prototype/, không phải mã do team viết (xem web/src/vendor/fc/README.md).
+# web/src/vendor/fc/, không phải mã do team viết (xem web/src/vendor/fc/README.md).
 web/src/vendor/fc/*.js linguist-vendored

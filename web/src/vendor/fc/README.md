@@ -1,7 +1,8 @@
 # Vendored — engine đồ hoạ của prototype "Financial City AML"
 
-File `.js` trong thư mục này được **sao chép nguyên trạng** từ
-`docs/design/prototype/`. Không sửa chúng tại đây.
+File `.js` trong thư mục này được **sao chép nguyên trạng** từ prototype thiết
+kế "Financial City AML" đã chốt. Prototype gốc không còn trong repo (gỡ khi dọn
+kho mã cho bản nộp); thư mục này là bản duy nhất còn lại. Không sửa chúng tại đây.
 
 | File           | Custom element   | Vai trò                                                    |
 | -------------- | ---------------- | ---------------------------------------------------------- |
@@ -12,7 +13,7 @@ File `.js` trong thư mục này được **sao chép nguyên trạng** từ
 Prototype là bản thiết kế đã chốt. Viết lại engine canvas bằng thư viện khác
 sẽ cho ra hình ảnh *gần giống* — và mọi khác biệt nhỏ đều là một quyết định
 thiết kế bị thay đổi mà không ai duyệt. Giữ nguyên file gốc thì giao diện chạy
-thật khớp đúng bản thiết kế, và khi prototype cập nhật thì chỉ cần chép đè.
+thật khớp đúng bản thiết kế.
 
 ## Cách dùng từ React
 

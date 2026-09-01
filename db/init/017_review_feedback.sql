@@ -8,7 +8,7 @@
 --
 -- Bảng này đóng mũi tên "Feedback / learning loop" ở mức dữ liệu. Việc tiêu thụ
 -- nhãn (hiệu chỉnh ngưỡng, huấn luyện lại) là bước tiếp theo và nằm ngoài file
--- này; xem docs/handoff/detection_branch_contract.md.
+-- này; xem docs/specification/technical-design.md §3.
 
 CREATE TABLE IF NOT EXISTS review_feedback (
     feedback_id           TEXT PRIMARY KEY,

@@ -117,15 +117,6 @@ pytest-report.xml
 .gstack/
 .github/modernize/
 
-# Artifact của công cụ thiết kế trong docs/design/prototype/.
-#
-# Bản thân prototype (HTML + các engine .js) được commit để giữ nguồn gốc cho
-# phần vendor ở web/src/vendor/fc/. Nhưng ảnh chụp dán vào lúc thiết kế và file
-# preview thì nặng 3,4 MB, không file nào tham chiếu tới, và không dựng lại
-# được gì từ chúng.
-docs/design/prototype/uploads/
-docs/design/prototype/.thumbnail
-
 # Terraform — state CHỨA MẬT KHẨU CƠ SỞ DỮ LIỆU dạng chữ thường.
 #
 # Bỏ qua state không phải để repo gọn, mà vì commit nó là công bố mật khẩu cho
@@ -140,8 +131,13 @@ infra/terraform/*.tfvars
 !infra/terraform/*.tfvars.example
 infra/terraform/crash.log
 
-# terraform.tfvars của máy GPU chứa địa chỉ IP nhà người chạy (allowed_ssh_cidr).
-# Bản .example thì commit được.
+# Module Terraform GPU (EC2 huấn luyện MEGA-PNA) đã gỡ khỏi repo bản nộp —
+# production chạy trên GCP, module này là hạ tầng huấn luyện một lần.
+#
+# GIỮ LẠI các dòng chặn dưới đây: state và tfvars vẫn còn TRÊN MÁY CÁ NHÂN
+# (terraform.tfstate ghi nhận một aws_instance đang tồn tại — đó là thứ duy
+# nhất còn `terraform destroy` được nó). Chúng chứa IP nhà và thông tin hạ
+# tầng, tuyệt đối không được commit nếu ai đó chạy `git add -A`.
 infra/terraform/gpu/terraform.tfvars
 infra/terraform/gpu/.terraform/
 infra/terraform/gpu/*.tfstate*

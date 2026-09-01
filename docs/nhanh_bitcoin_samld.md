@@ -2,10 +2,10 @@
 
 Nhánh SAML-D (ngân hàng, xuyên biên giới) và nhánh Bitcoin (Elliptic++). Cả hai chạy song song với nhánh IBM AML chính, dùng chung bảng nghiệp vụ.
 
-- [Nhánh SAML-D — phát hiện AML ngân hàng + xuyên biên giới](#nhánh-saml-d-phát-hiện-aml-ngân-hàng-xuyên-biên-giới) — gốc: `docs/samld.md`
-- [SAML-D Model — Multi-PNA + Edge Updates (Multi-PNA+EU)](#saml-d-model-multi-pna-edge-updates-multi-pnaeu) — gốc: `docs/samld_model.md`
-- [Bitcoin AML — Migrate sang Original Elliptic + ngữ nghĩa DFRWS 2026 (§53)](#bitcoin-aml-migrate-sang-original-elliptic-ngữ-nghĩa-dfrws-2026-53) — gốc: `docs/bitcoin_elliptic_migration.md`
-- [Bitcoin AML (Elliptic++) — Explainability Redesign · QA Report](#bitcoin-aml-elliptic-explainability-redesign-qa-report) — gốc: `docs/bitcoin_explainability.md`
+- [Nhánh SAML-D — phát hiện AML ngân hàng + xuyên biên giới](#nhánh-saml-d-phát-hiện-aml-ngân-hàng-xuyên-biên-giới)
+- [SAML-D Model — Multi-PNA + Edge Updates (Multi-PNA+EU)](#saml-d-model-multi-pna-edge-updates-multi-pnaeu)
+- [Bitcoin AML — Migrate sang Original Elliptic + ngữ nghĩa DFRWS 2026 (§53)](#bitcoin-aml-migrate-sang-original-elliptic-ngữ-nghĩa-dfrws-2026-53)
+- [Bitcoin AML (Elliptic++) — Explainability Redesign · QA Report](#bitcoin-aml-elliptic-explainability-redesign-qa-report)
 
 ## Nhánh SAML-D — phát hiện AML ngân hàng + xuyên biên giới
 

@@ -1,7 +1,7 @@
 # CODEOWNERS — FIN-07
 #
-# Dựa trên quyền sở hữu thật ghi ở WORKLOG.md mục "Ai sở hữu cái gì", không
-# phải phân công lý thuyết. Xác nhận qua git log ngày 2026-08-06:
+# Dựa trên quyền sở hữu thật, không phải phân công lý thuyết. Xác nhận qua
+# git log ngày 2026-08-06:
 #   NguyenGiaBao0706  → Bảo
 #   nqhung5679        → Hưng
 # GitHub username của Tin Tin và Hiển chưa xác nhận được từ git log (Hiển
@@ -13,7 +13,7 @@
 
 # ---------------------------------------------------------------------
 # Mặc định: Bảo review mọi thứ không khớp quy tắc cụ thể hơn bên dưới —
-# đúng vai trò kiến trúc/hạ tầng/repo-wide trong WORKLOG.md.
+# đúng vai trò kiến trúc/hạ tầng/repo-wide.
 * @NguyenGiaBao0706
 
 # ---------------------------------------------------------------------
@@ -21,24 +21,23 @@
 /web/src/ @nqhung5679
 
 # web/Dockerfile, nginx.conf, vite.config.ts, tsconfig.json là "chung" hoặc
-# của Bảo theo WORKLOG.md — không override, giữ nguyên quy tắc `*` ở trên.
+# của Bảo — không override, giữ nguyên quy tắc `*` ở trên.
 
 # ---------------------------------------------------------------------
-# Tin Tin — Backend (theo WORKLOG.md; username GitHub cần xác nhận)
+# Tin Tin — Backend (username GitHub cần xác nhận)
 # /src/api/routes.py       @TODO-tin-tin-github-username
 # /src/models/schemas.py   @TODO-tin-tin-github-username
 # /src/worker/main.py      @TODO-tin-tin-github-username
 
 # ---------------------------------------------------------------------
-# Hiển — AI Engineer (theo WORKLOG.md; username GitHub cần xác nhận)
+# Hiển — AI Engineer (username GitHub cần xác nhận)
 # /src/agents/             @TODO-hien-github-username
 
 # ---------------------------------------------------------------------
 # Bắt buộc Bảo review — hạ tầng, contract, CI/CD, kiến trúc, ranh giới
-# cross-workstream (Phase 13 của yêu cầu chuẩn hoá repo).
+# cross-workstream.
 /db/init/                  @NguyenGiaBao0706
 /contracts/                @NguyenGiaBao0706
-/services/                 @NguyenGiaBao0706
 /tests/test_contracts/     @NguyenGiaBao0706
 /docker-compose.yml        @NguyenGiaBao0706
 /Dockerfile                @NguyenGiaBao0706
@@ -54,4 +53,5 @@
 /src/main.py                @NguyenGiaBao0706
 /src/config.py              @NguyenGiaBao0706
 /docs/architecture/         @NguyenGiaBao0706
-/docs/adr/                  @NguyenGiaBao0706
+/docs/specification/        @NguyenGiaBao0706
+/docs/testing/              @NguyenGiaBao0706

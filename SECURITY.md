@@ -2,7 +2,7 @@
 
 FIN-07 là hệ thống demo/PoC cho chương trình AI20K Build Phase. Dữ liệu nghiệp vụ duy nhất là
 IBM AML LI-Small công khai; stack mặc định không tự nạp fixture và không chứa khách hàng thật.
-Xem tài liệu kiến trúc trong `docs/architecture/` mục 8 để biết
+Xem [`docs/architecture/architecture.md`](docs/architecture/architecture.md) mục 5 để biết
 đầy đủ các biện pháp bảo mật đã hiện thực.
 
 ## Báo cáo lỗ hổng
@@ -35,7 +35,7 @@ riêng tư (không mở public issue cho lỗ hổng chưa vá). Nêu rõ:
   quyền truy cập DB trực tiếp, không có khả năng đóng băng tài khoản hay nộp SAR. Khi hiện thực
   agent thật, các ràng buộc bắt buộc: không sửa transaction gốc, không tự đóng băng tài khoản, không
   tự nộp STR/SAR, không đọc `fc_gt` (ground truth ẩn), không truy cập DB/SQL tuỳ ý ngoài vai trò
-  `fin07_agent`, không vượt RBAC. Xem `docs/architecture/` mục 4.
+  `fin07_agent`, không vượt RBAC. Xem [`docs/specification/technical-design.md`](docs/specification/technical-design.md) §4.5.
 
 ## Chưa hoàn thiện (biết trước, chưa phải bị bỏ sót)
 

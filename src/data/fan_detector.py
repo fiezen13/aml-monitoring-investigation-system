@@ -1,6 +1,6 @@
 """FAN_IN / FAN_OUT detectors from graph_features_v1 — configurable thresholds.
 
-Contract: docs/graph_branch_plan.md §4.2–4.3 / §5.1 (center = subject).
+Contract: docs/specification/technical-design.md §2.1 (center = subject).
 Frozen baseline configs are versioned under configs/graph/.
 """
 

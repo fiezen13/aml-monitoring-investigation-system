@@ -1,6 +1,6 @@
 """Shared snapshot time-split helper (Graph + Isolation Forest).
 
-Contract: docs/graph_feature_spec.md §5 / docs/graph_branch_plan.md §2.2.1
+Contract: docs/specification/data-model.md §5
 """
 
 from __future__ import annotations

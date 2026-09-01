@@ -1,4 +1,4 @@
-"""Unit tests for graph features — docs/graph_feature_spec.md §11."""
+"""Unit tests for graph features — docs/specification/data-model.md §5."""
 
 from __future__ import annotations
 

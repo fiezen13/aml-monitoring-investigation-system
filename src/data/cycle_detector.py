@@ -1,4 +1,4 @@
-"""CYCLE detector — docs/graph_cycle_detector_spec.md / docs/graph_branch_plan.md §4.1."""
+"""CYCLE detector — docs/specification/technical-design.md §2.1."""
 
 from __future__ import annotations
 

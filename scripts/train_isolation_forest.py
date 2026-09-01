@@ -1,4 +1,4 @@
-"""Fit Isolation Forest trên 20 đặc trưng hành vi (FIN-07 / docs/feature_spec.md).
+"""Fit Isolation Forest trên 20 đặc trưng hành vi (FIN-07 / docs/specification/data-model.md §4).
 
 Ví dụ:
   python scripts/train_isolation_forest.py
@@ -18,7 +18,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 PROCESSED_DIR = Path("data/processed")
 
-# 20 cột số theo docs/feature_spec.md — tuyệt đối không gồm label_laundering
+# 20 cột số theo docs/specification/data-model.md §4 — tuyệt đối không gồm label_laundering
 FEATURE_COLS: list[str] = [
     # A — Intensity
     "txn_count",
@@ -75,7 +75,9 @@ def _load_train_features(window: str, processed_dir: Path = PROCESSED_DIR) -> pd
         df = df.drop(columns=label_cols, errors="ignore")
     missing = [c for c in FEATURE_COLS if c not in df.columns]
     if missing:
-        raise ValueError(f"Thieu {len(missing)} cot dac trung bat buoc: {missing}. Doi chieu docs/feature_spec.md.")
+        raise ValueError(
+            f"Thieu {len(missing)} cot dac trung bat buoc: {missing}. Doi chieu docs/specification/data-model.md §4."
+        )
     return df
 
 

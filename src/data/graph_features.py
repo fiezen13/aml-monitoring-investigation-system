@@ -1,4 +1,4 @@
-"""Graph feature computation — docs/graph_feature_spec.md (features only).
+"""Graph feature computation — docs/specification/data-model.md §5 (features only).
 
 Primary engine: DuckDB SQL aggregations + first_seen counterparty tables.
 Pandas path kept only as a small-data reference for semantic parity tests.

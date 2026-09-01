@@ -1,6 +1,6 @@
 """Lớp BRONZE (data lake) — raw transactions ghi ra Parquet, KHÔNG vào Postgres.
 
-Đúng kiến trúc medallion của dự án (docs/architecture/README.md, contracts/ingestion):
+Đúng kiến trúc medallion của dự án (docs/architecture/architecture.md, contracts/ingestion):
 raw → Kafka → Flink → HDFS Bronze (Parquet, phân vùng ngày/giờ). Bản local KHÔNG có
 HDFS nên đây là STAND-IN: Parquet trên đĩa, cùng cách phân vùng
 ``source_dataset=/event_date=/event_hour=``. PostgreSQL chỉ giữ OUTPUT (cảnh báo, vụ

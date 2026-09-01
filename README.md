@@ -1,510 +1,445 @@
 # FIN-07 — AML Operations Console
 
-FIN-07 là console giám sát và điều tra phòng, chống rửa tiền Level 1. Bản demo hiện tại phục vụ
-release `fin07_currency_native_policy_edge_v1` trên IBM AML HI-Medium, giữ nguyên amount và
-currency gốc, không cộng hoặc quy đổi tĩnh nhiều loại tiền thành USD.
+Hệ thống giám sát và điều tra phòng, chống rửa tiền (AML) Level 1, có tác tử AI
+điều tra kèm hàng rào chống bịa đặt và quy trình phê duyệt bắt buộc có con người.
 
-- Console: <http://localhost:5173>
-- API docs: <http://localhost:8000/docs>
-- Health check: <http://localhost:8000/health/ready>
-- Bản triển khai: <https://amlmonitoring.site/>
+- **Bản triển khai:** <https://amlmonitoring.site/>
+- **Console cục bộ:** <http://localhost:5173>
+- **Tài liệu API:** <http://localhost:8000/docs>
 
-## Chạy lần đầu với dữ liệu đầy đủ
+---
 
-`git pull` chỉ tải mã nguồn, model và báo cáo nhỏ. PostgreSQL dump chứa 5,8 triệu giao dịch không
-nằm trong Git; thành viên phải tải riêng từ Google Drive rồi restore theo hướng dẫn dưới đây.
+## 1. Tóm tắt
 
-### 1. Yêu cầu máy
+**Vấn đề.** Một tổ chức báo cáo phải rà hàng chục nghìn cảnh báo AML mỗi tháng.
+Phần lớn cảnh báo đến từ ngưỡng cứng, nên vừa bỏ sót hành vi tinh vi vừa tạo ra
+khối lượng báo động giả khổng lồ. Mỗi cảnh báo được điều tra thủ công: chuyên
+viên tự truy vấn dữ liệu, tự dựng quan hệ, tự viết tường thuật. Kết quả là điều
+tra luôn chậm hơn dòng tiền, chất lượng hồ sơ phụ thuộc từng người, và không ai
+tái dựng được vì sao một kết luận được đưa ra.
 
-- Git.
-- Docker Desktop hoặc Docker Engine có Compose v2.
-- Ít nhất 12 GB dung lượng đĩa trống cho image, dump và PostgreSQL sau restore.
-- Khuyến nghị từ 8 GB RAM.
-- Các cổng mặc định chưa bị chiếm: `5173`, `8000`, `5432`, `6379`.
+**Vì sao AI chưa giải được bài này.** Đưa mô hình ngôn ngữ vào quy trình AML tạo
+ra một rủi ro mới nghiêm trọng hơn: mô hình **bịa số và bịa dẫn chứng**. Một hồ
+sơ nghi vấn sai gửi tới cơ quan quản lý còn tốn kém hơn một hồ sơ không gửi.
 
-Không cần cài Python hoặc Node nếu chỉ chạy bằng Docker. `.env` cũng không bắt buộc trong môi
-trường development.
+**Giải pháp.** FIN-07 tách bạch ba việc:
 
-### 2. Lấy code mới nhất
+1. **Phát hiện** do mô hình tất định làm — luật nghiệp vụ, đồ thị, và một mạng
+   nơ-ron đồ thị chấm điểm từng giao dịch. Điểm được tính **ngoại tuyến**, nạp sẵn
+   vào cơ sở dữ liệu, có mã băm truy nguyên tới đúng file mô hình sinh ra nó.
+2. **Điều tra** do tác tử AI làm, nhưng **mọi con số phải đến từ một cổng công cụ
+   chỉ-đọc có allow-list**. Mô hình không phát được câu SQL nào và không tự tính
+   số. Một tác tử phản biện tất định đối chiếu **từng con số** với bằng chứng được
+   viện dẫn; thiếu một dẫn chứng là cả hồ sơ không qua.
+3. **Quyết định** do con người làm. Không có đường nào trong mã nguồn cho phép
+   tác tử tự đóng một vụ việc.
+
+**Người dùng.** Chuyên viên phân tích AML (điều tra, lập hồ sơ), Quản lý tuân thủ
+(chốt hồ sơ, điều phối), Quản trị hệ thống (vận hành kỹ thuật, không có thẩm
+quyền nghiệp vụ).
+
+**Giá trị cốt lõi.** Rút ngắn thời gian từ cảnh báo tới hồ sơ **có dẫn chứng kiểm
+chứng được** — mà không đánh đổi bằng nguy cơ hệ thống bịa ra bằng chứng.
+
+---
+
+## 2. Tính năng đã hiện thực
+
+> Mục này chỉ liệt kê tính năng **đang chạy được**. Phần chưa làm nằm ở mục 8.
+
+### Phát hiện
+
+- **Nhánh luật nghiệp vụ** — ngưỡng và kịch bản cấu hình được; mỗi cảnh báo kèm
+  **tối thiểu ba yếu tố đóng góp**, không phải một con số trần trụi.
+- **Nhánh đồ thị** — FAN_IN / FAN_OUT phân biệt bùng phát đáng ngờ với hub bậc
+  cao lành tính; GATHER_SCATTER; CYCLE độ dài 2–6 **có nhân chứng nhất quán thời gian**.
+- **MEGA-PNA** — mạng nơ-ron đồ thị chấm điểm **từng cạnh giao dịch**, là nhánh
+  phục vụ hàng đợi chính.
+- **Isolation Forest hành vi** — 20 đặc trưng cấp tài khoản trên cửa sổ 7 ngày,
+  học không giám sát.
+- **Hợp nhất điểm** — hiệu chuẩn phân vị **chỉ fit trên tập train**, đóng gói các
+  bộ ước lượng đã đóng băng thành một artifact phát hành duy nhất.
+
+### Điều tra bằng tác tử
+
+- Ba vai chạy nối tiếp: **Điều phối → Giải thích → Phản biện**, trần **5 vòng** và
+  **16 lượt gọi công cụ**.
+- **Bảy công cụ chỉ-đọc** trong allow-list cứng. Mô hình chọn được tên công cụ và
+  tham số có ràng buộc — không phát SQL, không chạy mã tuỳ ý, không tự tính số.
+- Tác tử phản biện **tất định**: đối chiếu từng con số và từng mã bằng chứng.
+  Không đạt thì trả về `INSUFFICIENT_EVIDENCE` **kèm danh sách chỗ còn hổng**.
+- Tác tử **chỉ đọc**, cưỡng chế bằng **quyền PostgreSQL** — không phải bằng quy ước.
+- Dấu vết đầy đủ: từng lượt gọi công cụ, từng gói bằng chứng, từng khẳng định,
+  từng phản bác.
+
+### Quy trình nghiệp vụ
+
+- **Sáu trạng thái vụ việc**, hai vai: Chuyên viên lập và trình — Quản lý chốt.
+  Quản lý **cố ý không có quyền soạn SAR** để nguyên tắc bốn mắt chặn được ở cấp
+  *vai trò*, không chỉ cấp cá nhân.
+- Hai loại đề xuất tới hàng đợi phê duyệt: nộp hồ sơ nghi vấn, hoặc **đóng không
+  báo cáo** — vì phần lớn cảnh báo là báo động giả và cần một lối kết thúc hợp lệ.
+- Phân công và theo dõi tải công việc của nhóm.
+- Soạn SAR bằng AI và **kết xuất PDF có đồ thị**, hiển thị đúng tiếng Việt.
+- **Nhật ký kiểm toán chỉ-ghi-thêm**, cưỡng chế bằng trigger cơ sở dữ liệu.
+
+### Console
+
+- Ba vai trò, phân quyền **cưỡng chế ở tầng API** — menu chỉ phản chiếu.
+- Bảng điều khiển theo vai, hàng đợi cảnh báo, tra cứu giao dịch, đồ thị mạng lưới
+  tương tác (tách từng thành phần liên thông), giám sát địa lý, truy vết tài sản
+  mã hoá.
+- **Trợ lý AI điều phối**: mô hình chỉ *soạn đề xuất*; người dùng xác nhận rồi máy
+  chủ mới thực thi bằng mã tất định.
+- Ngăn xếp quan trắc nhúng ngay trong console (Prometheus / Loki / Jaeger / Grafana).
+
+---
+
+## 3. Tổng quan hệ thống
+
+```mermaid
+flowchart LR
+    subgraph offline["Ngoại tuyến — scripts/"]
+        DATA["Dữ liệu công khai có nhãn<br/>IBM AML · SAML-D · Elliptic++"]
+        DET["Ba nhánh phát hiện<br/>luật · đồ thị+MEGA-PNA · hành vi"]
+        FUSE["Hợp nhất điểm<br/>hiệu chuẩn chỉ fit trên train"]
+        DATA --> DET --> FUSE
+    end
+
+    subgraph serving["Đường phục vụ"]
+        DB[("PostgreSQL<br/>điểm đã tính sẵn · cảnh báo<br/>vụ việc · nhật ký bất biến")]
+        API["FastAPI<br/>RBAC 3 vai"]
+        WEB["Console React"]
+        WORKER["Worker nền"]
+    end
+
+    HUMAN(["Chuyên viên · Quản lý"])
+    AGENT["Tác tử điều tra<br/>Điều phối → Giải thích → Phản biện"]
+    GEMINI["Gemini API"]
+
+    FUSE -->|"nạp điểm + mã băm mô hình"| DB
+    DB <--> API --> WEB --> HUMAN
+    HUMAN -->|"bấm Điều tra"| API
+    API -.->|"hàng đợi"| WORKER --> AGENT
+    AGENT -.->|"7 công cụ CHỈ ĐỌC"| DB
+    AGENT -.-> GEMINI
+    AGENT -->|"hồ sơ có dẫn chứng<br/>HOẶC chưa đủ bằng chứng"| HUMAN
+```
+
+Ba ranh giới quan trọng nhất trong sơ đồ:
+
+1. **Mô hình không chạy lúc phục vụ.** API chỉ đọc điểm đã tính sẵn. Không có
+   `joblib.load` hay `torch.load` nào trong đường phục vụ.
+2. **Tác tử luôn bất đồng bộ và luôn chỉ đọc.** Không mũi tên nào từ tác tử quay
+   ngược vào đường quyết định.
+3. **Đường ra của tác tử luôn kết thúc ở con người.** Không có nhánh thứ ba.
+
+---
+
+## 4. Kiến trúc
+
+![Kiến trúc production FIN-07](docs/architecture/architecture.svg)
+
+Kiến trúc đầy đủ — sơ đồ triển khai, luồng một request, ba nhánh mô hình, bảo mật,
+CI/CD, sức chứa: **[`docs/architecture/architecture.md`](docs/architecture/architecture.md)**.
+
+### Ngăn xếp công nghệ
+
+| Tầng | Công nghệ |
+|---|---|
+| Giao diện | React 18 · TypeScript (strict) · Vite · TailwindCSS · MapLibre GL · Cytoscape |
+| API | FastAPI 0.141 · uvicorn · Python 3.11 · SQLAlchemy 2.0 · psycopg 3 |
+| Cơ sở dữ liệu | PostgreSQL 16 (Cloud SQL trên production) · Redis 7 |
+| ML | scikit-learn · PyTorch Geometric · NetworkX · DuckDB |
+| Tác tử AI | Google Gen AI SDK · Gemini `gemini-3.1-flash-lite` |
+| Nạp dữ liệu luồng | Kafka · Flink (Java) · HDFS |
+| Hạ tầng | Docker Compose · Caddy 2.8 (TLS tự động) · GCP VM · Terraform |
+| CI/CD | GitHub Actions · Jenkins · tự động triển khai theo cơ chế máy chủ kéo |
+| Quan trắc | OpenTelemetry · Prometheus · Loki · Jaeger · Grafana |
+
+---
+
+## 5. Chạy hệ thống
+
+### 5.1 Yêu cầu máy
+
+- Git · Docker Desktop hoặc Docker Engine có Compose v2
+- ≥ 12 GB đĩa trống · khuyến nghị ≥ 8 GB RAM
+- Cổng chưa bị chiếm: `5173`, `8000`, `5432`, `6379`
+
+Không cần cài Python hoặc Node nếu chỉ chạy bằng Docker. `.env` không bắt buộc
+trong môi trường phát triển — mọi biến đều có mặc định.
+
+### 5.2 Cách nhanh nhất — không cần dữ liệu
 
 ```bash
 git clone https://github.com/AI20K-Build-Phase-Cohort-3/P-022.git
 cd P-022
-git switch develop
-git pull --ff-only origin develop
+docker compose up -d --build --wait
+docker compose ps
 ```
 
-Nếu đã clone repo trước đó:
+Các dịch vụ `postgres`, `redis`, `api`, `worker`, `web` phải `healthy`; dịch vụ
+`migrate` chạy xong rồi `Exited (0)` là bình thường. Lược đồ được áp đầy đủ nhưng
+**chưa có dữ liệu nghiệp vụ** — đủ để xem cấu trúc, chưa đủ để xem console có số.
 
-```bash
-cd P-022
-git switch develop
-git pull --ff-only origin develop
-```
+### 5.3 Chạy đầy đủ với dữ liệu
 
-### 3. Tải PostgreSQL dump
+`git clone` chỉ tải mã nguồn, mô hình nhỏ và báo cáo. Dump PostgreSQL chứa hàng
+triệu giao dịch **không nằm trong Git**.
 
-Mở thư mục handoff:
-
-**[FIN-07 data handoff trên Google Drive](https://drive.google.com/drive/folders/1UEPEPSYW7ytWu0V8ke7vx1K5lP41lVPh?hl=vi)**
-
-Tải đúng hai file:
+**Bước 1 — tải dump.** Mở
+[thư mục handoff trên Google Drive](https://drive.google.com/drive/folders/1UEPEPSYW7ytWu0V8ke7vx1K5lP41lVPh?hl=vi),
+tải đúng hai file vào `artifacts/db/`:
 
 ```text
 fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump
 fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256
 ```
 
-Đặt chúng vào:
-
-```text
-P-022/artifacts/db/
-```
-
-Cấu trúc đúng sau khi tải:
-
-```text
-P-022/
-├── artifacts/
-│   └── db/
-│       ├── fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump
-│       └── fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256
-├── docker-compose.yml
-└── README.md
-```
-
-Dump có kích thước `436.514.448` bytes, SHA-256:
-
-```text
-5e2de5b536fd9e1f61974ae1d9227d74eb369ce2c32f2ef752cd36a6bb788c96
-```
-
-### 4. Kiểm tra checksum
-
-macOS:
+**Bước 2 — kiểm checksum.** Dump nặng `436.514.448` bytes, SHA-256
+`5e2de5b536fd9e1f61974ae1d9227d74eb369ce2c32f2ef752cd36a6bb788c96`.
 
 ```bash
 cd artifacts/db
-shasum -a 256 -c fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256
+shasum -a 256 -c fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256   # macOS
+sha256sum -c  fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256      # Linux
 cd ../..
 ```
 
-Linux:
+Kết quả bắt buộc là `OK`. Checksum sai thì **không restore** — xoá bản tải lỗi và
+tải lại.
 
-```bash
-cd artifacts/db
-sha256sum -c fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump.sha256
-cd ../..
-```
+**Bước 3 — restore.**
 
-Kết quả bắt buộc:
-
-```text
-fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump: OK
-```
-
-Không restore nếu checksum sai. Hãy xóa bản tải lỗi và tải lại từ Drive.
-
-### 5. Khởi động PostgreSQL và restore
-
-> `pg_restore --clean` thay toàn bộ dữ liệu nghiệp vụ hiện có trong database `fin07`. Nếu máy đã
-> có dữ liệu cần giữ, hãy tạo backup riêng trước khi chạy.
-
-Dừng các tiến trình có thể đang đọc database, rồi bật PostgreSQL:
+> `pg_restore --clean` **thay toàn bộ** dữ liệu nghiệp vụ đang có trong database
+> `fin07`. Có dữ liệu cần giữ thì backup trước.
 
 ```bash
 docker compose stop api worker web
 docker compose up -d --wait postgres
-```
 
-Restore dump bằng `pg_restore` bên trong container, vì vậy máy host không cần cài PostgreSQL CLI:
-
-```bash
 docker compose exec -T postgres pg_restore \
-  -U fin07 \
-  -d fin07 \
-  --clean \
-  --if-exists \
-  --exit-on-error \
-  --no-owner \
-  --no-privileges \
+  -U fin07 -d fin07 --clean --if-exists --exit-on-error \
+  --no-owner --no-privileges \
   < artifacts/db/fin07_REL-EDGE-039b4b0fd5fb669a_20260815.dump
-```
 
-Lệnh không in tiến độ trong lúc chạy. Hãy chờ tới khi terminal trả prompt và exit code bằng `0`.
-Dump loại trừ `app_session`, nên không mang token đăng nhập từ máy tạo dump sang máy khác.
-
-### 6. Khởi động toàn bộ stack
-
-```bash
 docker compose up -d --build --wait
-docker compose ps
 ```
 
-Các service `postgres`, `redis`, `api`, `worker`, `web` phải có trạng thái `healthy`. Service
-`migrate` chạy xong rồi `Exited (0)` là bình thường.
+Lệnh restore không in tiến độ. Chờ tới khi terminal trả prompt và mã thoát bằng `0`.
+Dump loại trừ bảng `app_session`, nên không mang token đăng nhập sang máy khác.
 
-### 7. Kiểm tra dữ liệu sau restore
+**Bước 4 — kiểm tra.**
 
 ```bash
 docker compose exec -T postgres psql -U fin07 -d fin07 -Atc "
 SELECT 'transactions=' || count(*) FROM transaction;
-SELECT 'scores=' || count(*) FROM transaction_model_score;
-SELECT 'alerts=' || count(*) FROM alert;
-SELECT 'release=' || release_id FROM edge_model_release WHERE status='active';
-SELECT 'country_hubs=' || count(*) FROM edge_country_hub;
-SELECT 'country_flows=' || count(*) FROM edge_country_flow;
+SELECT 'scores='       || count(*) FROM transaction_model_score;
+SELECT 'alerts='       || count(*) FROM alert;
+SELECT 'release='      || release_id FROM edge_model_release WHERE status='active';
 "
-```
 
-Kết quả chuẩn:
-
-```text
-transactions=5866610
-scores=5866610
-alerts=6541
-release=REL-EDGE-039b4b0fd5fb669a
-country_hubs=34
-country_flows=1289
-```
-
-Kiểm tra API:
-
-```bash
 curl -fsS http://localhost:8000/health/ready
-curl -fsS 'http://localhost:8000/api/v1/alerts/page?page=1&page_size=1'
-curl -fsS 'http://localhost:8000/api/v1/fc/graph?limit=20'
 ```
 
-Sau đó mở <http://localhost:5173>. Tài khoản mặc định được điền sẵn trên màn hình đăng nhập:
+Kết quả chuẩn: `transactions=5866610` · `scores=5866610` · `alerts=6541` ·
+`release=REL-EDGE-039b4b0fd5fb669a`.
 
-```text
-Email:    hung.nq@velrix.vn
-Password: demo-password
-```
+Mở <http://localhost:5173> và đăng nhập.
 
-> **Bản dựng cục bộ và bản đang chạy dùng hai bộ dữ liệu khác nhau.** Hướng dẫn
-> restore ở trên dựng bộ **HI-Medium** (5.866.610 giao dịch, 6.541 cảnh báo,
-> release `REL-EDGE-039b4b0fd5fb669a`) — đó là dump hiện có trên Drive. Bản phục
-> vụ tại <https://www.amlmonitoring.site> chạy **LI-Small** (6.119.572 giao dịch,
-> 21.034 cảnh báo, release `REL-EDGE-5b9f9fc5f8c33e14`) với đủ ba nhánh phát hiện.
-> Con số trên hai môi trường vì vậy không khớp nhau, và điều đó là bình thường.
-> Cấu trúc, quy trình và mọi màn hình thì giống hệt.
+### 5.4 Tài khoản demo
 
-## Console: màn hình nào cho vai nào
-
-Phân quyền cưỡng chế ở tầng API (`src/api/authz.py` + `src/api/permissions.py`);
-menu chỉ phản chiếu lại nó. Ba vai, không chồng lấn:
-
-| Màn hình | Đường dẫn | Chuyên viên | Quản lý | Quản trị |
-|---|---|:--:|:--:|:--:|
-| Tổng quan, Giám sát địa lý | `/dashboard`, `/world` | ✓ | ✓ | |
-| Vụ việc, Tra cứu giao dịch | `/cases`, `/transactions` | ✓ | ✓ | |
-| Phân công & tải công việc | `/assignments` | việc của mình | toàn nhóm | |
-| Báo cáo của tôi | `/my-reports` | ✓ | | |
-| Truy vết tài sản mã hoá | `/crypto` | ✓ | ✓ | |
-| Phê duyệt SAR | `/approvals` | | ✓ | |
-| Nhật ký kiểm toán | `/audit` | | ✓ | ✓ |
-| Tab kỹ thuật (mô hình, chất lượng dữ liệu, lượt chạy tác tử) | `/models`, `/data-quality`, `/agents` | | | ✓ |
-
-**Phân tách nhiệm vụ.** Chuyên viên điều tra, lập và trình hồ sơ nghi vấn. Quản
-lý chốt hồ sơ và điều phối công việc — *không* lập hồ sơ, vì người lập và người
-duyệt phải khác vai chứ không chỉ khác người. Quản trị hệ thống có thẩm quyền
-kỹ thuật, không có quyền nghiệp vụ AML.
-
-**Trợ lý AI** (`src/api/copilot/`) có ở mọi màn nghiệp vụ. Với Quản lý nó đề
-xuất được thao tác điều phối (giao việc, chuyển giao, đặt hạn, đổi ưu tiên,
-nhắc việc); mô hình chỉ *soạn đề xuất*, người dùng xác nhận rồi máy chủ mới
-thực thi bằng mã tất định — xem `docs/architecture/README.md#kiến-trúc-production-fin-07-aml-level-1`.
-Với Chuyên viên, ngữ cảnh bị giới hạn về hồ sơ của chính họ và không có công cụ
-điều phối nào.
-
-## Dữ liệu hiển thị trên console
-
-Sau khi restore đúng dump, các màn chính có dữ liệu:
-
-| Màn hình | Dữ liệu |
-|---|---|
-| Dashboard | Population, alert rate, top alerts và active release |
-| Trung tâm cảnh báo | 6.541 cảnh báo, phân trang 50 dòng và tìm kiếm trên PostgreSQL |
-| Tra cứu giao dịch | 5.866.610 giao dịch, amount/currency gốc và model score |
-| World Monitor | 34 country hubs và 1.289 country/currency corridors |
-| Network Graph | Tách từng connected component, không trộn mạng độc lập trên cùng canvas |
-| Crypto | Giao dịch Bitcoin trong IBM ledger; không giả là dữ liệu on-chain |
-| Models / Benchmarks | Release currency-native, threshold và kết quả 5 seed |
-| Data Quality | Kiểm tra coverage, validity và danh mục nguồn |
-
-Cases, SAR/Approvals và Agent Runs chỉ có dữ liệu sau khi chuyên viên thực hiện workflow. Console
-không tạo case, kết luận điều tra hoặc dữ liệu on-chain giả để lấp màn hình.
-
-## Biến môi trường
-
-Danh mục đầy đủ nằm ở [`.env.example`](.env.example) — 142 biến, mỗi biến có
-chú thích ngay trên dòng khai báo. File đó là **tài liệu duy nhất** về biến môi
-trường; `tests/test_config_documented.py` bắt buộc mọi trường của `Settings` và
-mọi `${BIEN}` trong `docker-compose.yml` đều phải xuất hiện ở đó, nên nó không
-lệch khỏi mã nguồn được.
-
-Không cần `.env` để chạy `docker compose up`: mọi biến đều có mặc định cho môi
-trường phát triển. Dưới đây là những biến thực sự phải nghĩ khi đổi môi trường.
-
-| Biến | Mặc định | Vì sao phải quan tâm |
-|---|---|---|
-| `LLM_MODE` | `mock` | `mock` chạy tác tử tất định, không gọi mạng — dùng cho test. `gemini` mới là đường thật. `APP_ENV=production` **bắt buộc** phải là `gemini`; cấu hình sai thì ứng dụng từ chối khởi động. |
-| `GOOGLE_API_KEY` | rỗng | Khoá Gemini. Không có khoá thì `LLM_MODE=gemini` không khởi động được. Không bao giờ commit; trên máy chủ nó nằm ở `.env` với quyền 600. |
-| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Chỉ nhận đúng giá trị này. Đổi model là đổi cả chi phí lẫn hành vi, nên phải sửa mã có chủ đích. |
-| `GEMINI_INPUT_USD_PER_MTOK` / `GEMINI_OUTPUT_USD_PER_MTOK` | `0` | Đơn giá để tính chỉ số chi phí trên Grafana. Để `0` thì bảng chi phí hiển thị 0 — đúng theo nghĩa "chưa khai báo đơn giá", không phải "miễn phí". |
-| `DATABASE_URL` | PostgreSQL trong compose | Trỏ sang Cloud SQL khi chạy production. |
-| `REDIS_URL` | Redis trong compose | Hàng đợi giữa API và worker. |
-| `APP_ENV` | `development` | `production` bật các ràng buộc chặt hơn, gồm cả ràng buộc `LLM_MODE` ở trên. |
-| `MAX_AGENT_ITERATIONS` / `MAX_TOOL_CALLS` | `3` / `8` | Trần chi phí một phiên điều tra. Chạm trần thì phiên dừng với trạng thái `INSUFFICIENT_EVIDENCE` chứ không kết luận bừa. |
-
-## Truy vấn mẫu
-
-Mọi endpoint đều đòi phiên đăng nhập — phân quyền cưỡng chế ở tầng API, không
-phải chỉ ẩn menu. Các lệnh dưới đây chạy được ngay trên bản đang phục vụ; đổi
-`BASE` thành `http://localhost:8000` để chạy với stack cục bộ.
-
-```bash
-BASE=https://www.amlmonitoring.site
-
-# 1. Đăng nhập, lấy token cho các lệnh sau
-TOKEN=$(curl -s -X POST "$BASE/api/v1/auth/login" \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"tuan.la@velrix.vn","password":"demo-password"}' \
-  | jq -r .token)
-
-# 2. Ba cảnh báo rủi ro cao nhất đang mở
-curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts?limit=3" \
-  | jq -r '.[] | "\(.alert_id)  \(.risk_score)  \(.typology_code)"'
-#   ALT-GEO-5cced52c7a5e3033  100.00  T06
-#   ALT-GEO-baebd8d73c9d308c  100.00  T06
-#   ALT-MP-3cc22b5e5c7272e6   100.00  T02
-
-# 3. Vì sao cảnh báo đó được sinh ra (NT7: luôn ≥ 3 yếu tố đóng góp)
-curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts/ALT-GEO-5cced52c7a5e3033" \
-  | jq '{alert_id, risk_score, so_yeu_to: (.reasons | length)}'
-
-# 4. Giao cho tầng tác tử điều tra — đây là user flow chính
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/v1/alerts/ALT-GEO-5cced52c7a5e3033/investigate" | jq
-
-# 5. Theo dõi tới khi có kết luận (khoảng 40–90 giây, tuỳ kích thước tài khoản)
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/v1/alerts/ALT-GEO-5cced52c7a5e3033/investigation" \
-  | jq '{status, workflow_state, iteration, tool_call_count, failure_reason}'
-
-# 6. Đọc bản giải thích và dấu vết từng bước tác tử đã đi
-INV=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/v1/alerts/ALT-GEO-5cced52c7a5e3033/investigation" | jq -r .investigation_id)
-curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/investigations/$INV/explanation" | jq
-curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/investigations/$INV/trace"       | jq
-```
-
-Trên giao diện, cùng luồng ấy là: **Trung tâm cảnh báo** → mở một cảnh báo →
-**Điều tra bằng tác tử** → xem tab *Bằng chứng* và *Dấu vết*.
-
-Tài khoản demo và vai trò tương ứng (mật khẩu đều là `demo-password`):
+Mật khẩu đều là `demo-password`.
 
 | Email | Vai trò | Thấy gì |
 |---|---|---|
-| `tuan.la@velrix.vn` | analyst | Cảnh báo, vụ việc, đồ thị, giao dịch |
-| `hung.nq@velrix.vn` | compliance_officer | Điều tra, SAR, chất lượng mô hình, nhật ký và danh sách người dùng |
-| `tuan.dm@velrix.vn` | mlro | Điều tra, phê duyệt SAR, chất lượng mô hình, nhật ký và cấu hình |
-| `khiem.lm@velrix.vn` | auditor | Chỉ đọc giao dịch và dấu vết; **không** thấy hàng đợi cảnh báo |
-| `manh.dh@velrix.vn` | admin | Người dùng, cấu hình và vận hành; **không** thấy dữ liệu điều tra |
+| `tuan.la@velrix.vn` | Chuyên viên | Cảnh báo, vụ việc, đồ thị, giao dịch, soạn và trình SAR |
+| `hung.nq@velrix.vn` | Quản lý | Phê duyệt SAR, điều phối công việc, nhật ký kiểm toán |
+| `manh.dh@velrix.vn` | Quản trị hệ thống | Người dùng, cấu hình, tab kỹ thuật. **Không** thấy dữ liệu AML |
 
-Xem hướng dẫn thao tác ngắn cho từng vai trò tại
-[`docs/HUONG_DAN_SU_DUNG_THEO_VAI_TRO.md`](docs/HUONG_DAN_SU_DUNG_THEO_VAI_TRO.md).
+> **Bản dựng cục bộ và bản đang chạy dùng hai release khác nhau.** Hướng dẫn
+> trên dựng release edge currency-native `REL-EDGE-039b4b0fd5fb669a`
+> (5.866.610 giao dịch, 6.541 cảnh báo). Bản phục vụ tại
+> <https://amlmonitoring.site> chạy release MEGA-PNA `REL-MP-6707e0cfbc33679f`
+> trên **IBM AML HI-Medium** (6.754.950 giao dịch chấm, 14.267 cảnh báo đang mở).
+> Con số hai môi trường không khớp nhau là bình thường; cấu trúc, quy trình và
+> mọi màn hình thì giống hệt. Số liệu production đo ngày 01/09/2026 qua
+> `/api/v1/fc/edge-model/release`.
 
-## Lệnh vận hành thường dùng
+### 5.5 Luồng chính để xem thử
 
-```bash
-# Xem trạng thái
-docker compose ps
+Trên console: **Vụ việc** → mở một cảnh báo rủi ro cao → **Điều tra bằng tác tử**
+→ xem tab *Bằng chứng* và *Dấu vết* (khoảng 40–90 giây).
 
-# Theo dõi log API và worker
-docker compose logs -f api worker
-
-# Build lại sau khi pull code mới
-docker compose up -d --build --wait
-
-# Dừng stack nhưng giữ PostgreSQL volume
-docker compose down
-
-# Chạy kiểm thử và lint
-make check
-
-# Xem toàn bộ lệnh Makefile
-make help
-```
-
-Không chạy `docker compose down -v` hoặc xóa volume `fin07_postgres_data` nếu chưa có backup; hai
-thao tác đó xóa database đã restore.
-
-## Xử lý sự cố
-
-### UI mở được nhưng không có cảnh báo/giao dịch
-
-Kiểm tra active release và số dòng:
+Cùng luồng ấy qua API:
 
 ```bash
-docker compose exec -T postgres psql -U fin07 -d fin07 -Atc "
-SELECT count(*) FROM transaction;
-SELECT release_id, status FROM edge_model_release;
-"
+BASE=http://localhost:8000
+TOKEN=$(curl -s -X POST "$BASE/api/v1/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"tuan.la@velrix.vn","password":"demo-password"}' | jq -r .token)
+
+# Ba cảnh báo rủi ro cao nhất đang mở
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts?limit=3" \
+  | jq -r '.[] | "\(.alert_id)  \(.risk_score)  \(.typology_code)"'
+
+# Giao cho tác tử điều tra, rồi theo dõi tới khi có kết luận
+ALERT=<mã cảnh báo ở trên>
+curl -s -X POST -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts/$ALERT/investigate" | jq
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/alerts/$ALERT/investigation" \
+  | jq '{status, workflow_state, iteration, tool_call_count, failure_reason}'
 ```
 
-Nếu transaction bằng `0`, dump chưa được restore hoặc restore nhầm database.
+Mọi endpoint đều đòi phiên đăng nhập — phân quyền cưỡng chế ở tầng API, không
+phải chỉ ẩn menu.
 
-### `pg_restore` báo database đang được sử dụng
+### 5.6 Lệnh vận hành
 
 ```bash
-docker compose stop api worker web
+docker compose ps                     # trạng thái
+docker compose logs -f api worker     # log
+docker compose up -d --build --wait   # build lại sau khi pull
+docker compose down                   # dừng, GIỮ dữ liệu
+make help                             # toàn bộ lệnh
 ```
 
-Sau đó chạy lại lệnh restore. Không cần dừng container `postgres`.
+> Không chạy `docker compose down -v` và không xoá volume `fin07_postgres_data`
+> nếu chưa có backup — hai thao tác đó xoá database đã restore.
 
-### Cổng đã bị chiếm
+Xử lý sự cố, phát triển ngoài Docker, và triển khai lên VM:
+[`docs/operations/README.md`](docs/operations/README.md).
 
-Đổi cổng trong `.env`, ví dụ:
+---
 
-```env
-WEB_PORT=5174
-API_PORT=8001
-POSTGRES_PORT=5433
-REDIS_PORT=6380
-```
-
-Sau đó chạy lại:
+## 6. Kiểm thử
 
 ```bash
-docker compose up -d --build --wait
+make check            # ruff + 679 ca pytest
+make contracts-check  # xác thực mọi hợp đồng dữ liệu
+cd web && npm run typecheck && npm test -- --run && npm run build
 ```
 
-### Web vẫn hiện bundle cũ
+| Tầng | Quy mô |
+|---|---|
+| Python (đơn vị + tích hợp) | 94 file · **679 ca** |
+| Giao diện (Vitest) | 15 file |
+| Hợp đồng dữ liệu | JSON Schema, kiểm cả ví dụ hợp lệ **và** không hợp lệ |
+| Khói đầu–cuối | `docker compose up` trên máy sạch |
 
-```bash
-docker compose up -d --build web
-```
+Cổng CI (GitHub Actions, tất cả phải xanh mới merge được): `lint` · `test` ·
+`web` · `images` · `compose-smoke`.
 
-Sau đó hard refresh trình duyệt (`Cmd+Shift+R` trên macOS, `Ctrl+Shift+R` trên Windows/Linux).
+- **[Kế hoạch kiểm thử](docs/testing/test-plan.md)** — kiểm cái gì, ở tầng nào, cổng nào chặn merge
+- **[Danh mục ca kiểm thử](docs/testing/test-cases.md)** — ca kiểm thử ánh xạ tới yêu cầu
+- **[Báo cáo kiểm thử](docs/testing/test-report.md)** — kết quả thật, lỗi tìm được, và giới hạn
 
-### Google Drive không cho tải
+---
 
-Người quản lý folder phải bật quyền xem/tải cho thành viên hoặc chế độ “Anyone with the link”.
-Không upload dataset, dump hoặc credential vào Git để thay thế.
-
-## Phát triển ngoài Docker
-
-```bash
-docker compose up -d postgres redis
-
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-cp .env.example .env
-
-make run       # API
-make worker    # chạy ở terminal khác
-
-cd web
-npm ci
-npm run dev
-```
-
-Trong `.env`, đổi host của `DATABASE_URL` từ `postgres` thành `localhost` khi API chạy trực tiếp
-trên máy host.
-
-## Kiểm thử
-
-```bash
-make check
-make contracts-check
-
-cd web
-npm run typecheck
-npm test -- --run
-npm run build
-```
-
-## Cấu trúc chính
-
-```text
-src/api/            FastAPI routes
-src/worker/         Worker nền và workflow
-src/models/         Feature contract và model runtime
-src/fusion/         IF + Graph fusion
-src/mega_pna/       MEGA-PNA implementation
-web/                React + Vite console
-db/init/            PostgreSQL schema và migrations
-scripts/            Training, scoring, release loader và vận hành
-models/             Model joblib nhỏ được version hóa
-reports/            Benchmark/manifest nhỏ được version hóa
-contracts/          Data/event/tool contracts
-docs/               Kiến trúc, ML và runbook chuyên sâu
-artifacts/          Dump và artifact lớn, bị loại khỏi Git
-```
-
-## Quy tắc dữ liệu và model
-
-- Không commit `.env`, credential, raw IBM AML, DuckDB, score parquet hoặc PostgreSQL dump.
-- Amount Paid/Received và Payment/Receiving Currency được giữ nguyên.
-- Chuẩn hóa theo currency chỉ fit trên train; không dùng static FX trong model.
-- Chỉ quy đổi USD cho luật nghiệp vụ/pháp lý có nguồn tỷ giá và đúng `as_of_ts`.
-- Model score dùng để xếp hàng ưu tiên, không phải xác suất rửa tiền hay kết luận pháp lý.
-- Agent không được đọc ground-truth label; mọi kết luận cần bằng chứng và human review.
-
-Xem thêm [`SECURITY.md`](SECURITY.md), [`contracts/README.md`](contracts/README.md) và
-[FIN-07 — Currency-native policy edge model cho MVP](docs/ml/README.md#fin-07-currency-native-policy-edge-model-cho-mvp).
-Bảng benchmark đầy đủ theo dạng báo cáo nghiên cứu nằm tại
-[`reports/edge-benchmark/hi_medium_currency_native_policy_v1.md`](reports/edge-benchmark/hi_medium_currency_native_policy_v1.md).
-
-## Triển khai tự động
-
-Đẩy code lên `develop` → GitHub Actions chạy kiểm thử → máy chủ tự đồng bộ
-trong vòng hai phút. Không cần thao tác tay nào ở giữa.
-
-Máy chủ **kéo** chứ không phải CI **đẩy**: thêm secret vào repo đòi quyền Admin
-mà nhóm không có, nên đảo chiều để chỉ cần một token chỉ đọc do cá nhân tạo.
-Agent chỉ triển khai khi commit đầu nhánh có ít nhất một lượt kiểm tra và mọi
-lượt đều xanh; kiểm tra khói hỏng thì tự quay lui về bản trước.
-
-```bash
-sudo bash deploy/install-autodeploy.sh      # cài một lần
-sudo nano /etc/fin07/autodeploy.env         # điền GITHUB_TOKEN
-sudo systemctl enable --now fin07-autodeploy.timer
-
-journalctl -u fin07-autodeploy.service -f   # theo dõi
-```
-
-Chi tiết ở [CI/CD — cổng chặn merge và pipeline giao hàng](docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng).
-
-## Tài liệu chuyên sâu
+## 7. Tài liệu
 
 | Tài liệu | Nội dung |
 |---|---|
-| [`docs/TONG_KET_VA_HUONG_PHAT_TRIEN.md`](docs/TONG_KET_VA_HUONG_PHAT_TRIEN.md) | **Bắt đầu từ đây** — đang có gì, huấn luyện thế nào, làm gì tiếp |
-| [MEGA-PNA — Mô hình phát hiện rửa tiền của FIN-07](docs/ml/README.md#mega-pna-mô-hình-phát-hiện-rửa-tiền-của-fin-07) | **Mô hình phát hiện** — thuật toán, kết quả, hạn chế đã biết |
-| [Kiến trúc production — FIN-07 AML Level 1](docs/architecture/README.md#kiến-trúc-production-fin-07-aml-level-1) | Kiến trúc triển khai production |
-| [Runbook — dựng và vận hành FIN-07 trên máy cá nhân](docs/operations/README.md#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân) | Vận hành và xử lý sự cố |
-| [Triển khai lên VM GCP — https://amlmonitoring.site/](docs/operations/README.md#triển-khai-lên-vm-gcp-httpsamlmonitoringsite) | Triển khai VM |
-| [FIN-07 · Sơ đồ triển khai Production](docs/architecture/README.md#fin-07-sơ-đồ-triển-khai-production) | Hạ tầng đang chạy, số liệu thật và giới hạn đã biết |
-| [Kiến trúc FIN-07 vẽ lại theo đúng những gì dữ liệu có](docs/architecture/README.md#kiến-trúc-fin-07-vẽ-lại-theo-đúng-những-gì-dữ-liệu-có) | Vì sao sơ đồ được vẽ lại theo cột dữ liệu có thật |
-| [Kiến trúc hướng B — MEGA-PNA làm một nhánh, không thay cả hệ](docs/architecture/README.md#kiến-trúc-hướng-b-mega-pna-làm-một-nhánh-không-thay-cả-hệ) | Vì sao MEGA-PNA là một nhánh, không thay cả hệ |
-| [`MODELS.md`](MODELS.md) | Bản đồ model: file nào ở đâu, nhánh nào đang phục vụ |
-| [`docs/RBAC.md`](docs/RBAC.md) | Ma trận phân quyền theo vai |
-| [`docs/QA_QC_REPORT.md`](docs/QA_QC_REPORT.md) | Kết quả rà soát chất lượng trên bản đang chạy |
-| [CI/CD — cổng chặn merge và pipeline giao hàng](docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) | CI/CD, cổng chặn merge và tự động triển khai |
-| [`docs/eval/GATE2_EVAL_EVIDENCE.md`](docs/eval/GATE2_EVAL_EVIDENCE.md) | Năm ca đánh giá thủ công với output Gemini thật |
-| [FIN-07 — Currency-native policy edge model cho MVP](docs/ml/README.md#fin-07-currency-native-policy-edge-model-cho-mvp) | Release đang phục vụ UI |
-| [`reports/edge-benchmark/hi_medium_currency_native_policy_v1.md`](reports/edge-benchmark/hi_medium_currency_native_policy_v1.md) | 15 bảng benchmark khoa học của release HI-Medium |
-| [FIN-07-FUSION-001 — Release hợp nhất Isolation Forest và Graph](docs/ml/README.md#fin-07-fusion-001-release-hợp-nhất-isolation-forest-và-graph) | Fusion IF + Graph |
-| [FIN-07 — Runbook MEGA-PNA](docs/ml/README.md#fin-07-runbook-mega-pna) | Huấn luyện và benchmark MEGA-PNA |
-| [`contracts/ingestion/README.md`](contracts/ingestion/README.md) | Kafka/Flink/HDFS ingestion tùy chọn |
-| [`data/raw/ibm-aml/README.md`](data/raw/ibm-aml/README.md) | Nguồn và cách tải raw IBM AML |
+| **[Kiến trúc](docs/architecture/architecture.md)** | Kiến trúc production, sơ đồ triển khai, luồng request, bảo mật, sức chứa |
+| **[Đặc tả hệ thống](docs/specification/system-specification.md)** | Phân tích nghiệp vụ, tuyên bố vấn đề, phạm vi, và đối chiếu với phần đã hiện thực |
+| **[Yêu cầu chức năng](docs/specification/functional-requirements.md)** | Vai trò, ma trận quyền, màn hình, quy trình vụ việc, yêu cầu phi chức năng |
+| **[Thiết kế kỹ thuật](docs/specification/technical-design.md)** | Nhánh phát hiện, thuật toán, tầng tác tử, quyết định thiết kế và lý do |
+| **[Mô hình dữ liệu](docs/specification/data-model.md)** | Nguồn dữ liệu, lược đồ CSDL, đặc trưng mô hình, hợp đồng dữ liệu, lineage mô hình |
+| **[Kế hoạch](docs/testing/test-plan.md)** · **[Ca](docs/testing/test-cases.md)** · **[Báo cáo kiểm thử](docs/testing/test-report.md)** | Chiến lược, danh mục và kết quả kiểm thử |
+| [Hồ sơ mô hình](docs/ml/README.md) | EDA, thiết kế đặc trưng, các lượt huấn luyện, benchmark |
+| [Vận hành](docs/operations/README.md) | Runbook máy cá nhân, dựng GCP, triển khai VM, CI/CD, giám sát |
+| [Quan trắc](docs/observability/README.md) | Chỉ số, SLO, và runbook cho từng cảnh báo |
+| [Nhánh Bitcoin và SAML-D](docs/nhanh_bitcoin_samld.md) | Hai nhánh dữ liệu ngoài IBM AML |
+| [Hợp đồng dữ liệu](contracts/README.md) | Nguồn sự thật duy nhất về hình dạng dữ liệu |
+| [Bảo mật](SECURITY.md) | Chính sách bảo mật và phạm vi dữ liệu |
 
-## License
+### Hạng mục nộp theo yêu cầu ban tổ chức
 
-Mã nguồn dùng giấy phép MIT. IBM AML là dữ liệu tổng hợp và tiếp tục tuân theo
-CDLA-Sharing-1.0.
+| # | Hạng mục | Vị trí |
+|---|---|---|
+| 1 | Source Code | [`src/`](src/), [`web/`](web/) |
+| 2 | README | tài liệu này |
+| 3 | Architecture Diagram | [`docs/architecture_diagram.md`](docs/architecture_diagram.md) |
+| 4 | AI Logs | [`.ai-log/`](.ai-log/) — tự động qua pre-push hook |
+| 5 | Live URL | <https://amlmonitoring.site> |
+| 6 | Video Demo | *(nộp ngoài repo)* |
+| 7 | Pitch Deck | [`presentation/`](presentation/) |
+| 8 | Weekly Journal | [`JOURNAL.md`](JOURNAL.md) |
+| 9 | Worklog | [`WORKLOG.md`](WORKLOG.md) |
+| 10 | Evaluation Evidence | [`eval/results/report.md`](eval/results/report.md) |
+
+---
+
+## 8. Trạng thái và giới hạn đã biết
+
+Nói thẳng, không tô hồng:
+
+- **Chưa ca điều tra nào đi trọn đường tới bản luận giải được duyệt tự động.**
+  Hàng rào phản biện chặn đúng — mô hình có bịa số và bị bắt. Cải thiện phải đến
+  từ việc giảm ảo giác ở tác tử giải thích, không phải nới hàng rào.
+- **Isolation Forest có trọng số 0 trong bước hợp nhất** — vẫn sinh cảnh báo riêng
+  nhưng không cải thiện chỉ số trên tập kiểm thử.
+- **Cảnh báo là hàng đợi dùng chung** — bảng `alert` chưa có cột người-được-giao,
+  nên phạm vi dữ liệu cấp bản ghi chưa áp được cho cảnh báo (vụ việc thì có).
+- **Ba bảng phân quyền song song** phải đồng bộ tay; nợ kỹ thuật là dẫn xuất cả ba
+  từ `permissions.py`.
+- **Nạp dữ liệu luồng chưa lên production** — đã chạy end-to-end ở local-dev.
+- **Không có so khớp danh sách trừng phạt / PEP** — bộ dữ liệu công khai không có
+  tên, không có hồ sơ khách hàng. Xây so khớp tên trên dữ liệu không có tên là xây
+  một tính năng trình diễn.
+- **Chưa làm:** kiểm thử tải, kiểm thử xâm nhập của bên thứ ba, đo trải nghiệm
+  người dùng có người thật, quét thiết kế đáp ứng ở màn hình nhỏ.
+
+Chi tiết đầy đủ: [báo cáo kiểm thử §7](docs/testing/test-report.md#7-giới-hạn-của-đợt-kiểm-thử-nói-thẳng)
+và [đặc tả hệ thống §9](docs/specification/system-specification.md#9-đối-chiếu-phạm-vi-cam-kết-với-phần-đã-hiện-thực).
+
+---
+
+## 9. Cấu trúc kho mã
+
+```text
+src/                  Mã nguồn Python
+  api/                FastAPI routes, phân quyền, copilot, SAR
+  investigation/      Tầng tác tử điều tra (3 vai, 7 công cụ)
+  detection/          Luật nghiệp vụ và detector
+  behavior/           Isolation Forest hành vi
+  mega_pna/           Mạng đồ thị chấm cạnh
+  fusion/             Hợp nhất điểm
+  data/               ETL, đặc trưng đồ thị, detector chu trình
+  streaming/          Nạp dữ liệu luồng
+  worker/             Worker nền
+  observability/      OpenTelemetry
+web/                  Console React + Vite
+tests/                94 file · 679 ca kiểm thử
+db/init/              51 migration PostgreSQL
+contracts/            Hợp đồng dữ liệu, sự kiện và công cụ (JSON Schema)
+scripts/              Huấn luyện, chấm điểm, nạp release, vận hành
+models/               File mô hình được version hoá
+reports/              Báo cáo benchmark và manifest
+flink/                Job nạp dữ liệu Flink (Java)
+deploy/ ci/ jenkins/  Triển khai và CI/CD
+infra/terraform/      Hạ tầng GCP
+monitoring/           Prometheus, Grafana, Loki, OTel collector
+docs/                 Kiến trúc, đặc tả, kiểm thử, vận hành, mô hình
+```
+
+---
+
+## 10. Quy tắc dữ liệu và mô hình
+
+- Không commit `.env`, thông tin xác thực, dữ liệu IBM AML thô, DuckDB, parquet
+  điểm số hay dump PostgreSQL.
+- `Amount Paid` / `Amount Received` và `Payment` / `Receiving Currency` **giữ nguyên**.
+- Chuẩn hoá theo loại tiền **chỉ fit trên tập train**; không dùng tỷ giá tĩnh
+  trong mô hình.
+- Điểm mô hình dùng để **xếp hàng ưu tiên**, không phải xác suất rửa tiền và
+  không phải kết luận pháp lý.
+- Tác tử **không được đọc nhãn ground truth**; mọi kết luận cần bằng chứng và cần
+  người rà soát.
+
+---
+
+## 11. Giấy phép
+
+Mã nguồn dùng giấy phép [MIT](LICENSE). Bộ dữ liệu IBM AML là dữ liệu tổng hợp và
+tiếp tục tuân theo CDLA-Sharing-1.0.

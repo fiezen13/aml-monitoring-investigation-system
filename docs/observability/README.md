@@ -2,21 +2,21 @@
 
 Chỉ số, SLO và toàn bộ runbook xử lý cảnh báo. Mỗi cảnh báo trong `monitoring/prometheus/rules/fin07.yml` trỏ tới đúng một mục ở đây.
 
-- [FIN-07 correlated observability](#fin-07-correlated-observability) — gốc: `docs/observability/README.md`
-- [FIN-07 SLI and SLO framework](#fin-07-sli-and-slo-framework) — gốc: `docs/observability/slo.md`
-- [Scrape target down](#scrape-target-down) — gốc: `docs/observability/runbooks/service-down.md`
-- [Infrastructure capacity pressure](#infrastructure-capacity-pressure) — gốc: `docs/observability/runbooks/infrastructure-capacity.md`
-- [PostgreSQL saturation](#postgresql-saturation) — gốc: `docs/observability/runbooks/postgres-saturation.md`
-- [Redis evictions](#redis-evictions) — gốc: `docs/observability/runbooks/redis-evictions.md`
-- [High API error rate](#high-api-error-rate) — gốc: `docs/observability/runbooks/high-api-error-rate.md`
-- [High API latency](#high-api-latency) — gốc: `docs/observability/runbooks/high-api-latency.md`
-- [Worker queue backlog](#worker-queue-backlog) — gốc: `docs/observability/runbooks/worker-queue-backlog.md`
-- [OpenTelemetry export failure](#opentelemetry-export-failure) — gốc: `docs/observability/runbooks/otel-export-failure.md`
-- [Gemini rate limit](#gemini-rate-limit) — gốc: `docs/observability/runbooks/gemini-rate-limit.md`
-- [Gemini timeout](#gemini-timeout) — gốc: `docs/observability/runbooks/gemini-timeout.md`
-- [Agent failure spike](#agent-failure-spike) — gốc: `docs/observability/runbooks/agent-failure-spike.md`
-- [Agent loop limit](#agent-loop-limit) — gốc: `docs/observability/runbooks/agent-loop-limit.md`
-- [Critic FAIL spike](#critic-fail-spike) — gốc: `docs/observability/runbooks/critic-fail-spike.md`
+- [FIN-07 correlated observability](#fin-07-correlated-observability)
+- [FIN-07 SLI and SLO framework](#fin-07-sli-and-slo-framework)
+- [Scrape target down](#scrape-target-down)
+- [Infrastructure capacity pressure](#infrastructure-capacity-pressure)
+- [PostgreSQL saturation](#postgresql-saturation)
+- [Redis evictions](#redis-evictions)
+- [High API error rate](#high-api-error-rate)
+- [High API latency](#high-api-latency)
+- [Worker queue backlog](#worker-queue-backlog)
+- [OpenTelemetry export failure](#opentelemetry-export-failure)
+- [Gemini rate limit](#gemini-rate-limit)
+- [Gemini timeout](#gemini-timeout)
+- [Agent failure spike](#agent-failure-spike)
+- [Agent loop limit](#agent-loop-limit)
+- [Critic FAIL spike](#critic-fail-spike)
 
 ## FIN-07 correlated observability
 
@@ -179,7 +179,7 @@ All labels are bounded. IDs and text are forbidden as metric dimensions.
 
 ### Alerts, SLOs, and runbooks
 
-Prometheus evaluates operational and AI-quality rules. No Alertmanager was added because no notification destination exists; this avoids two alerting mechanisms. Rules appear in Prometheus and Grafana. AI-quality thresholds carry `threshold_status=provisional` until baselines are reviewed. See [#fin-07-sli-and-slo-framework](#fin-07-sli-and-slo-framework) and [runbooks](runbooks/).
+Prometheus evaluates operational and AI-quality rules. No Alertmanager was added because no notification destination exists; this avoids two alerting mechanisms. Rules appear in Prometheus and Grafana. AI-quality thresholds carry `threshold_status=provisional` until baselines are reviewed. See [#fin-07-sli-and-slo-framework](#fin-07-sli-and-slo-framework) and các runbook ở cuối tài liệu này.
 
 ### Production recommendations
 

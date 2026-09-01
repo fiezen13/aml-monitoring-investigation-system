@@ -1,4 +1,4 @@
-"""Trích 20 đặc trưng hành vi tài khoản từ DuckDB theo docs/feature_spec.md.
+"""Trích 20 đặc trưng hành vi tài khoản từ DuckDB theo docs/specification/data-model.md §4.
 
 Ví dụ:
   python scripts/extract_features.py

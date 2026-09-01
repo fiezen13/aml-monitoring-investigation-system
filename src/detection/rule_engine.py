@@ -12,7 +12,7 @@ ngoại NOT NULL trỏ tới ``behavior_feature_snapshot``, tức nó được t
 các nhánh chạy theo lô đặc trưng behaviour. Nhánh rule không sinh ảnh chụp đặc
 trưng, và tạo một ảnh chụp rỗng chỉ để thoả khoá ngoại là bịa dữ liệu. Muốn
 nhánh rule vào bảng đó thì phải nới lược đồ trước — xem
-``docs/handoff/detection_branch_contract.md``.
+``docs/specification/technical-design.md §3``.
 
 Cửa sổ dùng dạng nửa kín ``[as_of - window, as_of)``, giống hệt quy ước của
 nhánh graph và nhánh behaviour, để ba nhánh nói về cùng một khoảng thời gian.

@@ -163,7 +163,7 @@ chúng thì **hỏi trước**, đừng gỡ ràng buộc:
 | [.env.example](.env.example) | Mọi biến môi trường |
 | [CI/CD — cổng chặn merge và pipeline giao hàng](docs/operations/README.md#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) | Cổng chặn merge, luồng giao hàng, ba môi trường, quay lui |
 | [contracts/ingestion/README.md](contracts/ingestion/README.md) | Đường ống nạp dữ liệu: contract, lệnh, ba giao diện, bẫy khi chạy local |
-| [Kiến trúc production — FIN-07 AML Level 1](docs/architecture/README.md#kiến-trúc-production-fin-07-aml-level-1) | Từ máy cá nhân tới production: hiện trạng, kiến trúc đích, khoảng cách |
+| [Kiến trúc production — FIN-07 AML Level 1](docs/architecture/architecture.md#kiến-trúc-production-fin-07-aml-level-1) | Từ máy cá nhân tới production: hiện trạng, kiến trúc đích, khoảng cách |
 | FIN-07-ARC-001 | Kiến trúc, quyết định thiết kế |
 | FIN-07-DAT-001 | Nguồn dữ liệu, danh mục nhãn |
 | FIN-07-BUS-001 | Nghiệp vụ AML, danh mục typology T01–T10 |

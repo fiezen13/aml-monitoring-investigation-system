@@ -2,12 +2,12 @@
 
 Dựng máy cá nhân, dựng hạ tầng GCP, triển khai lên VM, cổng CI/CD và giám sát. Đọc theo thứ tự mục lục là đi được từ máy trống tới production.
 
-- [Runbook — dựng và vận hành FIN-07 trên máy cá nhân](#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân) — gốc: `docs/operations/RUNBOOK.md`
-- [Dựng hạ tầng GCP — từng bước](#dựng-hạ-tầng-gcp-từng-bước) — gốc: `docs/operations/GCP_SETUP.md`
-- [Triển khai lên VM GCP — https://amlmonitoring.site/](#triển-khai-lên-vm-gcp-httpsamlmonitoringsite) — gốc: `docs/operations/DEPLOY_VM.md`
-- [CI/CD — cổng chặn merge và pipeline giao hàng](#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) — gốc: `docs/operations/CICD.md`
-- [Giám sát — Prometheus và Grafana](#giám-sát-prometheus-và-grafana) — gốc: `docs/operations/MONITORING.md`
-- [FIN-07 — Runbook LI-Small end-to-end](#fin-07-runbook-li-small-end-to-end) — gốc: `docs/operations/LI_SMALL_E2E_RUNBOOK.md`
+- [Runbook — dựng và vận hành FIN-07 trên máy cá nhân](#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân)
+- [Dựng hạ tầng GCP — từng bước](#dựng-hạ-tầng-gcp-từng-bước)
+- [Triển khai lên VM GCP — https://amlmonitoring.site/](#triển-khai-lên-vm-gcp-httpsamlmonitoringsite)
+- [CI/CD — cổng chặn merge và pipeline giao hàng](#cicd-cổng-chặn-merge-và-pipeline-giao-hàng)
+- [Giám sát — Prometheus và Grafana](#giám-sát-prometheus-và-grafana)
+- [FIN-07 — Runbook LI-Small end-to-end](#fin-07-runbook-li-small-end-to-end)
 
 ## Runbook — dựng và vận hành FIN-07 trên máy cá nhân
 
@@ -141,7 +141,7 @@ container bỏ qua toàn bộ thư mục đó và không nói gì. `make db-rese
 - [`.env.example`](../../.env.example) — mọi biến môi trường, có test bắt buộc khai báo
 - [#cicd-cổng-chặn-merge-và-pipeline-giao-hàng](#cicd-cổng-chặn-merge-và-pipeline-giao-hàng) — pipeline chạy gì trên mỗi pull request
 - [`contracts/ingestion/README.md`](../../contracts/ingestion/README.md) — đường ống Kafka/Flink/HDFS: lệnh, ba giao diện, bẫy khi chạy lần đầu
-- [PRODUCTION_ARCHITECTURE](../architecture/README.md#kiến-trúc-production-fin-07-aml-level-1) — hiện trạng triển khai và kiến trúc đích
+- [PRODUCTION_ARCHITECTURE](../architecture/architecture.md#kiến-trúc-production-fin-07-aml-level-1) — hiện trạng triển khai và kiến trúc đích
 - FIN-07-ARC-001 — tài liệu kiến trúc
 - FIN-07-DAT-001 — đặc tả dữ liệu
 
@@ -1236,7 +1236,7 @@ hiện tại.
 
 - [`#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân`](#runbook-dựng-và-vận-hành-fin-07-trên-máy-cá-nhân) — dựng và vận hành trên máy cá nhân
 - [`#dựng-hạ-tầng-gcp-từng-bước`](#dựng-hạ-tầng-gcp-từng-bước) — dựng hạ tầng GCP từng bước
-- [Kiến trúc production — FIN-07 AML Level 1](../architecture/README.md#kiến-trúc-production-fin-07-aml-level-1) mục 7 — quan sát hệ thống ở mức production
+- [Kiến trúc production — FIN-07 AML Level 1](../architecture/architecture.md#kiến-trúc-production-fin-07-aml-level-1) mục 7 — quan sát hệ thống ở mức production
 
 ---
 

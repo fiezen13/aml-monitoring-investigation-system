@@ -1,9 +1,10 @@
 -- =====================================================================
 -- FIN-07 — "Thành phố tài chính Việt Nam": lược đồ ABM
 --
--- Nguồn: docs/design/ABM-thanh-pho-tai-chinh-v2.0.pdf
---        chương 12 (đặc tả dữ liệu đầu ra), chương 13 (source registry),
---        chương 10 (năm gói kịch bản), phụ lục C và D.
+-- Nguồn: bản thiết kế ABM "thành phố tài chính" v2.0 — chương 12 (đặc tả dữ
+--        liệu đầu ra), chương 13 (source registry), chương 10 (năm gói kịch
+--        bản), phụ lục C và D. Bộ dữ liệu ABM-BANK đã gỡ tháng 08/2026; lược
+--        đồ giữ lại làm hợp đồng dữ liệu — xem docs/specification/data-model.md.
 --
 -- Nguyên tắc chi phối toàn bộ file này là "hidden world - observable
 -- evidence views" ở chương 4: thế giới mô phỏng biết mọi thứ, còn AI Agent

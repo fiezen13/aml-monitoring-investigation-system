@@ -2,15 +2,15 @@
 
 Toàn bộ hồ sơ mô hình của FIN-07: khảo sát dữ liệu, thiết kế đặc trưng, các lượt huấn luyện, benchmark mức giao dịch và bàn giao MEGA-PNA.
 
-- [FIN-07 — Phương pháp EDA, thiết kế đặc trưng và kiến trúc ML / Agent](#fin-07-phương-pháp-eda-thiết-kế-đặc-trưng-và-kiến-trúc-ml-agent) — gốc: `docs/ml/FIN-07-ML-002_EDA_Dac_trung_va_Kien_truc.md`
-- [FIN-07 — Huấn luyện, đặc trưng và đánh giá](#fin-07-huấn-luyện-đặc-trưng-và-đánh-giá) — gốc: `docs/ml/FIN-07-ML-001_Huan_luyen_Dac_trung_va_Danh_gia.md`
-- [FIN-07 — Huấn luyện và kết quả trên IBM AML HI-Medium](#fin-07-huấn-luyện-và-kết-quả-trên-ibm-aml-hi-medium) — gốc: `docs/ml/FIN-07-ML-003_Huan_luyen_va_Ket_qua_HI_Medium.md`
-- [FIN-07 Behaviour Isolation Forest 7 ngày](#fin-07-behaviour-isolation-forest-7-ngày) — gốc: `docs/ml/FIN-07-BEHAVIOR-7D.md`
-- [FIN-07-FUSION-001 — Release hợp nhất Isolation Forest và Graph](#fin-07-fusion-001-release-hợp-nhất-isolation-forest-và-graph) — gốc: `docs/ml/FIN-07-FUSION-001.md`
-- [Benchmark mức giao dịch (edge-level) cho LI-Small](#benchmark-mức-giao-dịch-edge-level-cho-li-small) — gốc: `docs/ml/EDGE_LEVEL_BENCHMARK.md`
-- [FIN-07 — Currency-native policy edge model cho MVP](#fin-07-currency-native-policy-edge-model-cho-mvp) — gốc: `docs/ml/CURRENCY_NATIVE_EDGE_MVP.md`
-- [MEGA-PNA — Mô hình phát hiện rửa tiền của FIN-07](#mega-pna-mô-hình-phát-hiện-rửa-tiền-của-fin-07) — gốc: `docs/MEGA_PNA_BAN_GIAO.md`
-- [FIN-07 — Runbook MEGA-PNA](#fin-07-runbook-mega-pna) — gốc: `docs/ml/MEGA_PNA_RUNBOOK.md`
+- [FIN-07 — Phương pháp EDA, thiết kế đặc trưng và kiến trúc ML / Agent](#fin-07-phương-pháp-eda-thiết-kế-đặc-trưng-và-kiến-trúc-ml-agent)
+- [FIN-07 — Huấn luyện, đặc trưng và đánh giá](#fin-07-huấn-luyện-đặc-trưng-và-đánh-giá)
+- [FIN-07 — Huấn luyện và kết quả trên IBM AML HI-Medium](#fin-07-huấn-luyện-và-kết-quả-trên-ibm-aml-hi-medium)
+- [FIN-07 Behaviour Isolation Forest 7 ngày](#fin-07-behaviour-isolation-forest-7-ngày)
+- [FIN-07-FUSION-001 — Release hợp nhất Isolation Forest và Graph](#fin-07-fusion-001-release-hợp-nhất-isolation-forest-và-graph)
+- [Benchmark mức giao dịch (edge-level) cho LI-Small](#benchmark-mức-giao-dịch-edge-level-cho-li-small)
+- [FIN-07 — Currency-native policy edge model cho MVP](#fin-07-currency-native-policy-edge-model-cho-mvp)
+- [MEGA-PNA — Mô hình phát hiện rửa tiền của FIN-07](#mega-pna-mô-hình-phát-hiện-rửa-tiền-của-fin-07)
+- [FIN-07 — Runbook MEGA-PNA](#fin-07-runbook-mega-pna)
 
 ## FIN-07 — Phương pháp EDA, thiết kế đặc trưng và kiến trúc ML / Agent
 

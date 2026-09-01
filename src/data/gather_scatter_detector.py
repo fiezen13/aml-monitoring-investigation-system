@@ -1,6 +1,6 @@
 """GATHER_SCATTER detector — median-based temporal baseline.
 
-Contract: docs/graph_branch_plan.md §4.4 / §5.1 (center = subject).
+Contract: docs/specification/technical-design.md §2.1 (center = subject).
 Frozen baseline: configs/graph/graph_gather_config_v1.json (tuned on val; no test/GT).
 
 Rule:
