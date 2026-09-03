@@ -22,12 +22,19 @@ import argparse
 import csv
 import hashlib
 import json
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import psycopg  # noqa: E402
+from sqlalchemy.engine import make_url  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.config import get_settings  # noqa: E402
+
 UTC = timezone.utc  # noqa: UP017
 DETECTOR_VERSION = "cycle-v1"
 
@@ -36,36 +43,27 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--cycles", type=Path, default=Path("/tmp/cycle-detect/cycles.jsonl"))
     p.add_argument("--max-cycles", type=int, default=4000)
-    p.add_argument("--container", default="fin07-postgres-1")
-    p.add_argument("--database", default="fin07_hi_medium")
-    p.add_argument("--db-user", default="fin07")
+    # Đi theo DATABASE_URL, KHÔNG phải `docker exec psql` vào container local.
+    # Máy chủ đang phục vụ có container `fin07-postgres-1` mang database
+    # `fin07_hi_medium` và nó RỖNG; API đọc Cloud SQL. Mặc định cũ ghi vào đó
+    # thì lệnh báo thành công mà production không nhận được dòng nào.
+    p.add_argument("--database-url", default=None, help="mặc định lấy từ DATABASE_URL")
     return p.parse_args()
 
 
-def sql(args: argparse.Namespace, statement: str) -> str:
-    proc = subprocess.run(
-        [
-            "docker",
-            "exec",
-            "-i",
-            args.container,
-            "psql",
-            "-v",
-            "ON_ERROR_STOP=1",
-            "-U",
-            args.db_user,
-            "-d",
-            args.database,
-            "-tAc",
-            statement,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode:
-        print(proc.stderr.strip(), file=sys.stderr)
-        raise SystemExit(1)
-    return proc.stdout.strip()
+def connect(args: argparse.Namespace) -> psycopg.Connection:
+    url = make_url(args.database_url or get_settings().database_url)
+    if not url.drivername.startswith("postgresql"):
+        raise ValueError("DATABASE_URL phải trỏ tới PostgreSQL")
+    return psycopg.connect(url.set(drivername="postgresql").render_as_string(hide_password=False))
+
+
+def sql(conn: psycopg.Connection, statement: str) -> str:
+    with conn.cursor() as cur:
+        cur.execute(statement)  # type: ignore[arg-type]
+        if cur.description is None:
+            return ""
+        return "\n".join(str(r[0]) for r in cur.fetchall())
 
 
 def main() -> int:
@@ -87,9 +85,10 @@ def main() -> int:
 
     # Thời điểm của chặng cuối, để as_of_time là mốc vòng khép lại.
     tids = sorted({int(t) for c in cycles for t in c["tids"]})
+    conn = connect(args)
     print(f"tra thời điểm cho {len(tids):,} giao dịch …", flush=True)
     rows = sql(
-        args,
+        conn,
         f"""SELECT transaction_id || '|' || extract(epoch FROM occurred_at)::bigint
                            FROM transaction WHERE transaction_id = ANY(ARRAY[{",".join(map(str, tids))}])""",
     )
@@ -131,43 +130,25 @@ def main() -> int:
                 w.writerow([eid, account, as_of, "CYCLE", DETECTOR_VERSION, payload])
                 written += 1
 
-    sql(args, "DELETE FROM graph_detector_evidence WHERE pattern = 'CYCLE'")
-    proc = subprocess.Popen(
-        [
-            "docker",
-            "exec",
-            "-i",
-            args.container,
-            "psql",
-            "-v",
-            "ON_ERROR_STOP=1",
-            "-U",
-            args.db_user,
-            "-d",
-            args.database,
-            "-c",
+    sql(conn, "DELETE FROM graph_detector_evidence WHERE pattern = 'CYCLE'")
+    with (
+        conn.cursor() as cur,
+        cur.copy(
             "COPY graph_detector_evidence (evidence_id, account_key, as_of_time, pattern,"
-            " detector_version, payload) FROM STDIN WITH (FORMAT csv)",
-        ],
-        stdin=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    assert proc.stdin is not None
-    proc.stdin.write(out.read_bytes())
-    proc.stdin.close()
-    _, err = proc.communicate()
-    if proc.returncode:
-        print(err.decode("utf-8", "replace").strip(), file=sys.stderr)
-        return 1
+            " detector_version, payload) FROM STDIN WITH (FORMAT csv)"
+        ) as copy,
+    ):
+        copy.write(out.read_bytes())
 
-    n = sql(args, "SELECT count(*) FROM graph_detector_evidence WHERE pattern='CYCLE'")
-    acc = sql(args, "SELECT count(DISTINCT account_key) FROM graph_detector_evidence WHERE pattern='CYCLE'")
+    n = sql(conn, "SELECT count(*) FROM graph_detector_evidence WHERE pattern='CYCLE'")
+    acc = sql(conn, "SELECT count(DISTINCT account_key) FROM graph_detector_evidence WHERE pattern='CYCLE'")
     overlap = sql(
-        args,
+        conn,
         """SELECT count(DISTINCT g.account_key)
                              FROM graph_detector_evidence g
                              JOIN alert a ON a.account_key = g.account_key AND a.status <> 'closed'""",
     )
+    conn.commit()
     print(f"đã ghi {n} dòng · {acc} tài khoản · {overlap} tài khoản vừa có mẫu hình vừa có cảnh báo mở")
     return 0
 
