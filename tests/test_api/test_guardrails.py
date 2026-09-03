@@ -168,9 +168,54 @@ def test_cau_tu_choi_lac_de_khong_bi_coi_la_lo_loi_nhac() -> None:
 def test_cau_tu_choi_cua_tro_ly_dieu_phoi_cung_khong_bi_coi_la_lo() -> None:
     from src.api.copilot import agent
 
-    for cau in (agent.OFF_TOPIC, agent.OUT_OF_SCOPE_ACTION):
+    for cau in (agent.OFF_TOPIC, agent.OUT_OF_SCOPE_ACTION, agent.OUT_OF_SCOPE_AML):
         verdict = guardrails.screen_answer(cau, trusted_blob=_TRUSTED, system_instruction=agent._SYSTEM)
         assert verdict.allowed is True, f"{cau[:40]}… → {verdict.detail}"
+
+
+def test_cau_tu_choi_ngoai_pham_vi_aml_khong_bi_coi_la_lo() -> None:
+    """Thông điệp mới cũng nằm nguyên văn trong lời nhắc, nên phải được miễn trừ."""
+    from src.api import ai_assistant
+
+    verdict = guardrails.screen_answer(
+        ai_assistant._OUT_OF_SCOPE_AML, trusted_blob=_TRUSTED, system_instruction=ai_assistant._SYSTEM
+    )
+
+    assert verdict.allowed is True, verdict.detail
+    assert verdict.category != "system_prompt_leak"
+
+
+def test_cau_hoi_aml_ngoai_hang_doi_khong_dung_chung_thong_diep_voi_cau_lac_de() -> None:
+    """Hỏi "cảnh báo nào có dấu hiệu giao dịch vòng" KHÔNG phải câu lạc đề.
+
+    Đã xảy ra thật: chuyên viên hỏi về nhóm hành vi của cảnh báo và nhận đúng câu
+    từ chối dành cho "thủ đô nước Pháp". Câu hỏi ấy đúng chuyên môn, chỉ nằm ngoài
+    dữ liệu của trợ lý — người dùng cần biết đi đâu để tra, chứ không phải bị đẩy
+    về cùng một ngõ cụt với câu hỏi phiếm.
+
+    Bài kiểm thử này khoá HAI thứ: hai thông điệp phải khác nhau, và lời nhắc phải
+    dạy mô hình phân biệt chúng bằng đúng những từ khoá nghiệp vụ hay gặp.
+    """
+    from src.api import ai_assistant
+    from src.api.copilot import agent
+
+    for module, off_topic, out_of_scope in (
+        (ai_assistant, ai_assistant._OFF_TOPIC, ai_assistant._OUT_OF_SCOPE_AML),
+        (agent, agent.OFF_TOPIC, agent.OUT_OF_SCOPE_AML),
+    ):
+        assert off_topic != out_of_scope
+
+        system = module._SYSTEM
+        assert off_topic in system, "câu từ chối lạc đề phải nằm nguyên văn trong lời nhắc"
+        assert out_of_scope in system, "câu từ chối ngoài phạm vi AML phải nằm nguyên văn trong lời nhắc"
+
+        # Lời nhắc phải nêu đích danh các loại dữ liệu hay bị hỏi tới, nếu không
+        # mô hình vẫn gộp chúng vào nhánh lạc đề như trước.
+        for tu_khoa in ("typology", "giao dịch", "cảnh báo", "đồ thị"):
+            assert tu_khoa in system, f"lời nhắc {module.__name__} thiếu từ khoá {tu_khoa!r}"
+
+        # Câu từ chối phải CHỈ CHỖ, không chỉ nói không.
+        assert "Vụ việc" in out_of_scope and "Tra cứu giao dịch" in out_of_scope
 
 
 def test_chep_nguyen_phan_khung_cua_loi_nhac_van_bi_chan() -> None:

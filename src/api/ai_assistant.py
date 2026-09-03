@@ -36,16 +36,37 @@ _OFF_TOPIC = (
     "còn câu chưa dẫn bằng chứng”."
 )
 
+#: Câu hỏi ĐÚNG nghiệp vụ AML nhưng hỏi vào dữ liệu trợ lý này không đọc được.
+#:
+#: Vì sao phải tách khỏi ``_OFF_TOPIC``: hỏi "cảnh báo nào có dấu hiệu giao dịch
+#: vòng" là câu nghiệp vụ đúng chuyên môn, chỉ nằm ngoài hàng đợi phê duyệt. Trả
+#: nó cùng một câu với "thủ đô nước Pháp là gì" khiến chuyên viên tưởng hệ thống
+#: không hiểu câu hỏi, trong khi hệ thống hiểu nhưng không có dữ liệu — và tệ hơn,
+#: họ không biết phải đi đâu để tra. Câu này thừa nhận đúng chuyên môn rồi chỉ chỗ.
+_OUT_OF_SCOPE_AML = (
+    "Câu này đúng nghiệp vụ AML nhưng nằm ngoài dữ liệu mình đọc được: mình chỉ thấy "
+    "hàng đợi phê duyệt SAR, không thấy toàn bộ cảnh báo hay giao dịch. Bạn tra trực "
+    "tiếp ở màn **Vụ việc** (lọc theo nhóm hành vi) hoặc **Tra cứu giao dịch**; nếu cần "
+    "so sánh trên toàn hệ thống thì hỏi Quản trị hệ thống ở tab kỹ thuật."
+)
+
 _SYSTEM = (
     "Bạn là trợ lý thẩm định AML cho hàng đợi phê duyệt SAR của một hệ giám sát rửa tiền.\n"
     "PHẠM VI: bạn CHỈ hỗ trợ về hàng đợi phê duyệt SAR, quy trình phê duyệt AML, và dữ liệu "
     "trong khối TRUSTED_QUEUE_CONTEXT.\n"
-    "GUARDRAIL — nếu câu hỏi NẰM NGOÀI phạm vi (kiến thức chung, thủ đô, thời tiết, chính trị, "
-    "toán, lập trình, trò chuyện phiếm, hỏi về bản thân bạn, v.v.), TỪ CHỐI NGẮN GỌN và lịch sự, "
-    "hướng người dùng về đúng việc. KHÔNG trả lời nội dung ngoài phạm vi, và KHÔNG đổ dữ liệu "
-    f'hàng đợi ra cho câu lạc đề. Dùng đúng thông điệp này khi từ chối: "{_OFF_TOPIC}"\n'
-    "Phân biệt rõ: câu ĐÚNG phạm vi nhưng thiếu dữ liệu → trả lời 'không đủ dữ liệu trong hàng đợi'; "
-    "câu LẠC ĐỀ → dùng thông điệp từ chối ở trên (KHÔNG kèm số liệu hàng đợi).\n"
+    "GUARDRAIL — phân loại câu hỏi vào ĐÚNG MỘT trong BỐN nhóm sau, theo thứ tự:\n"
+    "  (1) ĐÚNG phạm vi và hàng đợi CÓ dữ liệu → trả lời từ TRUSTED_QUEUE_CONTEXT.\n"
+    "  (2) ĐÚNG phạm vi nhưng hàng đợi KHÔNG có dữ liệu → nói rõ 'không đủ dữ liệu trong "
+    "hàng đợi', KHÔNG suy đoán.\n"
+    "  (3) THUỘC NGHIỆP VỤ AML nhưng hỏi vào dữ liệu ngoài hàng đợi phê duyệt — ví dụ cảnh báo "
+    "toàn hệ thống, nhóm hành vi/typology, giao dịch, tài khoản, đồ thị, chất lượng mô hình, "
+    "bộ dữ liệu — thì KHÔNG được coi là lạc đề. Dùng đúng thông điệp này: "
+    f'"{_OUT_OF_SCOPE_AML}"\n'
+    "  (4) LẠC ĐỀ HOÀN TOÀN, không liên quan AML (kiến thức chung, thủ đô, thời tiết, chính trị, "
+    "toán, lập trình, trò chuyện phiếm, hỏi về bản thân bạn) → dùng đúng thông điệp này: "
+    f'"{_OFF_TOPIC}"\n'
+    "Với nhóm (3) và (4): TỪ CHỐI NGẮN GỌN, KHÔNG trả lời nội dung ngoài phạm vi, và KHÔNG đổ "
+    "số liệu hàng đợi ra kèm theo.\n"
     "Khi trả lời trong phạm vi: CHỈ dựa trên TRUSTED_QUEUE_CONTEXT, KHÔNG bịa số; nhắc hồ sơ/vụ "
     "việc phải ghi rõ mã (SAR-… / CASE-…).\n"
     "TUYỆT ĐỐI không tự quyết định duyệt hay từ chối — quyết định là của người có thẩm quyền (NT3); "
@@ -88,6 +109,7 @@ _OWN_SCOPE = (
 # Khai báo ở đây để bộ dò rò rỉ biết đó là câu được phép nói, chứ không phải dấu
 # hiệu lời nhắc bị lộ.
 guardrails.register_safe_refusal(_OFF_TOPIC)
+guardrails.register_safe_refusal(_OUT_OF_SCOPE_AML)
 
 
 def _get_client(settings: Settings) -> genai.Client:
