@@ -150,16 +150,8 @@ def main() -> int:
 
     print(f"      {len(cycles):,} vòng · {skipped:,} đỉnh vượt ngân sách", flush=True)
 
-    # Chấm điểm là TUỲ CHỌN. `HI-Medium_Patterns.txt` là ĐÁP ÁN của IBM: nó
-    # đúng ra KHÔNG được có mặt trên máy chủ đang phục vụ, và việc dò chu trình
-    # không cần tới nó. Thiếu file thì bỏ qua bước chấm và ghi recall là null,
-    # thay vì để cả đường ống chết sau khi đã dò xong.
-    if args.patterns.exists():
-        print("[3/4] Chấm điểm theo nhãn IBM …", flush=True)
-        truth = load_truth(args.patterns)
-    else:
-        print(f"[3/4] Bỏ qua chấm điểm: không có {args.patterns} (đáp án IBM)", flush=True)
-        truth = {}
+    print("[3/4] Chấm điểm theo nhãn IBM …", flush=True)
+    truth = load_truth(args.patterns)
     attempts = set(truth.values())
     hits: dict[int, int] = defaultdict(int)
     for path, _ in cycles:
@@ -173,8 +165,7 @@ def main() -> int:
         for a in seen:
             hits[a] += 1
     matched1 = set(hits)
-    if truth:
-        print(f"      vụ CYCLE có nhãn: {len(attempts)} · bộ dò chạm: {len(matched1)}")
+    print(f"      vụ CYCLE có nhãn: {len(attempts)} · bộ dò chạm: {len(matched1)}")
 
     args.cycles_out.parent.mkdir(parents=True, exist_ok=True)
     with args.cycles_out.open("w", encoding="utf-8") as fh:
@@ -205,14 +196,7 @@ def main() -> int:
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    # `relative_to` ném lỗi khi --out nằm ngoài cây repo (ví dụ /tmp trên máy
-    # chủ). Báo cáo đã ghi xong ở dòng trên; đừng để một dòng in làm hỏng cả
-    # lượt chạy.
-    try:
-        shown = args.out.relative_to(ROOT)
-    except ValueError:
-        shown = args.out
-    print(f"[4/4] đã ghi {shown}")
+    print(f"[4/4] đã ghi {args.out.relative_to(ROOT)}")
     return 0
 
 
